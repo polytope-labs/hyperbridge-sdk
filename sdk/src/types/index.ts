@@ -33,6 +33,9 @@ export interface StateMachineUpdate {
  blockHash: string;
  blockNumber: number;
  transactionHash: string;
+ transactionIndex: number;
+ stateMachineId: string;
+ createdAt: Date;
 }
 
 export interface RequestResponse {
@@ -57,6 +60,9 @@ export interface StateMachineResponse {
    blockHash: string;
    blockNumber: number;
    transactionHash: string;
+   transactionIndex: number;
+   stateMachineId: string;
+   createdAt: Date;
   }>;
  };
 }

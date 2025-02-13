@@ -31,8 +31,8 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.ts",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.ts --watch"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
   },
   "dependencies": {
     "graphql": "^16.10.0",
