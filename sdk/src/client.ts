@@ -46,7 +46,7 @@ export class HyperIndexerClient {
    throw new Error(`No request found for hash: ${hash}`);
   }
 
-  const metadata = this.extractBlockMetadata(request.statusMetadata[0]);
+  const metadata = this.extractBlockMetadata(request.statusMetadata.nodes[0]);
   return {
    status: request.status as RequestStatus,
    metadata,
@@ -200,7 +200,9 @@ export class HyperIndexerClient {
   */
  private isTerminalStatus(status: RequestStatus): boolean {
   return (
-   status === RequestStatus.DELIVERED || status === RequestStatus.TIMED_OUT
+   status === RequestStatus.TIMED_OUT ||
+   status === RequestStatus.HYPERBRIDGE_TIMED_OUT ||
+   status === RequestStatus.DELIVERED
   );
  }
 
@@ -212,9 +214,9 @@ export class HyperIndexerClient {
  private extractBlockMetadata(data: any): BlockMetadata {
   return {
    blockHash: data.blockHash,
-   blockHeight: parseInt(data.blockHeight),
    blockNumber: parseInt(data.blockNumber),
    timestamp: BigInt(data.timestamp),
+   chain: data.chain,
   };
  }
 

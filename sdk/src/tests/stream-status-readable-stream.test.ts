@@ -2,15 +2,23 @@ import { jest, expect, beforeEach, afterEach } from '@jest/globals';
 import { HyperIndexerClient } from '..';
 import { RequestStatus, BlockMetadata } from '..';
 
+export interface TestBlockMetadata {
+ blockHash: string;
+ blockNumber: number;
+ timestamp: string;
+ chain: string;
+}
+
+
 describe('createStatusStream', () => {
  let client: HyperIndexerClient;
  const VALID_HASH = '0x1234567890abcdef';
 
- const mockMetadata: BlockMetadata = {
+ const mockMetadata: TestBlockMetadata = {
   blockHash: '0xabc123',
-  blockHeight: 100,
   blockNumber: 100,
-  timestamp: BigInt(1234567890),
+  timestamp: '1234567890',
+  chain: '11155111',
  };
 
  const mockResponses = [
@@ -19,14 +27,16 @@ describe('createStatusStream', () => {
     nodes: [
      {
       status: RequestStatus.SOURCE_FINALIZED,
-      statusMetadata: [
-       {
-        blockHash: mockMetadata.blockHash,
-        blockHeight: '100',
-        blockNumber: '100',
-        timestamp: '1234567890',
-       },
-      ],
+      statusMetadata: {
+       nodes: [
+        {
+         blockHash: mockMetadata.blockHash,
+         blockNumber: '100',
+         timestamp: '1234567890',
+         chain: '11155111',
+        },
+       ],
+      },
      },
     ],
    },
@@ -36,14 +46,16 @@ describe('createStatusStream', () => {
     nodes: [
      {
       status: RequestStatus.HYPERBRIDGE_FINALIZED,
-      statusMetadata: [
-       {
-        blockHash: '0xdef456',
-        blockHeight: '101',
-        blockNumber: '101',
-        timestamp: '1234567891',
-       },
-      ],
+      statusMetadata: {
+       nodes: [
+        {
+         blockHash: '0xdef456',
+         blockNumber: '101',
+         timestamp: '1234567891',
+         chain: '11155111',
+        },
+       ],
+      },
      },
     ],
    },
@@ -53,14 +65,16 @@ describe('createStatusStream', () => {
     nodes: [
      {
       status: RequestStatus.DELIVERED,
-      statusMetadata: [
-       {
-        blockHash: '0xdef789',
-        blockHeight: '102',
-        blockNumber: '102',
-        timestamp: '987654321',
-       },
-      ],
+      statusMetadata: {
+       nodes: [
+        {
+         blockHash: '0xdef789',
+         blockNumber: '102',
+         timestamp: '987654321',
+         chain: '11155111',
+        },
+       ],
+      },
      },
     ],
    },
@@ -104,9 +118,9 @@ describe('createStatusStream', () => {
     status: RequestStatus.DELIVERED,
     metadata: {
      blockHash: '0xdef456',
-     blockHeight: 101,
      blockNumber: 101,
-     timestamp: BigInt(1234567891),
+     timestamp: '1234567891',
+     chain: '11155111',
     },
    },
   ]);

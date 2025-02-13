@@ -13,13 +13,14 @@ export enum RequestStatus {
  HYPERBRIDGE_FINALIZED = 'HYPERBRIDGE_FINALIZED',
  DELIVERED = 'DESTINATION',
  TIMED_OUT = 'TIMED_OUT',
+ HYPERBRIDGE_TIMED_OUT = 'HYPERBRIDGE_TIMED_OUT',
 }
 
 export interface BlockMetadata {
  blockHash: string;
- blockHeight: number;
  blockNumber: number;
  timestamp: bigint;
+ chain: string;
 }
 
 export interface StatusResponse {
@@ -42,27 +43,20 @@ export interface RequestResponse {
  requests: {
   nodes: Array<{
    status: RequestStatus;
-   timeoutTimestamp: string;
-   statusMetadata: Array<{
-    blockHash: string;
-    blockNumber: string;
-    timestamp: string;
-   }>;
+   statusMetadata: {
+    nodes: Array<{
+     blockHash: string;
+     blockNumber: string;
+     timestamp: string;
+     chain: string;
+    }>;
+   };
   }>;
  };
 }
 
 export interface StateMachineResponse {
  stateMachineUpdateEvents: {
-  nodes: Array<{
-   height: number;
-   chain: string;
-   blockHash: string;
-   blockNumber: number;
-   transactionHash: string;
-   transactionIndex: number;
-   stateMachineId: string;
-   createdAt: Date;
-  }>;
+  nodes: StateMachineUpdate[];
  };
 }

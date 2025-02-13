@@ -11,12 +11,12 @@
     "hyperbridge",
     "indexer",
     "subquery",
-    "events",
-    "request",
-    "response",
+    "graphql",
+    "indexer",
     "substrate",
     "evm"
   ],
+  "type": "module",
   "homepage": "https://github.com/polytope-labs/hyperbridge-indexer#readme",
   "bugs": {
     "url": "https://github.com/polytope-labs/hyperbridge-indexer/issues"
@@ -27,7 +27,6 @@
   },
   "license": "ISC",
   "author": "Polytope Labs",
-  "type": "module",
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",

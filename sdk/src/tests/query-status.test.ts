@@ -1,4 +1,4 @@
-import { jest, expect, beforeEach,afterEach } from '@jest/globals';
+import { jest, expect, beforeEach, afterEach } from '@jest/globals';
 import { HyperIndexerClient } from '..';
 import { RequestStatus, BlockMetadata } from '..';
 
@@ -10,9 +10,9 @@ describe('queryStatus', () => {
 
  const mockMetadata: BlockMetadata = {
   blockHash: '0xabc123',
-  blockHeight: 100,
   blockNumber: 100,
   timestamp: BigInt(1234567890),
+  chain: '11155111',
  };
 
  beforeEach(() => {
@@ -33,14 +33,16 @@ describe('queryStatus', () => {
     nodes: [
      {
       status: RequestStatus.DELIVERED,
-      statusMetadata: [
-       {
-        blockHash: mockMetadata.blockHash,
-        blockHeight: mockMetadata.blockHeight.toString(),
-        blockNumber: mockMetadata.blockNumber.toString(),
-        timestamp: mockMetadata.timestamp.toString(),
-       },
-      ],
+      statusMetadata: {
+       nodes: [
+        {
+         blockHash: mockMetadata.blockHash,
+         blockNumber: mockMetadata.blockNumber.toString(),
+         timestamp: mockMetadata.timestamp.toString(),
+         chain: mockMetadata.chain,
+        },
+       ],
+      },
      },
     ],
    },
@@ -77,14 +79,16 @@ describe('queryStatus', () => {
     nodes: [
      {
       status: RequestStatus.TIMED_OUT,
-      statusMetadata: [
-       {
-        blockHash: mockMetadata.blockHash,
-        blockHeight: mockMetadata.blockHeight.toString(),
-        blockNumber: mockMetadata.blockNumber.toString(),
-        timestamp: mockMetadata.timestamp.toString(),
-       },
-      ],
+      statusMetadata: {
+       nodes: [
+        {
+         blockHash: mockMetadata.blockHash,
+         blockNumber: mockMetadata.blockNumber.toString(),
+         timestamp: mockMetadata.timestamp.toString(),
+         chain: mockMetadata.chain,
+        },
+       ],
+      },
      },
     ],
    },

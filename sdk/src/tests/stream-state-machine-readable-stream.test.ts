@@ -55,15 +55,20 @@ describe('createStateMachineUpdateStream', () => {
   const reader = stream.getReader();
 
   const updates = [];
-  while (true) {
-   const { done, value } = await reader.read();
-   if (done || updates.length >= 2) break;
-   if (value) updates.push(value);
+  let count = 0;
+  const MAX_UPDATES = 2;
+
+  while (count < MAX_UPDATES) {
+   const { value } = await reader.read();
+   if (value) {
+    updates.push(value);
+    count++;
+   }
   }
 
   reader.releaseLock();
 
-  expect(updates).toEqual(mockUpdates);
+    expect(updates).toEqual([mockUpdates[0], mockUpdates[1]]);
  });
 
  it('handles network errors with retry', async () => {
@@ -94,10 +99,15 @@ describe('createStateMachineUpdateStream', () => {
   const reader = stream.getReader();
 
   const updates = [];
-  while (true) {
-   const { done, value } = await reader.read();
-   if (done || updates.length >= 2) break;
-   if (value) updates.push(value);
+  let count = 0;
+  const MAX_UPDATES = 2;
+
+  while (count < MAX_UPDATES) {
+   const { value } = await reader.read();
+   if (value) {
+    updates.push(value);
+    count++;
+   }
   }
 
   reader.releaseLock();
