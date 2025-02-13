@@ -1,14 +1,14 @@
-import { HyperClient } from '../client';
+import { HyperIndexerClient } from '../client';
 import { RequestStatus } from '../types';
 
 describe('HyperClient', () => {
- let client: HyperClient;
+ let client: HyperIndexerClient;
  const VALID_HASH = '0x1234567890abcdef';
  const INVALID_HASH = '0xinvalid';
  const TIMED_OUT_HASH = '0xdeadbeef';
 
  beforeEach(() => {
-  client = new HyperClient();
+  client = new HyperIndexerClient();
  });
 
  describe('queryStatus', () => {

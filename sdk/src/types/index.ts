@@ -1,3 +1,11 @@
+export interface ClientConfig {
+ pollInterval?: number;
+}
+
+export interface RetryConfig {
+ maxRetries: number;
+ backoffMs: number;
+}
 export enum RequestStatus {
  PENDING = 'SOURCE',
  SOURCE_FINALIZED = 'SOURCE_FINALIZED',

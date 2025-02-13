@@ -1,2 +1,2 @@
-export { HyperClient } from './client';
+export { HyperIndexerClient } from './client';
 export * from './types';
