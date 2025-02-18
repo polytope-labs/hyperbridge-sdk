@@ -13,6 +13,8 @@ describe('queryStatus', () => {
   blockNumber: 100,
   timestamp: BigInt(1234567890),
   chain: '11155111',
+  transactionHash: '0xdef456',
+  status: RequestStatus.HYPERBRIDGE_DELIVERED,
  };
 
  beforeEach(() => {
@@ -32,7 +34,7 @@ describe('queryStatus', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.DELIVERED,
+      status: RequestStatus.HYPERBRIDGE_DELIVERED,
       statusMetadata: {
        nodes: [
         {
@@ -49,7 +51,7 @@ describe('queryStatus', () => {
   });
 
   const result = await client.queryStatus(VALID_HASH);
-  expect(result.status).toBe(RequestStatus.DELIVERED);
+  expect(result.status).toBe(RequestStatus.HYPERBRIDGE_DELIVERED);
   expect(result.metadata).toEqual(mockMetadata);
  });
 
@@ -104,7 +106,7 @@ describe('queryStatus', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.DELIVERED,
+      status: RequestStatus.HYPERBRIDGE_DELIVERED,
       statusMetadata: [{}],
      },
     ],

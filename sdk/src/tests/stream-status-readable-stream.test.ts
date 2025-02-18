@@ -1,5 +1,5 @@
 import { jest, expect, beforeEach, afterEach } from '@jest/globals';
-import { HyperIndexerClient } from '..';
+import { HyperClientStatus, HyperIndexerClient } from '..';
 import { RequestStatus, BlockMetadata } from '..';
 
 export interface TestBlockMetadata {
@@ -26,7 +26,7 @@ describe('createStatusStream', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.SOURCE_FINALIZED,
+      status: HyperClientStatus.SOURCE_FINALIZED,
       statusMetadata: {
        nodes: [
         {
@@ -45,7 +45,7 @@ describe('createStatusStream', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.HYPERBRIDGE_FINALIZED,
+      status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
       statusMetadata: {
        nodes: [
         {
@@ -64,7 +64,7 @@ describe('createStatusStream', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.DELIVERED,
+      status: RequestStatus.HYPERBRIDGE_DELIVERED,
       statusMetadata: {
        nodes: [
         {
@@ -111,11 +111,11 @@ describe('createStatusStream', () => {
 
   expect(updates).toEqual([
    {
-    status: RequestStatus.SOURCE_FINALIZED,
+    status: HyperClientStatus.SOURCE_FINALIZED,
     metadata: mockMetadata,
    },
    {
-    status: RequestStatus.DELIVERED,
+    status: RequestStatus.HYPERBRIDGE_DELIVERED,
     metadata: {
      blockHash: '0xdef456',
      blockNumber: 101,
@@ -138,7 +138,7 @@ describe('createStatusStream', () => {
 
   const { value } = await reader.read();
   expect(value).toEqual({
-   status: RequestStatus.SOURCE_FINALIZED,
+   status: HyperClientStatus.SOURCE_FINALIZED,
    metadata: mockMetadata,
   });
  });
@@ -154,7 +154,7 @@ describe('createStatusStream', () => {
    updates.push(value);
   }
 
-  expect(updates[updates.length - 1].status).toBe(RequestStatus.DELIVERED);
+  expect(updates[updates.length - 1].status).toBe(RequestStatus.HYPERBRIDGE_DELIVERED);
  });
 
  it('skips duplicate status updates', async () => {

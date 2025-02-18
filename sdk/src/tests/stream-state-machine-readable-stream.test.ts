@@ -13,7 +13,7 @@ describe('createStateMachineUpdateStream', () => {
    blockNumber: 1000,
    transactionHash: '0xdef456',
    transactionIndex: 0,
-   createdAt: new Date('2024-01-01'),
+   createdAt: '2024-01-01',
    stateMachineId: 'eth-sepolia',
   },
   {
@@ -23,7 +23,7 @@ describe('createStateMachineUpdateStream', () => {
    blockNumber: 1001,
    transactionHash: '0xdef457',
    transactionIndex: 1,
-   createdAt: new Date('2024-01-02'),
+   createdAt: '2024-01-02',
    stateMachineId: 'eth-sepolia',
   },
  ];

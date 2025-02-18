@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { GraphQLClient } from 'graphql-request';
 import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from './queries';
 import {
@@ -9,7 +10,17 @@ import {
  StateMachineResponse,
  ClientConfig,
  RetryConfig,
+ HyperClientStatus,
 } from './types';
+import { HyperClientService } from './hyperclient';
+
+const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
+ [RequestStatus.SOURCE]: 1,
+ [RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
+ [RequestStatus.DESTINATION]: 3,
+ [RequestStatus.HYPERBRIDGE_TIMED_OUT]: 4,
+ [RequestStatus.TIMED_OUT]: 5,
+};
 
 /**
  * HyperIndexerClient provides methods to interact with the Hyperbridge indexer
@@ -26,7 +37,7 @@ export class HyperIndexerClient {
   * Creates a new HyperIndexerClient instance
   */
  constructor(config?: ClientConfig) {
-  this.client = new GraphQLClient('http://localhost:3000/graphql');
+  this.client = new GraphQLClient('http://64.226.127.162:3000/graphql');
   this.pollInterval = config?.pollInterval || 5000;
  }
 
@@ -46,73 +57,19 @@ export class HyperIndexerClient {
    throw new Error(`No request found for hash: ${hash}`);
   }
 
-  const metadata = this.extractBlockMetadata(request.statusMetadata.nodes[0]);
+  const sortedMetadata = request.statusMetadata.nodes.sort(
+   (a, b) =>
+    REQUEST_STATUS_WEIGHTS[b.status as RequestStatus] -
+    REQUEST_STATUS_WEIGHTS[a.status as RequestStatus]
+  );
+
+  const latestMetadata = sortedMetadata[0];
+
+  const metadata = this.extractBlockMetadata(latestMetadata);
   return {
-   status: request.status as RequestStatus,
+   status: metadata.status as RequestStatus,
    metadata,
   };
- }
-
- /**
-  * Stream status updates using async generator pattern
-  * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
-  * @yields Status updates as they occur until a terminal state is reached
-  */
- async *statusStream(hash: string) {
-  let lastStatus: RequestStatus | null = null;
-
-  while (true) {
-   const { status, metadata } = await this.withRetry(() =>
-    this.queryStatus(hash)
-   );
-
-   if (status !== lastStatus) {
-    yield { status, metadata };
-    lastStatus = status;
-   }
-
-   if (this.isTerminalStatus(status)) {
-    break;
-   }
-
-   await new Promise((resolve) => setTimeout(resolve, this.pollInterval));
-  }
- }
-
- /**
-  * Stream state machine updates using async generator pattern
-  * @param statemachineId - ID of the state machine to monitor
-  * @param height - Starting block height
-  * @param chain - Chain identifier
-  * @yields State machine updates as they occur
-  */
- async *stateMachineUpdateStream(
-  statemachineId: string,
-  height: number,
-  chain: string
- ): AsyncGenerator<StateMachineUpdate> {
-  let lastHeight = height;
-
-  while (true) {
-   const response = await this.withRetry(() =>
-    this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
-     statemachineId,
-     height: lastHeight,
-     chain,
-    })
-   );
-
-   const updates = response.stateMachineUpdateEvents.nodes;
-
-   for (const update of updates) {
-    if (update.height >= lastHeight) {
-     yield update;
-     lastHeight = update.height + 1;
-    }
-   }
-
-   await new Promise((resolve) => setTimeout(resolve, this.pollInterval));
-  }
  }
 
  /**
@@ -127,12 +84,96 @@ export class HyperIndexerClient {
     let lastStatus: RequestStatus | null = null;
     while (true) {
      try {
-      const { status, metadata } = await self.withRetry(() =>
-       self.queryStatus(hash)
+      const response = await self.withRetry(() =>
+       self.client.request<RequestResponse>(REQUEST_STATUS, {
+        hash,
+       })
       );
 
+      const request = response.requests.nodes[0];
+      if (!request) {
+       throw new Error(`No request found for hash: ${hash}`);
+      }
+
+      const sortedMetadata = request.statusMetadata.nodes.sort(
+       (a, b) =>
+        REQUEST_STATUS_WEIGHTS[b.status as RequestStatus] -
+        REQUEST_STATUS_WEIGHTS[a.status as RequestStatus]
+      );
+
+      const latestMetadata = sortedMetadata[0];
+      const status = latestMetadata.status as RequestStatus;
+      const metadata = self.extractBlockMetadata(latestMetadata);
+
+      if (status === RequestStatus.SOURCE) {
+       // Get the latest state machine update for the source chain
+       const sourceUpdate = await self.getClosestStateMachineUpdate(
+        'POLKADOT-3367',
+        metadata.blockNumber,
+        metadata.chain
+       );
+
+       if (sourceUpdate) {
+        controller.enqueue({
+         status: HyperClientStatus.SOURCE_FINALIZED,
+         metadata: {
+          blockHash: sourceUpdate.blockHash,
+          blockNumber: sourceUpdate.height,
+          timestamp: BigInt(sourceUpdate.createdAt),
+          chain: sourceUpdate.chain,
+          transactionHash: sourceUpdate.transactionHash,
+         },
+        });
+        lastStatus = RequestStatus.SOURCE;
+        continue;
+       }
+      }
+
+      if (status === RequestStatus.HYPERBRIDGE_DELIVERED) {
+       // Create HyperClient instance for the specific chain pair
+       const hyperClient = await HyperClientService.getInstance(
+        request.source,
+        request.dest
+       );
+
+       // Get the status stream for the post request
+       const statusStream = await hyperClient.getPostRequestStatusStream(
+        {
+         source: request.source,
+         dest: request.dest,
+         from: request.from,
+         to: request.to,
+         nonce: BigInt(request.nonce),
+         timeoutTimestamp: BigInt(request.timeoutTimestamp),
+         body: request.body,
+        },
+        { HyperbridgeFinalized: BigInt(metadata.blockNumber) }
+       );
+
+       // Read from stream to get callData
+       const reader = statusStream.getReader();
+       const result = await reader.read();
+
+       if (!result.done && result.value.kind === 'HyperbridgeFinalized') {
+        controller.enqueue({
+         status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
+         metadata: {
+          blockHash: result.value.block_hash,
+          blockNumber: Number(result.value.block_number),
+          timestamp: BigInt(metadata.timestamp),
+          chain: 'POLKADOT-3367',
+          transactionHash: result.value.transaction_hash,
+          callData: result.value.calldata,
+         },
+        });
+       }
+
+       lastStatus = RequestStatus.HYPERBRIDGE_DELIVERED;
+       continue;
+      }
+
       if (status !== lastStatus) {
-       controller.enqueue({ status, metadata });
+       controller.enqueue({ status: metadata.status, metadata });
        lastStatus = status;
       }
 
@@ -165,25 +206,40 @@ export class HyperIndexerClient {
   const self = this;
   return new ReadableStream({
    async start(controller) {
-    let lastHeight = height;
+    let currentHeight = height;
+
     while (true) {
      try {
       const response = await self.withRetry(() =>
        self.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
         statemachineId,
-        height: lastHeight,
+        height: currentHeight,
         chain,
        })
       );
 
       const updates = response.stateMachineUpdateEvents.nodes;
-      for (const update of updates) {
-       if (update.height >= lastHeight) {
-        controller.enqueue(update);
-        lastHeight = update.height + 1;
-       }
+
+      // Find closest update >= height
+      const closestUpdate = updates
+       .filter((update) => update.height >= currentHeight)
+       .sort((a, b) => a.height - b.height)[0];
+
+      if (closestUpdate) {
+       currentHeight = closestUpdate.height;
+       controller.enqueue(closestUpdate);
+
+       // Stream subsequent updates
+       updates
+        .filter((update) => update.height > currentHeight)
+        .sort((a, b) => a.height - b.height)
+        .forEach((update) => {
+         controller.enqueue(update);
+         currentHeight = update.height;
+        });
       }
 
+      currentHeight += 1;
       await new Promise((resolve) => setTimeout(resolve, self.pollInterval));
      } catch (error) {
       controller.error(error);
@@ -201,8 +257,7 @@ export class HyperIndexerClient {
  private isTerminalStatus(status: RequestStatus): boolean {
   return (
    status === RequestStatus.TIMED_OUT ||
-   status === RequestStatus.HYPERBRIDGE_TIMED_OUT ||
-   status === RequestStatus.DELIVERED
+   status === RequestStatus.DESTINATION
   );
  }
 
@@ -217,6 +272,8 @@ export class HyperIndexerClient {
    blockNumber: parseInt(data.blockNumber),
    timestamp: BigInt(data.timestamp),
    chain: data.chain,
+   transactionHash: data.transactionHash,
+   status: data.status,
   };
  }
 
@@ -246,5 +303,35 @@ export class HyperIndexerClient {
    }
   }
   throw lastError;
+ }
+
+ /**
+  * Get the closest state machine update for a given height
+  * @params statemachineId - ID of the state machine
+  * @params height - Starting block height
+  * @params chain - Chain identifier
+  * @returns Closest state machine update
+  */
+ private async getClosestStateMachineUpdate(
+  statemachineId: string,
+  height: number,
+  chain: string
+ ): Promise<StateMachineUpdate> {
+  const response = await this.withRetry(() =>
+   this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
+    statemachineId,
+    height,
+    chain,
+   })
+  );
+
+  const updates = response.stateMachineUpdateEvents.nodes;
+
+  // Get closest update >= height
+  const closestUpdate = updates
+   .filter((update) => update.height >= height)
+   .sort((a, b) => a.height - b.height)[0];
+
+  return closestUpdate;
  }
 }

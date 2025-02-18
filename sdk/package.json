@@ -34,6 +34,8 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
   },
   "dependencies": {
+    "@polytope-labs/hyperclient": "1.2.0",
+    "dotenv": "^16.4.7",
     "graphql": "^16.10.0",
     "graphql-request": "^7.1.2"
   },

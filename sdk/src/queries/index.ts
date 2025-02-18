@@ -1,7 +1,5 @@
-import { gql } from 'graphql-request';
-
 export const REQUEST_STATUS = `
-  query GetRequestStatus($hash: String!) {
+  query RequestStatus($hash: String!) {
     requests(
       filter: {
         or: [
@@ -13,13 +11,21 @@ export const REQUEST_STATUS = `
       }
     ) {
       nodes {
-        status
+        timeoutTimestamp
+        source
+        dest
+        to
+        from
+        nonce
+        body
         statusMetadata {
           nodes {
             blockHash
             blockNumber
             timestamp
             chain
+            status
+            transactionHash
           }
         }
       }
@@ -28,7 +34,7 @@ export const REQUEST_STATUS = `
 `;
 
 export const STATE_MACHINE_UPDATES = `
-  query GetStateMachineUpdates($statemachineId: String!, $height: Int!, $chain: String!) {
+   query StateMachineUpdates($statemachineId: String!, $height: Int!, $chain: String!) {
     stateMachineUpdateEvents(
       filter: {
         and: [
@@ -37,6 +43,8 @@ export const STATE_MACHINE_UPDATES = `
           { chain: { equalTo: $chain } }
         ]
       }
+      orderBy: HEIGHT_ASC
+      first: 10
     ) {
       nodes {
         height
