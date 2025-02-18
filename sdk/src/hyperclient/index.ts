@@ -11,7 +11,7 @@ import {
  MessageStatusWithMeta,
  MessageStatusStreamState,
 } from '@polytope-labs/hyperclient';
-import { EVM_CHAINS, SUBSTRATE_CHAINS } from './constants';
+import { EVM_CHAINS, HYPERBRIDGE, SUBSTRATE_CHAINS } from './constants';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,7 +36,7 @@ export class HyperClientService {
     dest: EVM_CHAINS[destChain] || SUBSTRATE_CHAINS[destChain],
     hyperbridge: {
      rpc_url: process.env.HYPERBRIDGE_RPC_URL!,
-     state_machine: 'POLKADOT-3367',
+     state_machine: HYPERBRIDGE,
      consensus_state_id: 'PARA',
     },
    };

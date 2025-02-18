@@ -13,6 +13,7 @@ import {
  HyperClientStatus,
 } from './types';
 import { HyperClientService } from './hyperclient';
+import { HYPERBRIDGE } from './hyperclient/constants';
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  [RequestStatus.SOURCE]: 1,
@@ -108,7 +109,7 @@ export class HyperIndexerClient {
       if (status === RequestStatus.SOURCE) {
        // Get the latest state machine update for the source chain
        const sourceUpdate = await self.getClosestStateMachineUpdate(
-        'POLKADOT-3367',
+        HYPERBRIDGE,
         metadata.blockNumber,
         metadata.chain
        );
@@ -151,21 +152,23 @@ export class HyperIndexerClient {
        );
 
        // Read from stream to get callData
-       const reader = statusStream.getReader();
-       const result = await reader.read();
+       for await (const result of statusStream) {
+        console.log(`Current status: ${result}`);
 
-       if (!result.done && result.value.kind === 'HyperbridgeFinalized') {
-        controller.enqueue({
-         status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
-         metadata: {
-          blockHash: result.value.block_hash,
-          blockNumber: Number(result.value.block_number),
-          timestamp: BigInt(metadata.timestamp),
-          chain: 'POLKADOT-3367',
-          transactionHash: result.value.transaction_hash,
-          callData: result.value.calldata,
-         },
-        });
+        if (result.kind === 'HyperbridgeFinalized') {
+         controller.enqueue({
+          status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
+          metadata: {
+           blockHash: result.block_hash,
+           blockNumber: Number(result.block_number),
+           timestamp: BigInt(metadata.timestamp),
+           chain: HYPERBRIDGE,
+           transactionHash: result.transaction_hash,
+           callData: result.calldata,
+          },
+         });
+         break;
+        }
        }
 
        lastStatus = RequestStatus.HYPERBRIDGE_DELIVERED;
@@ -256,8 +259,7 @@ export class HyperIndexerClient {
   */
  private isTerminalStatus(status: RequestStatus): boolean {
   return (
-   status === RequestStatus.TIMED_OUT ||
-   status === RequestStatus.DESTINATION
+   status === RequestStatus.TIMED_OUT || status === RequestStatus.DESTINATION
   );
  }
 

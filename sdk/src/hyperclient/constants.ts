@@ -14,6 +14,8 @@ type ChainConfig = {
  [chainId: string]: IEvmConfig | ISubstrateConfig;
 };
 
+export const HYPERBRIDGE = 'POLKADOT-3367';
+
 const ISMPHosts = {
  'EVM-1': '0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20',
  'EVM-8453': '0x6FFe92e4d7a9D589549644544780e6725E84b248',
