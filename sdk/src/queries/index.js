@@ -1,4 +1,7 @@
-export const REQUEST_STATUS = `
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.STATE_MACHINE_UPDATES = exports.REQUEST_STATUS = void 0;
+exports.REQUEST_STATUS = `
   query RequestStatus($hash: String!) {
     requests(
       filter: {
@@ -32,8 +35,7 @@ export const REQUEST_STATUS = `
     }
   }
 `;
-
-export const STATE_MACHINE_UPDATES = `
+exports.STATE_MACHINE_UPDATES = `
    query StateMachineUpdates($statemachineId: String!, $height: Int!, $chain: String!) {
     stateMachineUpdateEvents(
       filter: {
@@ -43,7 +45,7 @@ export const STATE_MACHINE_UPDATES = `
           { chain: { equalTo: $chain } }
         ]
       }
-      orderBy: CREATED_AT_DESC
+      orderBy: HEIGHT_ASC
       first: 10
     ) {
       nodes {

@@ -1,6 +1,6 @@
 import { jest, expect, beforeEach, afterEach } from '@jest/globals';
-import { HyperClientStatus, HyperIndexerClient } from '..';
-import { RequestStatus, BlockMetadata } from '..';
+import { HyperClientStatus, HyperIndexerClient } from '../..';
+import { RequestStatus, BlockMetadata } from '../..';
 
 export interface TestBlockMetadata {
  blockHash: string;
@@ -8,7 +8,6 @@ export interface TestBlockMetadata {
  timestamp: string;
  chain: string;
 }
-
 
 describe('createStatusStream', () => {
  let client: HyperIndexerClient;
@@ -154,7 +153,9 @@ describe('createStatusStream', () => {
    updates.push(value);
   }
 
-  expect(updates[updates.length - 1].status).toBe(RequestStatus.HYPERBRIDGE_DELIVERED);
+  expect(updates[updates.length - 1].status).toBe(
+   RequestStatus.HYPERBRIDGE_DELIVERED
+  );
  });
 
  it('skips duplicate status updates', async () => {

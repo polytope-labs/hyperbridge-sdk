@@ -18,8 +18,8 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/hyperbridge-nexus.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-5}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
@@ -48,8 +48,8 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/cere-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-5}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
@@ -78,8 +78,8 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/bifrost-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-5}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
@@ -108,13 +108,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/bsc-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-bsc-mainnet:3000/ready']
       interval: 3s
@@ -139,13 +141,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/base-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-base-mainnet:3000/ready']
       interval: 3s
@@ -170,13 +174,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/ethereum-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-ethereum-mainnet:3000/ready']
       interval: 3s
@@ -201,13 +207,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/arbitrum-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-arbitrum-mainnet:3000/ready']
       interval: 3s
@@ -232,13 +240,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/optimism-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-optimism-mainnet:3000/ready']
       interval: 3s
@@ -263,15 +273,50 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/gnosis-mainnet.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-2}
-      - --batch-size=${SUBQL_BATCH_SIZE:-3}
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false
-      - --block-confirmations=5
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-gnosis-mainnet:3000/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  subquery-node-soneium-mainnet:
+    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+
+    volumes:
+      - ./:/app
+    command:
+      - ${SUB_COMMAND:-}
+      - -f=/app/soneium-mainnet.yaml
+      - --db-schema=app
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
+      - --multi-chain
+      - --unsafe
+      - --log-level=info
+      - --historical=false
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-soneium-mainnet:3000/ready']
       interval: 3s
       timeout: 5s
       retries: 10

@@ -7,58 +7,43 @@ import { dirname } from 'path';
 import {
  HyperClient,
  IConfig,
- IPostRequest,
- MessageStatusWithMeta,
- MessageStatusStreamState,
 } from '@polytope-labs/hyperclient';
-import { EVM_CHAINS, HYPERBRIDGE, SUBSTRATE_CHAINS } from './constants';
+import {
+ EVM_CHAINS,
+ HYPERBRIDGE,
+ HYPERBRIDGE_TESTNET,
+ SUBSTRATE_CHAINS,
+} from './constants';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-export class HyperClientService {
- private client!: HyperClient;
- private static instances: Map<string, HyperClientService> = new Map();
+// Store HyperClient instances
+const instances = new Map<string, HyperClient>();
 
- private constructor(private config: IConfig) {}
+export const getHyperClient = async (
+ sourceChain: string,
+ destChain: string
+): Promise<HyperClient> => {
+ const key = `${sourceChain}-${destChain}`;
 
- static async getInstance(
-  sourceChain: string,
-  destChain: string
- ): Promise<HyperClientService> {
-  const key = `${sourceChain}-${destChain}`;
+ if (!instances.has(key)) {
+  const config: IConfig = {
+   source: EVM_CHAINS[sourceChain] || SUBSTRATE_CHAINS[sourceChain],
+   dest: EVM_CHAINS[destChain] || SUBSTRATE_CHAINS[destChain],
+   hyperbridge: {
+    rpc_url: process.env.HYPERBRIDGE_GARGANTUA!,
+    state_machine: HYPERBRIDGE_TESTNET,
+    consensus_state_id: 'PARA',
+   },
+   tracing: false,
+  };
 
-  if (!this.instances.has(key)) {
-   const config = {
-    source: EVM_CHAINS[sourceChain] || SUBSTRATE_CHAINS[sourceChain],
-    dest: EVM_CHAINS[destChain] || SUBSTRATE_CHAINS[destChain],
-    hyperbridge: {
-     rpc_url: process.env.HYPERBRIDGE_RPC_URL!,
-     state_machine: HYPERBRIDGE,
-     consensus_state_id: 'PARA',
-    },
-   };
-
-   const service = new HyperClientService(config);
-   await service.initialize();
-
-   console.log('service', service);
-   this.instances.set(key, service);
-  }
-
-  return this.instances.get(key)!;
+  const client = await HyperClient.init(config);
+  instances.set(key, client);
  }
 
- async initialize(): Promise<void> {
-  this.client = await HyperClient.init(this.config);
- }
-
- async getPostRequestStatusStream(
-  request: IPostRequest,
-  state: MessageStatusStreamState
- ): Promise<ReadableStream<MessageStatusWithMeta>> {
-  return await this.client.post_request_status_stream(request, state);
- }
-}
+ return instances.get(key)!;
+};

@@ -135,6 +135,11 @@ dataSources:
       file: ./dist/index.js
       handlers:
         - kind: ethereum/LogHandler
+          handler: handleStateMachineUpdatedEvent
+          filter:
+            topics:
+              - 'StateMachineUpdated(string,uint256)'
+        - kind: ethereum/LogHandler
           handler: handlePostRequestEvent
           filter:
             topics:

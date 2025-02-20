@@ -1,6 +1,6 @@
 import { jest, expect, beforeEach, afterEach } from '@jest/globals';
-import { HyperIndexerClient } from '..';
-import { RequestStatus, BlockMetadata } from '..';
+import { HyperIndexerClient } from '../..';
+import { RequestStatus, BlockMetadata } from '../..';
 
 describe('queryStatus', () => {
  let client: HyperIndexerClient;

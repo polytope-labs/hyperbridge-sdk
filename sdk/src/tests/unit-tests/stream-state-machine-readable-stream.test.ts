@@ -1,6 +1,6 @@
 import { jest, expect, beforeEach, afterEach } from '@jest/globals';
-import { HyperIndexerClient } from '..';
-import { StateMachineUpdate } from '..';
+import { HyperIndexerClient } from '../..';
+import { StateMachineUpdate } from '../..';
 
 describe('createStateMachineUpdateStream', () => {
  let client: HyperIndexerClient;
@@ -68,7 +68,7 @@ describe('createStateMachineUpdateStream', () => {
 
   reader.releaseLock();
 
-    expect(updates).toEqual([mockUpdates[0], mockUpdates[1]]);
+  expect(updates).toEqual([mockUpdates[0], mockUpdates[1]]);
  });
 
  it('handles network errors with retry', async () => {

@@ -31,6 +31,11 @@ dataSources:
       file: ./dist/index.js
       handlers:
         - kind: ethereum/LogHandler
+          handler: handleStateMachineUpdatedEvent
+          filter:
+            topics:
+              - 'StateMachineUpdated(string,uint256)'
+        - kind: ethereum/LogHandler
           handler: handlePostRequestEvent
           filter:
             topics:
@@ -61,7 +66,7 @@ dataSources:
             topics:
               - 'PostResponseTimeoutHandled(bytes32,string)'
   - kind: ethereum/Runtime
-    startBlock: 131672087
+    startBlock: 2936300
     options:
       abi: erc6160ext20
       address: '0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369'

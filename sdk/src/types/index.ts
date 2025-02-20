@@ -15,13 +15,14 @@ export enum RequestStatus {
 }
 
 export enum HyperClientStatus {
- PENDING = 'SOURCE',
+ PENDING = 'PENDING',
  SOURCE_FINALIZED = 'SOURCE_FINALIZED',
  HYPERBRIDGE_FINALIZED = 'HYPERBRIDGE_FINALIZED',
- HYPERBRIDGE_DELIVERED = 'HYPERBRIDGE_DELIVERED',
+ HYPERBRIDGE_VERIFIED = 'HYPERBRIDGE_VERIFIED',
  DESTINATION = 'DESTINATION',
  TIMED_OUT = 'TIMED_OUT',
  HYPERBRIDGE_TIMED_OUT = 'HYPERBRIDGE_TIMED_OUT',
+ ERROR = 'ERROR',
 }
 
 export interface BlockMetadata {
@@ -37,6 +38,7 @@ export interface BlockMetadata {
 export interface StatusResponse {
  status: RequestStatus | HyperClientStatus;
  metadata: Partial<BlockMetadata>;
+ message?: string;
 }
 
 export interface StateMachineUpdate {

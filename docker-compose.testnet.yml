@@ -1,0 +1,117 @@
+services:
+  subquery-node-hyperbridge-gargantua:
+    image: subquerynetwork/subql-node-substrate:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+    volumes:
+      - ./:/app
+    command:
+      - ${SUB_COMMAND:-}
+      - -f=/app/hyperbridge-gargantua.yaml
+      - --db-schema=app
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
+      - --multi-chain
+      - --unsafe
+      - --log-level=info
+      - --historical=false
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-hyperbridge-gargantua:3000/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  subquery-node-bsc-chapel:
+    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+    volumes:
+      - ./:/app
+    command:
+      - ${SUB_COMMAND:-}
+      - -f=/app/bsc-chapel.yaml
+      - --db-schema=app
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
+      - --store-cache-async=false
+      - --store-cache-threshold=100
+      - --multi-chain
+      - --unsafe
+      - --log-level=info
+      - --historical=false
+      - --block-confirmations=5
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-bsc-chapel:3000/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  subquery-node-base-sepolia:
+    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+    volumes:
+      - ./:/app
+    command:
+      - ${SUB_COMMAND:-}
+      - -f=/app/base-sepolia.yaml
+      - --db-schema=app
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
+      - --store-cache-async=false
+      - --store-cache-threshold=100
+      - --multi-chain
+      - --unsafe
+      - --log-level=info
+      - --historical=false
+      - --block-confirmations=5
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-base-sepolia:3000/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  graphql-engine:
+    image: subquerynetwork/subql-query:v2.9.0
+    ports:
+      - 3000:3000
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+    command:
+      - --name=app
+      - --playground
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: hyperbridge_testnet

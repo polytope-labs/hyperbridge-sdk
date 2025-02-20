@@ -12,8 +12,9 @@ import {
  RetryConfig,
  HyperClientStatus,
 } from './types';
-import { HyperClientService } from './hyperclient';
-import { HYPERBRIDGE } from './hyperclient/constants';
+import { getHyperClient } from './hyperclient';
+import { HYPERBRIDGE, HYPERBRIDGE_TESTNET } from './hyperclient/constants';
+import { MessageStatusWithMeta } from '@polytope-labs/hyperclient';
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  [RequestStatus.SOURCE]: 1,
@@ -28,7 +29,7 @@ const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  */
 export class HyperIndexerClient {
  private client: GraphQLClient;
- private pollInterval: number = 1000;
+ private pollInterval: number = 3000;
  private defaultRetryConfig: RetryConfig = {
   maxRetries: 3,
   backoffMs: 1000,
@@ -38,8 +39,8 @@ export class HyperIndexerClient {
   * Creates a new HyperIndexerClient instance
   */
  constructor(config?: ClientConfig) {
-  this.client = new GraphQLClient('http://64.226.127.162:3000/graphql');
-  this.pollInterval = config?.pollInterval || 5000;
+  this.client = new GraphQLClient('http://localhost:3000/graphql');
+  this.pollInterval = config?.pollInterval || 10000;
  }
 
  /**
@@ -55,7 +56,12 @@ export class HyperIndexerClient {
   const request = response.requests.nodes[0];
 
   if (!request) {
-   throw new Error(`No request found for hash: ${hash}`);
+   // throw new Error(`No request found for hash: ${hash}`);
+   return {
+    status: HyperClientStatus.PENDING,
+    metadata: {},
+    message: 'No request found, waiting for indexer to process...',
+   };
   }
 
   const sortedMetadata = request.statusMetadata.nodes.sort(
@@ -69,7 +75,12 @@ export class HyperIndexerClient {
   const metadata = this.extractBlockMetadata(latestMetadata);
   return {
    status: metadata.status as RequestStatus,
-   metadata,
+   metadata:{
+    blockHash: metadata.blockHash,
+    blockNumber: metadata.blockNumber,
+    chain: metadata.chain,
+    transactionHash: metadata.transactionHash,
+   },
   };
  }
 
@@ -82,7 +93,7 @@ export class HyperIndexerClient {
   const self = this;
   return new ReadableStream({
    async start(controller) {
-    let lastStatus: RequestStatus | null = null;
+    let lastStatus: RequestStatus | HyperClientStatus | null = null;
     while (true) {
      try {
       const response = await self.withRetry(() =>
@@ -93,7 +104,13 @@ export class HyperIndexerClient {
 
       const request = response.requests.nodes[0];
       if (!request) {
-       throw new Error(`No request found for hash: ${hash}`);
+       controller.enqueue({
+        status: HyperClientStatus.PENDING,
+        metadata: {},
+        message: 'No request found, waiting for indexer to process...',
+       });
+       await new Promise((resolve) => setTimeout(resolve, self.pollInterval));
+       continue;
       }
 
       const sortedMetadata = request.statusMetadata.nodes.sort(
@@ -107,82 +124,104 @@ export class HyperIndexerClient {
       const metadata = self.extractBlockMetadata(latestMetadata);
 
       if (status === RequestStatus.SOURCE) {
+       // Only emit SOURCE if we haven't seen it or SOURCE_FINALIZED yet
+       if (
+        lastStatus !== RequestStatus.SOURCE &&
+        lastStatus !== HyperClientStatus.SOURCE_FINALIZED
+       ) {
+        controller.enqueue({ status: metadata.status, metadata });
+        lastStatus = RequestStatus.SOURCE;
+       }
+
        // Get the latest state machine update for the source chain
        const sourceUpdate = await self.getClosestStateMachineUpdate(
-        HYPERBRIDGE,
+        request.source,
         metadata.blockNumber,
-        metadata.chain
+        HYPERBRIDGE_TESTNET
        );
 
-       if (sourceUpdate) {
+       // Only emit SOURCE_FINALIZED if we haven't emitted it yet
+       if (sourceUpdate && lastStatus !== HyperClientStatus.SOURCE_FINALIZED) {
         controller.enqueue({
          status: HyperClientStatus.SOURCE_FINALIZED,
          metadata: {
           blockHash: sourceUpdate.blockHash,
           blockNumber: sourceUpdate.height,
-          timestamp: BigInt(sourceUpdate.createdAt),
           chain: sourceUpdate.chain,
           transactionHash: sourceUpdate.transactionHash,
          },
         });
-        lastStatus = RequestStatus.SOURCE;
+        lastStatus = HyperClientStatus.SOURCE_FINALIZED;
+        continue;
+       }
+
+       // Only continue polling if we haven't reached SOURCE_FINALIZED
+       if (lastStatus !== HyperClientStatus.SOURCE_FINALIZED) {
+        await new Promise((resolve) => setTimeout(resolve, self.pollInterval));
         continue;
        }
       }
 
       if (status === RequestStatus.HYPERBRIDGE_DELIVERED) {
-       // Create HyperClient instance for the specific chain pair
-       const hyperClient = await HyperClientService.getInstance(
-        request.source,
-        request.dest
-       );
+       // Only emit DELIVERED and start hyperclient stream if we haven't seen FINALIZED yet
+       if (lastStatus !== HyperClientStatus.HYPERBRIDGE_FINALIZED) {
+        if (lastStatus !== RequestStatus.HYPERBRIDGE_DELIVERED) {
+         controller.enqueue({ status: metadata.status, metadata });
+         lastStatus = RequestStatus.HYPERBRIDGE_DELIVERED;
+        }
 
-       // Get the status stream for the post request
-       const statusStream = await hyperClient.getPostRequestStatusStream(
-        {
-         source: request.source,
-         dest: request.dest,
-         from: request.from,
-         to: request.to,
-         nonce: BigInt(request.nonce),
-         timeoutTimestamp: BigInt(request.timeoutTimestamp),
-         body: request.body,
-        },
-        { HyperbridgeFinalized: BigInt(metadata.blockNumber) }
-       );
-
-       // Read from stream to get callData
-       for await (const result of statusStream) {
-        console.log(`Current status: ${result}`);
-
-        if (result.kind === 'HyperbridgeFinalized') {
-         controller.enqueue({
-          status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
-          metadata: {
-           blockHash: result.block_hash,
-           blockNumber: Number(result.block_number),
-           timestamp: BigInt(metadata.timestamp),
-           chain: HYPERBRIDGE,
-           transactionHash: result.transaction_hash,
-           callData: result.calldata,
+        try {
+         const hyperClient = await getHyperClient(request.source, request.dest);
+         const statusStream = await hyperClient.post_request_status_stream(
+          {
+           source: request.source,
+           dest: request.dest,
+           from: request.from,
+           to: request.to,
+           nonce: BigInt(request.nonce),
+           timeoutTimestamp: BigInt(request.timeoutTimestamp),
+           body: request.body,
           },
-         });
+          { HyperbridgeVerified: BigInt(metadata.blockNumber) }
+         );
+
+         for await (const result of statusStream) {
+          let status: MessageStatusWithMeta;
+          if (result instanceof Map) {
+           status = Object.fromEntries(
+            (result as any).entries()
+           ) as MessageStatusWithMeta;
+          } else {
+           status = result;
+          }
+
+          if (status.kind === 'HyperbridgeFinalized') {
+           controller.enqueue({
+            status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
+            metadata: {
+             blockHash: status.block_hash,
+             blockNumber: Number(status.block_number),
+             chain: HYPERBRIDGE,
+             transactionHash: status.transaction_hash,
+             callData: status.calldata,
+            },
+           });
+           lastStatus = HyperClientStatus.HYPERBRIDGE_FINALIZED;
+           break;
+          }
+         }
+        } catch (streamError) {
+         console.error('Error in HyperClient stream:', streamError);
          break;
         }
        }
-
-       lastStatus = RequestStatus.HYPERBRIDGE_DELIVERED;
        continue;
       }
 
-      if (status !== lastStatus) {
-       controller.enqueue({ status: metadata.status, metadata });
-       lastStatus = status;
-      }
-
       if (self.isTerminalStatus(status)) {
+       controller.enqueue({ status: metadata.status, metadata });
        controller.close();
-       break;
+       return;
       }
 
       await new Promise((resolve) => setTimeout(resolve, self.pollInterval));

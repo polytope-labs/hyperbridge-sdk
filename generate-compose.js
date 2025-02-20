@@ -37,15 +37,15 @@ const generateNodeServices = () => {
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
       - --db-schema=app
-      - --workers=\${SUBQL_WORKERS:-2}
-      - --batch-size=\${SUBQL_BATCH_SIZE:-${
-       config.type === 'substrate' ? '5' : '3'
-      }}
+      - --workers=\${SUBQL_WORKERS:-5}
+      - --batch-size=\${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
       - --historical=false${
-       config.type === 'evm' ? '\n      - --block-confirmations=5' : ''
+       config.type === 'evm'
+        ? '\n      - --block-confirmations=5 \n      - --store-cache-async=false \n      - --store-cache-threshold=100'
+        : ''
       }
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
