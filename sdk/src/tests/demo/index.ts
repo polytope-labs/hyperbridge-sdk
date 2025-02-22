@@ -1,17 +1,25 @@
 import { HyperIndexerClient } from '../../client';
+import { dispatchPostRequest } from './setup';
 
 const client = new HyperIndexerClient();
 
-async function testStatus(hash: string) {
+async function testStatus() {
  // Test status query
- const status = await client.queryStatus(hash);
+ const request = await dispatchPostRequest();
+ if (!request?.commitment) return;
+
+ console.log('\nTesting status query:');
+ const status = await client.queryStatus(request.commitment);
  console.log('Status:', status);
 }
 
-async function testStatusStream(hash: string) {
+async function testStatusStream() {
  // Test status readable stream
+ const request = await dispatchPostRequest();
+ if (!request?.commitment) return;
+
  console.log('\nTesting status readable stream:');
- const statusStream = client.createStatusStream(hash);
+ const statusStream = client.createStatusStream(request.commitment);
  const statusReader = statusStream.getReader();
  while (true) {
   const { value, done } = await statusReader.read();
@@ -42,7 +50,7 @@ async function testStateMachineStream(
  stateReader.releaseLock();
 }
 
-// test();
 
-// 14:22
-// 14:42
+testStatus();
+testStatusStream();
+testStateMachineStream('EVM-97', 48448889, 'KUSAMA-4009');

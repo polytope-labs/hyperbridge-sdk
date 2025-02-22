@@ -8,7 +8,8 @@
     "codegen": "subql codegen",
     "generate-configs": "node generate-chain-yamls.js && node generate-compose.js",
     "start:docker": "npm run generate-configs && docker-compose pull && docker-compose up --remove-orphans",
-    "dev": "export CURRENT_ENV=test subql codegen && subql build && npm run start:docker",
+    "start:local": "npm run generate-configs && docker-compose -f docker-compose.testnet.yml up --remove-orphans",
+    "dev": "export CURRENT_ENV=test subql codegen && subql build && npm run start:local",
     "prod": "export CURRENT_ENV=prod subql codegen && subql build && npm run start:docker",
     "prepack": "rm -rf dist && npm run build",
     "test": "subql build && subql-node-ethereum -f=base-sepolia.yaml test"

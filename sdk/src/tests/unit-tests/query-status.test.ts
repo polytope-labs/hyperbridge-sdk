@@ -11,7 +11,6 @@ describe('queryStatus', () => {
  const mockMetadata: BlockMetadata = {
   blockHash: '0xabc123',
   blockNumber: 100,
-  timestamp: BigInt(1234567890),
   chain: '11155111',
   transactionHash: '0xdef456',
   status: RequestStatus.HYPERBRIDGE_DELIVERED,
@@ -40,7 +39,6 @@ describe('queryStatus', () => {
         {
          blockHash: mockMetadata.blockHash,
          blockNumber: mockMetadata.blockNumber.toString(),
-         timestamp: mockMetadata.timestamp.toString(),
          chain: mockMetadata.chain,
         },
        ],
@@ -86,7 +84,6 @@ describe('queryStatus', () => {
         {
          blockHash: mockMetadata.blockHash,
          blockNumber: mockMetadata.blockNumber.toString(),
-         timestamp: mockMetadata.timestamp.toString(),
          chain: mockMetadata.chain,
         },
        ],

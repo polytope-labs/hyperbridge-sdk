@@ -59,3 +59,20 @@ export const STATE_MACHINE_UPDATES = `
     }
   }
 `;
+
+export const REQUEST = `
+  query RequestsNew($nonce: String!, $source: String!, $dest: String!) {
+    requests(
+      filter: {
+        nonce: { equalTo: $nonce }
+        source: { equalTo: $source }
+        dest: { equalTo: $dest }
+      }
+    ) {
+      nodes {
+        id
+        commitment
+      }
+    }
+  }
+`;

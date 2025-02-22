@@ -34,10 +34,14 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
   },
   "dependencies": {
+    "@ethereumjs/util": "^9.1.0",
+    "@polkadot/api": "^15.6.1",
     "@polytope-labs/hyperclient": "1.2.0",
     "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
     "graphql": "^16.10.0",
-    "graphql-request": "^7.1.2"
+    "graphql-request": "^7.1.2",
+    "viem": "^2.23.3"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

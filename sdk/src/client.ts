@@ -1,5 +1,13 @@
 import 'dotenv/config';
 import { GraphQLClient } from 'graphql-request';
+import {
+ MessageStatusWithMeta,
+ TimeoutStatusWithMeta,
+} from '@polytope-labs/hyperclient';
+import { ethers } from 'ethers';
+import { ApiPromise, WsProvider } from '@polkadot/api';
+import { SubmittableExtrinsic } from '@polkadot/api/types';
+import { Hash, toHex } from 'viem';
 import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from './queries';
 import {
  RequestStatus,
@@ -11,10 +19,15 @@ import {
  ClientConfig,
  RetryConfig,
  HyperClientStatus,
+ IsmpRequest,
 } from './types';
 import { getHyperClient } from './hyperclient';
-import { HYPERBRIDGE, HYPERBRIDGE_TESTNET } from './hyperclient/constants';
-import { MessageStatusWithMeta } from '@polytope-labs/hyperclient';
+import {
+ EVM_CHAINS,
+ HYPERBRIDGE,
+ HYPERBRIDGE_TESTNET,
+ SUBSTRATE_CHAINS,
+} from './hyperclient/constants';
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  [RequestStatus.SOURCE]: 1,
@@ -29,7 +42,7 @@ const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  */
 export class HyperIndexerClient {
  private client: GraphQLClient;
- private pollInterval: number = 3000;
+ private pollInterval: number;
  private defaultRetryConfig: RetryConfig = {
   maxRetries: 3,
   backoffMs: 1000,
@@ -39,8 +52,10 @@ export class HyperIndexerClient {
   * Creates a new HyperIndexerClient instance
   */
  constructor(config?: ClientConfig) {
-  this.client = new GraphQLClient('http://localhost:3000/graphql');
-  this.pollInterval = config?.pollInterval || 10000;
+  this.client = new GraphQLClient(
+   config?.graphqlEndpoint || process.env.GRAPHQL_URL!
+  );
+  this.pollInterval = config?.pollInterval || 3000;
  }
 
  /**
@@ -75,7 +90,7 @@ export class HyperIndexerClient {
   const metadata = this.extractBlockMetadata(latestMetadata);
   return {
    status: metadata.status as RequestStatus,
-   metadata:{
+   metadata: {
     blockHash: metadata.blockHash,
     blockNumber: metadata.blockNumber,
     chain: metadata.chain,
@@ -292,6 +307,155 @@ export class HyperIndexerClient {
  }
 
  /**
+  * Create a ReadableStream of timeout status updates
+  * @param hash - Hash of the request to monitor
+  * @returns ReadableStream that emits timeout status updates
+  */
+ createTimeoutStream(hash: string): ReadableStream<StatusResponse> {
+  const self = this;
+  return new ReadableStream({
+   async start(controller) {
+    enum TimeoutState {
+     Pending,
+     DestinationFinalized,
+     HyperbridgeVerified,
+     HyperbridgeFinalized,
+    }
+
+    let currentState = TimeoutState.Pending;
+
+    while (true) {
+     try {
+      const response = await self.withRetry(() =>
+       self.client.request<RequestResponse>(REQUEST_STATUS, { hash })
+      );
+
+      const request = response.requests.nodes[0];
+      if (!request) {
+       controller.enqueue({
+        status: HyperClientStatus.PENDING,
+        metadata: {},
+        message: 'No request found, waiting for indexer to process...',
+       });
+       await new Promise((resolve) => setTimeout(resolve, self.pollInterval));
+       continue;
+      }
+
+      const timestamp = await self.getDestChainTimeStamp(request.dest);
+
+      if (timestamp > request.timeoutTimestamp) {
+       switch (currentState) {
+        case TimeoutState.Pending: {
+         // Query state machine update for dest on hyperbridge
+         const destUpdate = await self.getClosestStateMachineUpdate(
+          request.dest,
+          parseInt(request.statusMetadata.nodes[0].blockNumber),
+          HYPERBRIDGE_TESTNET
+         );
+
+         if (destUpdate) {
+          controller.enqueue({
+           status: RequestStatus.TIMED_OUT,
+           metadata: {
+            blockHash: destUpdate.blockHash,
+            blockNumber: destUpdate.height,
+            chain: destUpdate.chain,
+            transactionHash: destUpdate.transactionHash,
+           },
+          });
+          currentState = TimeoutState.DestinationFinalized;
+         }
+         break;
+        }
+
+        case TimeoutState.DestinationFinalized: {
+         const hyperbridgeApi = await ApiPromise.create({
+          provider: new WsProvider(
+           SUBSTRATE_CHAINS[HYPERBRIDGE_TESTNET].rpc_url
+          ),
+         });
+
+         const timeoutMetadata = await self.constructTimeoutExtrinsic(
+          hyperbridgeApi,
+          request,
+          parseInt(request.statusMetadata.nodes[0].blockNumber)
+         );
+
+         controller.enqueue({
+          status: HyperClientStatus.HYPERBRIDGE_VERIFIED,
+          metadata: timeoutMetadata,
+         });
+         currentState = TimeoutState.HyperbridgeVerified;
+         break;
+        }
+
+        case TimeoutState.HyperbridgeVerified: {
+         // Wait for hyperbridge state machine update on source chain
+         const sourceUpdate = await self.getClosestStateMachineUpdate(
+          HYPERBRIDGE_TESTNET,
+          parseInt(request.statusMetadata.nodes[0].blockNumber),
+          request.source
+         );
+
+         if (sourceUpdate) {
+          const hyperClient = await getHyperClient(
+           request.source,
+           request.dest
+          );
+          const timeoutStream = await hyperClient.timeout_post_request(
+           {
+            source: request.source,
+            dest: request.dest,
+            from: request.from,
+            to: request.to,
+            nonce: BigInt(request.nonce),
+            timeoutTimestamp: BigInt(request.timeoutTimestamp),
+            body: request.body,
+           },
+           { DestinationFinalized: BigInt(sourceUpdate.height) }
+          );
+
+          for await (const result of timeoutStream) {
+           let status: TimeoutStatusWithMeta;
+           if (result instanceof Map) {
+            status = Object.fromEntries(
+             (result as any).entries()
+            ) as TimeoutStatusWithMeta;
+           } else {
+            status = result;
+           }
+
+           if (status.kind === 'HyperbridgeFinalized') {
+            controller.enqueue({
+             status: HyperClientStatus.HYPERBRIDGE_TIMED_OUT,
+             metadata: {
+              blockHash: status.block_hash,
+              blockNumber: Number(status.block_number),
+              chain: HYPERBRIDGE_TESTNET,
+              transactionHash: status.transaction_hash,
+              callData: status.calldata,
+             },
+            });
+            controller.close();
+            return;
+           }
+          }
+         }
+         break;
+        }
+       }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, self.pollInterval));
+     } catch (error) {
+      controller.error(error);
+     }
+    }
+   },
+  });
+ }
+
+ /**
   * Check if a status represents a terminal state
   * @param status - Request status to check
   * @returns true if status is terminal (DELIVERED or TIMED_OUT)
@@ -311,7 +475,6 @@ export class HyperIndexerClient {
   return {
    blockHash: data.blockHash,
    blockNumber: parseInt(data.blockNumber),
-   timestamp: BigInt(data.timestamp),
    chain: data.chain,
    transactionHash: data.transactionHash,
    status: data.status,
@@ -374,5 +537,128 @@ export class HyperIndexerClient {
    .sort((a, b) => a.height - b.height)[0];
 
   return closestUpdate;
+ }
+
+ /**
+  * Get the timestamp of the latest block on the destination chain
+  * @param chain - Chain identifier
+  * @returns Timestamp of the latest block
+  */
+ private async getDestChainTimeStamp(chain: string): Promise<bigint> {
+  const rpc = await this.getChainRpcUrl(chain);
+
+  if (chain.startsWith('EVM')) {
+   const provider = new ethers.JsonRpcProvider(rpc);
+   const block = await provider.getBlock('latest');
+   return BigInt(block!.timestamp);
+  } else {
+   // Substrate chain
+   const wsProvider = new WsProvider(rpc);
+   const api = await ApiPromise.create({ provider: wsProvider });
+   const now = await api.query.timestamp.now();
+   return BigInt(now.toString());
+  }
+ }
+
+ /**
+  * Get the rpc endpoint for a given chain identifier
+  * @param chain - Chain identifier
+  * @returns RPC endpoint
+  */
+ private async getChainRpcUrl(chain: string): Promise<string> {
+  if (chain.startsWith('EVM')) {
+   return EVM_CHAINS[chain].rpc_url;
+  }
+  return SUBSTRATE_CHAINS[chain].rpc_url;
+ }
+
+ /**
+ Using the polkadot api, constructs an ISMP timeout extrinsic.
+ Then tracks the resulting ISMP request using Hyperclient.
+ * @param hyperbridgeApi - Hyperbridge API
+ * @param request - ISMP request
+ * @param destHeight - Destination chain block height
+ * @returns Block metadata of the timeout extrinsic
+ */
+ private async constructTimeoutExtrinsic(
+  hyperbridgeApi: ApiPromise,
+  request: IsmpRequest,
+  destHeight: number
+ ): Promise<BlockMetadata> {
+  // Get proof from destination chain
+  const proofData = await hyperbridgeApi.rpc.state.getReadProof(
+   [request.storage_key],
+   destHeight.toString()
+  );
+
+  // Construct state machine proof
+  const stateMachineProof = hyperbridgeApi.createType('StateMachineProof', {
+   hasher: 'Blake2',
+   storage_proof: proofData.proof,
+  });
+
+  const substrateStateProof = hyperbridgeApi.createType('SubstrateStateProof', {
+   StateProof: stateMachineProof,
+  });
+
+  // Construct timeout extrinsic
+  const timeoutExtrinsic = hyperbridgeApi.tx.ismp.handleUnsigned([
+   {
+    Timeout: {
+     datagram: {
+      Request: [request],
+     },
+     proof: {
+      height: {
+       id: {
+        stateId: request.dest,
+        consensusStateId: 'PARA',
+       },
+       height: destHeight.toString(),
+      },
+      proof: substrateStateProof.toHex(),
+     },
+     signer: request.from,
+    },
+   },
+  ]);
+
+  const hash = await this.submitUnsigned(timeoutExtrinsic);
+
+  return {
+   blockHash: hash,
+   blockNumber: destHeight,
+   chain: HYPERBRIDGE_TESTNET,
+   transactionHash: hash.toString(),
+   status: HyperClientStatus.HYPERBRIDGE_VERIFIED,
+  };
+ }
+
+ /**
+  * Submit an unsigned extrinsic
+  * @param request - Unsigned extrinsic to submit
+  * @returns Hash of the extrinsic
+  * @throws Error if extrinsic fails to submit
+  */
+ private async submitUnsigned(
+  request: SubmittableExtrinsic<'promise'>
+ ): Promise<Hash> {
+  return new Promise((resolve, reject) => {
+   request
+    .send(({ status, events = [], dispatchError }) => {
+     if (dispatchError) {
+      reject(dispatchError);
+     }
+
+     if (status.isInBlock || status.isFinalized) {
+      events.forEach(({ event }) => {
+       if (event.method === 'ExtrinsicSuccess') {
+        resolve(toHex(status.asInBlock));
+       }
+      });
+     }
+    })
+    .catch(reject);
+  });
  }
 }

@@ -44,7 +44,7 @@ describe('createStatusStream', () => {
    requests: {
     nodes: [
      {
-      status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
+      status: RequestStatus.HYPERBRIDGE_DELIVERED,
       statusMetadata: {
        nodes: [
         {
@@ -63,7 +63,7 @@ describe('createStatusStream', () => {
    requests: {
     nodes: [
      {
-      status: RequestStatus.HYPERBRIDGE_DELIVERED,
+      status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
       statusMetadata: {
        nodes: [
         {

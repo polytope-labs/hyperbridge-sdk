@@ -93,5 +93,5 @@ ${generateDependencies()}
 volumes:
   postgres_data:`;
 
-fs.writeFileSync('docker-compose.yml', dockerCompose);
+fs.writeFileSync(`${currentEnv === 'test' ? 'docker-compose.testnet.yml' : 'docker-compose.yml'}`, dockerCompose);
 console.log('Generated docker-compose.yml');

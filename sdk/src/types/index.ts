@@ -1,11 +1,24 @@
 export interface ClientConfig {
  pollInterval?: number;
+ graphqlEndpoint: string;
 }
 
 export interface RetryConfig {
  maxRetries: number;
  backoffMs: number;
 }
+
+export interface IsmpRequest {
+ source: string;
+ dest: string;
+ from: string;
+ to: string;
+ nonce: bigint;
+ body: string;
+ timeoutTimestamp: bigint;
+ storage_key?: string;
+}
+
 export enum RequestStatus {
  SOURCE = 'SOURCE',
  HYPERBRIDGE_DELIVERED = 'HYPERBRIDGE_DELIVERED',
@@ -28,7 +41,6 @@ export enum HyperClientStatus {
 export interface BlockMetadata {
  blockHash: string;
  blockNumber: number;
- timestamp: bigint;
  chain: string;
  transactionHash: string;
  status: HyperClientStatus | RequestStatus;
@@ -73,6 +85,15 @@ export interface RequestResponse {
      callData?: string;
     }>;
    };
+  }>;
+ };
+}
+
+export interface RequestCommitment {
+ requests: {
+  nodes: Array<{
+   id: string;
+   commitment: string;
   }>;
  };
 }
