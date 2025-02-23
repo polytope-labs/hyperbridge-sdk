@@ -50,7 +50,7 @@ describe("queryStatus", () => {
 			},
 		})
 
-		const result = await client.queryStatus(VALID_HASH)
+		const result = await client.queryPostRequestWithStatus(VALID_HASH)
 		expect(result.status).toBe(RequestStatus.HYPERBRIDGE_DELIVERED)
 		expect(result.metadata).toEqual(mockMetadata)
 	})
@@ -58,7 +58,7 @@ describe("queryStatus", () => {
 	it("throws error for invalid hash format", async () => {
 		jest.spyOn(client["client"], "request").mockRejectedValue(new Error("Invalid hash format"))
 
-		await expect(client.queryStatus(INVALID_HASH)).rejects.toThrow("Invalid hash format")
+		await expect(client.queryPostRequestWithStatus(INVALID_HASH)).rejects.toThrow("Invalid hash format")
 	})
 
 	it("throws error when request not found", async () => {
@@ -66,7 +66,7 @@ describe("queryStatus", () => {
 			requests: { nodes: [] },
 		})
 
-		await expect(client.queryStatus("0x0000000000000000")).rejects.toThrow("No request found")
+		await expect(client.queryPostRequestWithStatus("0x0000000000000000")).rejects.toThrow("No request found")
 	})
 
 	it("handles timed out requests", async () => {
@@ -90,7 +90,7 @@ describe("queryStatus", () => {
 			},
 		})
 
-		const result = await client.queryStatus(TIMED_OUT_HASH)
+		const result = await client.queryPostRequestWithStatus(TIMED_OUT_HASH)
 		expect(result.status).toBe(RequestStatus.TIMED_OUT)
 		expect(result.metadata).toEqual(mockMetadata)
 	})
@@ -107,12 +107,12 @@ describe("queryStatus", () => {
 			},
 		})
 
-		await expect(client.queryStatus(VALID_HASH)).rejects.toThrow()
+		await expect(client.queryPostRequestWithStatus(VALID_HASH)).rejects.toThrow()
 	})
 
 	it("handles GraphQL endpoint connection error", async () => {
 		jest.spyOn(client["client"], "request").mockRejectedValue(new Error("Failed to fetch"))
 
-		await expect(client.queryStatus(VALID_HASH)).rejects.toThrow("Failed to fetch")
+		await expect(client.queryPostRequestWithStatus(VALID_HASH)).rejects.toThrow("Failed to fetch")
 	})
 })

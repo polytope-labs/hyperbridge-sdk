@@ -1,17 +1,17 @@
-import { HyperIndexerClient } from "../../client"
+import { IndexerClient } from "../../client"
 
-const client = new HyperIndexerClient()
+const client = new IndexerClient()
 
 async function testStatus(hash: string) {
 	// Test status query
-	const status = await client.queryStatus(hash)
+	const status = await client.queryPostRequestWithStatus(hash)
 	console.log("Status:", status)
 }
 
 async function testStatusStream(hash: string) {
 	// Test status readable stream
 	console.log("\nTesting status readable stream:")
-	const statusStream = client.createStatusStream(hash)
+	const statusStream = client.postRequestStatusStream(hash)
 	const statusReader = statusStream.getReader()
 	while (true) {
 		const { value, done } = await statusReader.read()

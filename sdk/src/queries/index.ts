@@ -40,11 +40,10 @@ export const STATE_MACHINE_UPDATES = `
         and: [
           { stateMachineId: { equalTo: $statemachineId } }
           { height: { greaterThanOrEqualTo: $height } }
-          { chain: { equalTo: $chain } }
         ]
       }
       orderBy: CREATED_AT_DESC
-      first: 10
+      first: 1
     ) {
       nodes {
         height

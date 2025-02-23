@@ -11,6 +11,7 @@ import {
 	ClientConfig,
 	RetryConfig,
 	HyperClientStatus,
+	RequestWithStatus,
 } from "./types"
 import { getHyperClient } from "./hyperclient"
 import { HYPERBRIDGE, HYPERBRIDGE_TESTNET } from "./hyperclient/constants"
@@ -25,10 +26,11 @@ const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 }
 
 /**
- * HyperIndexerClient provides methods to interact with the Hyperbridge indexer
+ * IndexerClient provides methods for interacting with the Hyperbridge indexer
  */
-export class HyperIndexerClient {
+export class IndexerClient {
 	private client: GraphQLClient
+	private config: ClientConfig
 	private pollInterval: number = 3000
 	private defaultRetryConfig: RetryConfig = {
 		maxRetries: 3,
@@ -38,209 +40,158 @@ export class HyperIndexerClient {
 	/**
 	 * Creates a new HyperIndexerClient instance
 	 */
-	constructor(config?: ClientConfig) {
-		this.client = new GraphQLClient("http://localhost:3000/graphql")
+	constructor(config: ClientConfig) {
+		this.client = new GraphQLClient(config?.url || "http://localhost:3000/graphql")
 		this.pollInterval = config?.pollInterval || 10000
+		this.config = config
 	}
 
 	/**
-	 * Query the latest status of a request by any of its associated hashes
+	 * Queries a request by any of its associated hashes and returns it alongside its statuses
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
 	 * @returns Latest status and block metadata of the request
 	 * @throws Error if request is not found
 	 */
-	async queryStatus(hash: string): Promise<StatusResponse> {
+	async queryPostRequestWithStatus(hash: string): Promise<RequestWithStatus | null> {
 		const response = await this.client.request<RequestResponse>(REQUEST_STATUS, {
 			hash,
 		})
 		const request = response.requests.nodes[0]
-
 		if (!request) {
-			// throw new Error(`No request found for hash: ${hash}`);
-			return {
-				status: HyperClientStatus.PENDING,
-				metadata: {},
-				message: "No request found, waiting for indexer to process...",
-			}
+			return null
 		}
 
-		const sortedMetadata = request.statusMetadata.nodes.sort(
-			(a, b) =>
-				REQUEST_STATUS_WEIGHTS[b.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[a.status as RequestStatus],
-		)
-
-		const latestMetadata = sortedMetadata[0]
-
-		const metadata = this.extractBlockMetadata(latestMetadata)
-		return {
-			status: metadata.status as RequestStatus,
-			metadata: {
-				blockHash: metadata.blockHash,
-				blockNumber: metadata.blockNumber,
-				chain: metadata.chain,
-				transactionHash: metadata.transactionHash,
-			},
-		}
+		return response.requests.nodes[0]
 	}
 
 	/**
-	 * Create a ReadableStream of status updates
+	 * Create a Stream of status updates
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
-	 * @returns ReadableStream that emits status updates until a terminal state is reached
+	 * @returns AsyncGenerator that emits status updates until a terminal state is reached
 	 */
-	createStatusStream(hash: string): ReadableStream<StatusResponse> {
+	async *postRequestStatusStream(hash: string): AsyncGenerator<StatusResponse> {
 		const self = this
-		return new ReadableStream({
-			async start(controller) {
-				let lastStatus: RequestStatus | HyperClientStatus | null = null
-				while (true) {
-					try {
-						const response = await self.withRetry(() =>
-							self.client.request<RequestResponse>(REQUEST_STATUS, {
-								hash,
-							}),
-						)
+		let status: RequestStatus | null = null
 
-						const request = response.requests.nodes[0]
-						if (!request) {
-							controller.enqueue({
-								status: HyperClientStatus.PENDING,
-								metadata: {},
-								message: "No request found, waiting for indexer to process...",
-							})
-							await new Promise((resolve) => setTimeout(resolve, self.pollInterval))
-							continue
-						}
+		// todo: implement timeout check stream
 
-						const sortedMetadata = request.statusMetadata.nodes.sort(
-							(a, b) =>
-								REQUEST_STATUS_WEIGHTS[b.status as RequestStatus] -
-								REQUEST_STATUS_WEIGHTS[a.status as RequestStatus],
-						)
+		while (true) {
+			const response = await self.withRetry(() =>
+				self.client.request<RequestResponse>(REQUEST_STATUS, {
+					hash,
+				}),
+			)
 
-						const latestMetadata = sortedMetadata[0]
-						const status = latestMetadata.status as RequestStatus
-						const metadata = self.extractBlockMetadata(latestMetadata)
+			const request = response.requests.nodes[0]
+			if (!request) {
+				await new Promise((resolve) => setTimeout(resolve, self.pollInterval))
+				continue
+			}
 
-						if (status === RequestStatus.SOURCE) {
-							// Only emit SOURCE if we haven't seen it or SOURCE_FINALIZED yet
-							if (
-								lastStatus !== RequestStatus.SOURCE &&
-								lastStatus !== HyperClientStatus.SOURCE_FINALIZED
-							) {
-								controller.enqueue({
-									status: metadata.status,
-									metadata,
-								})
-								lastStatus = RequestStatus.SOURCE
-							}
+			const sortedMetadata = request.statusMetadata.nodes.sort(
+				(a, b) =>
+					REQUEST_STATUS_WEIGHTS[b.status as RequestStatus] -
+					REQUEST_STATUS_WEIGHTS[a.status as RequestStatus],
+			)
 
-							// Get the latest state machine update for the source chain
-							const sourceUpdate = await self.getClosestStateMachineUpdate(
-								request.source,
-								metadata.blockNumber,
-								HYPERBRIDGE_TESTNET,
-							)
+			const latestMetadata = sortedMetadata[0]
+			const metadata = self.extractBlockMetadata(latestMetadata)
 
-							// Only emit SOURCE_FINALIZED if we haven't emitted it yet
-							if (sourceUpdate && lastStatus !== HyperClientStatus.SOURCE_FINALIZED) {
-								controller.enqueue({
-									status: HyperClientStatus.SOURCE_FINALIZED,
-									metadata: {
-										blockHash: sourceUpdate.blockHash,
-										blockNumber: sourceUpdate.height,
-										chain: sourceUpdate.chain,
-										transactionHash: sourceUpdate.transactionHash,
-									},
-								})
-								lastStatus = HyperClientStatus.SOURCE_FINALIZED
-								continue
-							}
+			if (!status) {
+				status = latestMetadata.status as RequestStatus
+			}
 
-							// Only continue polling if we haven't reached SOURCE_FINALIZED
-							if (lastStatus !== HyperClientStatus.SOURCE_FINALIZED) {
-								await new Promise((resolve) => setTimeout(resolve, self.pollInterval))
-								continue
-							}
-						}
+			switch (status) {
+				case RequestStatus.SOURCE: {
+					// Get the latest state machine update for the source chain
+					const sourceUpdate = await self.getClosestStateMachineUpdate(request.source, metadata.blockNumber)
 
-						if (status === RequestStatus.HYPERBRIDGE_DELIVERED) {
-							// Only emit DELIVERED and start hyperclient stream if we haven't seen FINALIZED yet
-							if (lastStatus !== HyperClientStatus.HYPERBRIDGE_FINALIZED) {
-								if (lastStatus !== RequestStatus.HYPERBRIDGE_DELIVERED) {
-									controller.enqueue({
-										status: metadata.status,
-										metadata,
-									})
-									lastStatus = RequestStatus.HYPERBRIDGE_DELIVERED
-								}
-
-								try {
-									const hyperClient = await getHyperClient(request.source, request.dest)
-									const statusStream = await hyperClient.post_request_status_stream(
-										{
-											source: request.source,
-											dest: request.dest,
-											from: request.from,
-											to: request.to,
-											nonce: BigInt(request.nonce),
-											timeoutTimestamp: BigInt(request.timeoutTimestamp),
-											body: request.body,
-										},
-										{
-											HyperbridgeVerified: BigInt(metadata.blockNumber),
-										},
-									)
-
-									for await (const result of statusStream) {
-										let status: MessageStatusWithMeta
-										if (result instanceof Map) {
-											status = Object.fromEntries(
-												(result as any).entries(),
-											) as MessageStatusWithMeta
-										} else {
-											status = result
-										}
-
-										if (status.kind === "HyperbridgeFinalized") {
-											controller.enqueue({
-												status: HyperClientStatus.HYPERBRIDGE_FINALIZED,
-												metadata: {
-													blockHash: status.block_hash,
-													blockNumber: Number(status.block_number),
-													chain: HYPERBRIDGE,
-													transactionHash: status.transaction_hash,
-													callData: status.calldata,
-												},
-											})
-											lastStatus = HyperClientStatus.HYPERBRIDGE_FINALIZED
-											break
-										}
-									}
-								} catch (streamError) {
-									console.error("Error in HyperClient stream:", streamError)
-									break
-								}
-							}
-							continue
-						}
-
-						if (self.isTerminalStatus(status)) {
-							controller.enqueue({
-								status: metadata.status,
-								metadata,
-							})
-							controller.close()
-							return
-						}
-
-						await new Promise((resolve) => setTimeout(resolve, self.pollInterval))
-					} catch (error) {
-						controller.error(error)
+					// Only emit SOURCE_FINALIZED if we haven't emitted it yet
+					if (!sourceUpdate) {
+						continue
 					}
+
+					yield {
+						status: RequestStatus.SOURCE_FINALIZED,
+						metadata: {
+							blockHash: sourceUpdate.blockHash,
+							blockNumber: sourceUpdate.height,
+							transactionHash: sourceUpdate.transactionHash,
+						},
+					}
+					status = RequestStatus.SOURCE_FINALIZED
+					break
 				}
-			},
-		})
+
+				case RequestStatus.SOURCE_FINALIZED: {
+					if (sortedMetadata.length >= 2) {
+						const metadata = self.extractBlockMetadata(sortedMetadata[1])
+
+						yield {
+							status: RequestStatus.HYPERBRIDGE_DELIVERED,
+							metadata: {
+								blockHash: metadata.blockHash,
+								blockNumber: metadata.blockNumber,
+								transactionHash: metadata.transactionHash,
+							},
+						}
+						status = RequestStatus.HYPERBRIDGE_DELIVERED
+					}
+					break
+				}
+
+				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+					// Get the latest state machine update for the source chain
+					const hyperbridgeFinalized = await self.getClosestStateMachineUpdate(
+						self.config.hyperbridgeStateMachineId,
+						// todo: block number from hyperbridge delivery
+						metadata.blockNumber,
+					)
+
+					// Only emit SOURCE_FINALIZED if we haven't emitted it yet
+					if (!hyperbridgeFinalized) {
+						continue
+					}
+
+					yield {
+						status: RequestStatus.HYPERBRIDGE_FINALIZED,
+						metadata: {
+							blockHash: hyperbridgeFinalized.blockHash,
+							blockNumber: hyperbridgeFinalized.height,
+							transactionHash: hyperbridgeFinalized.transactionHash,
+							// todo: get calldata from hyperclient
+							calldata: "",
+						},
+					}
+					status = RequestStatus.HYPERBRIDGE_FINALIZED
+					break
+				}
+
+				case RequestStatus.HYPERBRIDGE_FINALIZED: {
+					if (sortedMetadata.length === 3) {
+						const metadata = self.extractBlockMetadata(sortedMetadata[2])
+
+						yield {
+							status: RequestStatus.HYPERBRIDGE_DELIVERED,
+							metadata: {
+								blockHash: metadata.blockHash,
+								blockNumber: metadata.blockNumber,
+								transactionHash: metadata.transactionHash,
+							},
+						}
+						status = RequestStatus.DESTINATION
+					}
+
+					break
+				}
+			}
+
+			if (self.isTerminalStatus(status)) {
+				return
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, self.pollInterval))
+		}
 	}
 
 	/**
@@ -307,7 +258,8 @@ export class HyperIndexerClient {
 	 * @returns true if status is terminal (DELIVERED or TIMED_OUT)
 	 */
 	private isTerminalStatus(status: RequestStatus): boolean {
-		return status === RequestStatus.TIMED_OUT || status === RequestStatus.DESTINATION
+		// todo: should actually check if request is timed out.
+		return status === RequestStatus.DESTINATION
 	}
 
 	/**
@@ -359,24 +311,14 @@ export class HyperIndexerClient {
 	 * @params chain - Chain identifier
 	 * @returns Closest state machine update
 	 */
-	private async getClosestStateMachineUpdate(
-		statemachineId: string,
-		height: number,
-		chain: string,
-	): Promise<StateMachineUpdate> {
+	private async getClosestStateMachineUpdate(statemachineId: string, height: number): Promise<StateMachineUpdate> {
 		const response = await this.withRetry(() =>
 			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
 				statemachineId,
 				height,
-				chain,
 			}),
 		)
 
-		const updates = response.stateMachineUpdateEvents.nodes
-
-		// Get closest update >= height
-		const closestUpdate = updates.filter((update) => update.height >= height).sort((a, b) => a.height - b.height)[0]
-
-		return closestUpdate
+		return response.stateMachineUpdateEvents.nodes[0]
 	}
 }

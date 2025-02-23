@@ -98,7 +98,7 @@ describe("createStatusStream", () => {
 	jest.setTimeout(60000)
 
 	it("emits status updates with metadata", async () => {
-		const stream = client.createStatusStream(VALID_HASH)
+		const stream = client.postRequestStatusStream(VALID_HASH)
 		const reader = stream.getReader()
 
 		const updates = []
@@ -131,7 +131,7 @@ describe("createStatusStream", () => {
 			.mockResolvedValueOnce(mockResponses[0])
 			.mockResolvedValueOnce(mockResponses[1])
 
-		const stream = client.createStatusStream(VALID_HASH)
+		const stream = client.postRequestStatusStream(VALID_HASH)
 		const reader = stream.getReader()
 
 		const { value } = await reader.read()
@@ -142,7 +142,7 @@ describe("createStatusStream", () => {
 	})
 
 	it("closes stream at terminal status", async () => {
-		const stream = client.createStatusStream(VALID_HASH)
+		const stream = client.postRequestStatusStream(VALID_HASH)
 		const reader = stream.getReader()
 
 		const updates = []
@@ -162,7 +162,7 @@ describe("createStatusStream", () => {
 			mockRequest.mockResolvedValueOnce(response)
 		})
 
-		const stream = client.createStatusStream(VALID_HASH)
+		const stream = client.postRequestStatusStream(VALID_HASH)
 		const reader = stream.getReader()
 
 		const updates = []

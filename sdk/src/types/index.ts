@@ -1,5 +1,7 @@
 export interface ClientConfig {
 	pollInterval?: number
+	url?: string
+	hyperbridgeStateMachineId: string
 }
 
 export interface RetryConfig {
@@ -20,7 +22,9 @@ export interface IsmpRequest {
 
 export enum RequestStatus {
 	SOURCE = "SOURCE",
+	SOURCE_FINALIZED = "SOURCE_FINALIZED",
 	HYPERBRIDGE_DELIVERED = "HYPERBRIDGE_DELIVERED",
+	HYPERBRIDGE_FINALIZED = "HYPERBRIDGE_FINALIZED",
 	DESTINATION = "DESTINATION",
 	TIMED_OUT = "TIMED_OUT",
 	HYPERBRIDGE_TIMED_OUT = "HYPERBRIDGE_TIMED_OUT",
@@ -66,25 +70,26 @@ export interface StateMachineUpdate {
 
 export interface RequestResponse {
 	requests: {
+		nodes: Array<RequestWithStatus>
+	}
+}
+
+export interface RequestWithStatus {
+	source: string
+	dest: string
+	to: string
+	from: string
+	nonce: bigint
+	body: string
+	timeoutTimestamp: bigint
+	statusMetadata: {
 		nodes: Array<{
-			source: string
-			dest: string
-			to: string
-			from: string
-			nonce: bigint
-			body: string
-			timeoutTimestamp: bigint
-			statusMetadata: {
-				nodes: Array<{
-					blockHash: string
-					blockNumber: string
-					timestamp: string
-					chain: string
-					status: string
-					transactionHash: string
-					callData?: string
-				}>
-			}
+			blockHash: string
+			blockNumber: string
+			timestamp: string
+			chain: string
+			status: string
+			transactionHash: string
 		}>
 	}
 }
