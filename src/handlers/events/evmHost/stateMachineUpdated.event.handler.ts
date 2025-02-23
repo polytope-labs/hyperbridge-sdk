@@ -8,11 +8,10 @@ import { getHostStateMachine } from "../../../utils/substrate.helpers"
 export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedLog): Promise<void> {
 	if (!event.args) return
 
-	const { blockHash, blockNumber, transactionHash, transactionIndex, block, transaction, args } = event
+	const { blockHash, blockNumber, transactionHash, transactionIndex, block, args } = event
 	const { stateMachineId, height } = args
 
-	// todo: Get the timestamp of the state machine update event
-
+	// todo: Get the timestamp of the state commitment
 	logger.info(
 		`Handling StateMachineUpdated Event: ${JSON.stringify({
 			blockNumber,

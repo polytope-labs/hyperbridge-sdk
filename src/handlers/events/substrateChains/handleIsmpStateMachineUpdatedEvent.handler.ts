@@ -28,10 +28,6 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 			)
 		}
 
-		if (!event.extrinsic) {
-			return
-		}
-
 		logger.info(
 			`Handling ISMP StateMachineUpdatedEvent. Block Number: ${event.block.block.header.number.toNumber()}`,
 		)
@@ -52,6 +48,7 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 
 		switch (method) {
 			case "StateMachineUpdated":
+				// todo: Get the timestamp of the state commitment
 				await StateMachineService.createSubstrateStateMachineUpdatedEvent(
 					{
 						blockHash,
