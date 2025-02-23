@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 
-require('dotenv').config();
+require("dotenv").config()
 
-const fs = require('fs');
-const currentEnv = process.env.CURRENT_ENV || 'test';
-const configs = require(`./chain-configs-${currentEnv}.json`);
+const fs = require("fs")
+const currentEnv = process.env.CURRENT_ENV || "test"
+const configs = require(`./chain-configs-${currentEnv}.json`)
 
-const SUBSTRATE_IMAGE = 'subquerynetwork/subql-node-substrate:latest';
-const EVM_IMAGE = 'subquerynetwork/subql-node-ethereum:v5.4.0';
-const GRAPHQL_IMAGE = 'subquerynetwork/subql-query:v2.9.0';
+const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:latest"
+const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.4.0"
+const GRAPHQL_IMAGE = "subquerynetwork/subql-query:v2.9.0"
 
 const generateNodeServices = () => {
- return Object.entries(configs)
-  .filter(([chain]) => {
-   const envKey = chain.replace(/-/g, '_').toUpperCase();
-   return !!process.env[envKey];
-  })
-  .map(([chain, config]) => {
-   const image = config.type === 'substrate' ? SUBSTRATE_IMAGE : EVM_IMAGE;
-   return `
+	return Object.entries(configs)
+		.filter(([chain]) => {
+			const envKey = chain.replace(/-/g, "_").toUpperCase()
+			return !!process.env[envKey]
+		})
+		.map(([chain, config]) => {
+			const image = config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE
+			return `
   subquery-node-${chain}:
     image: ${image}
     restart: unless-stopped
@@ -43,31 +43,31 @@ const generateNodeServices = () => {
       - --unsafe
       - --log-level=info
       - --historical=false${
-       config.type === 'evm'
-        ? '\n      - --block-confirmations=5 \n      - --store-cache-async=false \n      - --store-cache-threshold=100'
-        : ''
-      }
+			config.type === "evm"
+				? "\n      - --block-confirmations=5 \n      - --store-cache-async=false \n      - --store-cache-threshold=100"
+				: ""
+		}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
       interval: 3s
       timeout: 5s
-      retries: 10`;
-  })
-  .join('\n');
-};
+      retries: 10`
+		})
+		.join("\n")
+}
 
 const generateDependencies = () => {
- return Object.keys(configs)
-  .filter(([chain]) => {
-   const envKey = chain.replace(/-/g, '_').toUpperCase();
-   return !!process.env[envKey];
-  })
-  .map(
-   (chain) => `      'subquery-node-${chain}':
-        condition: service_healthy`
-  )
-  .join('\n');
-};
+	return Object.keys(configs)
+		.filter(([chain]) => {
+			const envKey = chain.replace(/-/g, "_").toUpperCase()
+			return !!process.env[envKey]
+		})
+		.map(
+			(chain) => `      'subquery-node-${chain}':
+        condition: service_healthy`,
+		)
+		.join("\n")
+}
 
 const dockerCompose = `services:
 ${generateNodeServices()}
@@ -91,7 +91,7 @@ ${generateDependencies()}
       - --playground
 
 volumes:
-  postgres_data:`;
+  postgres_data:`
 
-fs.writeFileSync(`${currentEnv === 'test' ? 'docker-compose.testnet.yml' : 'docker-compose.yml'}`, dockerCompose);
-console.log('Generated docker-compose.yml');
+fs.writeFileSync("docker-compose.yml", dockerCompose)
+console.log("Generated docker-compose.yml")

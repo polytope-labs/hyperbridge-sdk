@@ -1,42 +1,40 @@
 #!/usr/bin/env node
-require('dotenv').config();
+require("dotenv").config()
 
-const fs = require('fs');
-const currentEnv = process.env.CURRENT_ENV || 'test';
-const configs = require(`./chain-configs-${currentEnv}.json`);
+const fs = require("fs")
+const currentEnv = process.env.CURRENT_ENV || "test"
+const configs = require(`./chain-configs-${currentEnv}.json`)
 
 const getChainTypesPath = (chain) => {
- // Extract base chain name before the hyphen
- const baseChainName = chain.split('-')[0];
+	// Extract base chain name before the hyphen
+	const baseChainName = chain.split("-")[0]
 
- const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`;
+	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
 
- // Check if file exists
- if (fs.existsSync(potentialPath)) {
-  return potentialPath;
- }
+	// Check if file exists
+	if (fs.existsSync(potentialPath)) {
+		return potentialPath
+	}
 
- return null;
-};
+	return null
+}
 
 const generateEndpoints = (chain) => {
- const envKey = chain.replace(/-/g, '_').toUpperCase();
- // Expect comma-separated endpoints in env var
- const endpoints = process.env[envKey]?.split(',') || [];
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	// Expect comma-separated endpoints in env var
+	const endpoints = process.env[envKey]?.split(",") || []
 
- return endpoints.map((endpoint) => `    - '${endpoint.trim()}'`).join('\n');
-};
+	return endpoints.map((endpoint) => `    - '${endpoint.trim()}'`).join("\n")
+}
 
 // Generate chain-specific YAML files
 const generateSubstrateYaml = (chain, config) => {
- const chainTypesConfig = getChainTypesPath(chain);
- const endpoints = generateEndpoints(chain);
+	const chainTypesConfig = getChainTypesPath(chain)
+	const endpoints = generateEndpoints(chain)
 
- const chainTypesSection = chainTypesConfig
-  ? `\n  chaintypes:\n    file: ${chainTypesConfig}`
-  : '';
+	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
- return `# // Auto-generated , DO NOT EDIT
+	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
 version: 0.0.1
 name: ${chain}-chain
@@ -96,13 +94,13 @@ dataSources:
             module: ismp
             method: PostResponseTimeoutHandled
             
-repository: 'https://github.com/polytope-labs/hyperbridge'`;
-};
+repository: 'https://github.com/polytope-labs/hyperbridge'`
+}
 
 const generateEvmYaml = (chain, config) => {
- const endpoints = generateEndpoints(chain);
+	const endpoints = generateEndpoints(chain)
 
- return `# // Auto-generated , DO NOT EDIT
+	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
 version: 0.0.1
 name: ${chain}
@@ -205,44 +203,39 @@ dataSources:
   #         function: >-
   #           handlePostResponses(address,(((uint256,uint256),bytes32[],uint256),(((bytes,bytes,uint64,bytes,bytes,uint64,bytes),bytes,uint64),uint256,uint256)[]))
 
-repository: 'https://github.com/polytope-labs/hyperbridge'`;
-};
+repository: 'https://github.com/polytope-labs/hyperbridge'`
+}
 
 const validChains = Object.entries(configs).filter(([chain, config]) => {
- const envKey = chain.replace(/-/g, '_').toUpperCase();
- const endpoint = process.env[envKey];
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	const endpoint = process.env[envKey]
 
- if (!endpoint) {
-  console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`);
-  return false;
- }
- return true;
-});
+	if (!endpoint) {
+		console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`)
+		return false
+	}
+	return true
+})
 
 validChains.forEach(([chain, config]) => {
- const yaml =
-  config.type === 'substrate'
-   ? generateSubstrateYaml(chain, config)
-   : generateEvmYaml(chain, config);
+	const yaml = config.type === "substrate" ? generateSubstrateYaml(chain, config) : generateEvmYaml(chain, config)
 
- fs.writeFileSync(`${chain}.yaml`, yaml);
- console.log(`Generated ${chain}.yaml`);
-});
+	fs.writeFileSync(`${chain}.yaml`, yaml)
+	console.log(`Generated ${chain}.yaml`)
+})
 
 const generateMultichainYaml = () => {
- const projects = validChains
-  .map(([chain]) => `  - ./${chain}.yaml`)
-  .join('\n');
+	const projects = validChains.map(([chain]) => `  - ./${chain}.yaml`).join("\n")
 
- const yaml = `specVersion: 1.0.0
+	const yaml = `specVersion: 1.0.0
 query:
   name: '@subql/query'
   version: '*'
 projects:
-${projects}`;
+${projects}`
 
- fs.writeFileSync('subquery-multichain.yaml', yaml);
- console.log('Generated subquery-multichain.yaml');
-};
+	fs.writeFileSync("subquery-multichain.yaml", yaml)
+	console.log("Generated subquery-multichain.yaml")
+}
 
-generateMultichainYaml();
+generateMultichainYaml()

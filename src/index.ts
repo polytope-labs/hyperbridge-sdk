@@ -1,12 +1,12 @@
-import { URL } from "url";
+import { URL } from "url"
 // @ts-ignore
-global.URL = URL;
+global.URL = URL
 
 // Required for ethers to work in node
-import "@ethersproject/shims";
+import "@ethersproject/shims"
 
 // @ts-ignore
-import { logger } from '@subql/types-core';
+import { logger } from "@subql/types-core"
 
 //Exports all handler functions
-export * from "./mappings/mappingHandlers";
+export * from "./mappings/mappingHandlers"

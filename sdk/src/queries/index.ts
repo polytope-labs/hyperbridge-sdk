@@ -31,7 +31,7 @@ export const REQUEST_STATUS = `
       }
     }
   }
-`;
+`
 
 export const STATE_MACHINE_UPDATES = `
    query StateMachineUpdates($statemachineId: String!, $height: Int!, $chain: String!) {
@@ -58,21 +58,4 @@ export const STATE_MACHINE_UPDATES = `
       }
     }
   }
-`;
-
-export const REQUEST = `
-  query RequestsNew($nonce: String!, $source: String!, $dest: String!) {
-    requests(
-      filter: {
-        nonce: { equalTo: $nonce }
-        source: { equalTo: $source }
-        dest: { equalTo: $dest }
-      }
-    ) {
-      nodes {
-        id
-        commitment
-      }
-    }
-  }
-`;
+`
