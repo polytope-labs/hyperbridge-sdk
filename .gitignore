@@ -27,10 +27,14 @@ package-lock.json
 target/
 dist/
 src/types
+configs/src/types
 project.yaml
 
 # JetBrains IDE
 .idea/
+
+# VSCode
+.vscode/
 
 # Unit test reports
 TEST*.xml

@@ -1,4 +1,4 @@
-import { RelayerStatsPerChain } from "../types"
+import { RelayerStatsPerChain } from "../../configs/src/types"
 
 export class RelayerChainStatsService {
 	/*

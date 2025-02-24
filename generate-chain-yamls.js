@@ -3,7 +3,7 @@ require("dotenv").config()
 
 const fs = require("fs")
 const currentEnv = process.env.CURRENT_ENV || "test"
-const configs = require(`./chain-configs-${currentEnv}.json`)
+const configs = require(`./configs/chain-configs-${currentEnv}.json`)
 
 const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen

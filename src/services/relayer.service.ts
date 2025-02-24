@@ -1,5 +1,5 @@
-import { ProtocolParticipant } from "../types/enums"
-import { Relayer, Transfer } from "../types/models"
+import { ProtocolParticipant } from "../../configs/src/types/enums"
+import { Relayer, Transfer } from "../../configs/src/types/models"
 import { RelayerChainStatsService } from "./relayerChainStats.service"
 // import {
 //  HandlePostRequestsTransaction,

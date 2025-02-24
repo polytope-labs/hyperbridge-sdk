@@ -4,7 +4,7 @@ require("dotenv").config()
 
 const fs = require("fs")
 const currentEnv = process.env.CURRENT_ENV || "test"
-const configs = require(`./chain-configs-${currentEnv}.json`)
+const configs = require(`./configs/chain-configs-${currentEnv}.json`)
 
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:latest"
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.4.0"
@@ -23,7 +23,7 @@ const generateNodeServices = () => {
     image: ${image}
     restart: unless-stopped
     env_file:
-      - .env
+      - ../.env
     environment:
       DB_USER: \${DB_USER}
       DB_PASS: \${DB_PASS}
@@ -32,7 +32,8 @@ const generateNodeServices = () => {
       DB_PORT: \${DB_PORT}
 
     volumes:
-      - ./:/app
+      - ../configs:/app
+      - ../dist:/app/dist
     command:
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
@@ -79,7 +80,7 @@ ${generateNodeServices()}
 ${generateDependencies()}
     restart: always
     env_file:
-      - .env
+      - ../.env
     environment:
       DB_USER: \${DB_USER}
       DB_PASS: \${DB_PASS}
@@ -93,5 +94,8 @@ ${generateDependencies()}
 volumes:
   postgres_data:`
 
-fs.writeFileSync("docker-compose.yml", dockerCompose)
+fs.writeFileSync(
+	currentEnv === "prod" ? "docker/docker-compose.yml" : "docker/docker-compose.testnet.yml",
+	dockerCompose,
+)
 console.log("Generated docker-compose.yml")

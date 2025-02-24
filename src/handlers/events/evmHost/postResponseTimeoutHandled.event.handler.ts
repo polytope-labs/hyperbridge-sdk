@@ -1,5 +1,5 @@
-import { Status } from "../../../types"
-import { PostResponseTimeoutHandledLog } from "../../../types/abi-interfaces/EthereumHostAbi"
+import { Status } from "../../../../configs/src/types"
+import { PostResponseTimeoutHandledLog } from "../../../../configs/src/types/abi-interfaces/EthereumHostAbi"
 import { HyperBridgeService } from "../../../services/hyperbridge.service"
 import { ResponseService } from "../../../services/response.service"
 import { getHostStateMachine } from "../../../utils/substrate.helpers"

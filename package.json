@@ -5,10 +5,10 @@
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "subql build",
-		"codegen": "subql codegen",
+		"codegen": "subql codegen -f configs",
 		"generate-configs": "node generate-chain-yamls.js && node generate-compose.js",
-		"start:docker": "npm run generate-configs && docker-compose pull && docker-compose up --remove-orphans",
-		"start:local": "npm run generate-configs && docker-compose -f docker-compose.testnet.yml up --remove-orphans",
+		"start:docker": "npm run generate-configs && docker-compose -f docker/docker-compose.yml pull && docker-compose -f docker/docker-compose.yml --env-file .env up --remove-orphans",
+		"start:local": "npm run generate-configs && docker-compose -f docker/docker-compose.testnet.yml --env-file .env up --remove-orphans",
 		"dev": "export CURRENT_ENV=test subql codegen && subql build && npm run start:local",
 		"prod": "export CURRENT_ENV=prod subql codegen && subql build && npm run start:docker",
 		"prepack": "rm -rf dist && npm run build",
@@ -19,10 +19,11 @@
 	"repository": "https://github.com/polytope-labs/hyperbridge-indexer",
 	"files": [
 		"dist",
-		"schema.graphql",
-		"subquery-multichain.yaml",
-		"chain-configs-prod.json",
-		"chain-configs-test.json"
+		"configs",
+		"configs/schema.graphql",
+		"configs/subquery-multichain.yaml",
+		"configs/chain-configs-prod.json",
+		"configs/chain-configs-test.json"
 	],
 	"author": "Polytope Labs",
 	"license": "MIT",

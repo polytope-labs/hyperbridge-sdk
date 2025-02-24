@@ -1,6 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
 import { RequestService } from "../../../services/request.service"
-import { Status } from "../../../types"
+import { Status } from "../../../../configs/src/types"
 import { formatChain, getHostStateMachine, isHyperbridge } from "../../../utils/substrate.helpers"
 
 export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promise<void> {

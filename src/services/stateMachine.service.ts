@@ -1,4 +1,4 @@
-import { StateMachineUpdateEvent } from "../types"
+import { StateMachineUpdateEvent } from "../../configs/src/types"
 
 // Arguments to functions that create StateMachineUpdated events
 export interface ICreateStateMachineUpdatedEventArgs {
