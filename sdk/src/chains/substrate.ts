@@ -4,10 +4,10 @@ import { RpcWebSocketClient } from "rpc-websocket-client"
 import { toHex, hexToBytes, toBytes } from "viem"
 import { match } from "ts-pattern"
 import capitalize from "lodash/capitalize"
+import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "../utils"
 import { IChain, IIsmpMessage } from "../chain"
-import { Vector } from "scale-ts"
 
 export interface SubstrateChainParams {
 	/*
@@ -78,7 +78,8 @@ export class SubstrateChain implements IChain {
 	 * @returns The encoded message as a hexadecimal string.
 	 */
 	encode(message: IIsmpMessage): HexString {
-		const encoded = match(message)
+		const palletIndex = this.getPalletIndex("Ismp")
+		const args = match(message)
 			.with({ kind: "PostRequest" }, (message) =>
 				Vector(Message).enc([
 					{
@@ -125,9 +126,10 @@ export class SubstrateChain implements IChain {
 			)
 			.exhaustive()
 
-		// todo: add pallet index and extrinsic index
+		// Encoding the call enum and call index
+		const call = Vector(u8, 2).enc([palletIndex, 0])
 
-		return toHex(encoded)
+		return toHex(new Uint8Array([...call, ...args]))
 	}
 
 	/**
@@ -137,6 +139,25 @@ export class SubstrateChain implements IChain {
 	async timestamp(): Promise<bigint> {
 		const now = await this.api?.query.timestamp.now()
 		return BigInt(now?.toJSON() as number)
+	}
+
+	/**
+	 * Returns the index of a pallet by its name, by looking up the pallets in the runtime metadata.
+	 * @param {string} name - The name of the pallet.
+	 * @returns {number} The index of the pallet.
+	 */
+	private getPalletIndex(name: string): number {
+		const pallets = this.api!.runtimeMetadata.asLatest.pallets.entries()
+
+		for (const p of pallets) {
+			if (p[1].name.toString() === name) {
+				const pallet_index = p[1].index.toNumber()
+
+				return pallet_index
+			}
+		}
+
+		throw new Error(`${name} not found in runtime`)
 	}
 }
 
