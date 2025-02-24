@@ -268,64 +268,6 @@ export class IndexerClient {
 	}
 
 	/**
-	 * Create a ReadableStream of state machine updates
-	 * @param statemachineId - ID of the state machine to monitor
-	 * @param height - Starting block height
-	 * @param chain - Chain identifier
-	 * @returns ReadableStream that emits state machine updates
-	 */
-	createStateMachineUpdateStream(
-		statemachineId: string,
-		height: number,
-		chain: string,
-	): ReadableStream<StateMachineUpdate> {
-		const self = this
-		return new ReadableStream({
-			async start(controller) {
-				let currentHeight = height
-
-				while (true) {
-					try {
-						const response = await self.withRetry(() =>
-							self.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
-								statemachineId,
-								height: currentHeight,
-								chain,
-							}),
-						)
-
-						const updates = response.stateMachineUpdateEvents.nodes
-
-						// Find closest update >= height
-						const closestUpdate = updates
-							.filter((update) => update.height >= currentHeight)
-							.sort((a, b) => a.height - b.height)[0]
-
-						if (closestUpdate) {
-							currentHeight = closestUpdate.height
-							controller.enqueue(closestUpdate)
-
-							// Stream subsequent updates
-							updates
-								.filter((update) => update.height > currentHeight)
-								.sort((a, b) => a.height - b.height)
-								.forEach((update) => {
-									controller.enqueue(update)
-									currentHeight = update.height
-								})
-						}
-
-						currentHeight += 1
-						await new Promise((resolve) => setTimeout(resolve, self.config.pollInterval))
-					} catch (error) {
-						controller.error(error)
-					}
-				}
-			},
-		})
-	}
-
-	/**
 	 * Check if a status represents a terminal state
 	 * @param status - Request status to check
 	 * @returns true if status is terminal (DELIVERED or TIMED_OUT)
@@ -343,9 +285,7 @@ export class IndexerClient {
 		return {
 			blockHash: data.blockHash,
 			blockNumber: parseInt(data.blockNumber),
-			chain: data.chain,
 			transactionHash: data.transactionHash,
-			status: data.status,
 		}
 	}
 
