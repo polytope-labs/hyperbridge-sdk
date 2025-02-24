@@ -1,6 +1,9 @@
 import "dotenv/config"
 import { GraphQLClient } from "graphql-request"
-import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from "./queries"
+import { HexString } from "@polytope-labs/hyperclient"
+import maxBy from "lodash/maxBy"
+import { pad } from "viem"
+
 import {
 	RequestStatus,
 	StatusResponse,
@@ -12,12 +15,9 @@ import {
 	RetryConfig,
 	RequestWithStatus,
 } from "./types"
-import { HexString, IEvmConfig, IPostRequest, ISubstrateConfig } from "@polytope-labs/hyperclient"
-import { isEvmChain, isSubstrateChain, postRequestCommitment, sleep } from "./utils"
-import { EvmChain, getChain, IChain } from "./chain"
-import maxBy from "lodash/maxBy"
-import { SubstrateChain } from "./chains/substrate"
-import { pad } from "viem"
+import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from "./queries"
+import { postRequestCommitment, sleep } from "./utils"
+import { getChain, IChain } from "./chain"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 	[RequestStatus.SOURCE]: 0,
@@ -329,13 +329,13 @@ export class IndexerClient {
 	}
 
 	/**
-	 * Get the closest state machine update for a given height
+	 * Query for a state machine update event greater than or equal to the given height
 	 * @params statemachineId - ID of the state machine
 	 * @params height - Starting block height
 	 * @params chain - Chain identifier
 	 * @returns Closest state machine update
 	 */
-	private async queryStateMachineUpdate(statemachineId: string, height: number): Promise<StateMachineUpdate> {
+	async queryStateMachineUpdate(statemachineId: string, height: number): Promise<StateMachineUpdate> {
 		const response = await this.withRetry(() =>
 			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
 				statemachineId,
