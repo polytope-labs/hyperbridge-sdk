@@ -1,10 +1,13 @@
-import { HexString } from "@polytope-labs/hyperclient"
-import { IChain, IIsmpMessage } from "../chain"
+import { HexString, IPostRequest } from "@polytope-labs/hyperclient"
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { BasicProof, isEvmChain, isSubstrateChain, SubstrateStateProof } from "../utils"
 import { RpcWebSocketClient } from "rpc-websocket-client"
-import { toHex, hexToBytes, encodeFunctionData } from "viem"
-import { match, P } from "ts-pattern"
+import { toHex, hexToBytes, toBytes } from "viem"
+import { match } from "ts-pattern"
+import capitalize from "lodash/capitalize"
+
+import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "../utils"
+import { IChain, IIsmpMessage } from "../chain"
+import { Vector } from "scale-ts"
 
 export interface SubstrateChainParams {
 	/*
@@ -69,13 +72,62 @@ export class SubstrateChain implements IChain {
 		}
 	}
 
+	/**
+	 * Encode an ISMP calldata for a substrate chain.
+	 * @param message The ISMP message to encode.
+	 * @returns The encoded message as a hexadecimal string.
+	 */
 	encode(message: IIsmpMessage): HexString {
-		// match(message).with({ kind: "PostRequest" }, (message) => {
-		// 	encodeFunctionData({})
-		// })
-		//
-		// todo:
-		return "0x"
+		const encoded = match(message)
+			.with({ kind: "PostRequest" }, (message) =>
+				Vector(Message).enc([
+					{
+						tag: "RequestMessage",
+						value: {
+							proof: {
+								height: {
+									height: message.proof.height,
+									id: {
+										consensusStateId: Array.from(toBytes(message.proof.consensusStateId)),
+										id: convertStateMachineIdToEnum(message.proof.stateMachine) as any,
+									},
+								},
+								proof: Array.from(hexToBytes(message.proof.proof)),
+							},
+							signer: Array.from(hexToBytes(message.signer)),
+							requests: convertIPostRequestToCodec(message.requests),
+						},
+					},
+				]),
+			)
+			.with({ kind: "TimeoutPostRequest" }, (message) =>
+				Vector(Message).enc([
+					{
+						tag: "TimeoutMessage",
+						value: {
+							tag: "Post",
+							value: {
+								requests: convertIPostRequestToCodec(message.requests),
+								proof: {
+									height: {
+										height: message.proof.height,
+										id: {
+											consensusStateId: Array.from(toBytes(message.proof.consensusStateId)),
+											id: convertStateMachineIdToEnum(message.proof.stateMachine) as any,
+										},
+									},
+									proof: Array.from(hexToBytes(message.proof.proof)),
+								},
+							},
+						},
+					},
+				]),
+			)
+			.exhaustive()
+
+		// todo: add pallet index and extrinsic index
+
+		return toHex(encoded)
 	}
 
 	/**
@@ -97,4 +149,43 @@ function requestCommitmentStorageKey(key: HexString): number[] {
 
 	// Combine prefix and key bytes
 	return Array.from(new Uint8Array([...prefix, ...keyBytes]))
+}
+
+/**
+ * Converts a state machine ID string to an enum value.
+ * @param {string} id - The state machine ID string.
+ * @returns {IStateMachine} The corresponding enum value.
+ */
+function convertStateMachineIdToEnum(id: string): IStateMachine {
+	let [tag, value]: any = id.split("-")
+	tag = capitalize(tag)
+	if (["Evm", "Polkadot", "Kusama"].includes(tag)) {
+		value = parseInt(value)
+	} else {
+		value = Array.from(toBytes(value))
+	}
+
+	return { tag, value }
+}
+
+/**
+ * Converts an array of IPostRequest objects to a codec representation.
+ * @param {IPostRequest[]} requests - The array of IPostRequest objects.
+ * @returns {any} The codec representation of the requests.
+ */
+function convertIPostRequestToCodec(requests: IPostRequest[]): any {
+	return {
+		tag: "Post",
+		value: {
+			requests: requests.map((req) => ({
+				source: convertStateMachineIdToEnum(req.source),
+				dest: convertStateMachineIdToEnum(req.dest),
+				from: Array.from(toBytes(req.from)),
+				to: Array.from(toBytes(req.to)),
+				nonce: req.nonce,
+				body: Array.from(toBytes(req.body)),
+				timeoutTimestamp: req.timeoutTimestamp,
+			})) as any,
+		},
+	}
 }

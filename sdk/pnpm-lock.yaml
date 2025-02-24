@@ -13,6 +13,9 @@ importers:
             "@polytope-labs/hyperclient":
                 specifier: 1.2.0
                 version: 1.2.0
+            capitalize:
+                specifier: ^2.0.4
+                version: 2.0.4
             dotenv:
                 specifier: ^16.4.7
                 version: 16.4.7
@@ -1197,6 +1200,12 @@ packages:
         resolution:
             {
                 integrity: sha512-2S6XIXwaE7K7erT8dY+kLQcpa5ms63XlRkMkReXjle+kf6c5g38vyMl+Z5y8dSxOFDhcFe+nxnn261PLxBSQsQ==,
+            }
+
+    capitalize@2.0.4:
+        resolution:
+            {
+                integrity: sha512-wcSyiFqXRYyCoqu0o0ekXzJAKCLMkqWS5QWGlgTJFJKwRmI6pzcN2hBl5VPq9RzLW5Uf4FF/V/lcFfjCtVak2w==,
             }
 
     chalk@4.1.2:
@@ -3719,6 +3728,8 @@ snapshots:
     camelcase@6.3.0: {}
 
     caniuse-lite@1.0.30001700: {}
+
+    capitalize@2.0.4: {}
 
     chalk@4.1.2:
         dependencies:

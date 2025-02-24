@@ -28,7 +28,7 @@ import { HexString } from "@polytope-labs/hyperclient"
 import { match } from "ts-pattern"
 import HandlerV1 from "../abis/handler"
 
-import { keccak256, toBytes, encodePacked, pad } from "viem"
+import { keccak256, toBytes, pad } from "viem"
 import type { GetProofParameters, Hex } from "viem"
 import flatten from "lodash/flatten"
 import zip from "lodash/zip"
@@ -147,9 +147,9 @@ export class EvmChain implements IChain {
 				const requests = zip(request.requests, mmrProof.leafIndexAndPos)
 					.map(([req, leafIndexAndPos]) => {
 						if (!req || !leafIndexAndPos) return
-						const [[_pos, kIndex]] = mmrPositionToKIndex(
+						const [[, kIndex]] = mmrPositionToKIndex(
 							[leafIndexAndPos?.pos],
-							calculateMMRSize(mmrProof.leaf_count),
+							calculateMMRSize(mmrProof.leafCount),
 						)
 						return {
 							request: {
@@ -161,7 +161,7 @@ export class EvmChain implements IChain {
 								timeoutTimestamp: req.timeoutTimestamp,
 								body: req.body,
 							} as any,
-							index: leafIndexAndPos?.leaf_index!,
+							index: leafIndexAndPos?.leafIndex!,
 							kIndex,
 						}
 					})
@@ -173,7 +173,7 @@ export class EvmChain implements IChain {
 						height: request.proof.height,
 					},
 					multiproof: mmrProof.items.map((item) => bytesToHex(new Uint8Array(item))),
-					leafCount: mmrProof.leaf_count,
+					leafCount: mmrProof.leafCount,
 				}
 				const encoded = encodeFunctionData({
 					abi: HandlerV1.ABI,

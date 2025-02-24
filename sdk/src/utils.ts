@@ -2,7 +2,7 @@ import { HexString, IPostRequest } from "@polytope-labs/hyperclient"
 import { encodePacked, keccak256, toHex } from "viem"
 
 export * from "./utils/mmr"
-export * from "./utils/scale-codec"
+export * from "./utils/substrate"
 
 /**
  * Sleeps for the specified number of milliseconds.
