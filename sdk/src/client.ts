@@ -12,10 +12,12 @@ import {
 	RetryConfig,
 	RequestWithStatus,
 } from "./types"
-import { HexString, IEvmConfig, IPostRequest } from "@polytope-labs/hyperclient"
-import { isEvmChain, sleep } from "./utils"
-import { EvmChain, IChain } from "./chain"
+import { HexString, IEvmConfig, IPostRequest, ISubstrateConfig } from "@polytope-labs/hyperclient"
+import { isEvmChain, isSubstrateChain, postRequestCommitment, sleep } from "./utils"
+import { EvmChain, getChain, IChain } from "./chain"
 import maxBy from "lodash/maxBy"
+import { SubstrateChain } from "./chains/substrate"
+import { pad } from "viem"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 	[RequestStatus.SOURCE]: 0,
@@ -92,7 +94,7 @@ export class IndexerClient {
 	 * }
 	 *
 	 */
-	private async *postRequestStatusStream(hash: HexString): AsyncGenerator<StatusResponse, void> {
+	async *postRequestStatusStream(hash: HexString): AsyncGenerator<StatusResponse, void> {
 		const self = this
 
 		// wait for request to be created
@@ -105,8 +107,8 @@ export class IndexerClient {
 			}
 			break
 		}
-
-		const timeoutStream = self.timeoutStream(request)
+		const chain = await getChain(self.config.dest)
+		const timeoutStream = self.timeoutStream(request.timeoutTimestamp, chain)
 		const statusStream = self.postRequestStatusStreamInternal(hash)
 
 		// combine both streams here
@@ -124,12 +126,11 @@ export class IndexerClient {
 	 * If the request does not have a timeout, it will yield never yield
 	 * @param request - Request to timeout
 	 */
-	async *timeoutStream(request: IPostRequest): AsyncGenerator<StatusResponse, void> {
-		if (request.timeoutTimestamp > 0) {
-			const chain = this.getDestinationChain(request)
+	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<StatusResponse, void> {
+		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
-			while (timestamp < request.timeoutTimestamp) {
-				const diff = request.timeoutTimestamp - timestamp
+			while (timestamp < timeoutTimestamp) {
+				const diff = timeoutTimestamp - timestamp
 				await sleep(Number(diff))
 				timestamp = await chain.timestamp()
 			}
@@ -222,14 +223,37 @@ export class IndexerClient {
 					)
 
 					if (hyperbridgeFinalized) {
+						const destChain = await getChain(self.config.dest)
+						const hyperbridge = await getChain({
+							...self.config.hyperbridge,
+							hash_algo: "Keccak",
+						})
+
+						const proof = await hyperbridge.queryRequestsProof(
+							[postRequestCommitment(request)],
+							request.dest,
+							BigInt(hyperbridgeFinalized.height),
+						)
+
+						const calldata = destChain.encode({
+							kind: "PostRequest",
+							proof: {
+								stateMachine: self.config.hyperbridge.state_machine,
+								consensusStateId: self.config.hyperbridge.consensus_state_id,
+								proof,
+								height: BigInt(hyperbridgeFinalized.height),
+							},
+							requests: [request],
+							signer: pad("0x"),
+						})
+
 						yield {
 							status: RequestStatus.HYPERBRIDGE_FINALIZED,
 							metadata: {
 								blockHash: hyperbridgeFinalized.blockHash,
 								blockNumber: hyperbridgeFinalized.height,
 								transactionHash: hyperbridgeFinalized.transactionHash,
-								// todo: get calldata from hyperclient
-								calldata: "",
+								calldata,
 							},
 						}
 						status = RequestStatus.HYPERBRIDGE_FINALIZED
@@ -302,51 +326,6 @@ export class IndexerClient {
 			}
 		}
 		throw lastError
-	}
-
-	/**
-	 * Returns the source chain interface for a given request
-	 * @param request - Request to get the source chain for
-	 * @returns Source chain
-	 */
-	private getSourceChain(request: IPostRequest): IChain {
-		// todo: substrate chains
-		if (isEvmChain(request.dest)) {
-			const config = this.config.source as IEvmConfig
-			const chainId = parseInt(request.dest.split("-")[1])
-			const evmchain = new EvmChain({
-				chainId,
-				url: config.rpc_url,
-				host: config.host_address as any,
-			})
-
-			return evmchain
-		} else {
-			throw new Error(`Unsupported chain: ${request.source}`)
-		}
-	}
-
-	/**
-	 * Returns the destination chain interface for a given request
-	 * @param request - Request to get the destination chain for
-	 * @returns Destination chain
-	 */
-	private getDestinationChain(request: IPostRequest): IChain {
-		// todo: substrate chains
-
-		if (isEvmChain(request.dest)) {
-			const config = this.config.dest as IEvmConfig
-			const chainId = parseInt(request.dest.split("-")[1])
-			const evmchain = new EvmChain({
-				chainId,
-				url: config.rpc_url,
-				host: config.host_address as any,
-			})
-
-			return evmchain
-		} else {
-			throw new Error(`Unsupported chain: ${request.dest}`)
-		}
 	}
 
 	/**

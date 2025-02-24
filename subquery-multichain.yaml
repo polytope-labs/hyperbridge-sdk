@@ -1,8 +1,8 @@
 specVersion: 1.0.0
 query:
-  name: '@subql/query'
-  version: '*'
+    name: "@subql/query"
+    version: "*"
 projects:
-  - ./hyperbridge-gargantua.yaml
-  - ./bsc-chapel.yaml
-  - ./base-sepolia.yaml
+    - ./hyperbridge-gargantua.yaml
+    - ./bsc-chapel.yaml
+    - ./base-sepolia.yaml

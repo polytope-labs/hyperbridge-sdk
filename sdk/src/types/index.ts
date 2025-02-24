@@ -1,4 +1,4 @@
-import { IEvmConfig, IHyperbridgeConfig, ISubstrateConfig } from "@polytope-labs/hyperclient"
+import { HexString, IEvmConfig, IHyperbridgeConfig, ISubstrateConfig } from "@polytope-labs/hyperclient"
 
 export interface ClientConfig {
 	pollInterval?: number
@@ -77,10 +77,10 @@ export interface RequestResponse {
 export interface RequestWithStatus {
 	source: string
 	dest: string
-	to: string
-	from: string
+	to: HexString
+	from: HexString
 	nonce: bigint
-	body: string
+	body: HexString
 	timeoutTimestamp: bigint
 	statusMetadata: {
 		nodes: Array<{
