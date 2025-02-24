@@ -1,7 +1,11 @@
+import { IEvmConfig, IHyperbridgeConfig, ISubstrateConfig } from "@polytope-labs/hyperclient"
+
 export interface ClientConfig {
 	pollInterval?: number
 	url?: string
-	hyperbridgeStateMachineId: string
+	source: IEvmConfig | ISubstrateConfig
+	dest: IEvmConfig | ISubstrateConfig
+	hyperbridge: IHyperbridgeConfig
 }
 
 export interface RetryConfig {
@@ -44,17 +48,13 @@ export enum HyperClientStatus {
 export interface BlockMetadata {
 	blockHash: string
 	blockNumber: number
-	timestamp: bigint
-	chain: string
 	transactionHash: string
-	status: HyperClientStatus | RequestStatus
-	callData?: string
+	calldata?: string
 }
 
 export interface StatusResponse {
 	status: RequestStatus | HyperClientStatus
-	metadata: Partial<BlockMetadata>
-	message?: string
+	metadata?: Partial<BlockMetadata>
 }
 
 export interface StateMachineUpdate {
