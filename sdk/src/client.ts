@@ -10,23 +10,21 @@ import {
 	StateMachineResponse,
 	ClientConfig,
 	RetryConfig,
-	HyperClientStatus,
 	RequestWithStatus,
 } from "./types"
-import { getHyperClient } from "./hyperclient"
-import { HYPERBRIDGE, HYPERBRIDGE_TESTNET } from "./hyperclient/constants"
-import { HexString, IEvmConfig, IPostRequest, MessageStatusWithMeta } from "@polytope-labs/hyperclient"
+import { HexString, IEvmConfig, IPostRequest } from "@polytope-labs/hyperclient"
 import { isEvmChain, sleep } from "./utils"
-import { parse } from "dotenv"
 import { EvmChain, IChain } from "./chain"
 import maxBy from "lodash/maxBy"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
-	[RequestStatus.SOURCE]: 1,
+	[RequestStatus.SOURCE]: 0,
+	[RequestStatus.SOURCE_FINALIZED]: 1,
 	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
-	[RequestStatus.DESTINATION]: 3,
-	[RequestStatus.HYPERBRIDGE_TIMED_OUT]: 4,
-	[RequestStatus.TIMED_OUT]: 5,
+	[RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
+	[RequestStatus.DESTINATION]: 4,
+	[RequestStatus.HYPERBRIDGE_TIMED_OUT]: 5,
+	[RequestStatus.TIMED_OUT]: 6,
 }
 
 /**
@@ -259,21 +257,12 @@ export class IndexerClient {
 				}
 			}
 
-			if (this.isTerminalStatus(status!)) {
+			if (status === RequestStatus.DESTINATION) {
 				return
 			}
 
 			await sleep(self.config.pollInterval)
 		}
-	}
-
-	/**
-	 * Check if a status represents a terminal state
-	 * @param status - Request status to check
-	 * @returns true if status is terminal (DELIVERED or TIMED_OUT)
-	 */
-	private isTerminalStatus(status: RequestStatus): boolean {
-		return status === RequestStatus.DESTINATION
 	}
 
 	/**
