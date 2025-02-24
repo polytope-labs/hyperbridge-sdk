@@ -93,7 +93,7 @@ dataSources:
           filter:
             module: ismp
             method: PostResponseTimeoutHandled
-            
+
 repository: 'https://github.com/polytope-labs/hyperbridge'`
 }
 
@@ -220,7 +220,7 @@ const validChains = Object.entries(configs).filter(([chain, config]) => {
 validChains.forEach(([chain, config]) => {
 	const yaml = config.type === "substrate" ? generateSubstrateYaml(chain, config) : generateEvmYaml(chain, config)
 
-	fs.writeFileSync(`${chain}.yaml`, yaml)
+	fs.writeFileSync(`./configs/${chain}.yaml`, yaml)
 	console.log(`Generated ${chain}.yaml`)
 })
 
