@@ -43,6 +43,7 @@
 		"@subql/validator": "latest",
 		"assert": "^2.0.0",
 		"dotenv": "^16.4.7",
+		"fast-text-encoding": "^1.0.6",
 		"scale-ts": "^1.6.1",
 		"viem": "^2.23.5"
 	},

@@ -75,8 +75,8 @@ const generatePostgres = () => {
     image: postgres:14-alpine
     ports:
       - 5432:5432
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    #volumes:
+    #  - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: \${DB_PASS}
       POSTGRES_USER: \${DB_USER}

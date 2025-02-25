@@ -5,6 +5,8 @@ global.URL = URL
 // Required for ethers to work in node
 import "@ethersproject/shims"
 
+import "fast-text-encoding"
+
 // @ts-ignore
 import { logger } from "@subql/types-core"
 
