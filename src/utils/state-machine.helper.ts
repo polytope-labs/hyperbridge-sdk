@@ -8,6 +8,8 @@ import { logger } from "ethers"
 import { TextEncoder } from "util"
 import { CHAINS_BY_ISMP_HOST } from "../constants"
 import { Codec } from "@polkadot/types/types"
+import { Provider } from "@ethersproject/providers"
+import { getHostStateMachine } from "./substrate.helpers"
 
 // Define ConsensusStateId as 4-byte array
 const ConsensusStateId = Vector(u8, 4)
@@ -90,17 +92,17 @@ export async function fetchStateCommitmentsSubstrate(params: {
 	const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...key, ...encodedStateMachineHeight])
 	const hexKey = bytesToHex(full_key)
 
-	const storageValue = await api.rpc.state.getStorage<PolkadotOption<StorageData>>(hexKey)
+	const storageValue = await api.rpc.state.getStorage<PolkadotOption<Codec>>(hexKey)
 
 	if (storageValue.isSome) {
-		return StateCommitment.dec(storageValue.value.toU8a())
+		return StateCommitment.dec(hexToBytes(storageValue.value.toHex()))
 	}
 
 	return null
 }
 
 export async function fetchStateCommitmentsEVM(params: {
-	client: PublicClient
+	client: Provider
 	stateMachineId: string
 	consensusStateId: string
 	height: bigint
@@ -126,8 +128,8 @@ export async function fetchStateCommitmentsEVM(params: {
 		return null
 	}
 
-	const chainId = await client.getChainId()
-	const hostContract = CHAINS_BY_ISMP_HOST[`EVM-${chainId}`]
+	const hostContractKey = `EVM-${chainId}`
+	const hostContract = CHAINS_BY_ISMP_HOST[hostContractKey]
 
 	// Extract the paraId from the state machine ID
 	const paraId = BigInt(state_machine_height.id.state_id.value)
@@ -136,34 +138,24 @@ export async function fetchStateCommitmentsEVM(params: {
 	const [timestampKey, overlayKey, stateRootKey] = generateStateCommitmentKeys(paraId, height)
 
 	// Query the three storage values
-	const timestampValue = await client.getStorageAt({
-		address: hostContract,
-		slot: bytesToHex(timestampKey),
-	})
+	const timestampValue = await client.getStorageAt(hostContract, bytesToHex(timestampKey))
 
 	if (!timestampValue) {
 		return null
 	}
 
-	const overlayRootValue = await client.getStorageAt({
-		address: hostContract,
-		slot: bytesToHex(overlayKey),
-	})
+	const overlayRootValue = await client.getStorageAt(hostContract, bytesToHex(overlayKey))
 
-	const stateRootValue = await client.getStorageAt({
-		address: hostContract,
-		slot: bytesToHex(stateRootKey),
-	})
+	const stateRootValue = await client.getStorageAt(hostContract, bytesToHex(stateRootKey))
 
 	// Parse timestamp from big-endian bytes to BigInt
-	const timestampBytes = hexToBytes(timestampValue)
-	const timestamp = bytesToBigInt(timestampBytes)
+	const timestamp = BigInt(timestampValue) / 2n
 
 	// Create the StateCommitment object
 	return {
 		timestamp,
-		overlay_root: overlayRootValue ? hexToBytes(overlayRootValue) : undefined,
-		state_root: stateRootValue ? hexToBytes(stateRootValue) : new Uint8Array(),
+		overlay_root: overlayRootValue ? hexToBytes(overlayRootValue as `0x${string}`) : undefined,
+		state_root: stateRootValue ? hexToBytes(stateRootValue as `0x${string}`) : new Uint8Array(),
 	}
 }
 

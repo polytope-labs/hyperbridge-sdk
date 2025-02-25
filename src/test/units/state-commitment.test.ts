@@ -1,7 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { createPublicClient, http, PublicClient } from "viem"
-import { sepolia } from "viem/chains"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate } from "../../utils/state-machine.helper"
+import { JsonRpcProvider } from "@ethersproject/providers"
 
 describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 	let api: ApiPromise
@@ -9,7 +8,7 @@ describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 	beforeAll(async () => {
 		const provider = new WsProvider("wss://hyperbridge-paseo-rpc.blockops.network")
 		api = await ApiPromise.create({ provider })
-	}, 10000)
+	})
 
 	afterAll(async () => {
 		if (api) {
@@ -35,11 +34,12 @@ describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 })
 
 describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
-	let client = createPublicClient({
-		chain: sepolia,
-		transport: http(
+	let client: JsonRpcProvider
+
+	beforeAll(() => {
+		client = new JsonRpcProvider(
 			"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee",
-		),
+		)
 	})
 
 	test("fetches real state commitment on EVM chain", async () => {
@@ -50,7 +50,7 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 			height: 3663176n,
 		})
 
-		console.log(result)
+		console.log(Number(result?.timestamp) / 2)
 
 		expect(result).toBeDefined()
 		expect(result?.timestamp).toBeDefined()

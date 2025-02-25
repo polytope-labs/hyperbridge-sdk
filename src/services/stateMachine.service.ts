@@ -32,7 +32,7 @@ export class StateMachineService {
 		const consensusStateId = getConsensusStateId(stateMachineId)
 		logger.info(`Consensus State ID: ${consensusStateId}`)
 
-		const stateCommitment	= await fetchStateCommitmentsEVM({
+		const stateCommitment = await fetchStateCommitmentsEVM({
 			client: api,
 			stateMachineId,
 			consensusStateId,
@@ -53,7 +53,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: Number(stateCommitment.timestamp),
+			commitmentTimestamp: stateCommitment.timestamp,
 			createdAt: new Date(timestamp * 1000),
 		})
 
@@ -99,7 +99,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: Number(stateCommitment.timestamp),
+			commitmentTimestamp: stateCommitment.timestamp,
 			createdAt: new Date(timestamp * 1000),
 		})
 

@@ -13,7 +13,7 @@
 		"prod": "export CURRENT_ENV=prod subql codegen && subql build && npm run start:docker",
 		"prepack": "rm -rf dist && npm run build",
 		"test": "jest --runInBand",
-		"format": "prettier --write ."
+		"format": "prettier --write \"**/*.ts\""
 	},
 	"homepage": "https://hyperbridge.network/",
 	"repository": "https://github.com/polytope-labs/hyperbridge-indexer",
