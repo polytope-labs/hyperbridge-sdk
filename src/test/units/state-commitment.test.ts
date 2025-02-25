@@ -18,7 +18,7 @@ describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 		}
 	})
 
-	test("fetches real state commitment for EVM chain", async () => {
+	test("fetches real state commitment on Hyperbridge", async () => {
 		const result = await fetchStateCommitmentsSubstrate({
 			api,
 			stateMachineId: "KUSAMA-2030",
@@ -40,28 +40,21 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 	beforeAll(() => {
 		client = createPublicClient({
 			chain: sepolia,
-			transport: http("https://rpc.sepolia.org"),
+			transport: http(
+				"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee",
+			),
 		})
 	})
 
-	test("fetches real state commitment for EVM chain", async () => {
-		// const stateMachineHeight = {
-		// 	id: {
-		// 		state_id: {
-		// 			tag: "Evm" as const,
-		// 			value: 11155111, // Sepolia testnet
-		// 		},
-		// 		consensus_state_id: [69, 84, 72, 48], // ETH0
-		// 	},
-		// 	height: BigInt(100),
-		// }
-
+	test("fetches real state commitment on EVM chain", async () => {
 		const result = await fetchStateCommitmentsEVM({
 			client,
-			stateMachineId: "EVM-11155111",
+			stateMachineId: "KUSAMA-4009",
 			consensusStateId: "ETH0",
-			height: BigInt(100),
+			height: 3663176n,
 		})
+
+  console.log(result)
 
 		expect(result).toBeDefined()
 		expect(result?.timestamp).toBeDefined()
