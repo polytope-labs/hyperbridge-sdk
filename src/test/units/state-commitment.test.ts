@@ -1,7 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { createPublicClient, http, PublicClient } from "viem"
-import { sepolia } from "viem/chains"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate } from "../../utils/state-machine.helper"
+import { JsonRpcProvider } from "@ethersproject/providers"
 
 describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 	let api: ApiPromise
@@ -35,15 +34,12 @@ describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 })
 
 describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
-	let client: PublicClient
+	let client: JsonRpcProvider
 
 	beforeAll(() => {
-		client = createPublicClient({
-			chain: sepolia,
-			transport: http(
-				"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee",
-			),
-		})
+		client = new JsonRpcProvider(
+			"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee"
+		)
 	})
 
 	test("fetches real state commitment on EVM chain", async () => {
