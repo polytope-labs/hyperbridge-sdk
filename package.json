@@ -46,6 +46,7 @@
 		"@subql/node-ethereum": "latest",
 		"@subql/testing": "latest",
 		"@subql/types": "latest",
+		"@types/node": "^22.13.5",
 		"@types/pino": "^7.0.4",
 		"ethers": "^5.7.2",
 		"prettier": "^3.5.2",

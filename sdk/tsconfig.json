@@ -9,6 +9,10 @@
 		"declaration": true,
 		"sourceMap": true,
 		"rootDir": ".",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"]
+		},
 		"types": ["jest", "node"]
 	},
 	"include": ["src/**/*", "tests/**/*"],

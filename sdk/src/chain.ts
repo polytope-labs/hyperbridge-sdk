@@ -1,9 +1,9 @@
-import { HexString, IEvmConfig, IPostRequest, ISubstrateConfig } from "@polytope-labs/hyperclient"
-import { isEvmChain, isSubstrateChain } from "./utils"
-import { EvmChain, SubstrateChain } from "./chain"
+import { HexString, IEvmConfig, IPostRequest, ISubstrateConfig } from "@/types"
+import { isEvmChain, isSubstrateChain } from "@/utils"
+import { EvmChain, SubstrateChain } from "@/chain"
 
-export * from "./chains/evm"
-export * from "./chains/substrate"
+export * from "@/chains/evm"
+export * from "@/chains/substrate"
 
 /**
  * Type representing an ISMP message.

@@ -1,4 +1,3 @@
-import { HexString, IPostRequest } from "@polytope-labs/hyperclient"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { toHex, hexToBytes, toBytes } from "viem"
@@ -6,8 +5,9 @@ import { match } from "ts-pattern"
 import capitalize from "lodash/capitalize"
 import { u8, Vector } from "scale-ts"
 
-import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "../utils"
-import { IChain, IIsmpMessage } from "../chain"
+import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
+import { IChain, IIsmpMessage } from "@/chain"
+import { HexString, IPostRequest } from "@/types"
 
 export interface SubstrateChainParams {
 	/*

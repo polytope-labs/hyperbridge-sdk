@@ -1,4 +1,3 @@
-import "dotenv/config"
 import { GraphQLClient } from "graphql-request"
 import { HexString } from "@polytope-labs/hyperclient"
 import maxBy from "lodash/maxBy"
@@ -15,9 +14,9 @@ import {
 	RetryConfig,
 	RequestWithStatus,
 } from "./types"
-import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from "./queries"
-import { postRequestCommitment, sleep } from "./utils"
-import { getChain, IChain } from "./chain"
+import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from "@/queries"
+import { postRequestCommitment, sleep } from "@/utils"
+import { getChain, IChain } from "@/chain"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 	[RequestStatus.SOURCE]: 0,
@@ -50,11 +49,11 @@ export class IndexerClient {
 
 	/**
 	 * Queries a request by any of its associated hashes and returns it alongside its statuses
+	 * Statuses will be one of SOURCE, HYPERBRIDGE_DELIVERED and DESTINATION
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
 	 * @returns Latest status and block metadata of the request
-	 * @throws Error if request is not found
 	 */
-	async queryPostRequestWithStatus(hash: string): Promise<RequestWithStatus | undefined> {
+	async queryRequest(hash: string): Promise<RequestWithStatus | undefined> {
 		const self = this
 		const response = await self.withRetry(() =>
 			self.client.request<RequestResponse>(REQUEST_STATUS, {
@@ -65,6 +64,83 @@ export class IndexerClient {
 		if (!request) {
 			return
 		}
+
+		return request
+	}
+
+	/**
+	 * Queries a request by any of its associated hashes and returns it alongside its statuses,
+	 * including any finalization events.
+	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
+	 * @returns Full request data with all inferred status events, including SOURCE_FINALIZED and HYPERBRIDGE_FINALIZED
+	 * @remarks Unlike queryRequest(), this method adds derived finalization status events by querying state machine updates
+	 */
+	async queryRequestWithStatus(hash: string): Promise<RequestWithStatus | undefined> {
+		const self = this
+		const response = await self.withRetry(() =>
+			self.client.request<RequestResponse>(REQUEST_STATUS, {
+				hash,
+			}),
+		)
+		const request = response.requests.nodes[0]
+		if (!request) {
+			return
+		}
+
+		return await self.addFinalizationStatusEvents(request)
+	}
+
+	/**
+	 * Fills in finalization events for a request by querying state machine updates
+	 * @param request - Request to fill finalization events for
+	 * @returns Request with finalization events filled in including SOURCE_FINALIZED and HYPERBRIDGE_FINALIZED statuses
+	 */
+	private async addFinalizationStatusEvents(request: RequestWithStatus): Promise<RequestWithStatus> {
+		const self = this
+
+		// sort by ascending order
+		const sortedMetadata = request.statusMetadata.nodes.sort(
+			(a, b) =>
+				REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
+		)
+
+		// we assume there's always a SOURCE event which contains the blocknumber of the initial request
+		const sourceFinality = await self.queryStateMachineUpdate(
+			request.source,
+			parseInt(sortedMetadata[0].blockNumber),
+		)
+
+		// no finality event found, return request as is
+		if (!sourceFinality) return request
+
+		// Insert finality event into sortedMetadata at index 1
+		sortedMetadata.splice(1, 0, {
+			status: RequestStatus.SOURCE_FINALIZED,
+			blockHash: sourceFinality.blockHash,
+			blockNumber: sourceFinality.height.toString(),
+			transactionHash: sourceFinality.transactionHash,
+			timestamp: sourceFinality.createdAt,
+			chain: self.config.hyperbridge.state_machine,
+		})
+
+		// check if there's a hyperbridge delivered event
+		if (sortedMetadata.length < 3) return request
+
+		const hyperbridgeFinality = await self.queryStateMachineUpdate(
+			request.source,
+			parseInt(sortedMetadata[2].blockNumber),
+		)
+		if (!hyperbridgeFinality) return request
+
+		// Insert finality into sortedMetadata at index 3
+		sortedMetadata.splice(3, 0, {
+			status: RequestStatus.HYPERBRIDGE_FINALIZED,
+			blockHash: hyperbridgeFinality.blockHash,
+			blockNumber: hyperbridgeFinality.height.toString(),
+			transactionHash: hyperbridgeFinality.transactionHash,
+			timestamp: hyperbridgeFinality.createdAt,
+			chain: request.dest,
+		})
 
 		return request
 	}
@@ -98,11 +174,11 @@ export class IndexerClient {
 		const self = this
 
 		// wait for request to be created
-		let request = await self.queryPostRequestWithStatus(hash)
+		let request = await self.queryRequest(hash)
 		while (true) {
 			if (!request) {
 				await sleep(self.config.pollInterval)
-				request = await self.queryPostRequestWithStatus(hash)
+				request = await self.queryRequest(hash)
 				continue
 			}
 			break
@@ -149,7 +225,7 @@ export class IndexerClient {
 		let status: RequestStatus | undefined = undefined
 
 		while (true) {
-			const request = await self.queryPostRequestWithStatus(hash)
+			const request = await self.queryRequest(hash)
 			if (!request) {
 				await sleep(self.config.pollInterval)
 				continue
@@ -261,9 +337,8 @@ export class IndexerClient {
 					break
 				}
 
-				// final cases
-				case RequestStatus.HYPERBRIDGE_FINALIZED:
-				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+				// request has been finalized by hyperbridge
+				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					if (sortedMetadata.length < 3) {
 						// also not really sure what to do here
 						break
@@ -271,18 +346,19 @@ export class IndexerClient {
 
 					const metadata = self.extractBlockMetadata(sortedMetadata[2])
 					yield {
-						status: RequestStatus.HYPERBRIDGE_DELIVERED,
+						status: RequestStatus.DESTINATION,
 						metadata: {
 							blockHash: metadata.blockHash,
 							blockNumber: metadata.blockNumber,
 							transactionHash: metadata.transactionHash,
 						},
 					}
+					status = RequestStatus.DESTINATION
+					break
 				}
-			}
 
-			if (status === RequestStatus.DESTINATION) {
-				return
+				case RequestStatus.DESTINATION:
+					return
 			}
 
 			await sleep(self.config.pollInterval)
@@ -332,10 +408,9 @@ export class IndexerClient {
 	 * Query for a state machine update event greater than or equal to the given height
 	 * @params statemachineId - ID of the state machine
 	 * @params height - Starting block height
-	 * @params chain - Chain identifier
 	 * @returns Closest state machine update
 	 */
-	async queryStateMachineUpdate(statemachineId: string, height: number): Promise<StateMachineUpdate> {
+	async queryStateMachineUpdate(statemachineId: string, height: number): Promise<StateMachineUpdate | undefined> {
 		const response = await this.withRetry(() =>
 			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES, {
 				statemachineId,

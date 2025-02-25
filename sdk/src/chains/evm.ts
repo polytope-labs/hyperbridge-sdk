@@ -7,6 +7,9 @@ import {
 	http,
 	PublicClient,
 	toHex,
+	keccak256,
+	toBytes,
+	pad,
 } from "viem"
 import {
 	mainnet,
@@ -22,24 +25,17 @@ import {
 	gnosis,
 	gnosisChiado,
 } from "viem/chains"
-import EvmHost from "../abis/evmHost"
-import { IChain, IIsmpMessage } from "../chain"
-import { HexString } from "@polytope-labs/hyperclient"
-import { match } from "ts-pattern"
-import HandlerV1 from "../abis/handler"
 
-import { keccak256, toBytes, pad } from "viem"
 import type { GetProofParameters, Hex } from "viem"
 import flatten from "lodash/flatten"
 import zip from "lodash/zip"
-import {
-	calculateMMRSize,
-	EvmStateProof,
-	isValidUTF8,
-	mmrPositionToKIndex,
-	MmrProof,
-	SubstrateStateProof,
-} from "../utils"
+import { match } from "ts-pattern"
+
+import EvmHost from "@/abis/evmHost"
+import { IChain, IIsmpMessage } from "@/chain"
+import HandlerV1 from "@/abis/handler"
+import { calculateMMRSize, EvmStateProof, mmrPositionToKIndex, MmrProof, SubstrateStateProof } from "@/utils"
+import { HexString } from "@/types"
 
 const chains = {
 	[mainnet.id]: mainnet,

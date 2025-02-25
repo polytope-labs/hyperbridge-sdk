@@ -1,4 +1,4 @@
-import { HexString, IPostRequest } from "@polytope-labs/hyperclient"
+import { HexString, IPostRequest } from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
 
 export * from "./utils/mmr"

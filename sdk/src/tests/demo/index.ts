@@ -4,7 +4,7 @@ const client = new IndexerClient()
 
 async function testStatus(hash: string) {
 	// Test status query
-	const status = await client.queryPostRequestWithStatus(hash)
+	const status = await client.queryRequest(hash)
 	console.log("Status:", status)
 }
 
