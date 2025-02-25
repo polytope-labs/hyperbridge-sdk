@@ -50,7 +50,7 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 			height: 3663176n,
 		})
 
-  console.log(result)
+  console.log(Number(result?.timestamp)/2)
 
 		expect(result).toBeDefined()
 		expect(result?.timestamp).toBeDefined()

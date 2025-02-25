@@ -152,7 +152,7 @@ export async function fetchStateCommitmentsEVM(params: {
 	const stateRootValue = await client.getStorageAt(hostContract, bytesToHex(stateRootKey))
 
 	// Parse timestamp from big-endian bytes to BigInt
-	const timestamp = BigInt(timestampValue)
+	const timestamp = BigInt(timestampValue) / 2n
 
 	// Create the StateCommitment object
 	return {

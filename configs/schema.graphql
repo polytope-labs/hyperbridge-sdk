@@ -250,7 +250,7 @@ type StateMachineUpdateEvent
 	"""
 	The state machine commitment timestamp
 	"""
-	commitmentTimestamp: Int!
+	commitmentTimestamp: BigInt!
 
 	"""
 	The timestamp of the event

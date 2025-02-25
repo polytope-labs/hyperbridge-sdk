@@ -53,7 +53,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: Number(stateCommitment.timestamp),
+			commitmentTimestamp: BigInt(stateCommitment.timestamp),
 			createdAt: new Date(timestamp * 1000),
 		})
 
@@ -99,7 +99,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: Number(stateCommitment.timestamp),
+			commitmentTimestamp: BigInt(stateCommitment.timestamp),
 			createdAt: new Date(timestamp * 1000),
 		})
 
