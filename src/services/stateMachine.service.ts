@@ -1,6 +1,6 @@
 import { StateMachineUpdateEvent } from "../../configs/src/types"
 import { getConsensusStateId } from "../constants"
-import { fetchStateCommitmentsSubstrate, getStateId } from "../utils/state-machine.helper"
+import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate, getStateId } from "../utils/state-machine.helper"
 
 // Arguments to functions that create StateMachineUpdated events
 export interface ICreateStateMachineUpdatedEventArgs {
@@ -29,6 +29,21 @@ export class StateMachineService {
 			})}`,
 		)
 
+		const consensusStateId = getConsensusStateId(stateMachineId)
+		logger.info(`Consensus State ID: ${consensusStateId}`)
+
+		const stateCommitment	= await fetchStateCommitmentsEVM({
+			client: api,
+			stateMachineId,
+			consensusStateId,
+			height: BigInt(height.toString()),
+		})
+
+		if (!stateCommitment) {
+			logger.info(`State Commitment not found for ${stateMachineId}`)
+			return
+		}
+
 		const event = StateMachineUpdateEvent.create({
 			id: `${chain}_${transactionHash}_${stateMachineId}_${height}`,
 			stateMachineId,
@@ -38,7 +53,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: BigInt(0),
+			commitmentTimestamp: Number(stateCommitment.timestamp),
 			createdAt: new Date(timestamp * 1000),
 		})
 
@@ -84,7 +99,7 @@ export class StateMachineService {
 			transactionIndex: Number(transactionIndex),
 			blockHash,
 			blockNumber: Number(blockNumber),
-			commitmentTimestamp: stateCommitment.timestamp,
+			commitmentTimestamp: Number(stateCommitment.timestamp),
 			createdAt: new Date(timestamp * 1000),
 		})
 
