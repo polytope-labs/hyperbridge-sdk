@@ -248,6 +248,11 @@ type StateMachineUpdateEvent
 	transactionIndex: Int!
 
 	"""
+	The state machine commitment timestamp
+	"""
+	commitmentTimestamp: BigInt!
+
+	"""
 	The timestamp of the event
 	"""
 	createdAt: Date! @index

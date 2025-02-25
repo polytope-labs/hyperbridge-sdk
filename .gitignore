@@ -10,6 +10,8 @@ dist/
 # lock files
 yarn.lock
 package-lock.json
+pnpm-lock.yaml
+sdk/pnpm-lock.yaml
 
 # Compiled Java class files
 *.class

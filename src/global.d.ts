@@ -1,12 +1,15 @@
 import { Store } from "@subql/types-core"
 import { Provider, Signer } from "ethers"
 import { Logger } from "@subql/types"
+import { ApiPromise } from "@polkadot/api"
 
 declare global {
 	const store: Store
-	const api: Provider | Signer
+	const api: Provider | Signer | ApiPromise
 	const logger: Logger
 	const chainId: string
+	const TextEncoder: TextEncoder
+	const TextDecoder: TextDecoder
 }
 
 export {}
