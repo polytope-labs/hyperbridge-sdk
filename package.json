@@ -12,7 +12,7 @@
 		"dev": "CURRENT_ENV=test subql codegen -f=configs && subql build && npm run start:local",
 		"prod": "export CURRENT_ENV=prod subql codegen && subql build && npm run start:docker",
 		"prepack": "rm -rf dist && npm run build",
-		"test": "subql build && subql-node-ethereum -f=base-sepolia.yaml test",
+		"test": "jest --runInBand",
 		"format": "prettier --write ."
 	},
 	"homepage": "https://hyperbridge.network/",

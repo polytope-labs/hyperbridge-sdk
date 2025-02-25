@@ -1,6 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { createPublicClient, http, PublicClient } from "viem"
-import { sepolia } from "viem/chains"
+import { bscTestnet, sepolia } from "viem/chains"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate } from "../../utils/state-machine.helper"
 
 describe("fetchStateCommitmentsSubstrate Integration Test", () => {
@@ -50,8 +50,10 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 
 	beforeAll(() => {
 		client = createPublicClient({
-			chain: sepolia,
-			transport: http("https://rpc.sepolia.org"),
+			chain: bscTestnet,
+			transport: http(
+				"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee",
+			),
 		})
 	})
 
@@ -69,10 +71,12 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 
 		const result = await fetchStateCommitmentsEVM({
 			client,
-			stateMachineId: "EVM-11155111",
-   consensusStateId: "ETH0",
-   height: BigInt(100),
+			stateMachineId: "KUSAMA-4009",
+			consensusStateId: "ETH0",
+			height: BigInt(3663702),
 		})
+
+  console.log(result)
 
 		expect(result).toBeDefined()
 		expect(result?.timestamp).toBeDefined()
