@@ -96,9 +96,9 @@ export async function fetchStateCommitmentsSubstrate(params: {
 
 	if (storage_value.isSome) {
 		// Convert to bytes regardless of input type
-		const bytes = storage_value.value.toU8a()
+		const bytes = storage_value.value.toHex()
 
-		return StateCommitment.dec(bytes)
+		return StateCommitment.dec(hexToBytes(bytes))
 	}
 
 	return null
