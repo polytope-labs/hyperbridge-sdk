@@ -1,5 +1,4 @@
 import { GraphQLClient } from "graphql-request"
-import { HexString } from "@polytope-labs/hyperclient"
 import maxBy from "lodash/maxBy"
 import { pad } from "viem"
 
@@ -13,7 +12,8 @@ import {
 	ClientConfig,
 	RetryConfig,
 	RequestWithStatus,
-} from "./types"
+	HexString,
+} from "@/types"
 import { REQUEST_STATUS, STATE_MACHINE_UPDATES } from "@/queries"
 import { postRequestCommitment, sleep } from "@/utils"
 import { getChain, IChain } from "@/chain"
