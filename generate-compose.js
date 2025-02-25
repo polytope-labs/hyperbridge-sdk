@@ -22,8 +22,6 @@ const generateNodeServices = () => {
   subquery-node-${chain}:
     image: ${image}
     restart: unless-stopped
-    env_file:
-      - ../.env
     environment:
       DB_USER: \${DB_USER}
       DB_PASS: \${DB_PASS}
@@ -70,35 +68,15 @@ const generateDependencies = () => {
 		.join("\n")
 }
 
-const dockerCompose = `services:
-${generateNodeServices()}
-
-  graphql-engine:
-    image: ${GRAPHQL_IMAGE}
-    ports:
-      - 3000:3000
-${generateDependencies()}
-    restart: always
-    env_file:
-      - ../.env
-    environment:
-      DB_USER: \${DB_USER}
-      DB_PASS: \${DB_PASS}
-      DB_DATABASE: \${DB_DATABASE}
-      DB_HOST: \${DB_HOST}
-      DB_PORT: \${DB_PORT}
-    command:
-      - --name=app
-      - --playground
-
+const generatePostgres = () => {
+	if (currentEnv === "test") {
+		return `
   postgres:
     image: postgres:14-alpine
     ports:
       - 5432:5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    env_file:
-      - ../.env
     environment:
       POSTGRES_PASSWORD: \${DB_PASS}
       POSTGRES_USER: \${DB_USER}
@@ -109,8 +87,35 @@ ${generateDependencies()}
       timeout: 5s
       retries: 5
 
+`
+	}
+
+	return ""
+}
+
+const dockerCompose = `services:
+${generateNodeServices()}
+
+  graphql-engine:
+    image: ${GRAPHQL_IMAGE}
+    ports:
+      - 3000:3000
+${generateDependencies()}
+    restart: always
+    environment:
+      DB_USER: \${DB_USER}
+      DB_PASS: \${DB_PASS}
+      DB_DATABASE: \${DB_DATABASE}
+      DB_HOST: \${DB_HOST}
+      DB_PORT: \${DB_PORT}
+    command:
+      - --name=app
+      - --playground
+${generatePostgres()}
+
 volumes:
-  postgres_data:`
+  postgres_data:
+`
 
 fs.writeFileSync(
 	currentEnv === "prod" ? "docker/docker-compose.yml" : "docker/docker-compose.testnet.yml",
