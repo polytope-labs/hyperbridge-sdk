@@ -91,6 +91,24 @@ ${generateDependencies()}
       - --name=app
       - --playground
 
+  postgres:
+    image: postgres:14-alpine
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_PASSWORD: \${DB_PASS}
+      POSTGRES_USER: \${DB_USER}
+      POSTGRES_DB: \${DB_DATABASE}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${DB_USER} -d \${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:`
 
