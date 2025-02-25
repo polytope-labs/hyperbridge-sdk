@@ -90,13 +90,10 @@ export async function fetchStateCommitmentsSubstrate(params: {
 	const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...key, ...encodedStateMachineHeight])
 	const hexKey = bytesToHex(full_key)
 
-	const storage_value: PolkadotOption<Codec> = (await api.rpc.state.getStorage(hexKey)) as PolkadotOption<Codec>
+	const storageValue = await api.rpc.state.getStorage<PolkadotOption<StorageData>>(hexKey)
 
-	if (storage_value.isSome) {
-		// Convert to bytes regardless of input type
-		const bytes = storage_value.value.toU8a()
-
-		return StateCommitment.dec(bytes)
+	if (storageValue.isSome) {
+		return StateCommitment.dec(storageValue.value.toU8a())
 	}
 
 	return null
@@ -179,12 +176,12 @@ function generateStateCommitmentKeys(paraId: bigint, height: bigint): [Uint8Arra
 	const slotBytes = toBytes(pad(`0x${STATE_COMMITMENT_SLOT.toString(16)}`, { size: 32 }))
 
 	// Generate parent map key
-	const parentMapKeyData = concatBytes(stateIdBytes, slotBytes)
+	const parentMapKeyData = new Uint8Array([...stateIdBytes, ...slotBytes])
 	const parentMapKey = hexToBytes(keccak256(toHex(parentMapKeyData)))
 
 	// Generate commitment key
 	const heightBytes = toBytes(pad(`0x${height.toString(16)}`, { size: 32 }))
-	const commitmentKeyData = concatBytes(heightBytes, parentMapKey)
+	const commitmentKeyData = new Uint8Array([...heightBytes, ...parentMapKey])
 
 	// Generate base slot
 	const baseSlotHash = keccak256(toHex(commitmentKeyData))
@@ -196,18 +193,6 @@ function generateStateCommitmentKeys(paraId: bigint, height: bigint): [Uint8Arra
 	const stateRootSlot = hexToBytes(pad(`0x${(baseSlotBigInt + 2n).toString(16)}`, { size: 32 }))
 
 	return [baseSlot, overlaySlot, stateRootSlot]
-}
-
-// Helper function to concatenate Uint8Arrays
-function concatBytes(...arrays: Uint8Array[]): Uint8Array {
-	const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0)
-	const result = new Uint8Array(totalLength)
-	let offset = 0
-	for (const arr of arrays) {
-		result.set(arr, offset)
-		offset += arr.length
-	}
-	return result
 }
 
 const bigIntSerializer = (key: string, value: any) => {
