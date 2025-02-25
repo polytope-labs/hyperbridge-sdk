@@ -89,27 +89,12 @@ export async function fetchStateCommitmentsSubstrate(params: {
 	const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...key, ...encodedStateMachineHeight])
 	const hexKey = bytesToHex(full_key)
 
-	logger.info(`Storage key: ${hexKey}`)
-
 	const storage_value: PolkadotOption<StorageData> = (await api.rpc.state.getStorage(
 		hexKey,
 	)) as PolkadotOption<StorageData>
 
-	logger.info(`Storage value: ${JSON.stringify(storage_value, bigIntSerializer)}`)
-
 	if (storage_value.isSome) {
-		const data = storage_value.value as StorageData | string
-
-		// Log the raw data for debugging
-		logger.info(`Raw storage value: ${data}`)
-
-		const hexData = typeof data === "string" ? data.substring(2) : bytesToHex(data).substring(2)
-		const bytes = new Uint8Array(hexData.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [])
-
-		// Log the processed bytes
-		logger.info(`Processed bytes length: ${bytes.length}`)
-
-		return StateCommitment.dec(bytes)
+		return StateCommitment.dec(storage_value.value)
 	}
 
 	return null

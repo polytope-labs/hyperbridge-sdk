@@ -142,6 +142,8 @@ export class IndexerClient {
 			chain: request.dest,
 		})
 
+		request.statusMetadata.nodes = sortedMetadata
+
 		return request
 	}
 

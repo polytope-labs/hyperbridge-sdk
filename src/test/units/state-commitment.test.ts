@@ -19,22 +19,11 @@ describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 	})
 
 	test("fetches real state commitment for EVM chain", async () => {
-		// const stateMachineHeight = {
-		// 	id: {
-		// 		state_id: {
-		// 			tag: "Kusama" as const,
-		// 			value: 2030, // bifrost paseo testnet
-		// 		},
-		// 		consensus_state_id: [80, 65, 82, 65], // PARA
-		// 	},
-		// 	height: BigInt(1250399),
-		// }
-
 		const result = await fetchStateCommitmentsSubstrate({
 			api,
 			stateMachineId: "KUSAMA-2030",
 			consensusStateId: "PARA",
-			height: BigInt(1250399),
+			height: 1381783n,
 		})
 
 		console.log(result)
@@ -70,8 +59,8 @@ describe("fetchEvmStateCommitmentsFromHeight Integration Test", () => {
 		const result = await fetchStateCommitmentsEVM({
 			client,
 			stateMachineId: "EVM-11155111",
-   consensusStateId: "ETH0",
-   height: BigInt(100),
+			consensusStateId: "ETH0",
+			height: BigInt(100),
 		})
 
 		expect(result).toBeDefined()

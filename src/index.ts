@@ -5,6 +5,7 @@ global.URL = URL
 // Required for ethers to work in node
 import "@ethersproject/shims"
 
+// required for scale-ts
 import "fast-text-encoding"
 
 // @ts-ignore
