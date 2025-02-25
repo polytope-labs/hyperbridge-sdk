@@ -8,8 +8,6 @@ declare global {
 	const api: Provider | Signer | ApiPromise
 	const logger: Logger
 	const chainId: string
-	const TextEncoder: TextEncoder
-	const TextDecoder: TextDecoder
 }
 
 export {}
