@@ -13,6 +13,8 @@ package-lock.json
 pnpm-lock.yaml
 sdk/pnpm-lock.yaml
 
+configs/*.yaml
+
 # Compiled Java class files
 *.class
 
@@ -66,4 +68,5 @@ Thumbs.db
 .DS_Store
 
 .env
-.tsconfig.tsbuildinfo
+.tsconfig
+.tsbuildinfo

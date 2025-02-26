@@ -33,24 +33,52 @@ export const REQUEST_STATUS = `
   }
 `
 
-export const STATE_MACHINE_UPDATES = `
-   query StateMachineUpdates($statemachineId: String!, $height: Int!, $chain: String!) {
-    stateMachineUpdateEvents(
-      filter: {
-        and: [
-          { stateMachineId: { equalTo: $statemachineId } }
-          { height: { greaterThanOrEqualTo: $height } }
-        ]
+export const STATE_MACHINE_UPDATES_BY_HEIGHT = `
+query StateMachineUpdatesByHeight($statemachineId: String!, $height: Int!) {
+	stateMachineUpdateEvents(
+		filter: {
+			and: [
+				{ stateMachineId: { equalTo: $statemachineId } }
+				{ height: { greaterThanOrEqualTo: $height } }
+			]
+		}
+		orderBy: HEIGHT_ASC
+		first: 1
+	) {
+    nodes {
+    	height
+        chain
+        blockHash
+        blockNumber
+        transactionHash
+        commitmentTimestamp
+        transactionIndex
+        stateMachineId
+        createdAt
       }
-      orderBy: CREATED_AT_DESC
-      first: 1
-    ) {
-      nodes {
+    }
+  }
+`
+
+export const STATE_MACHINE_UPDATES_BY_TIMESTAMP = `
+query StateMachineUpdatesByTimestamp($statemachineId: String!, $timestamp: BigFloat!) {
+	stateMachineUpdateEvents(
+		filter: {
+			and: [
+				{ stateMachineId: { equalTo: $statemachineId } }
+				{ commitmentTimestamp: { greaterThanOrEqualTo: $timestamp } }
+			]
+		}
+		orderBy: COMMITMENT_TIMESTAMP_ASC
+		first: 1
+	) {
+    nodes {
         height
         chain
         blockHash
         blockNumber
         transactionHash
+        commitmentTimestamp
         transactionIndex
         stateMachineId
         createdAt

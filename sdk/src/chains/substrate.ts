@@ -1,6 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { RpcWebSocketClient } from "rpc-websocket-client"
-import { toHex, hexToBytes, toBytes } from "viem"
+import { toHex, hexToBytes, toBytes, concat, bytesToHex } from "viem"
 import { match } from "ts-pattern"
 import capitalize from "lodash/capitalize"
 import { u8, Vector } from "scale-ts"
@@ -8,6 +8,7 @@ import { u8, Vector } from "scale-ts"
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
 import { HexString, IPostRequest } from "@/types"
+import { createSubmittable } from "@polkadot/api/submittable"
 
 export interface SubstrateChainParams {
 	/*
@@ -36,6 +37,32 @@ export class SubstrateChain implements IChain {
 		this.api = await ApiPromise.create({
 			provider: wsProvider,
 		})
+	}
+
+	/**
+	 * Returns the storage key for a request receipt in the child trie
+	 * The request commitment is the key
+	 * @param key - The H256 hash key (as a 0x-prefixed hex string)
+	 * @returns The storage key as a hex string
+	 */
+	requestReceiptKey(key: HexString): HexString {
+		const prefix = new TextEncoder().encode("RequestReceipts")
+
+		const keyBytes = hexToBytes(key)
+
+		// Concatenate the prefix and key bytes
+		return bytesToHex(new Uint8Array([...prefix, ...keyBytes]))
+	}
+
+	/**
+	 * Returns the current timestamp of the chain.
+	 * @returns {Promise<bigint>} The current timestamp.
+	 */
+	async timestamp(): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+
+		const now = await this.api.query.timestamp.now()
+		return BigInt(now.toJSON() as number)
 	}
 
 	/**
@@ -70,6 +97,57 @@ export class SubstrateChain implements IChain {
 		} else {
 			throw new Error(`Unsupported chain type for counterparty: ${counterparty}`)
 		}
+	}
+
+	/**
+	 * Submit an unsigned ISMP transaction to the chain. Resolves when the transaction is finalized.
+	 * @param message - The message to be submitted.
+	 */
+	async submitUnsigned(message: IIsmpMessage): Promise<{ transactionHash: string; blockHash: string }> {
+		if (!this.api) throw new Error("API not initialized")
+		const encoded = this.encode(message)
+		const tx = this.api.tx(encoded)
+		return new Promise(async (resolve, reject) => {
+			const unsub = await tx.send(({ isFinalized, isError, dispatchError, txHash, status }) => {
+				if (isFinalized) {
+					console.trace("Unsigned transaction submitted successfully")
+					unsub()
+					resolve({
+						transactionHash: txHash.toHex(),
+						blockHash: status.asInBlock.toHex(),
+					})
+				} else if (isError) {
+					console.error("Unsigned transaction failed")
+					unsub()
+					reject(dispatchError)
+				}
+			})
+		})
+	}
+
+	/**
+	 * Query the state proof for a given set of keys at a specific block height.
+	 * @param at The block height to query the state proof at.
+	 * @param keys The keys to query the state proof for.
+	 * @returns The state proof as a hexadecimal string.
+	 */
+	async queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
+		const rpc = new RpcWebSocketClient()
+		await rpc.connect(this.params.ws)
+		const encodedKeys = keys.map((key) => Array.from(hexToBytes(key)))
+		const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), encodedKeys])
+		const basicProof = BasicProof.dec(toHex(proof.proof))
+		const encoded = SubstrateStateProof.enc({
+			tag: "OverlayProof",
+			value: {
+				hasher: {
+					tag: this.params.hasher,
+					value: undefined,
+				},
+				storageProof: basicProof,
+			},
+		})
+		return toHex(encoded)
 	}
 
 	/**
@@ -133,21 +211,13 @@ export class SubstrateChain implements IChain {
 	}
 
 	/**
-	 * Returns the current timestamp of the chain.
-	 * @returns {Promise<bigint>} The current timestamp.
-	 */
-	async timestamp(): Promise<bigint> {
-		const now = await this.api?.query.timestamp.now()
-		return BigInt(now?.toJSON() as number)
-	}
-
-	/**
 	 * Returns the index of a pallet by its name, by looking up the pallets in the runtime metadata.
 	 * @param {string} name - The name of the pallet.
 	 * @returns {number} The index of the pallet.
 	 */
 	private getPalletIndex(name: string): number {
-		const pallets = this.api!.runtimeMetadata.asLatest.pallets.entries()
+		if (!this.api) throw new Error("API not initialized")
+		const pallets = this.api.runtimeMetadata.asLatest.pallets.entries()
 
 		for (const p of pallets) {
 			if (p[1].name.toString() === name) {

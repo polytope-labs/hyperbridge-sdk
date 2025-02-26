@@ -1,3 +1,5 @@
+import { Hex } from "viem"
+
 export type HexString = `0x${string}`
 
 export interface IConfig {
@@ -13,33 +15,33 @@ export interface IConfig {
 
 export interface IEvmConfig {
 	// rpc url of the chain
-	rpc_url: string
+	rpcUrl: string
 	// state machine identifier as a string
-	state_machine: string
+	stateMachineId: string
 	// contract address of the `IsmpHost` on this chain
-	host_address: string
+	host: string
 	// consensus state identifier of this chain on hyperbridge
-	consensus_state_id: string
+	consensusStateId: string
 }
 
 export interface ISubstrateConfig {
 	// rpc url of the chain
-	rpc_url: string
+	wsUrl: string
 	// consensus state identifier of this chain on hyperbridge
-	consensus_state_id: string
+	consensusStateId: string
 	// consensus state identifier of this chain on hyperbridge
-	hash_algo: "Keccak" | "Blake2"
+	hasher: "Keccak" | "Blake2"
 	// state machine identifier as a string
-	state_machine: string
+	stateMachineId: string
 }
 
 export interface IHyperbridgeConfig {
 	// websocket rpc endpoint for hyperbridge
-	rpc_url: string
+	wsUrl: string
 	// state machine identifier as a string
-	state_machine: string
+	stateMachineId: string
 	// consensus state identifier of hyperbridge on the destination chain
-	consensus_state_id: string
+	consensusStateId: string
 }
 
 export interface IPostRequest {
@@ -129,6 +131,14 @@ export enum RequestStatus {
 	HYPERBRIDGE_TIMED_OUT = "HYPERBRIDGE_TIMED_OUT",
 }
 
+export enum TimeoutStatus {
+	PENDING_TIMEOUT = "PENDING_TIMEOUT",
+	DESTINATION_FINALIZED = "DESTINATION_FINALIZED",
+	HYPERBRIDGE_TIMED_OUT = "HYPERBRIDGE_TIMED_OUT",
+	HYPERBRIDGE_FINALIZED_TIMEOUT = "HYPERBRIDGE_FINALIZED_TIMEOUT",
+	TIMED_OUT = "TIMED_OUT",
+}
+
 export enum HyperClientStatus {
 	PENDING = "PENDING",
 	SOURCE_FINALIZED = "SOURCE_FINALIZED",
@@ -147,8 +157,13 @@ export interface BlockMetadata {
 	calldata?: string
 }
 
-export interface StatusResponse {
-	status: RequestStatus | HyperClientStatus
+export interface PostRequestStatus {
+	status: RequestStatus
+	metadata: Partial<BlockMetadata>
+}
+
+export interface PostRequestTimeoutStatus {
+	status: TimeoutStatus
 	metadata?: Partial<BlockMetadata>
 }
 
@@ -165,9 +180,111 @@ export interface StateMachineUpdate {
 
 export interface RequestResponse {
 	requests: {
-		nodes: Array<RequestWithStatus>
+		nodes: Array<{
+			source: string
+			dest: string
+			to: HexString
+			from: HexString
+			nonce: bigint
+			body: HexString
+			timeoutTimestamp: bigint
+			statusMetadata: {
+				nodes: Array<{
+					blockHash: string
+					blockNumber: string
+					timestamp: string
+					chain: string
+					status: string
+					transactionHash: string
+				}>
+			}
+		}>
 	}
 }
+
+export type RequestStatusWithMetadata =
+	| {
+			status: RequestStatus.SOURCE
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: RequestStatus.SOURCE_FINALIZED
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: RequestStatus.HYPERBRIDGE_DELIVERED
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: RequestStatus.HYPERBRIDGE_FINALIZED
+			metadata: {
+				calldata: Hex
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: RequestStatus.DESTINATION
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: TimeoutStatus.PENDING_TIMEOUT
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: TimeoutStatus.DESTINATION_FINALIZED
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: TimeoutStatus.HYPERBRIDGE_TIMED_OUT
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT
+			metadata: {
+				calldata: Hex
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
+	| {
+			status: TimeoutStatus.TIMED_OUT
+			metadata: {
+				blockHash: string
+				blockNumber: number
+				transactionHash: string
+			}
+	  }
 
 export interface RequestWithStatus {
 	source: string
@@ -177,16 +294,7 @@ export interface RequestWithStatus {
 	nonce: bigint
 	body: HexString
 	timeoutTimestamp: bigint
-	statusMetadata: {
-		nodes: Array<{
-			blockHash: string
-			blockNumber: string
-			timestamp: string
-			chain: string
-			status: string
-			transactionHash: string
-		}>
-	}
+	statuses: Array<RequestStatusWithMetadata>
 }
 
 export interface RequestCommitment {

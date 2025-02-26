@@ -61,7 +61,7 @@ services:
       timeout: 5s
       retries: 10
 
-  subquery-node-base-sepolia:
+  subquery-node-gnosis-chiado:
     image: subquerynetwork/subql-node-ethereum:v5.4.0
     restart: unless-stopped
     environment:
@@ -76,7 +76,7 @@ services:
       - ../dist:/app/dist
     command:
       - ${SUB_COMMAND:-}
-      - -f=/app/base-sepolia.yaml
+      - -f=/app/gnosis-chiado.yaml
       - --db-schema=app
       - --workers=${SUBQL_WORKERS:-5}
       - --batch-size=${SUBQL_BATCH_SIZE:-10}
@@ -88,7 +88,39 @@ services:
       - --store-cache-async=false 
       - --store-cache-threshold=100
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://subquery-node-base-sepolia:3000/ready']
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-gnosis-chiado:3000/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  subquery-node-sepolia:
+    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    restart: unless-stopped
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+
+    volumes:
+      - ../configs:/app
+      - ../dist:/app/dist
+    command:
+      - ${SUB_COMMAND:-}
+      - -f=/app/sepolia.yaml
+      - --db-schema=app
+      - --workers=${SUBQL_WORKERS:-5}
+      - --batch-size=${SUBQL_BATCH_SIZE:-10}
+      - --multi-chain
+      - --unsafe
+      - --log-level=info
+      - --historical=false
+      - --block-confirmations=5 
+      - --store-cache-async=false 
+      - --store-cache-threshold=100
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://subquery-node-sepolia:3000/ready']
       interval: 3s
       timeout: 5s
       retries: 10
@@ -113,8 +145,8 @@ services:
     image: postgres:14-alpine
     ports:
       - 5432:5432
-    #volumes:
-    #  - postgres_data:/var/lib/postgresql/data
+    volumes:
+      - ${DB_PATH}:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: ${DB_PASS}
       POSTGRES_USER: ${DB_USER}
@@ -126,6 +158,3 @@ services:
       retries: 5
 
 
-
-volumes:
-  postgres_data:

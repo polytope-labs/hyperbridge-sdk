@@ -76,6 +76,16 @@ export interface IChain {
 	 */
 	timestamp(): Promise<bigint>
 
+	/**
+	 * Returns the state trie key for the request-receipt storage item for the given request commitment.
+	 */
+	requestReceiptKey(commitment: HexString): HexString
+
+	/**
+	 * Query and return the encoded storage proof for the provided keys at the given height.
+	 */
+	queryStateProof(at: bigint, keys: HexString[]): Promise<HexString>
+
 	/*
 	 * Query and return the encoded storage proof for requests
 	 */
@@ -93,27 +103,27 @@ export interface IChain {
  * @returns Chain interface
  */
 export async function getChain(chainConfig: IEvmConfig | ISubstrateConfig): Promise<IChain> {
-	if (isEvmChain(chainConfig.state_machine)) {
+	if (isEvmChain(chainConfig.stateMachineId)) {
 		const config = chainConfig as IEvmConfig
-		const chainId = parseInt(chainConfig.state_machine.split("-")[1])
+		const chainId = parseInt(chainConfig.stateMachineId.split("-")[1])
 		const evmChain = new EvmChain({
 			chainId,
-			url: config.rpc_url,
-			host: config.host_address as any,
+			url: config.rpcUrl,
+			host: config.host as any,
 		})
 
 		return evmChain
-	} else if (isSubstrateChain(chainConfig.state_machine)) {
+	} else if (isSubstrateChain(chainConfig.stateMachineId)) {
 		const config = chainConfig as ISubstrateConfig
 		const substrateChain = new SubstrateChain({
-			ws: config.rpc_url,
-			hasher: config.hash_algo,
+			ws: config.wsUrl,
+			hasher: config.hasher,
 		})
 
 		await substrateChain.connect()
 
 		return substrateChain
 	} else {
-		throw new Error(`Unsupported chain: ${chainConfig.state_machine}`)
+		throw new Error(`Unsupported chain: ${chainConfig.stateMachineId}`)
 	}
 }

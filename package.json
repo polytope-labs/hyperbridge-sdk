@@ -8,7 +8,7 @@
 		"codegen": "subql codegen -f configs",
 		"generate-configs": "node generate-chain-yamls.js && node generate-compose.js",
 		"start:docker": "npm run generate-configs && docker-compose -f docker/docker-compose.yml pull && docker-compose -f docker/docker-compose.yml --env-file .env up --force-recreate --remove-orphans",
-		"start:local": "npm run generate-configs && docker-compose -f docker/docker-compose.testnet.yml --env-file .env up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.testnet.yml rm -fsv",
+		"start:local": "npm run generate-configs && docker-compose -f docker/docker-compose.testnet.yml --env-file .env up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.testnet.yml  --env-file .env rm -fsv",
 		"dev": "CURRENT_ENV=test subql codegen -f=configs && subql build && npm run start:local",
 		"prod": "export CURRENT_ENV=prod subql codegen && subql build && npm run start:docker",
 		"prepack": "rm -rf dist && npm run build",

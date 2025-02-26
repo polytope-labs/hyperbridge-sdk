@@ -49,6 +49,7 @@
 		"@types/lodash": "^4.17.15",
 		"dotenv": "^16.4.7",
 		"jest": "^29.2.6",
+		"log-timestamp": "^0.3.0",
 		"ts-jest": "^29.2.6",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.7.3"

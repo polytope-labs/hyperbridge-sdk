@@ -86,6 +86,15 @@ export class EvmChain implements IChain {
 	}
 
 	/**
+	 * Derives the key for the request receipt.
+	 * @param {HexString} commitment - The commitment to derive the key from.
+	 * @returns {HexString} The derived key.
+	 */
+	requestReceiptKey(commitment: HexString): HexString {
+		return deriveMapKey(hexToBytes(commitment), REQUEST_RECEIPTS_SLOT)
+	}
+
+	/**
 	 * Queries the proof of the requests.
 	 * @param {HexString[]} requests - The requests to query.
 	 * @param {string} counterparty - The counterparty address.
@@ -99,6 +108,37 @@ export class EvmChain implements IChain {
 		const config: GetProofParameters = {
 			address: this.params.host,
 			storageKeys: commitmentKeys,
+		}
+		if (!at) {
+			config.blockTag = "latest"
+		} else {
+			config.blockNumber = at
+		}
+		const proof = await self.publicClient.getProof(config)
+		const flattenedProof = Array.from(new Set(flatten(proof.storageProof.map((item) => item.proof))))
+
+		const encoded = EvmStateProof.enc({
+			contractProof: proof.accountProof.map((item) => Array.from(hexToBytes(item))),
+			storageProof: [
+				[Array.from(hexToBytes(self.params.host)), flattenedProof.map((item) => Array.from(hexToBytes(item)))],
+			],
+		})
+
+		return toHex(encoded)
+	}
+
+	/**
+	 * Query and return the encoded storage proof for the provided keys at the given height.
+	 * @param {bigint} at - The block height at which to query the storage proof.
+	 * @param {HexString[]} keys - The keys for which to query the storage proof.
+	 * @returns {Promise<HexString>} The encoded storage proof.
+	 */
+	async queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
+		const self = this
+
+		const config: GetProofParameters = {
+			address: this.params.host,
+			storageKeys: keys,
 		}
 		if (!at) {
 			config.blockTag = "latest"
@@ -225,6 +265,21 @@ export class EvmChain implements IChain {
  * Slot for storing request commitments.
  */
 export const REQUEST_COMMITMENTS_SLOT = 0n
+
+/**
+ * Slot index for response commitments map
+ */
+export const RESPONSE_COMMITMENTS_SLOT = 1n
+
+/**
+ * Slot index for requests receipts map
+ */
+export const REQUEST_RECEIPTS_SLOT = 2n
+
+/**
+ * Slot index for response receipts map
+ */
+export const RESPONSE_RECEIPTS_SLOT = 3n
 
 function requestCommitmentKey(key: Hex): Hex {
 	// First derive the map key

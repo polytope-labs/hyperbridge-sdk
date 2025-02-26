@@ -5,4 +5,5 @@ query:
 projects:
   - ./hyperbridge-gargantua.yaml
   - ./bsc-chapel.yaml
-  - ./base-sepolia.yaml
+  - ./gnosis-chiado.yaml
+  - ./sepolia.yaml

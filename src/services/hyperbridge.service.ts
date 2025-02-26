@@ -21,8 +21,8 @@ export class HyperBridgeService {
 		const { args, address } = event
 		let { body, dest } = args
 
-		const protocolFee = await this.computeProtocolFeeFromHexData(address, body, dest)
 		try {
+			const protocolFee = await this.computeProtocolFeeFromHexData(address, body, dest)
 			await this.incrementProtocolFeesEarned(protocolFee, chain)
 			await this.incrementNumberOfSentMessages(chain)
 		} catch (error) {
