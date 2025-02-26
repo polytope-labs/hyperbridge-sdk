@@ -22,11 +22,9 @@ services:
       - --multi-chain
       - --unsafe
       - --log-level=info
-      - --historical=timestamp
-      - --unfinalized 
-      - --block-confirmations=1
+      - --block-confirmations=0
       - --store-cache-async=false
-      - --store-cache-threshold=100
+      - --store-cache-threshold=1
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-hyperbridge-gargantua:3000/ready']
       interval: 3s
@@ -56,10 +54,10 @@ services:
       - --unsafe
       - --log-level=info
       - --historical=timestamp
-      - --unfinalized 
-      - --block-confirmations=1
+      - --unfinalized-blocks
+      - --block-confirmations=0
       - --store-cache-async=false
-      - --store-cache-threshold=100
+      - --store-cache-threshold=1
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-bsc-chapel:3000/ready']
       interval: 3s
@@ -89,10 +87,10 @@ services:
       - --unsafe
       - --log-level=info
       - --historical=timestamp
-      - --unfinalized 
-      - --block-confirmations=1
+      - --unfinalized-blocks
+      - --block-confirmations=0
       - --store-cache-async=false
-      - --store-cache-threshold=100
+      - --store-cache-threshold=1
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-gnosis-chiado:3000/ready']
       interval: 3s
@@ -134,17 +132,17 @@ services:
       bash -c '
          # Start PostgreSQL in the background
         docker-entrypoint.sh postgres &
-        
+
         # Wait for PostgreSQL to become available
         until pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB; do
           echo "Waiting for PostgreSQL to start..."
           sleep 1
         done
-        
+
         # Run our extension creation command - note we use localhost here
         echo "Creating btree_gist extension..."
         psql -v ON_ERROR_STOP=1 -U $$POSTGRES_USER -d $$POSTGRES_DB -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
-        
+
         # Keep container running by waiting for the PostgreSQL process
         wait
       '

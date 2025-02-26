@@ -11,6 +11,9 @@ const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
 const GRAPHQL_IMAGE = "subquerynetwork/subql-query:v2.21.0"
 
 const generateNodeServices = () => {
+	const unfinalized = `
+      - --historical=timestamp
+      - --unfinalized-blocks`
 	return Object.entries(configs)
 		.filter(([chain]) => {
 			const envKey = chain.replace(/-/g, "_").toUpperCase()
@@ -40,12 +43,10 @@ const generateNodeServices = () => {
       - --batch-size=\${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
-      - --log-level=info
-      - --historical=timestamp
-      - --unfinalized 
-      - --block-confirmations=1
+      - --log-level=info${config.type === "substrate" ? "" : unfinalized}
+      - --block-confirmations=0
       - --store-cache-async=false
-      - --store-cache-threshold=100
+      - --store-cache-threshold=1
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
       interval: 3s
@@ -90,17 +91,17 @@ const generatePostgres = () => {
       bash -c '
          # Start PostgreSQL in the background
         docker-entrypoint.sh postgres &
-        
+
         # Wait for PostgreSQL to become available
         until pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB; do
           echo "Waiting for PostgreSQL to start..."
           sleep 1
         done
-        
+
         # Run our extension creation command - note we use localhost here
         echo "Creating btree_gist extension..."
         psql -v ON_ERROR_STOP=1 -U $$POSTGRES_USER -d $$POSTGRES_DB -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
-        
+
         # Keep container running by waiting for the PostgreSQL process
         wait
       '`

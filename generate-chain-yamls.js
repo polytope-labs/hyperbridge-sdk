@@ -2,6 +2,7 @@
 require("dotenv").config()
 
 const fs = require("fs")
+const { RpcWebSocketClient } = require("rpc-websocket-client")
 const { hexToNumber } = require("viem")
 const currentEnv = process.env.CURRENT_ENV || "test"
 const configs = require(`./configs/chain-configs-${currentEnv}.json`)
@@ -33,6 +34,12 @@ const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
 
+	// Expect comma-separated endpoints in env var
+	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
+	const rpc = new RpcWebSocketClient()
+	await rpc.connect(rpcUrl)
+	const header = await rpc.call("chain_getHeader", [])
+	const blockNumber = currentEnv === "test" ? hexToNumber(header.number) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
 	return `# // Auto-generated , DO NOT EDIT
@@ -55,7 +62,7 @@ network:
 ${endpoints}${chainTypesSection}
 dataSources:
   - kind: substrate/Runtime
-    startBlock: ${config.startBlock}
+    startBlock: ${blockNumber}
     mapping:
       file: ./dist/index.js
       handlers:
@@ -118,6 +125,8 @@ const generateEvmYaml = async (chain, config) => {
 	const data = await response.json()
 	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
 
+	console.log({ rpcUrl, blockNumber })
+
 	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
 version: 0.0.1
@@ -138,7 +147,7 @@ network:
 ${endpoints}
 dataSources:
   - kind: ethereum/Runtime
-    startBlock: ${config.startBlock}
+    startBlock: ${blockNumber}
     options:
       abi: ethereumHost
       address: '${config.contracts.ethereumHost}'
@@ -186,7 +195,7 @@ dataSources:
             topics:
               - 'PostResponseTimeoutHandled(bytes32,string)'
   - kind: ethereum/Runtime
-    startBlock: ${config.startBlock}
+    startBlock: ${blockNumber}
     options:
       abi: erc6160ext20
       address: '${config.contracts.erc6160ext20}'
@@ -261,9 +270,12 @@ ${projects}`
 	console.log("Generated subquery-multichain.yaml")
 }
 
-generateAllChainYamls().catch((err) => {
-	console.error("Error generating YAMLs:", err)
-	process.exit(1)
-})
-
-generateMultichainYaml()
+generateAllChainYamls()
+	.then(() => {
+		generateMultichainYaml()
+		process.exit(0)
+	})
+	.catch((err) => {
+		console.error("Error generating YAMLs:", err)
+		process.exit(1)
+	})

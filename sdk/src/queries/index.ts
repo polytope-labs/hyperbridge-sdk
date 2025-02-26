@@ -2,14 +2,12 @@ export const REQUEST_STATUS = `
   query RequestStatus($hash: String!) {
     requests(
       filter: {
-        statusMetadata: {
-          some: { 
-            or: [
-              { transactionHash: { equalTo: $hash } },
-              { blockHash: { equalTo: $hash } }
-            ]
-          }
-        }
+        or: [
+          { commitment: { equalTo: $hash } }
+          { hyperbridgeTransactionHash: { equalTo: $hash } }
+          { sourceTransactionHash: { equalTo: $hash } }
+          { destinationTransactionHash: { equalTo: $hash } }
+        ]
       }
     ) {
       nodes {

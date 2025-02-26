@@ -19,7 +19,6 @@ import {
 import { REQUEST_STATUS, STATE_MACHINE_UPDATES_BY_HEIGHT, STATE_MACHINE_UPDATES_BY_TIMESTAMP } from "@/queries"
 import { postRequestCommitment, sleep } from "@/utils"
 import { getChain, IChain, SubstrateChain } from "@/chain"
-import { cond } from "lodash"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 	[RequestStatus.SOURCE]: 0,
@@ -51,7 +50,7 @@ export class IndexerClient {
 	}
 
 	/**
-	 * Creates a new HyperIndexerClient instance
+	 * Creates a new IndexerClient instance
 	 */
 	constructor(config: ClientConfig) {
 		this.client = new GraphQLClient(config?.url || "http://localhost:3000/graphql")
@@ -74,16 +73,24 @@ export class IndexerClient {
 
 		if (!response.requests.nodes[0]) return
 
+		const statuses = response.requests.nodes[0].statusMetadata.nodes.map((item) => ({
+			status: item.status as any,
+			metadata: {
+				blockHash: item.blockHash,
+				blockNumber: parseInt(item.blockNumber),
+				transactionHash: item.transactionHash,
+			},
+		}))
+
+		// sort by ascending order
+		const sorted = statuses.sort(
+			(a, b) =>
+				REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
+		)
+
 		const request: RequestWithStatus = {
 			...response.requests.nodes[0],
-			statuses: response.requests.nodes[0].statusMetadata.nodes.map((item) => ({
-				status: item.status as any,
-				metadata: {
-					blockHash: item.blockHash,
-					blockNumber: parseInt(item.blockNumber),
-					transactionHash: item.transactionHash,
-				},
-			})),
+			statuses: sorted,
 		}
 
 		return request
@@ -104,12 +111,11 @@ export class IndexerClient {
 		)
 
 		// we assume there's always a SOURCE event which contains the blocknumber of the initial request
-		const sourceFinality = await self.queryStateMachineUpdateByHeight(
-			request.source,
-			self.config.hyperbridge.stateMachineId,
-
-			sortedMetadata[0].metadata.blockNumber,
-		)
+		const sourceFinality = await self.queryStateMachineUpdateByHeight({
+			statemachineId: request.source,
+			height: sortedMetadata[0].metadata.blockNumber,
+			chain: self.config.hyperbridge.stateMachineId,
+		})
 
 		// no finality event found, return request as is
 		if (!sourceFinality) return request
@@ -127,11 +133,11 @@ export class IndexerClient {
 		// check if there's a hyperbridge delivered event
 		if (sortedMetadata.length < 3) return request
 
-		const hyperbridgeFinality = await self.queryStateMachineUpdateByHeight(
-			request.source,
-			self.config.hyperbridge.stateMachineId,
-			sortedMetadata[2].metadata.blockNumber,
-		)
+		const hyperbridgeFinality = await self.queryStateMachineUpdateByHeight({
+			statemachineId: self.config.hyperbridge.stateMachineId,
+			height: sortedMetadata[2].metadata.blockNumber,
+			chain: request.dest,
+		})
 		if (!hyperbridgeFinality) return request
 
 		const destChain = await getChain(self.config.dest)
@@ -177,6 +183,8 @@ export class IndexerClient {
 		// insert it
 
 		request.statuses = sortedMetadata
+		// @ts-ignore
+		delete request.statusMetadata
 
 		return request
 	}
@@ -198,16 +206,23 @@ export class IndexerClient {
 
 		if (!response.requests.nodes[0]) return
 
-		const request = {
+		const statuses = response.requests.nodes[0].statusMetadata.nodes.map((item) => ({
+			status: item.status as any,
+			metadata: {
+				blockHash: item.blockHash,
+				blockNumber: parseInt(item.blockNumber),
+				transactionHash: item.transactionHash,
+			},
+		}))
+		// sort by ascending order
+		const sorted = statuses.sort(
+			(a, b) =>
+				REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
+		)
+
+		const request: RequestWithStatus = {
 			...response.requests.nodes[0],
-			statuses: response.requests.nodes[0].statusMetadata.nodes.map((item) => ({
-				status: item.status as any,
-				metadata: {
-					blockHash: item.blockHash,
-					blockNumber: parseInt(item.blockNumber),
-					transactionHash: item.transactionHash,
-				},
-			})),
+			statuses: sorted,
 		}
 
 		return await self.addFinalizationStatusEvents(request)
@@ -320,11 +335,11 @@ export class IndexerClient {
 				}
 
 				case TimeoutStatus.HYPERBRIDGE_TIMED_OUT:
-					const update = await self.queryStateMachineUpdateByHeight(
-						request.source,
-						self.config.hyperbridge.stateMachineId,
-						latest.metadata.blockNumber,
-					)
+					const update = await self.queryStateMachineUpdateByHeight({
+						statemachineId: request.source,
+						chain: self.config.hyperbridge.stateMachineId,
+						height: latest.metadata.blockNumber,
+					})
 					if (!update) break
 					const proof = await hyperbridge.queryStateProof(BigInt(update.height), [
 						hyperbridge.requestReceiptKey(commitment),
@@ -443,39 +458,33 @@ export class IndexerClient {
 	private async *postRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
 		const self = this
 		let status = RequestStatus.SOURCE
-
+		let request = await self.queryRequest(hash)
 		while (true) {
-			const request = await self.queryRequest(hash)
 			if (!request) {
 				await sleep(self.config.pollInterval)
+				request = await self.queryRequest(hash)
 				continue
 			}
+			break
+		}
 
-			// sort by ascending order
-			const sortedMetadata = request.statuses.sort(
-				(a, b) =>
-					REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] -
-					REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
-			)
+		const latestMetadata = request.statuses[request.statuses.length - 1]
+		// start with the latest status
+		status = maxBy(
+			[status, latestMetadata.status as RequestStatus],
+			(item) => REQUEST_STATUS_WEIGHTS[item as RequestStatus],
+		)!
 
-			const latestMetadata = sortedMetadata[sortedMetadata.length - 1]
-			const metadata = latestMetadata.metadata
-
-			// we're always interested in the latest status
-			status = maxBy(
-				[status, latestMetadata.status as RequestStatus],
-				(item) => REQUEST_STATUS_WEIGHTS[item as RequestStatus],
-			)!
-
+		while (true) {
 			switch (status) {
 				// request has been dispatched from source chain
 				case RequestStatus.SOURCE: {
 					// query the latest state machine update for the source chain
-					const sourceUpdate = await self.queryStateMachineUpdateByHeight(
-						request.source,
-						self.config.hyperbridge.stateMachineId,
-						metadata.blockNumber,
-					)
+					const sourceUpdate = await self.queryStateMachineUpdateByHeight({
+						statemachineId: request.source,
+						height: request.statuses[0].metadata.blockNumber,
+						chain: self.config.hyperbridge.stateMachineId,
+					})
 					if (!sourceUpdate) break
 
 					yield {
@@ -494,55 +503,36 @@ export class IndexerClient {
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (true) {
-						const request = await self.queryRequest(hash)
+						request = await self.queryRequest(hash)
 						if (!request || request.statuses.length < 2) {
 							await sleep(self.config.pollInterval)
 							continue
 						}
-
-						// sort by ascending order
-						const sortedMetadata = request.statuses.sort(
-							(a, b) =>
-								REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] -
-								REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
-						)
-
-						const metadata = sortedMetadata[1].metadata
-
-						yield {
-							status: RequestStatus.HYPERBRIDGE_DELIVERED,
-							metadata: {
-								blockHash: metadata.blockHash,
-								blockNumber: metadata.blockNumber,
-								transactionHash: metadata.transactionHash,
-							},
-						}
-						status = RequestStatus.HYPERBRIDGE_DELIVERED
 						break
 					}
+
+					yield {
+						status: RequestStatus.HYPERBRIDGE_DELIVERED,
+						metadata: {
+							blockHash: request.statuses[1].metadata.blockHash,
+							blockNumber: request.statuses[1].metadata.blockNumber,
+							transactionHash: request.statuses[1].metadata.transactionHash,
+						},
+					}
+					status = RequestStatus.HYPERBRIDGE_DELIVERED
 					break
 				}
 
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
-					// not really sure what to do here
-					if (sortedMetadata.length < 2) break
-
 					// Get the latest state machine update for hyperbridge on the destination chain
-					const hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight(
-						self.config.hyperbridge.stateMachineId,
-						request.dest,
-						sortedMetadata[1].metadata.blockNumber,
-					)
+					const hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight({
+						statemachineId: self.config.hyperbridge.stateMachineId,
+						height: request.statuses[1].metadata.blockNumber,
+						chain: request.dest,
+					})
 
 					if (!hyperbridgeFinalized) break
-
-					console.log(
-						"Hyperbridge finalized: ",
-						sortedMetadata[1].metadata.blockNumber,
-						"at: ",
-						JSON.stringify(hyperbridgeFinalized),
-					)
 
 					const destChain = await getChain(self.config.dest)
 					const hyperbridge = await getChain({
@@ -550,15 +540,11 @@ export class IndexerClient {
 						hasher: "Keccak",
 					})
 
-					console.log("Querying Hyperbridge for proof...", JSON.stringify(sortedMetadata, null, 4))
-
 					const proof = await hyperbridge.queryRequestsProof(
 						[postRequestCommitment(request)],
 						request.dest,
-						BigInt(hyperbridgeFinalized.blockNumber),
+						BigInt(hyperbridgeFinalized.height),
 					)
-
-					console.log("Constructing calldata...")
 
 					const calldata = destChain.encode({
 						kind: "PostRequest",
@@ -571,8 +557,6 @@ export class IndexerClient {
 						requests: [request],
 						signer: pad("0x"),
 					})
-
-					console.log("Sending transaction...")
 
 					yield {
 						status: RequestStatus.HYPERBRIDGE_FINALIZED,
@@ -589,18 +573,22 @@ export class IndexerClient {
 
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
-					if (sortedMetadata.length < 3) {
-						// also not really sure what to do here
+					// wait for the request to be delivered on Hyperbridge
+					while (true) {
+						request = await self.queryRequest(hash)
+						if (!request || request.statuses.length < 3) {
+							await sleep(self.config.pollInterval)
+							continue
+						}
 						break
 					}
 
-					const metadata = sortedMetadata[2].metadata
 					yield {
 						status: RequestStatus.DESTINATION,
 						metadata: {
-							blockHash: metadata.blockHash,
-							blockNumber: metadata.blockNumber,
-							transactionHash: metadata.transactionHash,
+							blockHash: request.statuses[2].metadata.blockHash,
+							blockNumber: request.statuses[2].metadata.blockNumber,
+							transactionHash: request.statuses[2].metadata.transactionHash,
 						},
 					}
 					status = RequestStatus.DESTINATION
@@ -610,7 +598,6 @@ export class IndexerClient {
 				case RequestStatus.DESTINATION:
 					return
 			}
-
 			await sleep(self.config.pollInterval)
 		}
 	}
@@ -648,11 +635,15 @@ export class IndexerClient {
 	 * @params height - Starting block height
 	 * @returns Closest state machine update
 	 */
-	async queryStateMachineUpdateByHeight(
-		statemachineId: string,
-		chain: string,
-		height: number,
-	): Promise<StateMachineUpdate | undefined> {
+	async queryStateMachineUpdateByHeight({
+		statemachineId,
+		height,
+		chain,
+	}: {
+		statemachineId: string
+		chain: string
+		height: number
+	}): Promise<StateMachineUpdate | undefined> {
 		const response = await this.withRetry(() =>
 			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
 				statemachineId,

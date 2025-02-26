@@ -22,10 +22,11 @@ import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
 
 describe("postRequestStatusStream", () => {
-	it("should successfully stream the request status", async () => {
-		const { bscTestnetClient, gnosisChiadoHandler, bscPing, gnosisChiadoClient, gnosisChiadoHost, bscIsmpHost } =
-			await setUp()
-		const indexer = new IndexerClient({
+	let commitment: HexString
+	let indexer: IndexerClient
+	beforeAll(async () => {
+		const { gnosisChiadoHost, bscIsmpHost } = await setUp()
+		indexer = new IndexerClient({
 			source: {
 				consensusStateId: "BSC0",
 				rpcUrl: process.env.BSC_CHAPEL!,
@@ -43,9 +44,12 @@ describe("postRequestStatusStream", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			pollInterval: 10_000, // every second
+			pollInterval: 1_000, // every second
 		})
+	})
 
+	it("should successfully stream the request status", async () => {
+		const { bscTestnetClient, gnosisChiadoHandler, bscPing, gnosisChiadoClient, gnosisChiadoHost } = await setUp()
 		console.log("\n\nSending Post Request\n\n")
 
 		const hash = await bscPing.write.ping([
@@ -75,10 +79,9 @@ describe("postRequestStatusStream", () => {
 
 		const request = event.args
 
-		console.log({ request })
+		console.log("PostRequestEvent", { request })
 
-		const commitment = postRequestCommitment(request)
-
+		commitment = postRequestCommitment(request)
 		const stream = indexer.postRequestStatusStream(commitment)
 
 		for await (const status of stream) {
@@ -97,7 +100,7 @@ describe("postRequestStatusStream", () => {
 				}
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					console.log(
-						`Status ${status.status}, Transaction: https://sepolia-optimism.etherscan.io/tx/${status.metadata.transactionHash}`,
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
 					)
 					const { args, functionName } = decodeFunctionData({
 						abi: HANDLER.ABI,
@@ -111,7 +114,7 @@ describe("postRequestStatusStream", () => {
 							confirmations: 1,
 						})
 
-						console.log(`Transaction submitted: https://sepolia-optimism.etherscan.io/tx/${hash}`)
+						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
 					} catch (e) {
 						console.error("Error self-relaying: ", e)
 					}
@@ -120,13 +123,21 @@ describe("postRequestStatusStream", () => {
 				}
 				case RequestStatus.DESTINATION: {
 					console.log(
-						`Status ${status.status}, Transaction: https://sepolia-optimism.etherscan.io/tx/${status.metadata.transactionHash}`,
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
 					)
 					return
 				}
 			}
 		}
-	}, 7200_000)
+	}, 600_000)
+
+	it("Should query the full request with statuses", async () => {
+		const request = await indexer.queryRequestWithStatus(commitment)
+
+		expect(request?.statuses.length).toBe(5)
+
+		console.log(JSON.stringify(request, null, 4))
+	})
 })
 
 async function setUp() {
