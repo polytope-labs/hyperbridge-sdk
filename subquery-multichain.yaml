@@ -6,4 +6,3 @@ projects:
   - ./hyperbridge-gargantua.yaml
   - ./bsc-chapel.yaml
   - ./gnosis-chiado.yaml
-  - ./sepolia.yaml

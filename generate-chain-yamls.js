@@ -2,6 +2,7 @@
 require("dotenv").config()
 
 const fs = require("fs")
+const { hexToNumber } = require("viem")
 const currentEnv = process.env.CURRENT_ENV || "test"
 const configs = require(`./configs/chain-configs-${currentEnv}.json`)
 
@@ -28,10 +29,26 @@ const generateEndpoints = (chain) => {
 }
 
 // Generate chain-specific YAML files
-const generateSubstrateYaml = (chain, config) => {
+const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
 
+	// Expect comma-separated endpoints in env var
+	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
+	const response = await fetch(rpcUrl, {
+		method: "POST",
+		headers: {
+			accept: "application/json",
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
+			id: 1,
+			jsonrpc: "2.0",
+			method: "eth_blockNumber",
+		}),
+	})
+	const data = await response.json()
+	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
 	return `# // Auto-generated , DO NOT EDIT
@@ -120,7 +137,7 @@ network:
 ${endpoints}
 dataSources:
   - kind: ethereum/Runtime
-    startBlock: ${config.startBlock}
+    startBlock: ${blockNumber}
     options:
       abi: ethereumHost
       address: '${config.contracts.ethereumHost}'

@@ -76,10 +76,25 @@ export class SubstrateChain implements IChain {
 		const rpc = new RpcWebSocketClient()
 		await rpc.connect(this.params.ws)
 		if (isEvmChain(counterparty)) {
+			console.log(
+				"queryRequestsProof:isEvmChain",
+				JSON.stringify(
+					{
+						id: 1,
+						jsonrpc: "2.0",
+						method: "mmr_queryProof",
+						params: [Number(at), { Requests: requests }],
+					},
+					null,
+					0,
+				),
+			)
 			// for evm chains, query the mmr proof
 			const proof: any = await rpc.call("mmr_queryProof", [Number(at), { Requests: requests }])
+			console.log("Proof:", proof)
 			return toHex(proof.proof)
 		} else if (isSubstrateChain(counterparty)) {
+			// for substrate chains, we use the child trie proof
 			const childTrieKeys = requests.map(requestCommitmentStorageKey)
 			const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
 			const basicProof = BasicProof.dec(toHex(proof.proof))

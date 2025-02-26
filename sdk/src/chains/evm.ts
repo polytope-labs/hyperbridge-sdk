@@ -168,7 +168,7 @@ export class EvmChain implements IChain {
 			abi: EvmHost.ABI,
 			functionName: "timestamp",
 		})
-		return data
+		return BigInt(data)
 	}
 
 	/**

@@ -19,6 +19,7 @@ import {
 import { REQUEST_STATUS, STATE_MACHINE_UPDATES_BY_HEIGHT, STATE_MACHINE_UPDATES_BY_TIMESTAMP } from "@/queries"
 import { postRequestCommitment, sleep } from "@/utils"
 import { getChain, IChain, SubstrateChain } from "@/chain"
+import { cond } from "lodash"
 
 const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
 	[RequestStatus.SOURCE]: 0,
@@ -105,6 +106,8 @@ export class IndexerClient {
 		// we assume there's always a SOURCE event which contains the blocknumber of the initial request
 		const sourceFinality = await self.queryStateMachineUpdateByHeight(
 			request.source,
+			self.config.hyperbridge.stateMachineId,
+
 			sortedMetadata[0].metadata.blockNumber,
 		)
 
@@ -126,6 +129,7 @@ export class IndexerClient {
 
 		const hyperbridgeFinality = await self.queryStateMachineUpdateByHeight(
 			request.source,
+			self.config.hyperbridge.stateMachineId,
 			sortedMetadata[2].metadata.blockNumber,
 		)
 		if (!hyperbridgeFinality) return request
@@ -318,6 +322,7 @@ export class IndexerClient {
 				case TimeoutStatus.HYPERBRIDGE_TIMED_OUT:
 					const update = await self.queryStateMachineUpdateByHeight(
 						request.source,
+						self.config.hyperbridge.stateMachineId,
 						latest.metadata.blockNumber,
 					)
 					if (!update) break
@@ -418,7 +423,7 @@ export class IndexerClient {
 		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
 			while (timestamp < timeoutTimestamp) {
-				const diff = timeoutTimestamp - timestamp
+				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
 				await sleep(Number(diff))
 				timestamp = await chain.timestamp()
 			}
@@ -468,26 +473,40 @@ export class IndexerClient {
 					// query the latest state machine update for the source chain
 					const sourceUpdate = await self.queryStateMachineUpdateByHeight(
 						request.source,
+						self.config.hyperbridge.stateMachineId,
 						metadata.blockNumber,
 					)
+					if (!sourceUpdate) break
 
-					if (sourceUpdate) {
-						yield {
-							status: RequestStatus.SOURCE_FINALIZED,
-							metadata: {
-								blockHash: sourceUpdate.blockHash,
-								blockNumber: sourceUpdate.height,
-								transactionHash: sourceUpdate.transactionHash,
-							},
-						}
-						status = RequestStatus.SOURCE_FINALIZED
+					yield {
+						status: RequestStatus.SOURCE_FINALIZED,
+						metadata: {
+							blockHash: sourceUpdate.blockHash,
+							blockNumber: sourceUpdate.height,
+							transactionHash: sourceUpdate.transactionHash,
+						},
 					}
+					status = RequestStatus.SOURCE_FINALIZED
 					break
 				}
 
 				// finality proofs for request has been verified on Hyperbridge
 				case RequestStatus.SOURCE_FINALIZED: {
-					if (sortedMetadata.length >= 2) {
+					// wait for the request to be delivered on Hyperbridge
+					while (true) {
+						const request = await self.queryRequest(hash)
+						if (!request || request.statuses.length < 2) {
+							await sleep(self.config.pollInterval)
+							continue
+						}
+
+						// sort by ascending order
+						const sortedMetadata = request.statuses.sort(
+							(a, b) =>
+								REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] -
+								REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
+						)
+
 						const metadata = sortedMetadata[1].metadata
 
 						yield {
@@ -499,59 +518,72 @@ export class IndexerClient {
 							},
 						}
 						status = RequestStatus.HYPERBRIDGE_DELIVERED
+						break
 					}
 					break
 				}
 
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
-					if (sortedMetadata.length < 2) {
-						// not really sure what to do here
-						break
-					}
+					// not really sure what to do here
+					if (sortedMetadata.length < 2) break
 
-					// Get the latest state machine update for the source chain
+					// Get the latest state machine update for hyperbridge on the destination chain
 					const hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight(
 						self.config.hyperbridge.stateMachineId,
+						request.dest,
 						sortedMetadata[1].metadata.blockNumber,
 					)
 
-					if (hyperbridgeFinalized) {
-						const destChain = await getChain(self.config.dest)
-						const hyperbridge = await getChain({
-							...self.config.hyperbridge,
-							hasher: "Keccak",
-						})
+					if (!hyperbridgeFinalized) break
 
-						const proof = await hyperbridge.queryRequestsProof(
-							[postRequestCommitment(request)],
-							request.dest,
-							BigInt(hyperbridgeFinalized.height),
-						)
+					console.log(
+						"Hyperbridge finalized: ",
+						sortedMetadata[1].metadata.blockNumber,
+						"at: ",
+						JSON.stringify(hyperbridgeFinalized),
+					)
 
-						const calldata = destChain.encode({
-							kind: "PostRequest",
-							proof: {
-								stateMachine: self.config.hyperbridge.stateMachineId,
-								consensusStateId: self.config.hyperbridge.consensusStateId,
-								proof,
-								height: BigInt(hyperbridgeFinalized.height),
-							},
-							requests: [request],
-							signer: pad("0x"),
-						})
+					const destChain = await getChain(self.config.dest)
+					const hyperbridge = await getChain({
+						...self.config.hyperbridge,
+						hasher: "Keccak",
+					})
 
-						yield {
-							status: RequestStatus.HYPERBRIDGE_FINALIZED,
-							metadata: {
-								blockHash: hyperbridgeFinalized.blockHash,
-								blockNumber: hyperbridgeFinalized.height,
-								transactionHash: hyperbridgeFinalized.transactionHash,
-								calldata,
-							},
-						}
-						status = RequestStatus.HYPERBRIDGE_FINALIZED
+					console.log("Querying Hyperbridge for proof...", JSON.stringify(sortedMetadata, null, 4))
+
+					const proof = await hyperbridge.queryRequestsProof(
+						[postRequestCommitment(request)],
+						request.dest,
+						BigInt(hyperbridgeFinalized.blockNumber),
+					)
+
+					console.log("Constructing calldata...")
+
+					const calldata = destChain.encode({
+						kind: "PostRequest",
+						proof: {
+							stateMachine: self.config.hyperbridge.stateMachineId,
+							consensusStateId: self.config.hyperbridge.consensusStateId,
+							proof,
+							height: BigInt(hyperbridgeFinalized.height),
+						},
+						requests: [request],
+						signer: pad("0x"),
+					})
+
+					console.log("Sending transaction...")
+
+					yield {
+						status: RequestStatus.HYPERBRIDGE_FINALIZED,
+						metadata: {
+							blockHash: hyperbridgeFinalized.blockHash,
+							blockNumber: hyperbridgeFinalized.height,
+							transactionHash: hyperbridgeFinalized.transactionHash,
+							calldata,
+						},
 					}
+					status = RequestStatus.HYPERBRIDGE_FINALIZED
 					break
 				}
 
@@ -612,17 +644,20 @@ export class IndexerClient {
 	/**
 	 * Query for a single state machine update event greater than or equal to the given height.
 	 * @params statemachineId - ID of the state machine
+	 * @params chain - Chain ID of the state machine
 	 * @params height - Starting block height
 	 * @returns Closest state machine update
 	 */
 	async queryStateMachineUpdateByHeight(
 		statemachineId: string,
+		chain: string,
 		height: number,
 	): Promise<StateMachineUpdate | undefined> {
 		const response = await this.withRetry(() =>
 			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
 				statemachineId,
 				height,
+				chain,
 			}),
 		)
 

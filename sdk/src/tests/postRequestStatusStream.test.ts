@@ -10,7 +10,7 @@ import {
 	parseEventLogs,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
-import { bscTestnet, sepolia } from "viem/chains"
+import { bscTestnet, gnosisChiado } from "viem/chains"
 import { IndexerClient } from "@/client"
 
 import { HexString, RequestStatus } from "@/types"
@@ -23,34 +23,34 @@ import HANDLER from "@/abis/handler"
 
 describe("postRequestStatusStream", () => {
 	it("should successfully stream the request status", async () => {
+		const { bscTestnetClient, gnosisChiadoHandler, bscPing, gnosisChiadoClient, gnosisChiadoHost, bscIsmpHost } =
+			await setUp()
 		const indexer = new IndexerClient({
 			source: {
 				consensusStateId: "BSC0",
 				rpcUrl: process.env.BSC_CHAPEL!,
 				stateMachineId: "EVM-97",
-				host: process.env.BSC_CHAPEL_HOST!,
+				host: bscIsmpHost.address,
 			},
 			dest: {
 				consensusStateId: "ETH0",
-				rpcUrl: process.env.SEPOLIA!,
-				stateMachineId: "EVM-11155111",
-				host: process.env.SEPOLIA_HOST!,
+				rpcUrl: process.env.GNOSIS_CHIADO!,
+				stateMachineId: "EVM-10200",
+				host: gnosisChiadoHost.address,
 			},
 			hyperbridge: {
 				consensusStateId: "PARA",
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			pollInterval: 1000, // every second
+			pollInterval: 10_000, // every second
 		})
-
-		const { bscTestnetClient, sepoliaHandler, bscPing, sepoliaClient, sepoliaHost } = await setUp()
 
 		console.log("\n\nSending Post Request\n\n")
 
 		const hash = await bscPing.write.ping([
 			{
-				dest: await sepoliaHost.read.host(),
+				dest: await gnosisChiadoHost.read.host(),
 				count: BigInt(1),
 				fee: BigInt(0),
 				module: process.env.PING_MODULE_ADDRESS! as HexString,
@@ -105,8 +105,8 @@ describe("postRequestStatusStream", () => {
 					})
 
 					try {
-						const hash = await sepoliaHandler.write.handlePostRequests(args as any)
-						await sepoliaClient.waitForTransactionReceipt({
+						const hash = await gnosisChiadoHandler.write.handlePostRequests(args as any)
+						await gnosisChiadoClient.waitForTransactionReceipt({
 							hash,
 							confirmations: 1,
 						})
@@ -126,7 +126,7 @@ describe("postRequestStatusStream", () => {
 				}
 			}
 		}
-	}, 3600_000)
+	}, 7200_000)
 })
 
 async function setUp() {
@@ -138,10 +138,10 @@ async function setUp() {
 		transport: http(process.env.BSC_CHAPEL),
 	})
 
-	const sepoliaWallet = createWalletClient({
-		chain: sepolia,
+	const gnosisChiadoWallet = createWalletClient({
+		chain: gnosisChiado,
 		account,
-		transport: http(process.env.SEPOLIA),
+		transport: http(process.env.GNOSIS_CHIADO),
 	})
 
 	const bscTestnetClient = createPublicClient({
@@ -149,9 +149,9 @@ async function setUp() {
 		transport: http(process.env.BSC_CHAPEL),
 	})
 
-	const sepoliaClient = createPublicClient({
-		chain: sepolia,
-		transport: http(process.env.SEPOLIA),
+	const gnosisChiadoClient = createPublicClient({
+		chain: gnosisChiado,
+		transport: http(process.env.GNOSIS_CHIADO),
 	})
 
 	const bscPing = getContract({
@@ -182,26 +182,26 @@ async function setUp() {
 		client: { public: bscTestnetClient, wallet: bscWalletClient },
 	})
 
-	const sepoliaPing = getContract({
+	const gnosisChiadoPing = getContract({
 		address: process.env.PING_MODULE_ADDRESS! as HexString,
 		abi: PING_MODULE.ABI,
-		client: sepoliaClient,
+		client: gnosisChiadoClient,
 	})
 
-	const sepoliaHostAddress = await sepoliaPing.read.host()
+	const gnosisChiadoHostAddress = await gnosisChiadoPing.read.host()
 
-	const sepoliaHost = getContract({
-		address: sepoliaHostAddress,
+	const gnosisChiadoHost = getContract({
+		address: gnosisChiadoHostAddress,
 		abi: EVM_HOST.ABI,
-		client: sepoliaClient,
+		client: gnosisChiadoClient,
 	})
 
-	const sepoliaHostParams = await sepoliaHost.read.hostParams()
+	const gnosisChiadoHostParams = await gnosisChiadoHost.read.hostParams()
 
-	const sepoliaHandler = getContract({
-		address: sepoliaHostParams.handler,
+	const gnosisChiadoHandler = getContract({
+		address: gnosisChiadoHostParams.handler,
 		abi: HANDLER.ABI,
-		client: { public: sepoliaClient, wallet: sepoliaWallet },
+		client: { public: gnosisChiadoClient, wallet: gnosisChiadoWallet },
 	})
 
 	const tokenFaucet = getContract({
@@ -215,10 +215,11 @@ async function setUp() {
 		bscFeeToken,
 		account,
 		tokenFaucet,
-		sepoliaHandler,
+		gnosisChiadoHandler,
 		bscHandler,
 		bscPing,
-		sepoliaClient,
-		sepoliaHost,
+		gnosisChiadoClient,
+		gnosisChiadoHost,
+		bscIsmpHost,
 	}
 }

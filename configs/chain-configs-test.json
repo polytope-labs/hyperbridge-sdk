@@ -2,7 +2,7 @@
 	"hyperbridge-gargantua": {
 		"type": "substrate",
 		"chainId": "0x5388faf792c5232566d21493929b32c1f20a9c2b03e95615eefec2aa26d64b73",
-		"startBlock": 3877673
+		"startBlock": 3878414
 	},
 	"bsc-chapel": {
 		"type": "evm",
@@ -22,16 +22,6 @@
 			"ethereumHost": "0x58A41B89F4871725E5D898d98eF4BF917601c5eB",
 			"erc6160ext20": "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
 			"handlerV1": "0x01b40De26Ba4C63c17A6f4Ed2cF96927C280B029"
-		}
-	},
-	"sepolia": {
-		"type": "evm",
-		"chainId": "11155111",
-		"startBlock": 7788109,
-		"contracts": {
-			"ethereumHost": "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
-			"erc6160ext20": "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
-			"handlerV1": "0xBf814fb3fD3eAaEB6a08C5A245c92da8b586f670"
 		}
 	}
 }

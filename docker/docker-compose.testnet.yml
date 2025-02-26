@@ -93,38 +93,6 @@ services:
       timeout: 5s
       retries: 10
 
-  subquery-node-sepolia:
-    image: subquerynetwork/subql-node-ethereum:v5.4.0
-    restart: unless-stopped
-    environment:
-      DB_USER: ${DB_USER}
-      DB_PASS: ${DB_PASS}
-      DB_DATABASE: ${DB_DATABASE}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-
-    volumes:
-      - ../configs:/app
-      - ../dist:/app/dist
-    command:
-      - ${SUB_COMMAND:-}
-      - -f=/app/sepolia.yaml
-      - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-5}
-      - --batch-size=${SUBQL_BATCH_SIZE:-10}
-      - --multi-chain
-      - --unsafe
-      - --log-level=info
-      - --historical=false
-      - --block-confirmations=5 
-      - --store-cache-async=false 
-      - --store-cache-threshold=100
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://subquery-node-sepolia:3000/ready']
-      interval: 3s
-      timeout: 5s
-      retries: 10
-
   graphql-engine:
     image: subquerynetwork/subql-query:v2.9.0
     ports:
