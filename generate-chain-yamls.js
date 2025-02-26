@@ -125,8 +125,6 @@ const generateEvmYaml = async (chain, config) => {
 	const data = await response.json()
 	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
 
-	console.log({ rpcUrl, blockNumber })
-
 	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
 version: 0.0.1

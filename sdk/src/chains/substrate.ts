@@ -4,11 +4,11 @@ import { toHex, hexToBytes, toBytes, concat, bytesToHex } from "viem"
 import { match } from "ts-pattern"
 import capitalize from "lodash/capitalize"
 import { u8, Vector } from "scale-ts"
+import { stringify } from "safe-stable-stringify"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
 import { HexString, IPostRequest } from "@/types"
-import { createSubmittable } from "@polkadot/api/submittable"
 
 export interface SubstrateChainParams {
 	/*
@@ -158,6 +158,7 @@ export class SubstrateChain implements IChain {
 	 */
 	encode(message: IIsmpMessage): HexString {
 		const palletIndex = this.getPalletIndex("Ismp")
+		console.log("Encoding: ...", stringify(message, null, 4))
 		const args = match(message)
 			.with({ kind: "PostRequest" }, (message) =>
 				Vector(Message).enc([

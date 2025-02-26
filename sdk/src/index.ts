@@ -1,2 +1,2 @@
-export { IndexerClient as HyperIndexerClient } from "@/client"
+export { IndexerClient } from "@/client"
 export * from "@/types"

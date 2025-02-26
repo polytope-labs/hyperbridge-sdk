@@ -59,12 +59,13 @@ query StateMachineUpdatesByHeight($statemachineId: String!, $height: Int!, $chai
 `
 
 export const STATE_MACHINE_UPDATES_BY_TIMESTAMP = `
-query StateMachineUpdatesByTimestamp($statemachineId: String!, $timestamp: BigFloat!) {
+query StateMachineUpdatesByTimestamp($statemachineId: String!, $commitmentTimestamp: BigFloat!, $chain: String!) {
 	stateMachineUpdateEvents(
 		filter: {
 			and: [
 				{ stateMachineId: { equalTo: $statemachineId } }
-				{ commitmentTimestamp: { greaterThanOrEqualTo: $timestamp } }
+				{ commitmentTimestamp: { greaterThanOrEqualTo: $commitmentTimestamp } }
+     			{ chain: { equalTo: $chain } }
 			]
 		}
 		orderBy: COMMITMENT_TIMESTAMP_ASC
@@ -72,14 +73,12 @@ query StateMachineUpdatesByTimestamp($statemachineId: String!, $timestamp: BigFl
 	) {
     nodes {
         height
+        stateMachineId
         chain
         blockHash
         blockNumber
         transactionHash
         commitmentTimestamp
-        transactionIndex
-        stateMachineId
-        createdAt
       }
     }
   }

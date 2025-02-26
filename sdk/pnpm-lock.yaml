@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@async-generator/merge-race':
+        specifier: ^1.0.3
+        version: 1.0.3
       '@polkadot/api':
         specifier: ^15.6.1
         version: 15.6.1
@@ -23,6 +26,9 @@ importers:
       rpc-websocket-client:
         specifier: ^1.1.4
         version: 1.1.4
+      safe-stable-stringify:
+        specifier: ^2.5.0
+        version: 2.5.0
       scale-ts:
         specifier: ^1.6.1
         version: 1.6.1
@@ -69,6 +75,12 @@ packages:
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
+
+  '@async-generator/merge-race@1.0.3':
+    resolution: {integrity: sha512-6bbKfLJoRpMdqWhR8MuoSdgtqXZ0S1MnPv21QRi1BefOPBNCJJZJikk3U9LhZVEw9RuqIwd56AuLroTC+EeFgQ==}
+
+  '@async-generator/subject@1.0.3':
+    resolution: {integrity: sha512-8aa17UMPPmhSEGcsjsoo7GqJvgw6L8um+8YQPeKYxK/zEZdSh1Mep/QoOo4/3sAYzFBtTwDSoib7J15SZAqfwg==}
 
   '@babel/code-frame@7.26.2':
     resolution: {integrity: sha512-RJlIHRueQgwWitWgF8OdFYGZX328Ax5BCemNGlqHfplnRT9ESi8JkFlvaVYbS+UubVY6dpv87Fs2u5M29iNFVQ==}
@@ -1390,6 +1402,10 @@ packages:
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
 
+  safe-stable-stringify@2.5.0:
+    resolution: {integrity: sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==}
+    engines: {node: '>=10'}
+
   scale-ts@1.6.1:
     resolution: {integrity: sha512-PBMc2AWc6wSEqJYBDPcyCLUj9/tMKnLX70jLOSndMtcUoLQucP/DM0vnQo1wJAYjTrQiq8iG9rD0q6wFzgjH7g==}
 
@@ -1648,6 +1664,12 @@ snapshots:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.8
       '@jridgewell/trace-mapping': 0.3.25
+
+  '@async-generator/merge-race@1.0.3':
+    dependencies:
+      '@async-generator/subject': 1.0.3
+
+  '@async-generator/subject@1.0.3': {}
 
   '@babel/code-frame@7.26.2':
     dependencies:
@@ -3401,6 +3423,8 @@ snapshots:
   rxjs@7.8.2:
     dependencies:
       tslib: 2.8.1
+
+  safe-stable-stringify@2.5.0: {}
 
   scale-ts@1.6.1: {}
 

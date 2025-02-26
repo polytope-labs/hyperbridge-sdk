@@ -1,22 +1,16 @@
 {
-	"name": "hyperbridge-indexers",
-	"version": "0.0.1",
-	"description": "Indexers for Hyperbridge",
+	"name": "@hyperbridge/subql",
+	"version": "1.0.0",
+	"description": "SubQuery indexer for the Hyperbridge network. Indexes data from connected rollups and Hyperbridge's messaging infrastructure",
 	"main": "dist/index.js",
-	"scripts": {
-		"build": "subql build",
-		"codegen:subql": "subql codegen -f configs",
-		"codegen:yamls": "node generate-chain-yamls.js && node generate-compose.js",
-		"start:docker": "docker-compose -f docker/docker-compose.yml pull && docker-compose -f docker/docker-compose.yml --env-file .env up --force-recreate --remove-orphans",
-		"start:local": "docker-compose -f docker/docker-compose.testnet.yml --env-file .env up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.testnet.yml  --env-file .env rm -fsv",
-		"dev": "CURRENT_ENV=test npm run codegen:yamls && npm run codegen:subql && npm run build && npm run start:local",
-		"prod": "CURRENT_ENV=prod npm run codegen:yamls && npm run codegen:subql && npm run build && npm run start:docker",
-		"prepack": "rm -rf dist && npm run build",
-		"test": "jest --runInBand --detectOpenHandles",
-		"format": "prettier --write \"**/*.ts\""
-	},
 	"homepage": "https://hyperbridge.network/",
-	"repository": "https://github.com/polytope-labs/hyperbridge-indexer",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/polytope-labs/hyperbridge-sdk"
+	},
+	"bugs": {
+		"url": "https://github.com/polytope-labs/hyperbridge-sdk/issues"
+	},
 	"files": [
 		"dist",
 		"configs",
@@ -27,6 +21,31 @@
 	],
 	"author": "Polytope Labs",
 	"license": "MIT",
+	"keywords": [
+		"hyperbridge",
+		"subquery",
+		"indexer",
+		"blockchain",
+		"graphql",
+		"cryptocurrency",
+		"interoperability"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "subql build",
+		"codegen:subql": "subql codegen -f configs",
+		"codegen:yamls": "node generate-chain-yamls.js && node generate-compose.js",
+		"start:docker": "docker-compose -f docker/docker-compose.yml pull && docker-compose -f docker/docker-compose.yml --env-file .env up --force-recreate --remove-orphans",
+		"start:local": "docker-compose -f docker/docker-compose.testnet.yml --env-file .env up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.testnet.yml  --env-file .env rm -fsv",
+		"dev": "CURRENT_ENV=test npm run codegen:yamls && npm run codegen:subql && npm run build && npm run start:local",
+		"prod": "CURRENT_ENV=prod npm run codegen:yamls && npm run codegen:subql && npm run build && npm run start:docker",
+		"prepack": "rm -rf dist && npm run build",
+		"test": "jest --runInBand --detectOpenHandles",
+		"format": "prettier --write \"**/*.ts\"",
+		"clean": "rm -rf dist node_modules"
+	},
 	"dependencies": {
 		"@bifrost-finance/type-definitions": "^1.11.9",
 		"@ethersproject/abi": "^5.7.0",
@@ -66,6 +85,6 @@
 		"typescript": "latest"
 	},
 	"exports": {
-		"substrate-chaintypes/hyperbridge": "src/substrate-chaintypes/hyperbridge.ts"
+		"./substrate-chaintypes/hyperbridge": "./src/substrate-chaintypes/hyperbridge.ts"
 	}
 }

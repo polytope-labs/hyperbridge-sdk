@@ -1,7 +1,7 @@
 {
-	"name": "hyperbridge-indexer-sdk",
+	"name": "@hyperbridge/client",
 	"version": "1.0.0",
-	"description": "Client SDK for connecting chains to query events and requests and response status",
+	"description": "SDK for querying cross-chain events, messages, and request statuses from HyperBridge. Enables seamless interaction with chain data through GraphQL and WebSocket interfaces.",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"files": [
@@ -14,31 +14,36 @@
 		"graphql",
 		"indexer",
 		"substrate",
+		"blockchain",
+		"interoperability",
+		"cryptocurrency",
 		"evm"
 	],
 	"type": "module",
-	"homepage": "https://github.com/polytope-labs/hyperbridge-indexer#readme",
+	"homepage": "https://github.com/polytope-labs/hyperbridge-sdk#readme",
 	"bugs": {
-		"url": "https://github.com/polytope-labs/hyperbridge-indexer/issues"
+		"url": "https://github.com/polytope-labs/hyperbridge-sdk/issues"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/polytope-labs/hyperbridge-indexer.git"
+		"url": "git+https://github.com/polytope-labs/hyperbridge-sdk.git"
 	},
 	"license": "ISC",
 	"author": "Polytope Labs",
 	"scripts": {
 		"build": "tsc",
 		"prepublishOnly": "npm run build",
-		"test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles",
+		"test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles --forceExit",
 		"test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
 	},
 	"dependencies": {
+		"@async-generator/merge-race": "^1.0.3",
 		"@polkadot/api": "^15.6.1",
 		"graphql": "^16.10.0",
 		"graphql-request": "^7.1.2",
 		"lodash": "^4.17.21",
 		"rpc-websocket-client": "^1.1.4",
+		"safe-stable-stringify": "^2.5.0",
 		"scale-ts": "^1.6.1",
 		"ts-pattern": "^5.6.2",
 		"viem": "^2.23.5"
