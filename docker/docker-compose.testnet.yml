@@ -130,5 +130,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-
+    command: |
+      bash -c '
+         # Start PostgreSQL in the background
+        docker-entrypoint.sh postgres &
+        
+        # Wait for PostgreSQL to become available
+        until pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB; do
+          echo "Waiting for PostgreSQL to start..."
+          sleep 1
+        done
+        
+        # Run our extension creation command - note we use localhost here
+        echo "Creating btree_gist extension..."
+        psql -v ON_ERROR_STOP=1 -U $$POSTGRES_USER -d $$POSTGRES_DB -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
+        
+        # Keep container running by waiting for the PostgreSQL process
+        wait
+      '
