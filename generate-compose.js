@@ -43,7 +43,7 @@ const generateNodeServices = () => {
       - --log-level=info
       - --historical=timestamp
       - --unfinalized 
-      - --block-confirmations=5
+      - --block-confirmations=1
       - --store-cache-async=false
       - --store-cache-threshold=100
     healthcheck:
