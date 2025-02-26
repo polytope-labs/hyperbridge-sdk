@@ -33,22 +33,6 @@ const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
 
-	// Expect comma-separated endpoints in env var
-	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
-	const response = await fetch(rpcUrl, {
-		method: "POST",
-		headers: {
-			accept: "application/json",
-			"content-type": "application/json",
-		},
-		body: JSON.stringify({
-			id: 1,
-			jsonrpc: "2.0",
-			method: "eth_blockNumber",
-		}),
-	})
-	const data = await response.json()
-	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
 	return `# // Auto-generated , DO NOT EDIT
@@ -114,8 +98,25 @@ dataSources:
 repository: 'https://github.com/polytope-labs/hyperbridge'`
 }
 
-const generateEvmYaml = (chain, config) => {
+const generateEvmYaml = async (chain, config) => {
 	const endpoints = generateEndpoints(chain)
+
+	// Expect comma-separated endpoints in env var
+	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
+	const response = await fetch(rpcUrl, {
+		method: "POST",
+		headers: {
+			accept: "application/json",
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
+			id: 1,
+			jsonrpc: "2.0",
+			method: "eth_blockNumber",
+		}),
+	})
+	const data = await response.json()
+	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
 
 	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
@@ -137,7 +138,7 @@ network:
 ${endpoints}
 dataSources:
   - kind: ethereum/Runtime
-    startBlock: ${blockNumber}
+    startBlock: ${config.startBlock}
     options:
       abi: ethereumHost
       address: '${config.contracts.ethereumHost}'
@@ -234,12 +235,17 @@ const validChains = Object.entries(configs).filter(([chain, config]) => {
 	return true
 })
 
-validChains.forEach(([chain, config]) => {
-	const yaml = config.type === "substrate" ? generateSubstrateYaml(chain, config) : generateEvmYaml(chain, config)
+async function generateAllChainYamls() {
+	for (const [chain, config] of validChains) {
+		const yaml =
+			config.type === "substrate"
+				? await generateSubstrateYaml(chain, config)
+				: await generateEvmYaml(chain, config)
 
-	fs.writeFileSync(`./configs/${chain}.yaml`, yaml)
-	console.log(`Generated ${chain}.yaml`)
-})
+		fs.writeFileSync(`./configs/${chain}.yaml`, yaml)
+		console.log(`Generated ${chain}.yaml`)
+	}
+}
 
 const generateMultichainYaml = () => {
 	const projects = validChains.map(([chain]) => `  - ./${chain}.yaml`).join("\n")
@@ -251,8 +257,13 @@ query:
 projects:
 ${projects}`
 
-	fs.writeFileSync("subquery-multichain.yaml", yaml)
+	fs.writeFileSync("./configs/subquery-multichain.yaml", yaml)
 	console.log("Generated subquery-multichain.yaml")
 }
+
+generateAllChainYamls().catch((err) => {
+	console.error("Error generating YAMLs:", err)
+	process.exit(1)
+})
 
 generateMultichainYaml()

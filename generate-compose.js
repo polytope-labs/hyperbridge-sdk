@@ -6,9 +6,9 @@ const fs = require("fs")
 const currentEnv = process.env.CURRENT_ENV || "test"
 const configs = require(`./configs/chain-configs-${currentEnv}.json`)
 
-const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:latest"
-const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.4.0"
-const GRAPHQL_IMAGE = "subquerynetwork/subql-query:v2.9.0"
+const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
+const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
+const GRAPHQL_IMAGE = "subquerynetwork/subql-query:v2.21.0"
 
 const generateNodeServices = () => {
 	return Object.entries(configs)
@@ -36,16 +36,16 @@ const generateNodeServices = () => {
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
       - --db-schema=app
-      - --workers=\${SUBQL_WORKERS:-5}
+      - --workers=\${SUBQL_WORKERS:-6}
       - --batch-size=\${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
-      - --historical=false${
-			config.type === "evm"
-				? "\n      - --block-confirmations=5 \n      - --store-cache-async=false \n      - --store-cache-threshold=100"
-				: ""
-		}
+      - --historical=timestamp
+      - --unfinalized 
+      - --block-confirmations=5
+      - --store-cache-async=false
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
       interval: 3s

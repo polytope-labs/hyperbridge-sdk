@@ -1,7 +1,7 @@
 services:
 
   subquery-node-hyperbridge-gargantua:
-    image: subquerynetwork/subql-node-substrate:latest
+    image: subquerynetwork/subql-node-substrate:v5.9.1
     restart: unless-stopped
     environment:
       DB_USER: ${DB_USER}
@@ -17,12 +17,16 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/hyperbridge-gargantua.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-5}
+      - --workers=${SUBQL_WORKERS:-6}
       - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
-      - --historical=false
+      - --historical=timestamp
+      - --unfinalized 
+      - --block-confirmations=5
+      - --store-cache-async=false
+      - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-hyperbridge-gargantua:3000/ready']
       interval: 3s
@@ -30,7 +34,7 @@ services:
       retries: 10
 
   subquery-node-bsc-chapel:
-    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    image: subquerynetwork/subql-node-ethereum:v5.5.0
     restart: unless-stopped
     environment:
       DB_USER: ${DB_USER}
@@ -46,14 +50,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/bsc-chapel.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-5}
+      - --workers=${SUBQL_WORKERS:-6}
       - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
-      - --historical=false
-      - --block-confirmations=5 
-      - --store-cache-async=false 
+      - --historical=timestamp
+      - --unfinalized 
+      - --block-confirmations=5
+      - --store-cache-async=false
       - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-bsc-chapel:3000/ready']
@@ -62,7 +67,7 @@ services:
       retries: 10
 
   subquery-node-gnosis-chiado:
-    image: subquerynetwork/subql-node-ethereum:v5.4.0
+    image: subquerynetwork/subql-node-ethereum:v5.5.0
     restart: unless-stopped
     environment:
       DB_USER: ${DB_USER}
@@ -78,14 +83,15 @@ services:
       - ${SUB_COMMAND:-}
       - -f=/app/gnosis-chiado.yaml
       - --db-schema=app
-      - --workers=${SUBQL_WORKERS:-5}
+      - --workers=${SUBQL_WORKERS:-6}
       - --batch-size=${SUBQL_BATCH_SIZE:-10}
       - --multi-chain
       - --unsafe
       - --log-level=info
-      - --historical=false
-      - --block-confirmations=5 
-      - --store-cache-async=false 
+      - --historical=timestamp
+      - --unfinalized 
+      - --block-confirmations=5
+      - --store-cache-async=false
       - --store-cache-threshold=100
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-gnosis-chiado:3000/ready']
@@ -94,7 +100,7 @@ services:
       retries: 10
 
   graphql-engine:
-    image: subquerynetwork/subql-query:v2.9.0
+    image: subquerynetwork/subql-query:v2.21.0
     ports:
       - 3000:3000
 
