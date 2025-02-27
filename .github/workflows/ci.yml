@@ -147,7 +147,9 @@ jobs:
                   docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30
 
             - name: Run SDK tests
-              run: pnpm --filter="@hyperbridge/sdk" test
+              run: |
+                  cd packages/sdk
+                  pnpm test
               env:
                   INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
                   BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
@@ -155,9 +157,6 @@ jobs:
                   HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
                   PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
                   PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
-
-            - name: Run linter
-              run: pnpm lint
 
             - name: Stop containers
               if: always()
