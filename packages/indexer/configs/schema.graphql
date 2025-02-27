@@ -289,7 +289,6 @@ type Request
 	"""
 	The transaction hash of the hyperbridge transaction
 	"""
-	hyperbridgeTransactionHash: String! @index
 
 	"""
 	The transaction hash of the destination transaction
