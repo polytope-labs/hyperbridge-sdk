@@ -1,106 +1,71 @@
-# Hyperbridge Indexer
+# Hyperbridge
 
-A multi-chain indexer for the Hyperbridge Protocol that tracks cross-chain messages, assets, and protocol metrics across multiple networks.
+![CI](https://github.com/polytope-labs/hyperbridge-indexer/workflows/CI/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-# Overview
+Hyperbridge Client is a comprehensive solution for cross-chain message indexing and retrieval. This monorepo contains two main packages:
 
-The Hyperbridge Indexer uses SubQuery to index and track:
+- **@hyperbridge/indexer**: A SubQuery-based indexer for tracking cross-chain messages
+- **@hyperbridge/sdk**: A JavaScript/TypeScript SDK for interacting with the indexed data
 
-- Cross-chain message delivery
-- Asset transfers and teleports
-- Protocol performance metrics
-- Relayer activities
-- Chain state updates
+## Packages
 
-# Supported Networks
+| Package                                    | Description                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| [@hyperbridge/indexer](./packages/indexer) | The indexer service that processes and stores cross-chain messages |
+| [@hyperbridge/sdk](./packages/sdk)         | SDK for developers to query and monitor cross-chain messages       |
 
-- Ethereum Sepolia
-- Base Sepolia
-- Optimism Sepolia
-- Arbitrum Sepolia
-- BSC Chapel
-- Hyperbridge Gargantua (and other Substrate based chains)
+## Getting Started
 
-# Architecture
+### Prerequisites
 
-The indexer runs multiple SubQuery nodes, each dedicated to a specific chain:
+- Node.js 22+
+- pnpm 7+
 
-```mermaid
-graph TD
-    A[PostgreSQL Database] --> B[GraphQL API]
-    C[Ethereum Node] --> D[SubQuery Node - Ethereum]
-    E[Base Node] --> F[SubQuery Node - Base]
-    G[Optimism Node] --> H[SubQuery Node - Optimism]
-    I[Arbitrum Node] --> J[SubQuery Node - Arbitrum]
-    K[BSC Node] --> L[SubQuery Node - BSC]
-    M[Substrate Node] --> N[SubQuery Node - Gargantua]
-    D --> A
-    F --> A
-    H --> A
-    J --> A
-    L --> A
-```
-
-# Key Features
-
-- Multi-chain event tracking
-- Asset transfer monitoring
-- Protocol metrics collection
-- Relayer performance tracking
-- Cross-chain message indexing
-- State machine updates
-
-# Getting Started
-
-## Prerequisites
-
-- Docker and Docker Compose
-- Node.js 16+
-- NPM
-
-## Installation
-
-- Clone the repository:
+### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/polytope-labs/hyperbridge-indexer.git
 cd hyperbridge-indexer
+
+# Install dependencies
+pnpm install
+
+# Build all packages
+pnpm build
 ```
 
-- Install dependencies:
+### Development
 
 ```bash
-npm install   // you can use --legacy-peer-deps flag to install legacy dependencies
+# Run tests
+pnpm test
+
+# Lint code
+pnpm lint
+
+# Format code
+pnpm format
 ```
 
-## Configuration
+## Contributing
 
-- Configure the indexer by editing the `.env` file.
-- Set the database connection details and the RPC endpoints for each chain. You can use the sammple `.env.example` file as a template.
-
-## Running the Indexer
-
-- Start the indexer:
+Create a changeset when making changes:
 
 ```bash
-npm run dev  // for testnet
+pnpm changeset
 
-npm run prod  // for mainnet
+Commit your changes along with the changeset:
+
+git add .
+git commit -m "feat: your feature description"
+git push
 ```
 
-This launches:
+## License
+This project is licensed under the MIT License - see the [LICENSE](/LICENSE) file for details.
 
-- PostgreSQL database
-- SubQuery nodes for each chain
-- GraphQL endpoint ([http://localhost:3000/graphql](http://localhost:3000/graphql))
-
-## GraphQL API
-
-The Hyperbridge GraphQL indexer API can be found at [Hyperbridge Indexer API](https://explorer.subquery.network/subquery/polytope-labs/hyperbridge-indexers?stage=true), alongside detailed documentation
-
-# Contributing
-
-- Fork the repository
-- Create feature branch
-- Commit changes
-- Open pull request
+## Acknowledgments
+- [SubQuery](https://subquery.network) - The indexing framework
+- [Polkadot](https://polkadot.com) - The interoperability protocol

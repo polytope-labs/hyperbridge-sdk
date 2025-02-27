@@ -34,11 +34,13 @@
 		"build": "tsc",
 		"prepublishOnly": "npm run build",
 		"test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles --forceExit",
-		"test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
+		"test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+		"lint": "eslint \"src/**/*.ts\"",
+		"format": "prettier --write \"src/**/*.ts\""
 	},
 	"dependencies": {
 		"@async-generator/merge-race": "^1.0.3",
-		"@polkadot/api": "^15.6.1",
+		"@polkadot/api": "^15.7.1",
 		"graphql": "^16.10.0",
 		"graphql-request": "^7.1.2",
 		"lodash": "^4.17.21",
@@ -57,5 +59,8 @@
 		"ts-jest": "^29.2.6",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.7.3"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }
