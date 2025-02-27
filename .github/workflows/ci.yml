@@ -1,152 +1,167 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "22"
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: "22"
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v2
-        with:
-          version: 7
+            - name: Setup PNPM
+              uses: pnpm/action-setup@v2
+              with:
+                  version: 7
 
-      - name: Install dependencies
-        run: pnpm install
+            - name: Install dependencies
+              run: pnpm install
 
-      - name: Build SDK
-        run: pnpm --filter="@hyperbridge/sdk" build
+            - name: Build SDK
+              run: cd packages/sdk && pnpm build
 
-      - name: Setup environment for development
-        run: |
-          # Create necessary environment file
-          cd packages/indexer
-          cat > .env << EOL
-          DB_USER=postgres
-          DB_PASS=postgres
-          DB_DATABASE=postgres
-          DB_HOST=localhost
-          DB_PORT=5432
-          DB_PATH=/tmp/postgres-data
-          SUB_COMMAND=-f
-          SUBQL_WORKERS=6
-          SUBQL_BATCH_SIZE=10
-          EOL
-          
-          # Create necessary directories
-          mkdir -p /tmp/postgres-data
+            - name: Setup environment for development
+              run: |
+                  # Create necessary environment file
+                  mkdir -p packages/indexer
+                  cat > packages/indexer/.env << EOL
+                  # TESTNET RPCS
+                  HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
 
-      - name: Build and start development environment
-        run: |
-          # Start the dev environment in the background
-          cd packages/indexer
-          pnpm dev &
-          
-          # Store the process ID to kill it later
-          echo $! > /tmp/dev-pid
-          
-          # Give services time to initialize
-          echo "Waiting for services to start..."
-          sleep 60
-          
-          # Check if services are running
-          docker ps
-          curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible" || echo "GraphQL API is not accessible"
+                  # DATABASE
+                  DB_USER="postgres"
+                  DB_PASS="postgres"
+                  DB_DATABASE="postgres"
+                  DB_HOST="localhost"
+                  DB_PORT=5432
+                  DB_PATH="/tmp/postgres-data"
 
-      - name: Check container status
-        run: |
-          docker ps -a
+                  # ENVIRONMENT
+                  CURRENT_ENV="test"
 
-          echo "==== POSTGRES LOGS ===="
-          docker logs docker-postgres-1 | tail -n 30 || true
+                  # SUBQL SETTINGS
+                  SUB_COMMAND=-f
+                  SUBQL_WORKERS=1
+                  SUBQL_BATCH_SIZE=5
 
-          echo "==== GRAPHQL ENGINE LOGS ===="
-          docker logs docker-graphql-engine-1 | tail -n 30 || true
+                  # KEYS
+                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+                  PING_MODULE_ADDRESS=${{ secrets.PING_MODULE_ADDRESS }}
+                  EOL
 
-          echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
-          docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30 || true
+                  # Create necessary directories
+                  mkdir -p /tmp/postgres-data
 
-          echo "==== BSC CHAPEL LOGS ===="
-          docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30 || true
+            - name: Build and start development environment
+              run: |
+                  # Start the dev environment in the background
+                  cd packages/indexer
+                  pnpm dev &
 
-          echo "==== GNOSIS CHIADO LOGS ===="
-          docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30 || true
+                  # Store the process ID to kill it later
+                  echo $! > /tmp/dev-pid
 
-      - name: Run SDK tests
-        run: |
-          cd packages/sdk
-          pnpm test
-        env:
-          INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
-          BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
-          GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
-          HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
+                  # Give services time to initialize
+                  echo "Waiting for services to start..."
+                  sleep 60
 
-      - name: Cleanup
-        if: always()
-        run: |
-          # Kill the dev process if it's still running
-          if [ -f /tmp/dev-pid ]; then
-            kill $(cat /tmp/dev-pid) || true
-          fi
-          
-          # Stop all docker containers
-          cd packages/indexer
-          docker compose -f docker/docker-compose.testnet.yml down || true
+                  # Check if services are running
+                  docker ps
+                  curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible" || echo "GraphQL API is not accessible"
+
+            - name: Check container status
+              run: |
+                  docker ps -a
+
+                  echo "==== POSTGRES LOGS ===="
+                  docker logs docker-postgres-1 | tail -n 30 || true
+
+                  echo "==== GRAPHQL ENGINE LOGS ===="
+                  docker logs docker-graphql-engine-1 | tail -n 30 || true
+
+                  echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
+                  docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30 || true
+
+                  echo "==== BSC CHAPEL LOGS ===="
+                  docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30 || true
+
+                  echo "==== GNOSIS CHIADO LOGS ===="
+                  docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30 || true
+
+            - name: Run SDK tests
+              run: |
+                  cd packages/sdk
+                  pnpm test
+              env:
+                  INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
+                  BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
+                  HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+                  PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
+
+            - name: Cleanup
+              if: always()
+              run: |
+                  # Kill the dev process if it's still running
+                  if [ -f /tmp/dev-pid ]; then
+                    kill $(cat /tmp/dev-pid) || true
+                  fi
+
+                  # Stop all docker containers
+                  cd packages/indexer
+                  docker compose -f docker/docker-compose.testnet.yml down || true
 
 
-              # release:
-              #     name: Release
-              #     needs: test
-              #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-              #     runs-on: ubuntu-latest
-              #     steps:
-              #         - uses: actions/checkout@v3
-              #           with:
-              #               fetch-depth: 0
-              #               token: ${{ secrets.GITHUB_TOKEN }}
+                      # release:
+                      #     name: Release
+                      #     needs: test
+                      #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+                      #     runs-on: ubuntu-latest
+                      #     steps:
+                      #         - uses: actions/checkout@v3
+                      #           with:
+                      #               fetch-depth: 0
+                      #               token: ${{ secrets.GITHUB_TOKEN }}
 
-              #         - name: Setup Node.js
-              #           uses: actions/setup-node@v3
-              #           with:
-              #               node-version: "18"
-              #               registry-url: "https://registry.npmjs.org"
+                      #         - name: Setup Node.js
+                      #           uses: actions/setup-node@v3
+                      #           with:
+                      #               node-version: "18"
+                      #               registry-url: "https://registry.npmjs.org"
 
-              #         - name: Setup PNPM
-              #           uses: pnpm/action-setup@v2
-              #           with:
-              #               version: 7
+                      #         - name: Setup PNPM
+                      #           uses: pnpm/action-setup@v2
+                      #           with:
+                      #               version: 7
 
-              #         - name: Install dependencies
-              #           run: pnpm install
+                      #         - name: Install dependencies
+                      #           run: pnpm install
 
-              #         - name: Setup Git User
-              #           run: |
-              #               git config --global user.name "GitHub Actions"
-              #               git config --global user.email "actions@github.com"
+                      #         - name: Setup Git User
+                      #           run: |
+                      #               git config --global user.name "GitHub Actions"
+                      #               git config --global user.email "actions@github.com"
 
-              #         - name: Create Release Pull Request or Publish
-              #           id: changesets
-              #           uses: changesets/action@v1
-              #           with:
-              #               publish: pnpm release
-              #               commit: "chore: version packages"
-              #               title: "chore: version packages"
-              #           env:
-              #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                      #         - name: Create Release Pull Request or Publish
+                      #           id: changesets
+                      #           uses: changesets/action@v1
+                      #           with:
+                      #               publish: pnpm release
+                      #               commit: "chore: version packages"
+                      #               title: "chore: version packages"
+                      #           env:
+                      #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                      #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
