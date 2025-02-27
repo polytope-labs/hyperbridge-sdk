@@ -38,12 +38,37 @@ jobs:
             - name: Start indexer stack
               run: |
                   cd packages/indexer
-                  docker-compose -f docker/docker-compose.testnet.yml up -d
 
-                  # Wait for services to be healthy
+                  # Start only Postgres first
+                  docker compose -f docker/docker-compose.testnet.yml up -d postgres
+
+                  # Wait for PostgreSQL to be ready
+                  echo "Waiting for PostgreSQL to initialize..."
+                  for i in {1..20}; do
+                    if docker exec docker-postgres-1 pg_isready -U postgres -h localhost; then
+                      echo "PostgreSQL is ready"
+                      break
+                    fi
+                    echo "Waiting for PostgreSQL... (attempt $i of 20)"
+                    sleep 5
+                  done
+
+                  # Now start GraphQL engine
+                  docker compose -f docker/docker-compose.testnet.yml up -d graphql-engine
+
+                  # Wait for GraphQL engine
                   echo "Waiting for GraphQL engine to start..."
-                  timeout 120 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 5; done'
-                  echo "GraphQL engine is up and running"
+                  for i in {1..20}; do
+                    if curl -s http://localhost:3000/graphql -o /dev/null; then
+                      echo "GraphQL engine is up and running"
+                      break
+                    fi
+                    echo "Waiting... (attempt $i of 20)"
+                    sleep 5
+                  done
+
+                  # Finally start indexing nodes
+                  docker compose -f docker/docker-compose.testnet.yml up -d indexer
 
             - name: Setup Node.js
               uses: actions/setup-node@v3
