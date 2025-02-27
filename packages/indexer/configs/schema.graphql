@@ -287,14 +287,6 @@ type Request
 	sourceTransactionHash: String! @index
 
 	"""
-	The timeout transaction hash of the hyperbridge transaction
-	"""
-
-	"""
-	The timeout transaction hash of the destination transaction
-	"""
-
-	"""
 	The chain on which the request was made
 	"""
 	chain: String! @index
