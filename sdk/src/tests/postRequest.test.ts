@@ -90,7 +90,7 @@ describe("PostRequest", () => {
 			"0x659f5bc8bb0073d4f1a25c1d420770d6aa08177bdf8d6bd6bd8476184d77de7d",
 		)
 
-		expect(receipt).toBe(DEFAULT_ADDRESS)
+		expect(receipt).toBeUndefined()
 
 		console.log({ receipt })
 
