@@ -1,7 +1,4 @@
-## Indexer README.md
-
-
-## @hyperbridge/indexer
+# @hyperbridge/indexer
 
 A SubQuery-based indexer service for tracking and indexing cross-chain messages within the Hyperbridge ecosystem.
 

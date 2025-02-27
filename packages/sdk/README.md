@@ -1,6 +1,4 @@
-## SDK README.md
-
-## @hyperbridge/sdk
+# @hyperbridge/sdk
 
 A JavaScript/TypeScript SDK for interacting with the Hyperbridge indexer and monitoring cross-chain messages.
 
