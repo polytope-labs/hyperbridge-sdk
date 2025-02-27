@@ -301,7 +301,6 @@ type Request
 	"""
 	The timeout transaction hash of the destination transaction
 	"""
-	destinationTimeoutTransactionHash: String
 
 	"""
 	The chain on which the request was made
