@@ -53,6 +53,14 @@ jobs:
                   timeout 30 bash -c 'until docker exec docker-postgres-1 pg_isready -U postgres; do echo "PostgreSQL not ready yet..."; sleep 2; done'
                   echo "PostgreSQL is ready"
 
+                  # Log PostgreSQL container network information
+                  echo "==== POSTGRES CONTAINER INFO ===="
+                  docker inspect docker-postgres-1 | grep -A 20 "NetworkSettings"
+                  echo "PostgreSQL container networks:"
+                  docker inspect docker-postgres-1 --format '{{ json .NetworkSettings.Networks }}'
+                  echo "PostgreSQL container IP:"
+                  docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' docker-postgres-1
+
             - name: Start GraphQL engine and wait for it to be ready
               run: |
                   cd packages/indexer
@@ -60,13 +68,25 @@ jobs:
                   # Modify the docker-compose file to use the container name
                   sed -i 's/DB_HOST: \${DB_HOST}/DB_HOST: postgres/g' docker/docker-compose.testnet.yml
 
+                  # Log the modified docker-compose file
+                  echo "==== MODIFIED DOCKER COMPOSE FILE ===="
+                  grep -A 10 "graphql-engine" docker/docker-compose.testnet.yml
+
                   # Start GraphQL engine
                   docker compose -f docker/docker-compose.testnet.yml up -d graphql-engine
+
+                  # Log the environment variables in the GraphQL container
+                  echo "==== GRAPHQL ENGINE ENVIRONMENT ===="
+                  docker exec docker-graphql-engine-1 env | grep DB_
 
                   # Wait for GraphQL engine
                   echo "Waiting for GraphQL engine to start..."
                   timeout 60 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 2; done'
                   echo "GraphQL engine is up and running"
+
+                  # Check GraphQL logs for connection information
+                  echo "==== GRAPHQL CONNECTION LOGS ===="
+                  docker logs docker-graphql-engine-1 | grep -i "connect"
 
             - name: Start indexer nodes
               run: |
