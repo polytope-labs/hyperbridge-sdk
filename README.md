@@ -1,9 +1,9 @@
-# Hyperbridge
+# Hyperbridge SDK
 
-![CI](https://github.com/polytope-labs/hyperbridge-indexer/workflows/CI/badge.svg)
+![CI](https://github.com/polytope-labs/hyperbridge-sdk/workflows/CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Hyperbridge Client is a comprehensive solution for cross-chain message indexing and retrieval. This monorepo contains two main packages:
+Hyperbridge SDK is a comprehensive solution for cross-chain message indexing and retrieval. This monorepo contains two main packages:
 
 - **@hyperbridge/indexer**: A SubQuery-based indexer for tracking cross-chain messages
 - **@hyperbridge/sdk**: A JavaScript/TypeScript SDK for interacting with the indexed data
@@ -26,8 +26,8 @@ Hyperbridge Client is a comprehensive solution for cross-chain message indexing 
 
 ```bash
 # Clone the repository
-git clone https://github.com/polytope-labs/hyperbridge-indexer.git
-cd hyperbridge-indexer
+git clone https://github.com/polytope-labs/hyperbridge-sdk.git
+cd hyperbridge-sdk
 
 # Install dependencies
 pnpm install
