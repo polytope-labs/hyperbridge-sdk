@@ -44,7 +44,9 @@
 		"prepack": "rm -rf dist && npm run build",
 		"test": "jest --runInBand --detectOpenHandles",
 		"format": "prettier --write \"**/*.ts\"",
-		"clean": "rm -rf dist node_modules"
+		"clean": "rm -rf dist node_modules",
+		"lint": "eslint \"src/**/*.ts\"",
+		"lint:fix": "eslint \"src/**/*.ts\" --fix"
 	},
 	"dependencies": {
 		"@bifrost-finance/type-definitions": "^1.11.9",

@@ -1,84 +1,117 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '22'
-          
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v2
-        with:
-          version: 7
-          
-      - name: Install dependencies
-        run: pnpm install
-        
-      - name: Build
-        run: pnpm build
-        
-      - name: Run linter
-        run: pnpm lint
-        
-      - name: Run tests
-        run: pnpm test
-        env:
-          BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
-          GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
-          HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
 
-  release:
-    name: Release
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          registry-url: 'https://registry.npmjs.org'
-          
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v2
-        with:
-          version: 7
-          
-      - name: Install dependencies
-        run: pnpm install
+            - name: Setup Docker Compose
+              run: |
+                  # Create temp directory for postgres data
+                  mkdir -p /tmp/postgres-data
 
-      - name: Setup Git User
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+                  # Pass all required environment variables for docker-compose
+                  echo "DB_USER=postgres" >> $GITHUB_ENV
+                  echo "DB_PASS=postgres" >> $GITHUB_ENV
+                  echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
+                  echo "DB_HOST=postgres" >> $GITHUB_ENV
+                  echo "DB_PORT=5432" >> $GITHUB_ENV
+                  echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
+                  echo "SUB_COMMAND=-f" >> $GITHUB_ENV
+                  echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
+                  echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
 
-      - name: Create Release Pull Request or Publish
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: pnpm release
-          commit: "chore: version packages"
-          title: "chore: version packages"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+            - name: Start indexer stack
+              run: |
+                  cd packages/indexer
+                  docker-compose -f docker/docker-compose.testnet.yml up -d
+
+                  # Wait for services to be healthy
+                  echo "Waiting for GraphQL engine to start..."
+                  timeout 120 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 5; done'
+                  echo "GraphQL engine is up and running"
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: "18"
+
+            - name: Setup PNPM
+              uses: pnpm/action-setup@v2
+              with:
+                  version: 7
+
+            - name: Install dependencies
+              run: pnpm install
+
+            - name: Build SDK
+              run: pnpm --filter="@hyperbridge/sdk" build
+
+            - name: Run SDK tests
+              run: pnpm --filter="@hyperbridge/sdk" test
+              env:
+                  INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
+                  BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
+                  HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+                  PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
+
+            - name: Run linter
+              run: pnpm lint
+
+            - name: Stop indexer stack
+              if: always()
+              run: |
+                  cd packages/indexer
+                  docker-compose -f docker/docker-compose.testnet.yml down
+
+    # release:
+    #     name: Release
+    #     needs: test
+    #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    #     runs-on: ubuntu-latest
+    #     steps:
+    #         - uses: actions/checkout@v3
+    #           with:
+    #               fetch-depth: 0
+    #               token: ${{ secrets.GITHUB_TOKEN }}
+
+    #         - name: Setup Node.js
+    #           uses: actions/setup-node@v3
+    #           with:
+    #               node-version: "18"
+    #               registry-url: "https://registry.npmjs.org"
+
+    #         - name: Setup PNPM
+    #           uses: pnpm/action-setup@v2
+    #           with:
+    #               version: 7
+
+    #         - name: Install dependencies
+    #           run: pnpm install
+
+    #         - name: Setup Git User
+    #           run: |
+    #               git config --global user.name "GitHub Actions"
+    #               git config --global user.email "actions@github.com"
+
+    #         - name: Create Release Pull Request or Publish
+    #           id: changesets
+    #           uses: changesets/action@v1
+    #           with:
+    #               publish: pnpm release
+    #               commit: "chore: version packages"
+    #               title: "chore: version packages"
+    #           env:
+    #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
