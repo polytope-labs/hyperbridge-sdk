@@ -37,6 +37,7 @@ const indexer = new IndexerClient({
 		stateMachineId: "KUSAMA-4009",
 		wsUrl: "wss://gargantua.polytope.technology",
 	},
+	url: "http://localhost:3000", // URL of the Hyperbridge indexer API
 	pollInterval: 1_000, // Every second
 })
 ```
