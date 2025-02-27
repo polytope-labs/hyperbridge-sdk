@@ -27,6 +27,7 @@ import {
 	sleep,
 } from "@/utils"
 import { getChain, IChain, SubstrateChain } from "@/chain"
+import { time } from "console"
 
 /**
  * IndexerClient provides methods for interacting with the Hyperbridge indexer.
@@ -235,7 +236,7 @@ export class IndexerClient {
 		if (!sourceFinality) return request
 
 		// Insert finality event into request.statuses at index 1
-		request.statuses.push({
+		request.statuses.splice(1, 0, {
 			status: RequestStatus.SOURCE_FINALIZED,
 			metadata: {
 				blockHash: sourceFinality.blockHash,
@@ -280,7 +281,7 @@ export class IndexerClient {
 		})
 
 		// Insert finality into request.statuses at index 3
-		request.statuses.push({
+		request.statuses.splice(3, 0, {
 			status: RequestStatus.HYPERBRIDGE_FINALIZED,
 			metadata: {
 				blockHash: hyperbridgeFinality.blockHash,
@@ -788,11 +789,21 @@ export class IndexerClient {
 							})
 						}
 					} else {
+						let req: RequestWithStatus | undefined
+						while (!req) {
+							await sleep(self.config.pollInterval)
+							req = await self.queryRequest(hash)
+						}
+						const timeout = req.statuses
+							.sort((a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status])
+							.pop()
+						if (!timeout || timeout.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) break
+
 						while (!update) {
 							await sleep(self.config.pollInterval)
 							update = await self.queryStateMachineUpdateByHeight({
 								statemachineId: self.config.hyperbridge.stateMachineId,
-								height: latest.metadata.blockNumber,
+								height: timeout.metadata.blockNumber,
 								chain: request.source,
 							})
 						}
