@@ -1,161 +1,114 @@
 name: CI
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-    test:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v3
-              with:
-                  fetch-depth: 0
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v3
-              with:
-                  node-version: "22"
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "22"
 
-            - name: Setup PNPM
-              uses: pnpm/action-setup@v2
-              with:
-                  version: 7
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 7
 
-            - name: Install dependencies
-              run: pnpm install
+      - name: Install dependencies
+        run: pnpm install
 
-            - name: Build SDK
-              run: pnpm --filter="@hyperbridge/sdk" build
+      - name: Build SDK
+        run: pnpm --filter="@hyperbridge/sdk" build
 
-            - name: Set up Docker environment
-              run: |
-                  mkdir -p /tmp/postgres-data
-                  echo "DB_USER=postgres" >> $GITHUB_ENV
-                  echo "DB_PASS=postgres" >> $GITHUB_ENV
-                  echo "DB_DATABASE=postgres" >> $GITHUB_ENV
-                  echo "DB_HOST=postgres" >> $GITHUB_ENV
-                  echo "DB_PORT=5432" >> $GITHUB_ENV
-                  echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
-                  echo "SUB_COMMAND=-f" >> $GITHUB_ENV
-                  echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
-                  echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
+      - name: Setup environment for development
+        run: |
+          # Create necessary environment file
+          cd packages/indexer
+          cat > .env << EOL
+          DB_USER=postgres
+          DB_PASS=postgres
+          DB_DATABASE=postgres
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_PATH=/tmp/postgres-data
+          SUB_COMMAND=-f
+          SUBQL_WORKERS=6
+          SUBQL_BATCH_SIZE=10
+          EOL
+          
+          # Create necessary directories
+          mkdir -p /tmp/postgres-data
 
-            - name: Start Postgres and wait for it to be ready
-              run: |
-                  cd packages/indexer
-                  docker compose -f docker/docker-compose.testnet.yml up -d postgres
+      - name: Build and start development environment
+        run: |
+          # Start the dev environment in the background
+          cd packages/indexer
+          pnpm dev &
+          
+          # Store the process ID to kill it later
+          echo $! > /tmp/dev-pid
+          
+          # Give services time to initialize
+          echo "Waiting for services to start..."
+          sleep 60
+          
+          # Check if services are running
+          docker ps
+          curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible" || echo "GraphQL API is not accessible"
 
-                  # Wait for PostgreSQL to be ready
-                  echo "Waiting for PostgreSQL to initialize..."
-                  timeout 30 bash -c 'until docker exec docker-postgres-1 pg_isready -U postgres; do echo "PostgreSQL not ready yet..."; sleep 2; done'
-                  echo "PostgreSQL is ready"
+      - name: Check container status
+        run: |
+          docker ps -a
 
-                  # Add schema and extension initialization here
-                  echo "Creating schema and extensions..."
-                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
-                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
-                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "
-                  SET search_path TO app, public;
-                  CREATE TABLE IF NOT EXISTS app._metadata (
-                    key TEXT PRIMARY KEY,
-                    value JSONB
-                  );
-                  INSERT INTO app._metadata VALUES ('schema_version', '\"1.0.0\"') ON CONFLICT DO NOTHING;
-                  "
+          echo "==== POSTGRES LOGS ===="
+          docker logs docker-postgres-1 | tail -n 30 || true
 
-                  # Verify schema creation
-                  echo "Verifying schema..."
-                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app';"
+          echo "==== GRAPHQL ENGINE LOGS ===="
+          docker logs docker-graphql-engine-1 | tail -n 30 || true
 
-                  # Log PostgreSQL container network information
-                  echo "==== POSTGRES CONTAINER INFO ===="
-                  docker inspect docker-postgres-1 | grep -A 20 "NetworkSettings"
-                  echo "PostgreSQL container networks:"
-                  docker inspect docker-postgres-1 --format '{{ json .NetworkSettings.Networks }}'
-                  echo "PostgreSQL container IP:"
-                  docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' docker-postgres-1
+          echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
+          docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30 || true
 
-            - name: Start GraphQL engine and wait for it to be ready
-              run: |
-                  cd packages/indexer
+          echo "==== BSC CHAPEL LOGS ===="
+          docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30 || true
 
-                  # Modify the docker-compose file to use the container name
-                  sed -i 's/DB_HOST: \${DB_HOST}/DB_HOST: postgres/g' docker/docker-compose.testnet.yml
+          echo "==== GNOSIS CHIADO LOGS ===="
+          docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30 || true
 
-                  # Log the modified docker-compose file
-                  echo "==== MODIFIED DOCKER COMPOSE FILE ===="
-                  grep -A 10 "graphql-engine" docker/docker-compose.testnet.yml
+      - name: Run SDK tests
+        run: |
+          cd packages/sdk
+          pnpm test
+        env:
+          INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
+          BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
+          GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
+          HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
 
-                  # Start GraphQL engine
-                  docker compose -f docker/docker-compose.testnet.yml up -d graphql-engine
+      - name: Cleanup
+        if: always()
+        run: |
+          # Kill the dev process if it's still running
+          if [ -f /tmp/dev-pid ]; then
+            kill $(cat /tmp/dev-pid) || true
+          fi
+          
+          # Stop all docker containers
+          cd packages/indexer
+          docker compose -f docker/docker-compose.testnet.yml down || true
 
-                  # Log the environment variables in the GraphQL container
-                  echo "==== GRAPHQL ENGINE ENVIRONMENT ===="
-                  docker exec docker-graphql-engine-1 env | grep DB_
-
-                  # Wait for GraphQL engine
-                  echo "Waiting for GraphQL engine to start..."
-                  timeout 60 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 2; done'
-                  echo "GraphQL engine is up and running"
-
-            - name: Start all indexer services
-              run: |
-                  cd packages/indexer
-
-                  # Use adapted version of start:local command
-                  docker compose -f docker/docker-compose.testnet.yml up -d --force-recreate --remove-orphans
-
-                  # Give services time to initialize
-                  echo "Giving services time to initialize..."
-                  sleep 30
-
-                  # Check service health
-                  echo "Checking container status..."
-                  docker ps -a
-
-                  # Check GraphQL API
-                  echo "Checking GraphQL API access..."
-                  curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible" || echo "GraphQL API is not accessible"
-
-            - name: Check container status
-              run: |
-                  docker ps -a
-
-                  echo "==== POSTGRES LOGS ===="
-                  docker logs docker-postgres-1 | tail -n 30
-
-                  echo "==== GRAPHQL ENGINE LOGS ===="
-                  docker logs docker-graphql-engine-1 | tail -n 30
-
-                  echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
-                  docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30
-
-                  echo "==== BSC CHAPEL LOGS ===="
-                  docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30
-
-                  echo "==== GNOSIS CHIADO LOGS ===="
-                  docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30
-
-            - name: Run SDK tests
-              run: |
-                  cd packages/sdk
-                  pnpm test
-              env:
-                  INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
-                  BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
-                  GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
-                  HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
-                  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-                  PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
-
-            - name: Stop containers
-              if: always()
-              run: |
-                  cd packages/indexer
-                  docker compose -f docker/docker-compose.testnet.yml down
 
               # release:
               #     name: Release
