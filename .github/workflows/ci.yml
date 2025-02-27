@@ -14,21 +14,26 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Setup Docker Compose
+            - name: Set up Docker Compose
+              uses: KengoTODA/actions-setup-docker-compose@v1
+              with:
+                  version: "2.20.2" # Specify a version
+
+            - name: Setup Docker environment
               run: |
                   # Create temp directory for postgres data
                   mkdir -p /tmp/postgres-data
 
-                  # Pass all required environment variables for docker-compose
-                  echo "DB_USER=postgres" >> $GITHUB_ENV
-                  echo "DB_PASS=postgres" >> $GITHUB_ENV
-                  echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
-                  echo "DB_HOST=postgres" >> $GITHUB_ENV
-                  echo "DB_PORT=5432" >> $GITHUB_ENV
-                  echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
-                  echo "SUB_COMMAND=-f" >> $GITHUB_ENV
-                  echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
-                  echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
+                    # Pass all required environment variables for docker-compose
+                    echo "DB_USER=postgres" >> $GITHUB_ENV
+                    echo "DB_PASS=postgres" >> $GITHUB_ENV
+                    echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
+                    echo "DB_HOST=postgres" >> $GITHUB_ENV
+                    echo "DB_PORT=5432" >> $GITHUB_ENV
+                    echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
+                    echo "SUB_COMMAND=-f" >> $GITHUB_ENV
+                    echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
+                    echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
 
             - name: Start indexer stack
               run: |
