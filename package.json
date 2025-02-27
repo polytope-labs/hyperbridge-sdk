@@ -2,7 +2,7 @@
 	"name": "hyperbridge-sdk",
 	"private": true,
 	"version": "0.1.0",
-	"description": "Hyperbridge sdk workspace",
+	"description": "Hyperbridge SDK workspace",
 	"workspaces": [
 		"packages/*"
 	],
