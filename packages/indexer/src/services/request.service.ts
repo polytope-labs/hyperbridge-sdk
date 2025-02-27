@@ -86,9 +86,6 @@ export class RequestService {
 				timeoutTimestamp: timeoutTimestamp || BigInt(0),
 				to: to || "",
 				sourceTransactionHash: status === Status.SOURCE ? transactionHash : "",
-				hyperbridgeTransactionHash: "",
-				destinationTransactionHash: "",
-				destinationTimeoutTransactionHash: "",
 				commitment,
 			})
 
@@ -219,26 +216,6 @@ export class RequestService {
 	 */
 	static async findBySourceTransactionHash(sourceTransactionHash: string) {
 		return Request.getBySourceTransactionHash(sourceTransactionHash, {
-			orderBy: "nonce",
-			limit: -1,
-		})
-	}
-
-	/**
-	 * Find requests by hyperbridge transaction hash
-	 */
-	static async findByHyperbridgeTransactionHash(hyperbridgeTransactionHash: string) {
-		return Request.getByHyperbridgeTransactionHash(hyperbridgeTransactionHash, {
-			orderBy: "nonce",
-			limit: -1,
-		})
-	}
-
-	/**
-	 * Find requests by destination transaction hash
-	 */
-	static async findByDestinationTransactionHash(destinationTransactionHash: string) {
-		return Request.getByDestinationTransactionHash(destinationTransactionHash, {
 			orderBy: "nonce",
 			limit: -1,
 		})

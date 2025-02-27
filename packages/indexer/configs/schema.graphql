@@ -267,8 +267,6 @@ type Request
 		fields: [
 			["commitment", "chain"]
 			["sourceTransactionHash", "chain"]
-			["hyperbridgeTransactionHash", "chain"]
-			["destinationTransactionHash", "chain"]
 		]
 	) {
 	"""
