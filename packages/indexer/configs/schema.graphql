@@ -297,7 +297,6 @@ type Request
 	"""
 	The timeout transaction hash of the hyperbridge transaction
 	"""
-	hyperbridgeTimeoutTransactionHash: String
 
 	"""
 	The timeout transaction hash of the destination transaction
