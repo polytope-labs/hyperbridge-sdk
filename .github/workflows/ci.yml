@@ -28,7 +28,7 @@ jobs:
                     echo "DB_USER=postgres" >> $GITHUB_ENV
                     echo "DB_PASS=postgres" >> $GITHUB_ENV
                     echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
-                    echo "DB_HOST=postgres" >> $GITHUB_ENV
+                    echo "DB_HOST=host.docker.internal" >> $GITHUB_ENV
                     echo "DB_PORT=5432" >> $GITHUB_ENV
                     echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
                     echo "SUB_COMMAND=-f" >> $GITHUB_ENV
