@@ -53,6 +53,23 @@ jobs:
                   timeout 30 bash -c 'until docker exec docker-postgres-1 pg_isready -U postgres; do echo "PostgreSQL not ready yet..."; sleep 2; done'
                   echo "PostgreSQL is ready"
 
+                  # Add schema and extension initialization here
+                  echo "Creating schema and extensions..."
+                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
+                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
+                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "
+                  SET search_path TO app, public;
+                  CREATE TABLE IF NOT EXISTS app._metadata (
+                    key TEXT PRIMARY KEY,
+                    value JSONB
+                  );
+                  INSERT INTO app._metadata VALUES ('schema_version', '\"1.0.0\"') ON CONFLICT DO NOTHING;
+                  "
+
+                  # Verify schema creation
+                  echo "Verifying schema..."
+                  docker exec docker-postgres-1 psql -U postgres -d postgres -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app';"
+
                   # Log PostgreSQL container network information
                   echo "==== POSTGRES CONTAINER INFO ===="
                   docker inspect docker-postgres-1 | grep -A 20 "NetworkSettings"
