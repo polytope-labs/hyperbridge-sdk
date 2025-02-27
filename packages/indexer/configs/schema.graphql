@@ -267,8 +267,6 @@ type Request
 		fields: [
 			["commitment", "chain"]
 			["sourceTransactionHash", "chain"]
-			["hyperbridgeTransactionHash", "chain"]
-			["destinationTransactionHash", "chain"]
 		]
 	) {
 	"""
@@ -285,26 +283,6 @@ type Request
 	The transaction hash of the source transaction
 	"""
 	sourceTransactionHash: String! @index
-
-	"""
-	The transaction hash of the hyperbridge transaction
-	"""
-	hyperbridgeTransactionHash: String! @index
-
-	"""
-	The transaction hash of the destination transaction
-	"""
-	destinationTransactionHash: String! @index
-
-	"""
-	The timeout transaction hash of the hyperbridge transaction
-	"""
-	hyperbridgeTimeoutTransactionHash: String
-
-	"""
-	The timeout transaction hash of the destination transaction
-	"""
-	destinationTimeoutTransactionHash: String
 
 	"""
 	The chain on which the request was made

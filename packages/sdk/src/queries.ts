@@ -1,36 +1,44 @@
 export const REQUEST_STATUS = `
-  query RequestStatus($hash: String!) {
-    requests(
-      filter: {
-        or: [
-          { commitment: { equalTo: $hash } }
-          { hyperbridgeTransactionHash: { equalTo: $hash } }
-          { sourceTransactionHash: { equalTo: $hash } }
-          { destinationTransactionHash: { equalTo: $hash } }
-        ]
-      }
-    ) {
-      nodes {
-        timeoutTimestamp
-        source
-        dest
-        to
-        from
-        nonce
-        body
-        statusMetadata {
-          nodes {
-            blockHash
-            blockNumber
-            timestamp
-            chain
-            status
-            transactionHash
+  query RequestStatusM($hash: String!) {
+  requests(
+    filter: {
+      or: [
+        {
+          statusMetadata: {
+            some: { 
+              or: [
+                { transactionHash: { equalTo: $hash } },
+                { blockHash: { equalTo: $hash } }
+              ]
+            }
           }
+        },
+        { commitment: { equalTo: $hash } }
+      ]
+    }
+  ) {
+    nodes {
+      commitment
+      timeoutTimestamp
+      source
+      dest
+      to
+      from
+      nonce
+      body
+      statusMetadata {
+        nodes {
+          blockHash
+          blockNumber
+          timestamp
+          chain
+          status
+          transactionHash
         }
       }
     }
   }
+}
 `
 
 export const STATE_MACHINE_UPDATES_BY_HEIGHT = `
