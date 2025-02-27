@@ -27,7 +27,6 @@ import {
 	sleep,
 } from "@/utils"
 import { getChain, IChain, SubstrateChain } from "@/chain"
-import { time } from "console"
 
 /**
  * IndexerClient provides methods for interacting with the Hyperbridge indexer.

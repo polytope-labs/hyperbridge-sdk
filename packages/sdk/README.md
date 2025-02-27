@@ -44,6 +44,8 @@ const indexer = new IndexerClient({
 ### Monitor Post Request Status
 
 ```ts
+import { postRequestCommitment } from "@hyperbridge/sdk"
+
 // Get status stream for a commitment
 const commitment = postRequestCommitment(request)
 for await (const status of indexer.postRequestStatusStream(commitment)) {
@@ -87,6 +89,8 @@ console.log(request?.statuses)
 ### Chain Utilities
 
 ```ts
+import { EvmChain, SubstrateChain } from "@hyperbridge/sdk"
+
 // Interact with EVM chains
 const evmChain = new EvmChain({
 	url: "https://rpc.chiadochain.net",
@@ -95,10 +99,12 @@ const evmChain = new EvmChain({
 })
 
 // Interact with Substrate chains
-const substrateChain = new SubstrateChain({
+const hyperbridge = new SubstrateChain({
 	ws: "wss://gargantua.dev.polytope.technology",
 	hasher: "Keccak",
 })
+
+const proof = await hyperbridge.queryStateProof(blockNumber, keys)
 ```
 
 ## API Reference
@@ -107,7 +113,7 @@ const substrateChain = new SubstrateChain({
 
 - IndexerClient - Main client for interacting with the indexer
 - EvmChain - Utilities for EVM chain interaction
-  -SubstrateChain - Utilities for Substrate chain interaction
+- SubstrateChain - Utilities for Substrate chain interaction
 
 ### Types
 
