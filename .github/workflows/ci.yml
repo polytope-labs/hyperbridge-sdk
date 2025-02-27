@@ -68,10 +68,14 @@ jobs:
               run: |
                   # Start the dev environment in the background
                   cd packages/indexer
-                  pnpm dev &
 
-                  # Store the process ID to kill it later
-                  echo $! > /tmp/dev-pid
+                  # Run codegen and build steps directly
+                  pnpm run codegen:yamls
+                  pnpm run codegen:subql
+                  pnpm run build
+
+                  # Run Docker Compose manually (without using the start:local script)
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d --force-recreate --remove-orphans
 
                   # Give services time to initialize
                   echo "Waiting for services to start..."
