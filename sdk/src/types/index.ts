@@ -133,7 +133,7 @@ export enum RequestStatus {
 
 export enum TimeoutStatus {
 	PENDING_TIMEOUT = "PENDING_TIMEOUT",
-	DESTINATION_FINALIZED = "DESTINATION_FINALIZED",
+	DESTINATION_FINALIZED_TIMEOUT = "DESTINATION_FINALIZED_TIMEOUT",
 	HYPERBRIDGE_TIMED_OUT = "HYPERBRIDGE_TIMED_OUT",
 	HYPERBRIDGE_FINALIZED_TIMEOUT = "HYPERBRIDGE_FINALIZED_TIMEOUT",
 	TIMED_OUT = "TIMED_OUT",
@@ -253,7 +253,7 @@ export type RequestStatusWithMetadata =
 			}
 	  }
 	| {
-			status: TimeoutStatus.DESTINATION_FINALIZED
+			status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT
 			metadata: {
 				blockHash: string
 				blockNumber: number

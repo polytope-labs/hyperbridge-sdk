@@ -82,6 +82,11 @@ export interface IChain {
 	requestReceiptKey(commitment: HexString): HexString
 
 	/**
+	 * Query and return the request-receipt for the given request commitment.
+	 */
+	queryRequestReceipt(commitment: HexString): Promise<HexString | undefined>
+
+	/**
 	 * Query and return the encoded storage proof for the provided keys at the given height.
 	 */
 	queryStateProof(at: bigint, keys: HexString[]): Promise<HexString>

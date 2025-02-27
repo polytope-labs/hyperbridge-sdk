@@ -48,7 +48,6 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 
 		switch (method) {
 			case "StateMachineUpdated":
-				// todo: Get the timestamp of the state commitment
 				await StateMachineService.createSubstrateStateMachineUpdatedEvent(
 					{
 						blockHash,

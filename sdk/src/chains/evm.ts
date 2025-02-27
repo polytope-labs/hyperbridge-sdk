@@ -53,6 +53,12 @@ const chains = {
 }
 
 /**
+ * The default address used as fallback when no address is provided.
+ * This represents the zero address in EVM chains.
+ */
+export const DEFAULT_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+/**
  * Parameters for an EVM chain.
  */
 export interface EvmChainParams {
@@ -92,6 +98,23 @@ export class EvmChain implements IChain {
 	 */
 	requestReceiptKey(commitment: HexString): HexString {
 		return deriveMapKey(hexToBytes(commitment), REQUEST_RECEIPTS_SLOT)
+	}
+
+	/**
+	 * Queries the request receipt.
+	 * @param {HexString} commitment - The commitment to query.
+	 * @returns {Promise<HexString | undefined>} The relayer address responsible for delivering the request.
+	 */
+	async queryRequestReceipt(commitment: HexString): Promise<HexString | undefined> {
+		const relayer = await this.publicClient.readContract({
+			address: this.params.host,
+			abi: EvmHost.ABI,
+			functionName: "requestReceipts",
+			args: [commitment],
+		})
+
+		// solidity returns zeroes if the storage slot is empty
+		return relayer === DEFAULT_ADDRESS ? undefined : relayer
 	}
 
 	/**

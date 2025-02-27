@@ -1,10 +1,9 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { RpcWebSocketClient } from "rpc-websocket-client"
-import { toHex, hexToBytes, toBytes, concat, bytesToHex } from "viem"
+import { toHex, hexToBytes, toBytes, bytesToHex } from "viem"
 import { match } from "ts-pattern"
 import capitalize from "lodash/capitalize"
 import { u8, Vector } from "scale-ts"
-import { stringify } from "safe-stable-stringify"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
@@ -52,6 +51,22 @@ export class SubstrateChain implements IChain {
 
 		// Concatenate the prefix and key bytes
 		return bytesToHex(new Uint8Array([...prefix, ...keyBytes]))
+	}
+
+	/**
+	 * Queries the request receipt.
+	 * @param {HexString} commitment - The commitment to query.
+	 * @returns {Promise<HexString | undefined>} The relayer address responsible for delivering the request.
+	 */
+	async queryRequestReceipt(commitment: HexString): Promise<HexString | undefined> {
+		const prefix = toHex(":child_storage:default:ISMP")
+		const key = this.requestReceiptKey(commitment)
+
+		const rpc = new RpcWebSocketClient()
+		await rpc.connect(this.params.ws)
+		const item: any = await rpc.call("childstate_getStorage", [prefix, key])
+
+		return item
 	}
 
 	/**
@@ -103,23 +118,30 @@ export class SubstrateChain implements IChain {
 	/**
 	 * Submit an unsigned ISMP transaction to the chain. Resolves when the transaction is finalized.
 	 * @param message - The message to be submitted.
+	 * @returns A promise that resolves to an object containing the transaction hash, block hash, and block number.
 	 */
-	async submitUnsigned(message: IIsmpMessage): Promise<{ transactionHash: string; blockHash: string }> {
-		if (!this.api) throw new Error("API not initialized")
-		const encoded = this.encode(message)
-		const tx = this.api.tx(encoded)
+	async submitUnsigned(
+		message: IIsmpMessage,
+	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number }> {
+		const self = this
+		if (!self.api) throw new Error("API not initialized")
+		// remove the call and method selectors
+		const args = hexToBytes(self.encode(message)).slice(2)
+		const tx = self.api.tx.ismp.handleUnsigned(args)
 		return new Promise(async (resolve, reject) => {
-			const unsub = await tx.send(({ isFinalized, isError, dispatchError, txHash, status }) => {
+			const unsub = await tx.send(async ({ isFinalized, isError, dispatchError, txHash, status }) => {
 				if (isFinalized) {
-					console.trace("Unsigned transaction submitted successfully")
 					unsub()
+					const blockHash = status.asFinalized.toHex()
+					const header = await self.api!.rpc.chain.getHeader(blockHash)
 					resolve({
 						transactionHash: txHash.toHex(),
-						blockHash: status.asInBlock.toHex(),
+						blockHash: blockHash,
+						blockNumber: header.number.toNumber(),
 					})
 				} else if (isError) {
-					console.error("Unsigned transaction failed")
 					unsub()
+					console.error("Unsigned transaction failed: ", dispatchError)
 					reject(dispatchError)
 				}
 			})
@@ -158,13 +180,13 @@ export class SubstrateChain implements IChain {
 	 */
 	encode(message: IIsmpMessage): HexString {
 		const palletIndex = this.getPalletIndex("Ismp")
-		console.log("Encoding: ...", stringify(message, null, 4))
 		const args = match(message)
 			.with({ kind: "PostRequest" }, (message) =>
 				Vector(Message).enc([
 					{
 						tag: "RequestMessage",
 						value: {
+							requests: message.requests.map((r) => convertIPostRequestToCodec(r)),
 							proof: {
 								height: {
 									height: message.proof.height,
@@ -176,7 +198,6 @@ export class SubstrateChain implements IChain {
 								proof: Array.from(hexToBytes(message.proof.proof)),
 							},
 							signer: Array.from(hexToBytes(message.signer)),
-							requests: convertIPostRequestToCodec(message.requests),
 						},
 					},
 				]),
@@ -188,7 +209,7 @@ export class SubstrateChain implements IChain {
 						value: {
 							tag: "Post",
 							value: {
-								requests: convertIPostRequestToCodec(message.requests),
+								requests: message.requests.map((r) => convertIPostRequestToCodec(r)),
 								proof: {
 									height: {
 										height: message.proof.height,
@@ -223,9 +244,9 @@ export class SubstrateChain implements IChain {
 
 		for (const p of pallets) {
 			if (p[1].name.toString() === name) {
-				const pallet_index = p[1].index.toNumber()
+				const index = p[1].index.toNumber()
 
-				return pallet_index
+				return index
 			}
 		}
 
@@ -263,22 +284,20 @@ function convertStateMachineIdToEnum(id: string): IStateMachine {
 
 /**
  * Converts an array of IPostRequest objects to a codec representation.
- * @param {IPostRequest[]} requests - The array of IPostRequest objects.
+ * @param {IPostRequest} request - The array of IPostRequest objects.
  * @returns {any} The codec representation of the requests.
  */
-function convertIPostRequestToCodec(requests: IPostRequest[]): any {
+function convertIPostRequestToCodec(request: IPostRequest): any {
 	return {
 		tag: "Post",
 		value: {
-			requests: requests.map((req) => ({
-				source: convertStateMachineIdToEnum(req.source),
-				dest: convertStateMachineIdToEnum(req.dest),
-				from: Array.from(toBytes(req.from)),
-				to: Array.from(toBytes(req.to)),
-				nonce: req.nonce,
-				body: Array.from(toBytes(req.body)),
-				timeoutTimestamp: req.timeoutTimestamp,
-			})) as any,
+			source: convertStateMachineIdToEnum(request.source),
+			dest: convertStateMachineIdToEnum(request.dest),
+			from: Array.from(hexToBytes(request.from)),
+			to: Array.from(hexToBytes(request.to)),
+			nonce: request.nonce,
+			body: Array.from(hexToBytes(request.body)),
+			timeoutTimestamp: request.timeoutTimestamp,
 		},
 	}
 }

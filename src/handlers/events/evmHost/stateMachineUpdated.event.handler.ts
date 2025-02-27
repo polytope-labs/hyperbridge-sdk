@@ -11,7 +11,6 @@ export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedL
 	const { blockHash, blockNumber, transactionHash, transactionIndex, block, args } = event
 	const { stateMachineId, height } = args
 
-	// todo: Get the timestamp of the state commitment
 	logger.info(
 		`Handling StateMachineUpdated Event: ${JSON.stringify({
 			blockNumber,

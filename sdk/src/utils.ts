@@ -4,10 +4,6 @@ import { encodePacked, keccak256, toHex } from "viem"
 export * from "./utils/mmr"
 export * from "./utils/substrate"
 
-/**
- * The default interval in milliseconds between polling operations.
- * Used as a fallback interval when no specific polling interval is provided.
- */
 export const DEFAULT_POLL_INTERVAL = 5_000
 
 /**
@@ -84,8 +80,33 @@ export const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  */
 export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatus, number> = {
 	[TimeoutStatus.PENDING_TIMEOUT]: 1,
-	[TimeoutStatus.DESTINATION_FINALIZED]: 2,
+	[TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 2,
 	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 3,
 	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 4,
 	[TimeoutStatus.TIMED_OUT]: 5,
+}
+
+/**
+ * Combines both request and timeout status weights into a single mapping.
+ * This provides a comprehensive view of all possible states a request can be in,
+ * with higher weights representing more advanced states in either the normal
+ * processing pipeline or the timeout handling process.
+ *
+ * The weights follow this progression:
+ * 0-4: Normal request processing (SOURCE to DESTINATION)
+ * 5-9: Timeout handling progression (PENDING_TIMEOUT to TIMED_OUT)
+ *
+ * @returns A record mapping each RequestStatus and TimeoutStatus to its corresponding weight value.
+ */
+export const COMBINED_STATUS_WEIGHTS: Record<RequestStatus | TimeoutStatus, number> = {
+	[RequestStatus.SOURCE]: 0,
+	[RequestStatus.SOURCE_FINALIZED]: 1,
+	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
+	[RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
+	[RequestStatus.DESTINATION]: 4,
+	[TimeoutStatus.PENDING_TIMEOUT]: 5,
+	[TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 6,
+	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 7,
+	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
+	[TimeoutStatus.TIMED_OUT]: 9,
 }
