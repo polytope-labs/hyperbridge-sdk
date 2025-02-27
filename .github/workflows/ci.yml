@@ -101,10 +101,6 @@ jobs:
                   timeout 60 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 2; done'
                   echo "GraphQL engine is up and running"
 
-                  # Check GraphQL logs for connection information
-                  echo "==== GRAPHQL CONNECTION LOGS ===="
-                  docker logs docker-graphql-engine-1 | grep -i "connect"
-
             - name: Start indexer nodes
               run: |
                   cd packages/indexer
