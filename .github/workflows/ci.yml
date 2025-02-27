@@ -109,14 +109,23 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  # Start each indexer node one by one
-                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-hyperbridge-gargantua
-                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-bsc-chapel
-                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-gnosis-chiado
+                  # Start each indexer node one by one with error checking
+                  echo "Starting Hyperbridge Gargantua indexer..."
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-hyperbridge-gargantua || { echo "Failed to start Hyperbridge Gargantua"; exit 1; }
+
+                  echo "Starting BSC Chapel indexer..."
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-bsc-chapel || { echo "Failed to start BSC Chapel"; exit 1; }
+
+                  echo "Starting Gnosis Chiado indexer..."
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-gnosis-chiado || { echo "Failed to start Gnosis Chiado"; exit 1; }
 
                   # Give indexers time to initialize
                   echo "Giving indexers time to initialize..."
                   sleep 30
+
+                  # Check if containers are running
+                  echo "Checking indexer container status..."
+                  docker ps | grep subquery-node
 
                   # Check indexer health
                   echo "Checking indexer health..."
