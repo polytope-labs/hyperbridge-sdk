@@ -14,62 +14,6 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Set up Docker Compose
-              uses: KengoTODA/actions-setup-docker-compose@v1
-              with:
-                  version: "2.20.2" # Specify a version
-
-            - name: Setup Docker environment
-              run: |
-                  # Create temp directory for postgres data
-                  mkdir -p /tmp/postgres-data
-
-                    # Pass all required environment variables for docker-compose
-                    echo "DB_USER=postgres" >> $GITHUB_ENV
-                    echo "DB_PASS=postgres" >> $GITHUB_ENV
-                    echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
-                    echo "DB_HOST=host.docker.internal" >> $GITHUB_ENV
-                    echo "DB_PORT=5432" >> $GITHUB_ENV
-                    echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
-                    echo "SUB_COMMAND=-f" >> $GITHUB_ENV
-                    echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
-                    echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
-
-            - name: Start indexer stack
-              run: |
-                  cd packages/indexer
-
-                  # Start only Postgres first
-                  docker compose -f docker/docker-compose.testnet.yml up -d postgres
-
-                  # Wait for PostgreSQL to be ready
-                  echo "Waiting for PostgreSQL to initialize..."
-                  for i in {1..20}; do
-                    if docker exec docker-postgres-1 pg_isready -U postgres -h localhost; then
-                      echo "PostgreSQL is ready"
-                      break
-                    fi
-                    echo "Waiting for PostgreSQL... (attempt $i of 20)"
-                    sleep 5
-                  done
-
-                  # Now start GraphQL engine
-                  docker compose -f docker/docker-compose.testnet.yml up -d graphql-engine
-
-                  # Wait for GraphQL engine
-                  echo "Waiting for GraphQL engine to start..."
-                  for i in {1..20}; do
-                    if curl -s http://localhost:3000/graphql -o /dev/null; then
-                      echo "GraphQL engine is up and running"
-                      break
-                    fi
-                    echo "Waiting... (attempt $i of 20)"
-                    sleep 5
-                  done
-
-                  # Finally start indexing nodes
-                  docker compose -f docker/docker-compose.testnet.yml up -d indexer
-
             - name: Setup Node.js
               uses: actions/setup-node@v3
               with:
@@ -86,6 +30,80 @@ jobs:
             - name: Build SDK
               run: pnpm --filter="@hyperbridge/sdk" build
 
+            - name: Set up Docker environment
+              run: |
+                  mkdir -p /tmp/postgres-data
+                  echo "DB_USER=postgres" >> $GITHUB_ENV
+                  echo "DB_PASS=postgres" >> $GITHUB_ENV
+                  echo "DB_DATABASE=hyperbridge" >> $GITHUB_ENV
+                  echo "DB_HOST=postgres" >> $GITHUB_ENV
+                  echo "DB_PORT=5432" >> $GITHUB_ENV
+                  echo "DB_PATH=/tmp/postgres-data" >> $GITHUB_ENV
+                  echo "SUB_COMMAND=-f" >> $GITHUB_ENV
+                  echo "SUBQL_WORKERS=1" >> $GITHUB_ENV
+                  echo "SUBQL_BATCH_SIZE=5" >> $GITHUB_ENV
+
+            - name: Start Postgres and wait for it to be ready
+              run: |
+                  cd packages/indexer
+                  docker compose -f docker/docker-compose.testnet.yml up -d postgres
+
+                  # Wait for PostgreSQL to be ready
+                  echo "Waiting for PostgreSQL to initialize..."
+                  timeout 30 bash -c 'until docker exec docker-postgres-1 pg_isready -U postgres; do echo "PostgreSQL not ready yet..."; sleep 2; done'
+                  echo "PostgreSQL is ready"
+
+            - name: Start GraphQL engine and wait for it to be ready
+              run: |
+                  cd packages/indexer
+
+                  # Modify the docker-compose file to use the container name
+                  sed -i 's/DB_HOST: \${DB_HOST}/DB_HOST: postgres/g' docker/docker-compose.testnet.yml
+
+                  # Start GraphQL engine
+                  docker compose -f docker/docker-compose.testnet.yml up -d graphql-engine
+
+                  # Wait for GraphQL engine
+                  echo "Waiting for GraphQL engine to start..."
+                  timeout 60 bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do echo "Waiting..."; sleep 2; done'
+                  echo "GraphQL engine is up and running"
+
+            - name: Start indexer nodes
+              run: |
+                  cd packages/indexer
+
+                  # Start each indexer node one by one
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-hyperbridge-gargantua
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-bsc-chapel
+                  docker compose -f docker/docker-compose.testnet.yml up -d subquery-node-gnosis-chiado
+
+                  # Give indexers time to initialize
+                  echo "Giving indexers time to initialize..."
+                  sleep 30
+
+                  # Check indexer health
+                  echo "Checking indexer health..."
+                  curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible"
+
+            - name: Check container status
+              run: |
+                  docker ps -a
+
+                  echo "==== POSTGRES LOGS ===="
+                  docker logs docker-postgres-1 | tail -n 30
+
+                  echo "==== GRAPHQL ENGINE LOGS ===="
+                  docker logs docker-graphql-engine-1 | tail -n 30
+
+                  echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
+                  docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30
+
+                  echo "==== BSC CHAPEL LOGS ===="
+                  docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30
+
+                  echo "==== GNOSIS CHIADO LOGS ===="
+                  docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30
+
             - name: Run SDK tests
               run: pnpm --filter="@hyperbridge/sdk" test
               env:
@@ -99,49 +117,49 @@ jobs:
             - name: Run linter
               run: pnpm lint
 
-            - name: Stop indexer stack
+            - name: Stop containers
               if: always()
               run: |
                   cd packages/indexer
-                  docker-compose -f docker/docker-compose.testnet.yml down
+                  docker compose -f docker/docker-compose.testnet.yml down
 
-    # release:
-    #     name: Release
-    #     needs: test
-    #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    #     runs-on: ubuntu-latest
-    #     steps:
-    #         - uses: actions/checkout@v3
-    #           with:
-    #               fetch-depth: 0
-    #               token: ${{ secrets.GITHUB_TOKEN }}
+              # release:
+              #     name: Release
+              #     needs: test
+              #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              #     runs-on: ubuntu-latest
+              #     steps:
+              #         - uses: actions/checkout@v3
+              #           with:
+              #               fetch-depth: 0
+              #               token: ${{ secrets.GITHUB_TOKEN }}
 
-    #         - name: Setup Node.js
-    #           uses: actions/setup-node@v3
-    #           with:
-    #               node-version: "18"
-    #               registry-url: "https://registry.npmjs.org"
+              #         - name: Setup Node.js
+              #           uses: actions/setup-node@v3
+              #           with:
+              #               node-version: "18"
+              #               registry-url: "https://registry.npmjs.org"
 
-    #         - name: Setup PNPM
-    #           uses: pnpm/action-setup@v2
-    #           with:
-    #               version: 7
+              #         - name: Setup PNPM
+              #           uses: pnpm/action-setup@v2
+              #           with:
+              #               version: 7
 
-    #         - name: Install dependencies
-    #           run: pnpm install
+              #         - name: Install dependencies
+              #           run: pnpm install
 
-    #         - name: Setup Git User
-    #           run: |
-    #               git config --global user.name "GitHub Actions"
-    #               git config --global user.email "actions@github.com"
+              #         - name: Setup Git User
+              #           run: |
+              #               git config --global user.name "GitHub Actions"
+              #               git config --global user.email "actions@github.com"
 
-    #         - name: Create Release Pull Request or Publish
-    #           id: changesets
-    #           uses: changesets/action@v1
-    #           with:
-    #               publish: pnpm release
-    #               commit: "chore: version packages"
-    #               title: "chore: version packages"
-    #           env:
-    #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              #         - name: Create Release Pull Request or Publish
+              #           id: changesets
+              #           uses: changesets/action@v1
+              #           with:
+              #               publish: pnpm release
+              #               commit: "chore: version packages"
+              #               title: "chore: version packages"
+              #           env:
+              #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
