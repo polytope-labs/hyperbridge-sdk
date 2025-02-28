@@ -34,7 +34,7 @@ jobs:
             - name: Setup environment for testing
               run: |
                   # Create environment file
-                  cat > packages/indexer/.env << EOL
+                  cat > .env << EOL
                   # TESTNET RPCS
                   HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
                   BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
