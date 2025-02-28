@@ -77,7 +77,7 @@ jobs:
                   pnpm run codegen:subql
                   pnpm run build
 
-                  # Start only the Postgres container first
+                  # Step 1: Start only the Postgres container first
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
 
                   # Wait for PostgreSQL to be ready
@@ -88,11 +88,23 @@ jobs:
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
 
-                  # Start the rest of the services
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
+                  # Step 2: Start SubQL nodes and wait for them to initialize
+                  echo "Starting SubQL nodes..."
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua subquery-node-bsc-chapel subquery-node-gnosis-chiado
+
+                  # Give SubQL nodes time to initialize and set up schema
+                  echo "Waiting for SubQL nodes to initialize..."
+                  sleep 30
+
+                  # Check SubQL node status
+                  docker ps | grep subquery-node
+
+                  # Step 3: Finally start the GraphQL engine
+                  echo "Starting GraphQL engine..."
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d graphql-engine
 
                   # Check service status
-                  docker ps -a
+                  docker ps
 
             - name: Wait for services to be ready
               run: |
@@ -119,6 +131,18 @@ jobs:
 
                   if [ $attempt -ge $max_attempts ]; then
                       echo "GraphQL service failed to start properly after $max_attempts attempts"
+                      
+                      # Show more detailed logs for debugging
+                      echo "==== POSTGRES LOGS ===="
+                      docker logs $(docker ps -q -f name=postgres) | tail -n 50
+                      
+                      echo "==== GRAPHQL ENGINE LOGS ===="
+                      docker logs $(docker ps -q -f name=graphql-engine)
+                      
+                      echo "==== DB SCHEMA INFO ===="
+                      docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "\dn"
+                      docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "SELECT * FROM pg_tables WHERE schemaname = 'app' LIMIT 10;"
+                      
                       exit 1
                   fi
 
