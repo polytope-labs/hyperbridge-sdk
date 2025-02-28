@@ -68,7 +68,7 @@ jobs:
                   # Create database directory
                   mkdir -p /tmp/postgres-data
 
-            - name: Build and start indexer
+            - name: Build and prepare indexer
               run: |
                   cd packages/indexer
 
@@ -77,94 +77,98 @@ jobs:
                   pnpm run codegen:subql
                   pnpm run build
 
-                  # Verify the YAML files exist and have correct content
-                  echo "Checking YAML files..."
-                  ls -la configs/
-                  cat configs/hyperbridge-gargantua.yaml | head -n 20
+                  # Create a proper directory structure for SubQL
+                  mkdir -p /tmp/subql-app
+                  cp configs/*.yaml /tmp/subql-app/
+                  cp configs/schema.graphql /tmp/subql-app/ || echo "No schema.graphql found"
 
-                  # Step 1: Start only the Postgres container first
+                  # Copy all build artifacts
+                  mkdir -p /tmp/subql-app/dist
+                  cp -r dist/* /tmp/subql-app/dist/
+
+                  # Copy chaintypes files if they exist
+                  mkdir -p /tmp/subql-app/dist/substrate-chaintypes || true
+                  cp -r dist/substrate-chaintypes/* /tmp/subql-app/dist/substrate-chaintypes/ || echo "No chaintypes found"
+
+                  # Ensure all files are readable
+                  chmod -R 755 /tmp/subql-app
+
+                  # Update docker-compose.testnet.yml to use absolute paths
+                  sed -i 's|../configs:/app|/tmp/subql-app:/app|g' docker/docker-compose.testnet.yml
+                  sed -i 's|../dist:/app/dist|/tmp/subql-app/dist:/app/dist|g' docker/docker-compose.testnet.yml
+
+                  # Verify the directory structure
+                  echo "Directory structure:"
+                  find /tmp/subql-app -type f | sort
+
+                  # Verify docker-compose changes
+                  echo "Modified docker-compose:"
+                  grep -A 5 volumes docker/docker-compose.testnet.yml
+
+            - name: Start Postgres
+              run: |
+                  cd packages/indexer
+
+                  # Start only the Postgres container
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
 
                   # Wait for PostgreSQL to be ready
                   echo "Waiting for PostgreSQL..."
                   timeout 60s bash -c 'until docker exec $(docker ps -q -f name=postgres) pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
 
-                  # Initialize the database schema
+                  # Initialize database schema
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
 
-                  # Fix file paths - ensure files are accessible inside Docker
-                  echo "Setting up proper file permissions and paths..."
-                  mkdir -p $(pwd)/docker-configs
-                  cp -R configs/* $(pwd)/docker-configs/
-                  cp dist/* $(pwd)/docker-configs/ || true
+            - name: Start SubQL nodes
+              run: |
+                  cd packages/indexer
 
-                  # Modify docker-compose to use absolute paths for volume mounts
-                  sed -i "s|../configs:/app|$(pwd)/docker-configs:/app|g" docker/docker-compose.testnet.yml
-                  sed -i "s|../dist:/app/dist|$(pwd)/dist:/app/dist|g" docker/docker-compose.testnet.yml
-
-                  # Show the modified docker-compose
-                  echo "Modified docker-compose.testnet.yml:"
-                  cat docker/docker-compose.testnet.yml
-
-                  # Step 2: Start a single SubQL node first as a test
-                  echo "Starting one SubQL node as a test..."
+                  # Start one node first as a test
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua
 
                   # Wait and check logs
                   sleep 10
-                  docker logs $(docker ps -q -f name=subquery-node-hyperbridge-gargantua)
+                  echo "SubQL node logs:"
+                  docker logs $(docker ps -q -f name=subquery-node-hyperbridge-gargantua) || true
 
-                  # If successful, start the other nodes
-                  echo "Starting remaining SubQL nodes..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
-
-                  # Check service status
-                  docker ps
+                  # Start the remaining services if the first node started successfully
+                  if docker ps | grep -q subquery-node-hyperbridge-gargantua; then
+                      echo "First node started successfully, starting remaining services..."
+                      docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
+                  else
+                      echo "First node failed to start, something is wrong with the configuration"
+                      exit 1
+                  fi
 
             - name: Wait for services to be ready
               run: |
-                  # More robust GraphQL API check
+                  # Wait for GraphQL API
                   echo "Waiting for GraphQL API..."
-                  max_attempts=20
+                  max_attempts=15
                   attempt=0
                   until curl -s http://localhost:3000/graphql -o /dev/null || [ $attempt -ge $max_attempts ]; do
                       attempt=$((attempt+1))
                       echo "Waiting for GraphQL... attempt $attempt of $max_attempts"
                       
-                      # Check the logs to see what's happening
-                      echo "Current GraphQL logs:"
-                      docker logs $(docker ps -q -f name=graphql-engine) 2>&1 | tail -n 10
-                      
-                      # If GraphQL is failing, restart it
-                      if docker logs $(docker ps -q -f name=graphql-engine) 2>&1 | grep -q "Error:"; then
-                          echo "GraphQL engine failed, restarting..."
-                          docker restart $(docker ps -q -f name=graphql-engine)
+                      if [ $attempt -eq 10 ]; then
+                          # Show more verbose logs at attempt 10
+                          echo "Checking container status..."
+                          docker ps -a
+                          
+                          echo "GraphQL logs:"
+                          docker logs $(docker ps -q -f name=graphql-engine) || true
                       fi
                       
                       sleep 10
                   done
 
                   if [ $attempt -ge $max_attempts ]; then
-                      echo "GraphQL service failed to start properly after $max_attempts attempts"
-                      
-                      # Show more detailed logs for debugging
-                      echo "==== POSTGRES LOGS ===="
-                      docker logs $(docker ps -q -f name=postgres) | tail -n 50
-                      
-                      echo "==== GRAPHQL ENGINE LOGS ===="
-                      docker logs $(docker ps -q -f name=graphql-engine)
-                      
-                      echo "==== DB SCHEMA INFO ===="
-                      docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "\dn"
-                      docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "SELECT * FROM pg_tables WHERE schemaname = 'app' LIMIT 10;"
-                      
+                      echo "GraphQL service failed to start properly"
                       exit 1
                   fi
 
-                  # Give indexers some time to start processing
-                  echo "Waiting for indexers to initialize..."
-                  sleep 30
+                  echo "All services are running!"
 
             - name: Run SDK tests
               run: |
@@ -178,7 +182,7 @@ jobs:
                   PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
                   PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
 
-            - name: Show container logs on failure
+            - name: Show logs on failure
               if: failure()
               run: |
                   echo "==== POSTGRES LOGS ===="
@@ -188,9 +192,12 @@ jobs:
                   docker logs $(docker ps -q -f name=graphql-engine) || true
 
                   for container in $(docker ps -q -f name=subquery-node); do
-                    echo "==== SUBQUERY NODE LOGS $(docker inspect --format '{{.Name}}' $container) ===="
-                    docker logs $container | tail -n 100 || true
+                      echo "==== LOGS FOR $(docker inspect --format '{{.Name}}' $container) ===="
+                      docker logs $container || true
                   done
+
+                  echo "==== FILE STRUCTURE ===="
+                  find /tmp/subql-app -type f | sort
 
             - name: Cleanup
               if: always()
