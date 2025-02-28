@@ -71,36 +71,40 @@ jobs:
             - name: Build and prepare indexer
               run: |
                   cd packages/indexer
-
+                  
                   # Generate YAML configs and build
                   pnpm run codegen:yamls
                   pnpm run codegen:subql
                   pnpm run build
-
+                  
                   # Create a proper directory structure for SubQL
                   mkdir -p /tmp/subql-app
                   cp configs/*.yaml /tmp/subql-app/
                   cp configs/schema.graphql /tmp/subql-app/ || echo "No schema.graphql found"
-
+                  
                   # Copy all build artifacts
                   mkdir -p /tmp/subql-app/dist
                   cp -r dist/* /tmp/subql-app/dist/
-
+                  
                   # Copy chaintypes files if they exist
                   mkdir -p /tmp/subql-app/dist/substrate-chaintypes || true
                   cp -r dist/substrate-chaintypes/* /tmp/subql-app/dist/substrate-chaintypes/ || echo "No chaintypes found"
-
+                  
+                  # Modify YAML files to use absolute paths instead of relative ones
+                  sed -i 's|file: \./|file: /app/|g' /tmp/subql-app/*.yaml
+                  grep -r "file:" /tmp/subql-app/*.yaml
+                  
                   # Ensure all files are readable
                   chmod -R 755 /tmp/subql-app
-
+                  
                   # Update docker-compose.testnet.yml to use absolute paths
                   sed -i 's|../configs:/app|/tmp/subql-app:/app|g' docker/docker-compose.testnet.yml
                   sed -i 's|../dist:/app/dist|/tmp/subql-app/dist:/app/dist|g' docker/docker-compose.testnet.yml
-
+                  
                   # Verify the directory structure
                   echo "Directory structure:"
                   find /tmp/subql-app -type f | sort
-
+                  
                   # Verify docker-compose changes
                   echo "Modified docker-compose:"
                   grep -A 5 volumes docker/docker-compose.testnet.yml
@@ -108,30 +112,72 @@ jobs:
             - name: Start Postgres
               run: |
                   cd packages/indexer
-
+                  
                   # Start only the Postgres container
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
-
+                  
                   # Wait for PostgreSQL to be ready
                   echo "Waiting for PostgreSQL..."
                   timeout 60s bash -c 'until docker exec $(docker ps -q -f name=postgres) pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
-
+                  
                   # Initialize database schema
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
+                  
+                  # Check network information
+                  echo "Docker network information:"
+                  docker network ls
+                  NETWORK_NAME=$(docker inspect $(docker ps -q -f name=postgres) --format '{{.HostConfig.NetworkMode}}')
+                  echo "Postgres container is on network: $NETWORK_NAME"
 
-            - name: Start SubQL nodes
+            - name: Test network connectivity
+              run: |
+                  # Create a test container to verify connectivity to Postgres
+                  echo "Testing network connectivity to Postgres..."
+                  docker run --rm --network=$(docker inspect $(docker ps -q -f name=postgres) --format '{{.HostConfig.NetworkMode}}') \
+                    alpine sh -c "apk add --no-cache iputils postgresql-client && ping -c 2 postgres && pg_isready -h postgres -U postgres"
+                    
+                  echo "Postgres is reachable from containers on the same network."
+
+            - name: Test direct SubQL node run
               run: |
                   cd packages/indexer
+                  
+                  # Get the network name that Postgres is on
+                  NETWORK_NAME=$(docker inspect $(docker ps -q -f name=postgres) --format '{{.HostConfig.NetworkMode}}')
+                  
+                  # Try running a SubQL node directly with explicit arguments
+                  echo "Attempting direct run of SubQL node for hyperbridge-gargantua..."
+                  docker run --rm \
+                    --network=$NETWORK_NAME \
+                    -v /tmp/subql-app:/app \
+                    -e DB_USER=postgres \
+                    -e DB_PASS=postgres \
+                    -e DB_DATABASE=postgres \
+                    -e DB_HOST=postgres \
+                    -e DB_PORT=5432 \
+                    subquerynetwork/subql-node-substrate:v5.9.1 \
+                    -f=/app/hyperbridge-gargantua.yaml \
+                    --db-schema=app \
+                    --log-level=debug \
+                    --unsafe \
+                    --force-clean
+                    
+                  # If the above works, then we know our configuration is good
+                  # If it fails, we'll see detailed logs
 
+            - name: Start SubQL nodes with docker-compose
+              run: |
+                  cd packages/indexer
+                  
                   # Start one node first as a test
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua
-
+                  
                   # Wait and check logs
                   sleep 10
                   echo "SubQL node logs:"
                   docker logs $(docker ps -q -f name=subquery-node-hyperbridge-gargantua) || true
-
+                  
                   # Start the remaining services if the first node started successfully
                   if docker ps | grep -q subquery-node-hyperbridge-gargantua; then
                       echo "First node started successfully, starting remaining services..."
@@ -162,12 +208,12 @@ jobs:
                       
                       sleep 10
                   done
-
+                  
                   if [ $attempt -ge $max_attempts ]; then
                       echo "GraphQL service failed to start properly"
                       exit 1
                   fi
-
+                  
                   echo "All services are running!"
 
             - name: Run SDK tests
@@ -187,17 +233,20 @@ jobs:
               run: |
                   echo "==== POSTGRES LOGS ===="
                   docker logs $(docker ps -q -f name=postgres) || true
-
+                  
                   echo "==== GRAPHQL ENGINE LOGS ===="
                   docker logs $(docker ps -q -f name=graphql-engine) || true
-
+                  
                   for container in $(docker ps -q -f name=subquery-node); do
                       echo "==== LOGS FOR $(docker inspect --format '{{.Name}}' $container) ===="
                       docker logs $container || true
                   done
-
+                  
                   echo "==== FILE STRUCTURE ===="
                   find /tmp/subql-app -type f | sort
+                  
+                  echo "==== YAML CONTENTS ===="
+                  cat /tmp/subql-app/hyperbridge-gargantua.yaml
 
             - name: Cleanup
               if: always()
