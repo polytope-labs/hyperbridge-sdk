@@ -59,101 +59,157 @@ jobs:
                   PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
                   PING_MODULE_ADDRESS=${{ secrets.PING_MODULE_ADDRESS }}"
 
-                  # Create environment file at root level
+                  # Create environment files
                   echo "$ENV_CONTENT" > .env
-
-                  # Create environment file in indexer folder
                   echo "$ENV_CONTENT" > packages/indexer/.env
-
-                  # Create database directory
                   mkdir -p /tmp/postgres-data
 
-            - name: Build and prepare indexer
+            - name: Start Postgres standalone container
+              run: |
+                  # Use a standalone Postgres container with the most basic config
+                  docker run -d --name postgres -p 5432:5432 \
+                    -e POSTGRES_USER=postgres \
+                    -e POSTGRES_PASSWORD=postgres \
+                    -e POSTGRES_DB=postgres \
+                    postgres:14-alpine
+
+                  # Wait for PostgreSQL to be ready
+                  echo "Waiting for PostgreSQL..."
+                  timeout 60s bash -c 'until docker exec postgres pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
+
+                  # Initialize database schema
+                  docker exec postgres psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
+                  docker exec postgres psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
+
+            - name: Build and prepare projects
               run: |
                   cd packages/indexer
-                  
+
                   # Generate YAML configs and build
                   pnpm run codegen:yamls
                   pnpm run codegen:subql
                   pnpm run build
-                  
-                  # Create a proper directory structure for SubQL
-                  mkdir -p /tmp/subql-app
-                  cp configs/*.yaml /tmp/subql-app/
-                  cp configs/schema.graphql /tmp/subql-app/ || echo "No schema.graphql found"
-                  
-                  # Copy all build artifacts
-                  mkdir -p /tmp/subql-app/dist
-                  cp -r dist/* /tmp/subql-app/dist/
-                  
-                  # Copy chaintypes files if they exist
-                  mkdir -p /tmp/subql-app/dist/substrate-chaintypes || true
-                  cp -r dist/substrate-chaintypes/* /tmp/subql-app/dist/substrate-chaintypes/ || echo "No chaintypes found"
-                  
-                  # Modify YAML files to use absolute paths instead of relative ones
-                  sed -i 's|file: \./|file: /app/|g' /tmp/subql-app/*.yaml
-                  
-                  # Update the start block heights to skip potential sync issues
-                  # This is only for CI testing purposes
-                  echo "Adjusting start blocks to avoid sync issues..."
-                  for file in /tmp/subql-app/*.yaml; do
-                    # Get a current block height from a few blocks back
+
+                  # Create projects directories
+                  mkdir -p /tmp/hyperbridge-project
+                  mkdir -p /tmp/bsc-project
+                  mkdir -p /tmp/gnosis-project
+
+                  # Copy YAML files
+                  cp configs/hyperbridge-gargantua.yaml /tmp/hyperbridge-project/project.yaml
+                  cp configs/bsc-chapel.yaml /tmp/bsc-project/project.yaml
+                  cp configs/gnosis-chiado.yaml /tmp/gnosis-project/project.yaml
+
+                  # Copy schema.graphql to all projects
+                  cp configs/schema.graphql /tmp/hyperbridge-project/ || echo "No schema.graphql found"
+                  cp configs/schema.graphql /tmp/bsc-project/ || echo "No schema.graphql found"
+                  cp configs/schema.graphql /tmp/gnosis-project/ || echo "No schema.graphql found"
+
+                  # Copy build artifacts to all projects
+                  cp -r dist/* /tmp/hyperbridge-project/
+                  cp -r dist/* /tmp/bsc-project/
+                  cp -r dist/* /tmp/gnosis-project/
+
+                  # For substrate chaintypes, ensure they're properly copied
+                  mkdir -p /tmp/hyperbridge-project/substrate-chaintypes
+                  cp -r dist/substrate-chaintypes/* /tmp/hyperbridge-project/substrate-chaintypes/ || echo "No chaintypes found"
+
+                  # Fix paths in YAML files
+                  sed -i 's|file: \./|file: /tmp/hyperbridge-project/|g' /tmp/hyperbridge-project/project.yaml
+                  sed -i 's|file: \./|file: /tmp/bsc-project/|g' /tmp/bsc-project/project.yaml
+                  sed -i 's|file: \./|file: /tmp/gnosis-project/|g' /tmp/gnosis-project/project.yaml
+
+                  # Modify start blocks to avoid blockchain sync issues
+                  for project in hyperbridge bsc gnosis; do
+                    file="/tmp/${project}-project/project.yaml"
                     current_height=$(grep -o 'startBlock: [0-9]*' $file | awk '{print $2}')
                     if [ ! -z "$current_height" ]; then
-                      # Use a height that's safely reachable
                       new_height=$((current_height + 100))
                       sed -i "s/startBlock: $current_height/startBlock: $new_height/g" $file
                       echo "Updated $file: startBlock $current_height -> $new_height"
                     fi
                   done
-                  
-                  # Ensure all files are readable
-                  chmod -R 755 /tmp/subql-app
-                  
-                  # Update docker-compose file to use our prepared folder
-                  sed -i 's|../configs:/app|/tmp/subql-app:/app|g' docker/docker-compose.testnet.yml
-                  sed -i 's|../dist:/app/dist|/tmp/subql-app/dist:/app/dist|g' docker/docker-compose.testnet.yml
 
-            - name: Start Postgres
-              run: |
-                  cd packages/indexer
-                  
-                  # Start only the Postgres container
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
-                  
-                  # Wait for PostgreSQL to be ready
-                  echo "Waiting for PostgreSQL..."
-                  timeout 60s bash -c 'until docker exec $(docker ps -q -f name=postgres) pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
-                  
-                  # Initialize database schema
-                  docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
-                  docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
-                  
-                  # Get the network name that Postgres is on for later use
-                  NETWORK_NAME=$(docker inspect $(docker ps -q -f name=postgres) --format '{{.HostConfig.NetworkMode}}')
-                  echo "Postgres container is on network: $NETWORK_NAME"
+                  # Make sure everything has the right permissions
+                  chmod -R 755 /tmp/*-project
 
-            - name: Start services sequentially
+            - name: Start Hyperbridge SubQL Node
               run: |
-                  cd packages/indexer
-                  NETWORK_NAME=$(docker inspect $(docker ps -q -f name=postgres) --format '{{.HostConfig.NetworkMode}}')
-                  
-                  # Start the SubQL nodes one by one
-                  echo "Starting hyperbridge-gargantua node..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua
+                  docker run -d --name hyperbridge-node \
+                    --network=host \
+                    -v /tmp/hyperbridge-project:/project \
+                    -e DB_USER=postgres \
+                    -e DB_PASS=postgres \
+                    -e DB_DATABASE=postgres \
+                    -e DB_HOST=localhost \
+                    -e DB_PORT=5432 \
+                    subquerynetwork/subql-node-substrate:v5.9.1 \
+                    -f=/project/project.yaml \
+                    --db-schema=app \
+                    --workers=1 \
+                    --batch-size=5 \
+                    --multi-chain \
+                    --unsafe \
+                    --log-level=info
+                    
+                  # Check logs briefly
                   sleep 5
-                  
-                  echo "Starting bsc-chapel node..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-bsc-chapel
+                  docker logs hyperbridge-node | tail -n 10
+
+            - name: Start BSC SubQL Node
+              run: |
+                  docker run -d --name bsc-node \
+                    --network=host \
+                    -v /tmp/bsc-project:/project \
+                    -e DB_USER=postgres \
+                    -e DB_PASS=postgres \
+                    -e DB_DATABASE=postgres \
+                    -e DB_HOST=localhost \
+                    -e DB_PORT=5432 \
+                    subquerynetwork/subql-node-ethereum:v5.5.0 \
+                    -f=/project/project.yaml \
+                    --db-schema=app \
+                    --workers=1 \
+                    --batch-size=5 \
+                    --multi-chain \
+                    --unsafe \
+                    --log-level=info \
+                    --historical=timestamp \
+                    --unfinalized-blocks
+                    
+                  # Check logs briefly
                   sleep 5
-                  
-                  echo "Starting gnosis-chiado node..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-gnosis-chiado
+                  docker logs bsc-node | tail -n 10
+
+            - name: Start Gnosis SubQL Node
+              run: |
+                  docker run -d --name gnosis-node \
+                    --network=host \
+                    -v /tmp/gnosis-project:/project \
+                    -e DB_USER=postgres \
+                    -e DB_PASS=postgres \
+                    -e DB_DATABASE=postgres \
+                    -e DB_HOST=localhost \
+                    -e DB_PORT=5432 \
+                    subquerynetwork/subql-node-ethereum:v5.5.0 \
+                    -f=/project/project.yaml \
+                    --db-schema=app \
+                    --workers=1 \
+                    --batch-size=5 \
+                    --multi-chain \
+                    --unsafe \
+                    --log-level=info \
+                    --historical=timestamp \
+                    --unfinalized-blocks
+                    
+                  # Check logs briefly
                   sleep 5
-                  
-                  # Initialize metadata in the database (this helps GraphQL connect)
-                  echo "Initializing metadata tables..."
-                  docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "
+                  docker logs gnosis-node | tail -n 10
+
+            - name: Start GraphQL engine
+              run: |
+                  # Initialize metadata in the database for GraphQL
+                  docker exec postgres psql -U postgres -d postgres -c "
                   SET search_path TO app;
                   CREATE TABLE IF NOT EXISTS _metadata (
                       key TEXT PRIMARY KEY,
@@ -167,20 +223,29 @@ jobs:
                   ('genesisHash', '\"0x0\"')
                   ON CONFLICT DO NOTHING;
                   "
-                  
-                  # Finally start GraphQL engine
-                  echo "Starting GraphQL engine..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d graphql-engine
-                  
-                  # Check all services
-                  docker ps
 
-            - name: Wait for services to be ready
+                  # Run subquery query service directly
+                  docker run -d --name graphql-engine \
+                    --network=host \
+                    -e DB_USER=postgres \
+                    -e DB_PASS=postgres \
+                    -e DB_DATABASE=postgres \
+                    -e DB_HOST=localhost \
+                    -e DB_PORT=5432 \
+                    -p 3000:3000 \
+                    subquerynetwork/subql-query:v2.21.0 \
+                    --name=app \
+                    --playground
+
+                  # Check if container is running
+                  docker ps | grep graphql-engine
+
+                  # Wait a moment for it to initialize
+                  sleep 10
+                  docker logs graphql-engine
+
+            - name: Wait for GraphQL API
               run: |
-                  # Give services time to initialize
-                  echo "Waiting for services to initialize..."
-                  sleep 20
-                  
                   # Check if GraphQL is accessible
                   echo "Checking GraphQL API..."
                   max_attempts=10
@@ -190,14 +255,17 @@ jobs:
                       echo "Waiting for GraphQL... attempt $attempt of $max_attempts"
                       sleep 10
                   done
-                  
+
                   if [ $attempt -ge $max_attempts ]; then
                       echo "GraphQL service failed to start properly"
-                      docker logs $(docker ps -q -f name=graphql-engine)
+                      docker logs graphql-engine
                       exit 1
                   fi
-                  
+
                   echo "GraphQL API is accessible!"
+
+                  # Check all containers are still running
+                  docker ps
 
             - name: Run SDK tests
               run: |
@@ -215,18 +283,29 @@ jobs:
               if: failure()
               run: |
                   echo "==== POSTGRES LOGS ===="
-                  docker logs $(docker ps -q -f name=postgres) || true
-                  
+                  docker logs postgres || true
+
+                  echo "==== HYPERBRIDGE NODE LOGS ===="
+                  docker logs hyperbridge-node || true
+
+                  echo "==== BSC NODE LOGS ===="
+                  docker logs bsc-node || true
+
+                  echo "==== GNOSIS NODE LOGS ===="
+                  docker logs gnosis-node || true
+
                   echo "==== GRAPHQL ENGINE LOGS ===="
-                  docker logs $(docker ps -q -f name=graphql-engine) || true
-                  
-                  for container in $(docker ps -q -f name=subquery-node); do
-                      echo "==== LOGS FOR $(docker inspect --format '{{.Name}}' $container) ===="
-                      docker logs $container || true
-                  done
+                  docker logs graphql-engine || true
+
+                  echo "==== PROJECT.YAML CONTENTS ===="
+                  echo "Hyperbridge:"
+                  cat /tmp/hyperbridge-project/project.yaml || true
+                  echo "BSC:"
+                  cat /tmp/bsc-project/project.yaml || true
+                  echo "Gnosis:"
+                  cat /tmp/gnosis-project/project.yaml || true
 
             - name: Cleanup
               if: always()
               run: |
-                  cd packages/indexer
-                  docker compose -f docker/docker-compose.testnet.yml down -v
+                  docker rm -f postgres hyperbridge-node bsc-node gnosis-node graphql-engine || true
