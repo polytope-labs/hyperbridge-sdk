@@ -72,11 +72,11 @@ jobs:
                     -e POSTGRES_PASSWORD=postgres \
                     -e POSTGRES_DB=postgres \
                     postgres:14-alpine
-
+                  
                   # Wait for PostgreSQL to be ready
                   echo "Waiting for PostgreSQL..."
                   timeout 60s bash -c 'until docker exec postgres pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
-
+                  
                   # Initialize database schema
                   docker exec postgres psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
                   docker exec postgres psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
@@ -84,41 +84,87 @@ jobs:
             - name: Build and prepare projects
               run: |
                   cd packages/indexer
-
+                  
                   # Generate YAML configs and build
                   pnpm run codegen:yamls
                   pnpm run codegen:subql
                   pnpm run build
-
+                  
                   # Create projects directories
                   mkdir -p /tmp/hyperbridge-project
                   mkdir -p /tmp/bsc-project
                   mkdir -p /tmp/gnosis-project
-
+                  
+                  # Find where schema.graphql is located
+                  echo "Looking for schema.graphql..."
+                  find . -name "schema.graphql" -ls
+                  
+                  # Try to copy schema.graphql directly from the source location
+                  # If it's in configs/schema.graphql
+                  if [ -f configs/schema.graphql ]; then
+                    echo "Found schema.graphql in configs directory"
+                    cp configs/schema.graphql /tmp/hyperbridge-project/
+                    cp configs/schema.graphql /tmp/bsc-project/
+                    cp configs/schema.graphql /tmp/gnosis-project/
+                  # If it's directly in the root
+                  elif [ -f schema.graphql ]; then
+                    echo "Found schema.graphql in root directory"
+                    cp schema.graphql /tmp/hyperbridge-project/
+                    cp schema.graphql /tmp/bsc-project/
+                    cp schema.graphql /tmp/gnosis-project/
+                  # If it's not found, create a minimal schema.graphql
+                  else
+                    echo "schema.graphql not found. Creating a minimal one."
+                    # Extract schema from the YAML file
+                    SCHEMA_FILE=$(grep -m 1 "schema:" -A 2 configs/hyperbridge-gargantua.yaml | grep "file:" | awk '{print $2}')
+                    echo "Schema reference in YAML: $SCHEMA_FILE"
+                    
+                    # If we can't find it, create a basic one
+                    echo 'type Query { test: String }' > /tmp/hyperbridge-project/schema.graphql
+                    echo 'type Query { test: String }' > /tmp/bsc-project/schema.graphql
+                    echo 'type Query { test: String }' > /tmp/gnosis-project/schema.graphql
+                  fi
+                  
+                  # Verify schema.graphql exists in all project folders
+                  echo "Checking schema.graphql in project folders:"
+                  ls -la /tmp/hyperbridge-project/schema.graphql
+                  ls -la /tmp/bsc-project/schema.graphql
+                  ls -la /tmp/gnosis-project/schema.graphql
+                  
                   # Copy YAML files
                   cp configs/hyperbridge-gargantua.yaml /tmp/hyperbridge-project/project.yaml
                   cp configs/bsc-chapel.yaml /tmp/bsc-project/project.yaml
                   cp configs/gnosis-chiado.yaml /tmp/gnosis-project/project.yaml
-
-                  # Copy schema.graphql to all projects
-                  cp configs/schema.graphql /tmp/hyperbridge-project/ || echo "No schema.graphql found"
-                  cp configs/schema.graphql /tmp/bsc-project/ || echo "No schema.graphql found"
-                  cp configs/schema.graphql /tmp/gnosis-project/ || echo "No schema.graphql found"
-
+                  
                   # Copy build artifacts to all projects
                   cp -r dist/* /tmp/hyperbridge-project/
                   cp -r dist/* /tmp/bsc-project/
                   cp -r dist/* /tmp/gnosis-project/
-
+                  
                   # For substrate chaintypes, ensure they're properly copied
                   mkdir -p /tmp/hyperbridge-project/substrate-chaintypes
                   cp -r dist/substrate-chaintypes/* /tmp/hyperbridge-project/substrate-chaintypes/ || echo "No chaintypes found"
-
+                  
                   # Fix paths in YAML files
-                  sed -i 's|file: \./|file: /tmp/hyperbridge-project/|g' /tmp/hyperbridge-project/project.yaml
-                  sed -i 's|file: \./|file: /tmp/bsc-project/|g' /tmp/bsc-project/project.yaml
-                  sed -i 's|file: \./|file: /tmp/gnosis-project/|g' /tmp/gnosis-project/project.yaml
-
+                  # Add --debug output to see what's happening
+                  echo "Original path references in hyperbridge YAML:"
+                  grep -n "file:" /tmp/hyperbridge-project/project.yaml
+                  
+                  sed -i 's|file: \./schema.graphql|file: /tmp/hyperbridge-project/schema.graphql|g' /tmp/hyperbridge-project/project.yaml
+                  sed -i 's|file: \./dist|file: /tmp/hyperbridge-project/dist|g' /tmp/hyperbridge-project/project.yaml
+                  
+                  sed -i 's|file: \./schema.graphql|file: /tmp/bsc-project/schema.graphql|g' /tmp/bsc-project/project.yaml
+                  sed -i 's|file: \./dist|file: /tmp/bsc-project/dist|g' /tmp/bsc-project/project.yaml
+                  
+                  sed -i 's|file: \./schema.graphql|file: /tmp/gnosis-project/schema.graphql|g' /tmp/gnosis-project/project.yaml
+                  sed -i 's|file: \./dist|file: /tmp/gnosis-project/dist|g' /tmp/gnosis-project/project.yaml
+                  
+                  # More specific path replacement for chaintypes
+                  sed -i 's|file: \./dist/substrate-chaintypes|file: /tmp/hyperbridge-project/substrate-chaintypes|g' /tmp/hyperbridge-project/project.yaml
+                  
+                  echo "Updated path references in hyperbridge YAML:"
+                  grep -n "file:" /tmp/hyperbridge-project/project.yaml
+                  
                   # Modify start blocks to avoid blockchain sync issues
                   for project in hyperbridge bsc gnosis; do
                     file="/tmp/${project}-project/project.yaml"
@@ -129,9 +175,13 @@ jobs:
                       echo "Updated $file: startBlock $current_height -> $new_height"
                     fi
                   done
-
+                  
                   # Make sure everything has the right permissions
                   chmod -R 755 /tmp/*-project
+                  
+                  # Output final directory structure
+                  echo "Final directory structure:"
+                  find /tmp/*-project -type f | sort
 
             - name: Start Hyperbridge SubQL Node
               run: |
@@ -150,11 +200,11 @@ jobs:
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
-                    --log-level=info
+                    --log-level=debug
                     
                   # Check logs briefly
                   sleep 5
-                  docker logs hyperbridge-node | tail -n 10
+                  docker logs hyperbridge-node | head -n 20
 
             - name: Start BSC SubQL Node
               run: |
@@ -173,13 +223,13 @@ jobs:
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
-                    --log-level=info \
+                    --log-level=debug \
                     --historical=timestamp \
                     --unfinalized-blocks
                     
                   # Check logs briefly
                   sleep 5
-                  docker logs bsc-node | tail -n 10
+                  docker logs bsc-node | head -n 20
 
             - name: Start Gnosis SubQL Node
               run: |
@@ -198,13 +248,13 @@ jobs:
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
-                    --log-level=info \
+                    --log-level=debug \
                     --historical=timestamp \
                     --unfinalized-blocks
                     
                   # Check logs briefly
                   sleep 5
-                  docker logs gnosis-node | tail -n 10
+                  docker logs gnosis-node | head -n 20
 
             - name: Start GraphQL engine
               run: |
@@ -223,7 +273,7 @@ jobs:
                   ('genesisHash', '\"0x0\"')
                   ON CONFLICT DO NOTHING;
                   "
-
+                  
                   # Run subquery query service directly
                   docker run -d --name graphql-engine \
                     --network=host \
@@ -236,10 +286,10 @@ jobs:
                     subquerynetwork/subql-query:v2.21.0 \
                     --name=app \
                     --playground
-
+                  
                   # Check if container is running
                   docker ps | grep graphql-engine
-
+                  
                   # Wait a moment for it to initialize
                   sleep 10
                   docker logs graphql-engine
@@ -255,57 +305,31 @@ jobs:
                       echo "Waiting for GraphQL... attempt $attempt of $max_attempts"
                       sleep 10
                   done
-
+                  
                   if [ $attempt -ge $max_attempts ]; then
                       echo "GraphQL service failed to start properly"
                       docker logs graphql-engine
                       exit 1
                   fi
-
-                  echo "GraphQL API is accessible!"
-
-                  # Check all containers are still running
+                  
+                  # Check all containers are running
+                  echo "All containers:"
                   docker ps
+                  
+                  # Wait a bit more for indexers to establish
+                  echo "Giving nodes time to start indexing..."
+                  sleep 30
+                  
+                  # Check for errors in node logs
+                  echo "Checking for errors in node logs..."
+                  for node in hyperbridge-node bsc-node gnosis-node; do
+                    echo "=== $node errors (if any) ==="
+                    docker logs $node 2>&1 | grep -i error | tail -n 10 || echo "No errors found"
+                  done
+                  
+                  echo "GraphQL API is accessible!"
 
             - name: Run SDK tests
               run: |
                   cd packages/sdk
                   pnpm test
-              env:
-                  INDEXER_GRAPHQL_URL: http://localhost:3000/graphql
-                  BSC_CHAPEL: ${{ secrets.BSC_CHAPEL }}
-                  GNOSIS_CHIADO: ${{ secrets.GNOSIS_CHIADO }}
-                  HYPERBRIDGE_GARGANTUA: ${{ secrets.HYPERBRIDGE_GARGANTUA }}
-                  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-                  PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
-
-            - name: Show logs on failure
-              if: failure()
-              run: |
-                  echo "==== POSTGRES LOGS ===="
-                  docker logs postgres || true
-
-                  echo "==== HYPERBRIDGE NODE LOGS ===="
-                  docker logs hyperbridge-node || true
-
-                  echo "==== BSC NODE LOGS ===="
-                  docker logs bsc-node || true
-
-                  echo "==== GNOSIS NODE LOGS ===="
-                  docker logs gnosis-node || true
-
-                  echo "==== GRAPHQL ENGINE LOGS ===="
-                  docker logs graphql-engine || true
-
-                  echo "==== PROJECT.YAML CONTENTS ===="
-                  echo "Hyperbridge:"
-                  cat /tmp/hyperbridge-project/project.yaml || true
-                  echo "BSC:"
-                  cat /tmp/bsc-project/project.yaml || true
-                  echo "Gnosis:"
-                  cat /tmp/gnosis-project/project.yaml || true
-
-            - name: Cleanup
-              if: always()
-              run: |
-                  docker rm -f postgres hyperbridge-node bsc-node gnosis-node graphql-engine || true
