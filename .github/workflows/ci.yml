@@ -10,7 +10,8 @@ jobs:
     test:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v3
+            - name: Checkout repository
+              uses: actions/checkout@v3
               with:
                   fetch-depth: 0
 
@@ -30,10 +31,9 @@ jobs:
             - name: Build SDK
               run: cd packages/sdk && pnpm build
 
-            - name: Setup environment for development
+            - name: Setup environment for testing
               run: |
-                  # Create necessary environment file
-                  mkdir -p packages/indexer
+                  # Create environment file
                   cat > packages/indexer/.env << EOL
                   # TESTNET RPCS
                   HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
@@ -61,48 +61,35 @@ jobs:
                   PING_MODULE_ADDRESS=${{ secrets.PING_MODULE_ADDRESS }}
                   EOL
 
-                  # Create necessary directories
+                  # Create database directory
                   mkdir -p /tmp/postgres-data
 
-            - name: Build and start development environment
+            - name: Build and start indexer
               run: |
-                  # Start the dev environment in the background
                   cd packages/indexer
 
-                  # Run codegen and build steps directly
+                  # Generate YAML configs and build
                   pnpm run codegen:yamls
                   pnpm run codegen:subql
                   pnpm run build
 
-                  # Run Docker Compose manually (without using the start:local script)
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d --force-recreate --remove-orphans
+                  # Start Docker services
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
 
-                  # Give services time to initialize
-                  echo "Waiting for services to start..."
-                  sleep 60
-
-                  # Check if services are running
+                  # Check service status
                   docker ps
-                  curl -s http://localhost:3000/graphql -o /dev/null && echo "GraphQL API is accessible" || echo "GraphQL API is not accessible"
 
-            - name: Check container status
+            - name: Wait for services to be ready
               run: |
-                  docker ps -a
+                  echo "Waiting for PostgreSQL..."
+                  timeout 60s bash -c 'until docker exec $(docker ps -q -f name=postgres) pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
 
-                  echo "==== POSTGRES LOGS ===="
-                  docker logs docker-postgres-1 | tail -n 30 || true
+                  echo "Waiting for GraphQL API..."
+                  timeout 120s bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do sleep 5; echo "Waiting for GraphQL..."; done'
 
-                  echo "==== GRAPHQL ENGINE LOGS ===="
-                  docker logs docker-graphql-engine-1 | tail -n 30 || true
-
-                  echo "==== HYPERBRIDGE GARGANTUA LOGS ===="
-                  docker logs docker-subquery-node-hyperbridge-gargantua-1 | tail -n 30 || true
-
-                  echo "==== BSC CHAPEL LOGS ===="
-                  docker logs docker-subquery-node-bsc-chapel-1 | tail -n 30 || true
-
-                  echo "==== GNOSIS CHIADO LOGS ===="
-                  docker logs docker-subquery-node-gnosis-chiado-1 | tail -n 30 || true
+                  # Give indexers some time to start processing
+                  echo "Waiting for indexers to initialize..."
+                  sleep 30
 
             - name: Run SDK tests
               run: |
@@ -116,56 +103,22 @@ jobs:
                   PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
                   PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
 
+            - name: Show container logs on failure
+              if: failure()
+              run: |
+                  echo "==== POSTGRES LOGS ===="
+                  docker logs $(docker ps -q -f name=postgres) || true
+
+                  echo "==== GRAPHQL ENGINE LOGS ===="
+                  docker logs $(docker ps -q -f name=graphql-engine) || true
+
+                  for container in $(docker ps -q -f name=subquery-node); do
+                    echo "==== SUBQUERY NODE LOGS $(docker inspect --format '{{.Name}}' $container) ===="
+                    docker logs $container | tail -n 100 || true
+                  done
+
             - name: Cleanup
               if: always()
               run: |
-                  # Kill the dev process if it's still running
-                  if [ -f /tmp/dev-pid ]; then
-                    kill $(cat /tmp/dev-pid) || true
-                  fi
-
-                  # Stop all docker containers
                   cd packages/indexer
-                  docker compose -f docker/docker-compose.testnet.yml down || true
-
-
-                      # release:
-                      #     name: Release
-                      #     needs: test
-                      #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-                      #     runs-on: ubuntu-latest
-                      #     steps:
-                      #         - uses: actions/checkout@v3
-                      #           with:
-                      #               fetch-depth: 0
-                      #               token: ${{ secrets.GITHUB_TOKEN }}
-
-                      #         - name: Setup Node.js
-                      #           uses: actions/setup-node@v3
-                      #           with:
-                      #               node-version: "18"
-                      #               registry-url: "https://registry.npmjs.org"
-
-                      #         - name: Setup PNPM
-                      #           uses: pnpm/action-setup@v2
-                      #           with:
-                      #               version: 7
-
-                      #         - name: Install dependencies
-                      #           run: pnpm install
-
-                      #         - name: Setup Git User
-                      #           run: |
-                      #               git config --global user.name "GitHub Actions"
-                      #               git config --global user.email "actions@github.com"
-
-                      #         - name: Create Release Pull Request or Publish
-                      #           id: changesets
-                      #           uses: changesets/action@v1
-                      #           with:
-                      #               publish: pnpm release
-                      #               commit: "chore: version packages"
-                      #               title: "chore: version packages"
-                      #           env:
-                      #               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                      #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  docker compose -f docker/docker-compose.testnet.yml down -v
