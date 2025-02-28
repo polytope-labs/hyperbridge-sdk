@@ -18,7 +18,7 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@v3
               with:
-                  node-version: "18"
+                  node-version: "22"
 
             - name: Setup PNPM
               uses: pnpm/action-setup@v2
@@ -69,8 +69,8 @@ jobs:
                   cd packages/indexer
 
                   # Generate YAML configs and build
-                  pnpm run codegen:yamls
                   pnpm run codegen:subql
+                  pnpm run codegen:yamls
                   pnpm run build
 
                   # Start Docker services
