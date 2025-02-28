@@ -33,23 +33,22 @@ jobs:
 
             - name: Setup environment for testing
               run: |
-                  # Create environment file
-                  cat > .env << EOL
-                  # TESTNET RPCS
+                  # Create environment file content
+                  ENV_CONTENT="# TESTNET RPCS
                   HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
                   BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
                   GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
 
                   # DATABASE
-                  DB_USER="postgres"
-                  DB_PASS="postgres"
-                  DB_DATABASE="postgres"
-                  DB_HOST="localhost"
+                  DB_USER=\"postgres\"
+                  DB_PASS=\"postgres\"
+                  DB_DATABASE=\"postgres\"
+                  DB_HOST=\"localhost\"
                   DB_PORT=5432
-                  DB_PATH="/tmp/postgres-data"
+                  DB_PATH=\"/tmp/postgres-data\"
 
                   # ENVIRONMENT
-                  CURRENT_ENV="local"
+                  CURRENT_ENV=\"test\"
 
                   # SUBQL SETTINGS
                   SUB_COMMAND=-f
@@ -58,8 +57,13 @@ jobs:
 
                   # KEYS
                   PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-                  PING_MODULE_ADDRESS=${{ secrets.PING_MODULE_ADDRESS }}
-                  EOL
+                  PING_MODULE_ADDRESS=${{ secrets.PING_MODULE_ADDRESS }}"
+
+                  # Create environment file at root level
+                  echo "$ENV_CONTENT" > .env
+
+                  # Create environment file in indexer folder
+                  echo "$ENV_CONTENT" > packages/indexer/.env
 
                   # Create database directory
                   mkdir -p /tmp/postgres-data
