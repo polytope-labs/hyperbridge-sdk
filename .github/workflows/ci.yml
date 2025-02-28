@@ -69,8 +69,8 @@ jobs:
                   cd packages/indexer
 
                   # Generate YAML configs and build
-                  pnpm run codegen:subql
                   pnpm run codegen:yamls
+                  pnpm run codegen:subql
                   pnpm run build
 
                   # Start Docker services
