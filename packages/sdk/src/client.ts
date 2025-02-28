@@ -62,12 +62,12 @@ import { getChain, IChain, SubstrateChain } from "@/chain"
  *   dest: {
  *		stateMachineId: "EVM-42161",
  * 		consensusStateId: "ETH0"
- *		stateMachineId: "EVM-",
+ *		rpcUrl: "",
  *		host: "0x87ea42345..",
  * 	},
  *   hyperbridge: {
- *     stateMachineId: "hyperbridge-1",
- *     consensusStateId: "PARA"
+ *     stateMachineId: "POLKADOT-3367",
+ *     consensusStateId: "DOT0"
  *     wsUrl: "ws://localhost:9944"
  *   }
  * });

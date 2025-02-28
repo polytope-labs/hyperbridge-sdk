@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-require("dotenv").config()
+const dotenv = require("dotenv")
+const path = require("path")
+
+const root = process.cwd()
+dotenv.config({ path: path.resolve(root, "../../.env") })
 
 const fs = require("fs")
 const { RpcWebSocketClient } = require("rpc-websocket-client")
 const { hexToNumber } = require("viem")
-const currentEnv = process.env.CURRENT_ENV || "test"
-const configs = require(`./configs/chain-configs-${currentEnv}.json`)
+const currentEnv = process.env.CURRENT_ENV || "local"
+const configs = require(`./configs/config-${currentEnv}.json`)
 
 const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen
@@ -39,7 +43,7 @@ const generateSubstrateYaml = async (chain, config) => {
 	const rpc = new RpcWebSocketClient()
 	await rpc.connect(rpcUrl)
 	const header = await rpc.call("chain_getHeader", [])
-	const blockNumber = currentEnv === "test" ? hexToNumber(header.number) : config.startBlock
+	const blockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
 	return `# // Auto-generated , DO NOT EDIT
@@ -123,7 +127,7 @@ const generateEvmYaml = async (chain, config) => {
 		}),
 	})
 	const data = await response.json()
-	const blockNumber = currentEnv === "test" ? hexToNumber(data.result) : config.startBlock
+	const blockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
 
 	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0

@@ -22,5 +22,5 @@ pnpm build
 
 Start in development mode
 ```bash
-pnpm dev
+pnpm local
 ```
