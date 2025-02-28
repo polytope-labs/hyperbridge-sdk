@@ -77,19 +77,50 @@ jobs:
                   pnpm run codegen:subql
                   pnpm run build
 
-                  # Start Docker services
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
+                  # Start only the Postgres container first
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
 
-                  # Check service status
-                  docker ps
-
-            - name: Wait for services to be ready
-              run: |
+                  # Wait for PostgreSQL to be ready
                   echo "Waiting for PostgreSQL..."
                   timeout 60s bash -c 'until docker exec $(docker ps -q -f name=postgres) pg_isready -U postgres; do sleep 2; echo "Waiting..."; done'
 
+                  # Initialize the database schema
+                  docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
+                  docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
+
+                  # Start the rest of the services
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
+
+                  # Check service status
+                  docker ps -a
+
+            - name: Wait for services to be ready
+              run: |
+                  # More robust GraphQL API check
                   echo "Waiting for GraphQL API..."
-                  timeout 120s bash -c 'until curl -s http://localhost:3000/graphql -o /dev/null; do sleep 5; echo "Waiting for GraphQL..."; done'
+                  max_attempts=20
+                  attempt=0
+                  until curl -s http://localhost:3000/graphql -o /dev/null || [ $attempt -ge $max_attempts ]; do
+                      attempt=$((attempt+1))
+                      echo "Waiting for GraphQL... attempt $attempt of $max_attempts"
+                      
+                      # Check the logs to see what's happening
+                      echo "Current GraphQL logs:"
+                      docker logs $(docker ps -q -f name=graphql-engine) 2>&1 | tail -n 10
+                      
+                      # If GraphQL is failing, restart it
+                      if docker logs $(docker ps -q -f name=graphql-engine) 2>&1 | grep -q "Error:"; then
+                          echo "GraphQL engine failed, restarting..."
+                          docker restart $(docker ps -q -f name=graphql-engine)
+                      fi
+                      
+                      sleep 10
+                  done
+
+                  if [ $attempt -ge $max_attempts ]; then
+                      echo "GraphQL service failed to start properly after $max_attempts attempts"
+                      exit 1
+                  fi
 
                   # Give indexers some time to start processing
                   echo "Waiting for indexers to initialize..."
