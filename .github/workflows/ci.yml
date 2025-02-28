@@ -49,7 +49,7 @@ jobs:
                   DB_PATH="/tmp/postgres-data"
 
                   # ENVIRONMENT
-                  CURRENT_ENV="test"
+                  CURRENT_ENV="local"
 
                   # SUBQL SETTINGS
                   SUB_COMMAND=-f
