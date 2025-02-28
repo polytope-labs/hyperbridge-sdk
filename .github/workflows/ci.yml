@@ -77,6 +77,11 @@ jobs:
                   pnpm run codegen:subql
                   pnpm run build
 
+                  # Verify the YAML files exist and have correct content
+                  echo "Checking YAML files..."
+                  ls -la configs/
+                  cat configs/hyperbridge-gargantua.yaml | head -n 20
+
                   # Step 1: Start only the Postgres container first
                   docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d postgres
 
@@ -88,20 +93,31 @@ jobs:
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS app;"
                   docker exec $(docker ps -q -f name=postgres) psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
 
-                  # Step 2: Start SubQL nodes and wait for them to initialize
-                  echo "Starting SubQL nodes..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua subquery-node-bsc-chapel subquery-node-gnosis-chiado
+                  # Fix file paths - ensure files are accessible inside Docker
+                  echo "Setting up proper file permissions and paths..."
+                  mkdir -p $(pwd)/docker-configs
+                  cp -R configs/* $(pwd)/docker-configs/
+                  cp dist/* $(pwd)/docker-configs/ || true
 
-                  # Give SubQL nodes time to initialize and set up schema
-                  echo "Waiting for SubQL nodes to initialize..."
-                  sleep 30
+                  # Modify docker-compose to use absolute paths for volume mounts
+                  sed -i "s|../configs:/app|$(pwd)/docker-configs:/app|g" docker/docker-compose.testnet.yml
+                  sed -i "s|../dist:/app/dist|$(pwd)/dist:/app/dist|g" docker/docker-compose.testnet.yml
 
-                  # Check SubQL node status
-                  docker ps | grep subquery-node
+                  # Show the modified docker-compose
+                  echo "Modified docker-compose.testnet.yml:"
+                  cat docker/docker-compose.testnet.yml
 
-                  # Step 3: Finally start the GraphQL engine
-                  echo "Starting GraphQL engine..."
-                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d graphql-engine
+                  # Step 2: Start a single SubQL node first as a test
+                  echo "Starting one SubQL node as a test..."
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d subquery-node-hyperbridge-gargantua
+
+                  # Wait and check logs
+                  sleep 10
+                  docker logs $(docker ps -q -f name=subquery-node-hyperbridge-gargantua)
+
+                  # If successful, start the other nodes
+                  echo "Starting remaining SubQL nodes..."
+                  docker compose -f docker/docker-compose.testnet.yml --env-file .env up -d
 
                   # Check service status
                   docker ps
