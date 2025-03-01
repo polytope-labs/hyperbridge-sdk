@@ -1,7 +1,7 @@
 {
-	"name": "@hyperbridge/client",
+	"name": "@hyperbridge/hyperclient",
 	"version": "1.0.0",
-	"description": "SDK for querying cross-chain events, messages, and request statuses from HyperBridge. Enables seamless interaction with chain data through GraphQL and WebSocket interfaces.",
+	"description": "The hyperclient SDK provides utilities for querying proofs and statuses for cross-chain requests from HyperBridge.",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"files": [

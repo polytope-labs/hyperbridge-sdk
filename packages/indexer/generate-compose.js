@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-
 const dotenv = require("dotenv")
 const path = require("path")
+const os = require("os")
+
+const currentEnv = process.env.ENV
+if (!currentEnv) throw new Error("$ENV variable not set")
 
 const root = process.cwd()
-dotenv.config({ path: path.resolve(root, "../../.env") })
+dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 
 const fs = require("fs")
-const currentEnv = process.env.CURRENT_ENV || "local"
 const configs = require(`./configs/config-${currentEnv}.json`)
 
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
-const GRAPHQL_IMAGE = "subquerynetwork/subql-query:v2.21.0"
 
 const generateNodeServices = () => {
 	const unfinalized = `
@@ -51,8 +52,8 @@ const generateNodeServices = () => {
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
       - --db-schema=app
-      - --workers=\${SUBQL_WORKERS:-6}
-      - --batch-size=\${SUBQL_BATCH_SIZE:-10}
+      - --workers=\${SUBQL_WORKERS:-10}
+      - --batch-size=\${SUBQL_BATCH_SIZE:-${config.type === "substrate" ? 100 : 10}}
       - --multi-chain
       - --unsafe
       - --log-level=info${config.type === "substrate" ? "" : unfinalized}
@@ -127,34 +128,7 @@ const generatePostgres = () => {
 const dockerCompose = `services:
 ${generateNodeServices()}
 
-  graphql-engine:
-    image: ${GRAPHQL_IMAGE}
-    ports:
-      - 3000:3000
-${generateDependencies()}
-    restart: always
-    environment:
-      DB_USER: \${DB_USER}
-      DB_PASS: \${DB_PASS}
-      DB_DATABASE: \${DB_DATABASE}
-      DB_HOST: \${DB_HOST}
-      DB_PORT: \${DB_PORT}
-${
-	currentEnv === "local"
-		? `    depends_on:
-      postgres:
-        condition: service_healthy
-`
-		: ""
-}
-    command:
-      - --name=app
-      - --playground
 ${generatePostgres()}
 `
-
-fs.writeFileSync(
-	currentEnv === "prod" ? "docker/docker-compose.yml" : "docker/docker-compose.testnet.yml",
-	dockerCompose,
-)
-console.log("Generated docker-compose.yml")
+fs.writeFileSync(`docker/docker-compose.${currentEnv}.yml`, dockerCompose)
+console.log(`Generated docker/docker-compose.${currentEnv}.yml`)

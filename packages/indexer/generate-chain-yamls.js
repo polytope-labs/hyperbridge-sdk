@@ -2,13 +2,15 @@
 const dotenv = require("dotenv")
 const path = require("path")
 
+const currentEnv = process.env.ENV
+if (!currentEnv) throw new Error("$ENV variable not set")
+
 const root = process.cwd()
-dotenv.config({ path: path.resolve(root, "../../.env") })
+dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 
 const fs = require("fs")
 const { RpcWebSocketClient } = require("rpc-websocket-client")
 const { hexToNumber } = require("viem")
-const currentEnv = process.env.CURRENT_ENV || "local"
 const configs = require(`./configs/config-${currentEnv}.json`)
 
 const getChainTypesPath = (chain) => {
