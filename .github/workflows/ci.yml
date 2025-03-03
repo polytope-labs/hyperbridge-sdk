@@ -312,20 +312,6 @@ jobs:
                   PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
                   PING_MODULE_ADDRESS: ${{ secrets.PING_MODULE_ADDRESS }}
 
-            - name: Show logs on failure
-              if: failure()
-              run: |
-                  echo "==== HYPERBRIDGE NODE LOGS ===="
-                  docker logs hyperbridge-node || true
-
-                  echo "==== BSC NODE LOGS ===="
-                  docker logs bsc-node || true
-
-                  echo "==== GNOSIS NODE LOGS ===="
-                  docker logs gnosis-node || true
-                  
-                  done
-
             - name: Cleanup
               if: always()
               run: |
