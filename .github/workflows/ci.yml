@@ -137,24 +137,26 @@ jobs:
                     cp -r dist/substrate-chaintypes/* /tmp/hyperbridge-project/substrate-chaintypes/
                   fi
 
-                  # Fix paths in YAML files to use absolute paths
+                  # Fix paths in YAML files to use Docker container paths
                   for project in hyperbridge bsc gnosis; do
                     project_dir="/tmp/${project}-project"
                     yaml_file="${project_dir}/project.yaml"
                     
-                    # Update schema path
-                    sed -i "s|file: \./schema.graphql|file: ${project_dir}/schema.graphql|g" $yaml_file
+                    # Update schema path to use container path (/project)
+                    sed -i "s|file: \./schema.graphql|file: /project/schema.graphql|g" $yaml_file
                     
-                    # Update mapping file path
-                    sed -i "s|file: \./dist/|file: ${project_dir}/|g" $yaml_file
+                    # Update mapping file path to use container path
+                    sed -i "s|file: \./dist/|file: /project/|g" $yaml_file
                     
                     # Update chaintypes path if present (for Substrate only)
                     if [ "$project" = "hyperbridge" ]; then
-                      sed -i "s|file: \./dist/substrate-chaintypes/|file: ${project_dir}/substrate-chaintypes/|g" $yaml_file
+                      sed -i "s|file: \./dist/substrate-chaintypes/|file: /project/substrate-chaintypes/|g" $yaml_file
                     fi
                     
                     echo "Updated paths in $yaml_file"
                     grep -n "file:" $yaml_file
+                    # Display the full file content for debugging
+                    cat $yaml_file
                   done
 
                   # Ensure permissions are set correctly
