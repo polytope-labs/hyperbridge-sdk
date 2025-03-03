@@ -315,9 +315,6 @@ jobs:
             - name: Show logs on failure
               if: failure()
               run: |
-                  echo "==== POSTGRES LOGS ===="
-                  docker logs postgres || true
-
                   echo "==== HYPERBRIDGE NODE LOGS ===="
                   docker logs hyperbridge-node || true
 
@@ -326,16 +323,7 @@ jobs:
 
                   echo "==== GNOSIS NODE LOGS ===="
                   docker logs gnosis-node || true
-
-                  echo "==== GRAPHQL ENGINE LOGS ===="
-                  docker logs graphql-engine || true
-
-                  echo "==== PROJECT FILES ===="
-                  for project in hyperbridge bsc gnosis; do
-                    echo "=== ${project}-project contents ==="
-                    ls -la /tmp/${project}-project/
-                    echo "=== ${project}-project.yaml ==="
-                    cat /tmp/${project}-project/project.yaml
+                  
                   done
 
             - name: Cleanup
