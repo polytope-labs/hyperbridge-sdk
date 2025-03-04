@@ -1,7 +1,8 @@
 services:
-    subquery-node-bifrost-paseo:
+    subquery-hyperbridge-gargantua:
         image: subquerynetwork/subql-node-substrate:v5.9.1
         restart: unless-stopped
+        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -10,24 +11,20 @@ services:
             DB_PORT: ${DB_PORT}
 
         volumes:
-            - ../configs:/app
-            - ../dist:/app/dist
+            - ../../configs:/app
+            - ../../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
-            - -f=/app/bifrost-paseo.yaml
+            - -f=/app/hyperbridge-gargantua.yaml
             - --db-schema=app
             - --workers=${SUBQL_WORKERS:-32}
-            - --batch-size=${SUBQL_BATCH_SIZE:-100}
+            - --batch-size=${SUBQL_BATCH_SIZE:-200}
             - --multi-chain
-            - --unsafe
             - --log-level=info
-            - --historical=timestamp
-            - --unfinalized-blocks
-            - --block-confirmations=0
-            - --store-cache-async=false
-            - --store-cache-threshold=1
+            - --store-cache-async=true
+            - --unsafe
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://subquery-node-bifrost-paseo:3000/ready"]
+            test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua:3000/ready"]
             interval: 3s
             timeout: 5s
             retries: 10

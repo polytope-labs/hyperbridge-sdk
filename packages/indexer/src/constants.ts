@@ -93,6 +93,10 @@ export const SONEMIUM = {
 	mainnet: "EVM-1868",
 }
 
+export const SUBSTRATE_RPC_URL = {
+	"KUSAMA-4009": "http://0.0.0.0:9001",
+}
+
 export const CHAIN_IDS_BY_GENESIS = {
 	// Hyperbridge
 	"0x5388faf792c5232566d21493929b32c1f20a9c2b03e95615eefec2aa26d64b73": "KUSAMA-4009",

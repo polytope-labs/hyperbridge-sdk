@@ -64,6 +64,18 @@ export const extractStateMachineIdFromSubstrateEventData = (substrateStateMachin
 }
 
 /**
+ * Checks if the given state machine ID represents a Substrate chain.
+ * @param stateMachineId The state machine ID to check.
+ */
+export function isSubstrateChain(stateMachineId: string): boolean {
+	return (
+		stateMachineId.startsWith("POLKADOT") ||
+		stateMachineId.startsWith("KUSAMA") ||
+		stateMachineId.startsWith("SUBSTRATE")
+	)
+}
+
+/**
  * Format chain data
  */
 export const formatChain = (chain: any) => {

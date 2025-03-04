@@ -1,6 +1,6 @@
 import { bytesToBigInt, bytesToHex, hexToBytes, keccak256, pad, PublicClient, toBytes, toHex } from "viem"
 import { blake2AsU8a, xxhashAsU8a } from "@polkadot/util-crypto"
-import { u64, Struct, Option, Bytes, u8, Vector, Enum, u32 } from "scale-ts"
+import { u64, Struct, Option, Bytes, u8, Vector, Enum, u32, u128, bool } from "scale-ts"
 import type { ApiPromise } from "@polkadot/api"
 import type { StorageData } from "@polkadot/types/interfaces"
 import { Option as PolkadotOption } from "@polkadot/types"
@@ -22,6 +22,18 @@ const StateCommitment = Struct({
 	timestamp: u64,
 	overlay_root: Option(H256),
 	state_root: H256,
+})
+
+export const RequestMetadata = Struct({
+	offchain: Struct({
+		leaf_index: u64,
+		pos: u64,
+	}),
+	fee: Struct({
+		payer: H256,
+		fee: u128,
+	}),
+	claimed: bool,
 })
 
 // Define StateMachine
