@@ -8,7 +8,7 @@ on:
 
 jobs:
     test:
-        runs-on: ubuntu-latest
+        runs-on: release-runner
         steps:
             - name: Checkout repository
               uses: actions/checkout@v3
@@ -182,11 +182,14 @@ jobs:
                     subquerynetwork/subql-node-substrate:v5.9.1 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=1 \
+                    --workers=2 \
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
-                    --log-level=debug
+                    --log-level=debug \
+                    --block-confirmations=0 \
+                    --store-cache-async=false \
+                    --store-cache-threshold=1
 
                   # Check content in container
                   docker exec hyperbridge-node ls -la /project || echo "Failed to list directory"
@@ -209,11 +212,14 @@ jobs:
                     subquerynetwork/subql-node-ethereum:v5.5.0 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=1 \
+                    --workers=2 \
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
                     --log-level=debug \
+                    --block-confirmations=0 \
+                    --store-cache-async=false \
+                    --store-cache-threshold=1 \
                     --historical=timestamp \
                     --unfinalized-blocks
 
@@ -234,11 +240,14 @@ jobs:
                     subquerynetwork/subql-node-ethereum:v5.5.0 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=1 \
+                    --workers=2 \
                     --batch-size=5 \
                     --multi-chain \
                     --unsafe \
                     --log-level=debug \
+                    --block-confirmations=0 \
+                    --store-cache-async=false \
+                    --store-cache-threshold=1 \
                     --historical=timestamp \
                     --unfinalized-blocks
 
@@ -281,7 +290,7 @@ jobs:
                   sleep 10
                   docker logs graphql-engine
 
-            - name: Wait for GraphQL API and run tests
+            - name: Wait for GraphQL API
               run: |
                   # Check if GraphQL is accessible
                   echo "Checking GraphQL API..."
@@ -301,7 +310,8 @@ jobs:
 
                   echo "GraphQL API is accessible!"
 
-                  # Run SDK tests
+            - name: Run SDK tests
+              run: |
                   cd packages/sdk
                   pnpm test
               env:
