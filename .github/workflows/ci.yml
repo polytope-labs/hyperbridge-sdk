@@ -182,8 +182,8 @@ jobs:
                     subquerynetwork/subql-node-substrate:v5.9.1 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=2 \
-                    --batch-size=5 \
+                    --workers=6 \
+                    --batch-size=10 \
                     --multi-chain \
                     --unsafe \
                     --log-level=debug \
@@ -212,8 +212,8 @@ jobs:
                     subquerynetwork/subql-node-ethereum:v5.5.0 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=2 \
-                    --batch-size=5 \
+                    --workers=6 \
+                    --batch-size=10 \
                     --multi-chain \
                     --unsafe \
                     --log-level=debug \
@@ -240,8 +240,8 @@ jobs:
                     subquerynetwork/subql-node-ethereum:v5.5.0 \
                     -f=/project/project.yaml \
                     --db-schema=app \
-                    --workers=2 \
-                    --batch-size=5 \
+                    --workers=6 \
+                    --batch-size=10 \
                     --multi-chain \
                     --unsafe \
                     --log-level=debug \
