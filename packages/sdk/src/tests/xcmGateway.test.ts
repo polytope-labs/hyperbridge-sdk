@@ -5,7 +5,6 @@ import { teleportDot } from "@/utils/xcmGateway"
 import { Signer, SignerResult } from "@polkadot/api/types"
 import { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
-import { toHex } from "viem"
 import { KeyringPair } from "@polkadot/keyring/types"
 
 

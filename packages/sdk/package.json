@@ -49,8 +49,7 @@
 		"ts-pattern": "^5.6.2",
 		"viem": "^2.23.5",
 		"@polkadot/util-crypto": "13.3.1",
-		"@polkadot/types": "14.0.1",
-		"@polkadot/keyring": "13.4.3"
+		"@polkadot/types": "14.0.1"
 	},
 	"devDependencies": {
 		"@polytope-labs/hyperclient": "1.2.0",
@@ -62,7 +61,8 @@
 		"log-timestamp": "^0.3.0",
 		"ts-jest": "^29.2.6",
 		"ts-node": "^10.9.2",
-		"typescript": "^5.7.3"
+		"typescript": "^5.7.3",
+		"@polkadot/keyring": "13.4.3"
 	},
 	"publishConfig": {
 		"access": "public"
