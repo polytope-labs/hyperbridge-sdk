@@ -56,12 +56,6 @@ export type Params = {
 	paraId: number
 }
 
-export type Value = {
-	relaytxHash: string
-	hyperbridgetxHash: string
-	commitment?: string
-}
-
 export async function* readTxEventsFromStream(stream: ReadableStream<HyperbridgeTxEvents>) {
 	const reader = stream.getReader()
 	while (true) {
