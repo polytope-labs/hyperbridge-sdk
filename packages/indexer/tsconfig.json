@@ -4,9 +4,14 @@
 		"emitDecoratorMetadata": true,
 		"experimentalDecorators": true,
 		"importHelpers": true,
-		"module": "commonjs",
+		"module": "esnext",
+		"moduleResolution": "node",
 		"outDir": "dist",
-		"rootDirs": ["src", "config/src"],
+		"rootDir": "./src",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"]
+		},
 		"noImplicitAny": false
 	},
 	"include": [

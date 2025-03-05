@@ -3,16 +3,6 @@ export const REQUEST_STATUS = `
   requests(
     filter: {
       or: [
-        {
-          statusMetadata: {
-            some: { 
-              or: [
-                { transactionHash: { equalTo: $hash } },
-                { blockHash: { equalTo: $hash } }
-              ]
-            }
-          }
-        },
         { commitment: { equalTo: $hash } }
       ]
     }

@@ -13,7 +13,7 @@ package-lock.json
 pnpm-lock.yaml
 sdk/pnpm-lock.yaml
 
-configs/*.yaml
+src/configs/*.yaml
 
 # Compiled Java class files
 *.class

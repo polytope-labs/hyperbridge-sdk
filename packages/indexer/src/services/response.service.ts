@@ -1,6 +1,7 @@
 import { solidityKeccak256 } from "ethers/lib/utils"
-import { Request, Response, ResponseStatusMetadata, Status } from "../../configs/src/types"
 import { ethers } from "ethers"
+
+import { Request, Response, ResponseStatusMetadata, Status } from "@/configs/src/types"
 
 export interface ICreateResponseArgs {
 	chain: string

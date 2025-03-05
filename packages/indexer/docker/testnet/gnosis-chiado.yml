@@ -10,7 +10,7 @@ services:
       DB_PORT: ${DB_PORT}
       
     volumes:
-      - ../../configs:/app
+      - ../../src/configs:/app
       - ../../dist:/app/dist
     command:
       - ${SUB_COMMAND:-}

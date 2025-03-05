@@ -1,9 +1,9 @@
-import { GET_HOST_ADDRESSES } from "../../../addresses/state-machine.addresses"
-import { HyperBridgeService } from "../../../services/hyperbridge.service"
-import { RelayerService } from "../../../services/relayer.service"
-import { TransferService } from "../../../services/transfer.service"
-import { TransferLog } from "../../../../configs/src/types/abi-interfaces/ERC6160Ext20Abi"
-import { getHostStateMachine } from "../../../utils/substrate.helpers"
+import { GET_HOST_ADDRESSES } from "@/addresses/state-machine.addresses"
+import { HyperBridgeService } from "@/services/hyperbridge.service"
+import { RelayerService } from "@/services/relayer.service"
+import { TransferService } from "@/services/transfer.service"
+import { TransferLog } from "@/configs/src/types/abi-interfaces/ERC6160Ext20Abi"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 /**
  * Handles the Transfer event from the Fee Token contract

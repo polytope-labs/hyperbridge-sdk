@@ -1,0 +1,33 @@
+import ejs from 'ejs';
+export declare function delay(sec: number): Promise<void>;
+export declare function valueOrPrompt(value: string | undefined, msg: string, error: string): Promise<NonNullable<string>>;
+export declare function addV<T extends string | undefined>(str: T): T;
+export declare function checkToken(token_path?: string): Promise<string>;
+export declare function errorHandle(e: any, msg: string): Error;
+export declare function buildProjectKey(org: string, projectName: string): string;
+export declare function renderTemplate(templatePath: string, outputPath: string, templateData: ejs.Data): Promise<void>;
+export declare function prepareDirPath(path: string, recreate: boolean): Promise<void>;
+export declare function resolveToAbsolutePath(inputPath: string): string;
+export declare function isValidEnum<T extends Record<string, string>>(enumType: T, input: string): input is T[keyof T];
+export declare function findReplace(manifest: string, replacer: RegExp, value: string): string;
+export declare function findMatchingIndices(content: string, startChar: string, endChar: string, startFrom?: number): [number, number][];
+export declare function findArrayIndicesTsManifest(content: string, key: string): [number, number];
+export declare function replaceArrayValueInTsManifest(content: string, key: string, newValue: string): string;
+export declare function extractArrayValueFromTsManifest(content: string, key: string): string | null;
+export declare function extractFromTs(manifest: string, patterns: {
+    [key: string]: RegExp | undefined;
+}): {
+    [key: string]: string | string[] | null;
+};
+export declare function splitArrayString(arrayStr: string): string[];
+export declare function validateEthereumTsManifest(manifest: string): boolean;
+export declare function defaultYamlManifestPath(projectPath: string): string;
+export declare function defaultTSManifestPath(projectPath: string): string;
+export declare function defaultEnvPath(projectPath: string): string;
+export declare function defaultEnvDevelopPath(projectPath: string): string;
+export declare function defaultEnvLocalPath(projectPath: string): string;
+export declare function defaultEnvDevelopLocalPath(projectPath: string): string;
+export declare function defaultGitIgnorePath(projectPath: string): string;
+export declare function copyFolderSync(source: string, target: string): void;
+export declare function defaultMultiChainYamlManifestPath(projectPath: string): string;
+export declare function isMultichain(location: string): boolean;

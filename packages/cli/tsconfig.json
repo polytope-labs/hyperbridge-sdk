@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "esModuleInterop": true,
+    "importHelpers": true,
+    "rootDir": "src",
+    "tsBuildInfoFile": "lib/.tsbuildinfo",
+    "outDir": "lib",
+    "noImplicitAny": true
+  },
+  "references": [{"path": "../common"}, {"path": "../common-substrate"}, {"path": "../utils"}],
+  "include": ["src/**/*"],
+  "exclude": ["test/schemaTest/project.ts"]
+}

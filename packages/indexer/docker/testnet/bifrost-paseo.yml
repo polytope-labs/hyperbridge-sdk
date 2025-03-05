@@ -10,14 +10,14 @@ services:
             DB_PORT: ${DB_PORT}
 
         volumes:
-            - ../../configs:/app
+            - ../../src/configs:/app
             - ../../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/bifrost-paseo.yaml
             - --db-schema=app
-            - --workers=${SUBQL_WORKERS:-32}
-            - --batch-size=${SUBQL_BATCH_SIZE:-200}
+            - --workers=${SUBQL_WORKERS:-10}
+            - --batch-size=${SUBQL_BATCH_SIZE:-400}
             - --multi-chain
             - --unsafe
             - --log-level=info

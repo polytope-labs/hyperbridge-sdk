@@ -8,9 +8,9 @@ services:
       DB_DATABASE: ${DB_DATABASE}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
-      
+
     volumes:
-      - ../../configs:/app
+      - ../../src/configs:/app
       - ../../dist:/app/dist
     command:
       - ${SUB_COMMAND:-}

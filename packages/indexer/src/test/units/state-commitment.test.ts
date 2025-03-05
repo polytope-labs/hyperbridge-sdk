@@ -1,6 +1,7 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate } from "../../utils/state-machine.helper"
 import { JsonRpcProvider } from "@ethersproject/providers"
+
+import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate } from "@/utils/state-machine.helper"
 
 describe("fetchStateCommitmentsSubstrate Integration Test", () => {
 	let api: ApiPromise

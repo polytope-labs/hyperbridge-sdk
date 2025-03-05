@@ -1,7 +1,7 @@
 {
-	"name": "@hyperbridge/hyperclient",
+	"name": "@hyperbridge/sdk",
 	"version": "1.0.0",
-	"description": "The hyperclient SDK provides utilities for querying proofs and statuses for cross-chain requests from HyperBridge.",
+	"description": "The hyperbridge SDK provides utilities for querying proofs and statuses for cross-chain requests from HyperBridge.",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"files": [
@@ -27,7 +27,7 @@
 		"type": "git",
 		"url": "git+https://github.com/polytope-labs/hyperbridge-sdk.git"
 	},
-	"license": "ISC",
+	"license": "MIT",
 	"author": "Polytope Labs",
 	"scripts": {
 		"build": "tsc",

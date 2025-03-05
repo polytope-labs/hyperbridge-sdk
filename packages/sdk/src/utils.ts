@@ -1,9 +1,14 @@
-import { HexString, IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
 
-export * from "./utils/mmr"
-export * from "./utils/substrate"
+import { HexString, IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
+export * from "@/utils/mmr"
+export * from "@/utils/substrate"
 
+/**
+ * The default polling interval in milliseconds.
+ * This constant defines how frequently the system will check for updates
+ * when polling for changes in request status.
+ */
 export const DEFAULT_POLL_INTERVAL = 5_000
 
 /**

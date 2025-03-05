@@ -14,7 +14,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -49,7 +49,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -86,7 +86,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
