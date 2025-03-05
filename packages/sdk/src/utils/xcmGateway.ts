@@ -25,7 +25,7 @@ const DECIMALS = 10
 /**
  * Parameters for teleporting DOT from Polkadot relay chain to EVM-based destination
  */
-export type Params = {
+export type XcmGatewayParams = {
 	/**
 	 * Destination state machine ID (chain ID) where assets will be teleported to
 	 * This value identifies the specific EVM chain in the destination network
@@ -98,7 +98,7 @@ export async function* teleportDot(
 	hyperbridge: ApiPromise,
 	who: string,
 	options: Partial<SignerOptions>,
-	params: Params,
+	params: XcmGatewayParams,
 ): AsyncGenerator<HyperbridgeTxEvents> {
 	// 2. initiate the transaction
 	const destination = {
@@ -239,7 +239,7 @@ export async function* teleportDot(
 async function watchForRequestCommitment(
 	hyperbridge: ApiPromise,
 	who: string,
-	params: Params,
+	params: XcmGatewayParams,
 	start_block: number,
 ): Promise<{
 	commitment: HexString
@@ -301,7 +301,7 @@ function extractCommitmentHashFromEvent({
 }: {
 	record: any
 	from: string
-	params: Params
+	params: XcmGatewayParams
 }): HexString | undefined {
 	const { event } = record
 
