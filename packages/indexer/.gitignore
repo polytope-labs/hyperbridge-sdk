@@ -31,7 +31,7 @@ src/configs/*.yaml
 target/
 dist/
 src/types
-configs/src/types
+src/configs/src/types
 project.yaml
 
 # JetBrains IDE
