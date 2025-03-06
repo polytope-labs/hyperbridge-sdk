@@ -114,7 +114,7 @@ services:
     graphql-engine:
         image: subquerynetwork/subql-query:v2.21.0
         ports:
-            - 3001:3000
+            - 3000:3000
 
         restart: always
         network_mode: host
