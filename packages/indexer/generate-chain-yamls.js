@@ -255,8 +255,13 @@ async function generateAllChainYamls() {
 				? await generateSubstrateYaml(chain, config)
 				: await generateEvmYaml(chain, config)
 
-		fs.writeFileSync(`./configs/${chain}.yaml`, yaml)
-		console.log(`Generated ${chain}.yaml`)
+		const filePath = `./configs/${chain}.yaml`
+		if (!fs.existsSync(filePath)) {
+			fs.writeFileSync(filePath, yaml)
+			console.log(`Generated ${chain}.yaml`)
+		} else {
+			console.log(`Skipping ${chain}.yaml - File already exists`)
+		}
 	}
 }
 
