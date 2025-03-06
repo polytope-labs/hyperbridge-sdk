@@ -4,6 +4,7 @@
   "description": "The hyperclient SDK provides utilities for querying proofs and statuses for cross-chain requests from HyperBridge.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
   "files": [
     "dist"
   ],
@@ -30,7 +31,7 @@
   "license": "ISC",
   "author": "Polytope Labs",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && resolve-tspaths",
     "prepublishOnly": "npm run build",
     "test": "vitest --watch=false",
     "test:watch": "vitest",
@@ -59,6 +60,7 @@
     "@types/lodash": "^4.17.15",
     "@types/node": "^22.13.5",
     "dotenv": "^16.4.7",
+    "resolve-tspaths": "^0.8.23",
     "jsdom": "^26.0.0",
     "log-timestamp": "^0.3.0",
     "vitest": "^3.0.7",
