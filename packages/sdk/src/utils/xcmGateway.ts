@@ -4,6 +4,7 @@ import type { SignerOptions } from "@polkadot/api/types"
 import { u8aToHex } from "@polkadot/util"
 import { decodeAddress } from "@polkadot/util-crypto"
 import { parseUnits } from "viem"
+import type { Header } from "@polkadot/types/interfaces"
 
 export type HyperbridgeTxEvents =
   | {
@@ -18,7 +19,7 @@ export type HyperbridgeTxEvents =
   }
   | {
     kind: "Error"
-    error: string
+    error: unknown
   }
 
 const DECIMALS = 10
@@ -247,19 +248,23 @@ async function watchForRequestCommitment(
   block_number: bigint
   block_hash: HexString
 }> {
+  return new Promise((resolve, reject) => {
   let blockCount = 0
   let last_block = start_block
-  return new Promise(async (resolve, reject) => {
-    const unsubscribeHyperbridgeEvents = await hyperbridge.rpc.chain.subscribeFinalizedHeads(async (lastHeader) => {
+    let unsubscribeHyperbridgeEvents = () => { };
+
+    const handleLatestHeader = async (lastHeader: Header) => {
       const finalized = lastHeader.number.toNumber()
-      blockCount += Math.max(finalized - last_block, 1)
+      blockCount += Math.max(finalized - last_block
+, 1)
       for (let block_number = last_block; block_number <= finalized; block_number++) {
-        const block_hash = await hyperbridge.rpc.chain.getBlockHash(block_number)!
+        const block_hash = await hyperbridge.rpc.chain.getBlockHash(block_number)
+
         // just to be safe, query events at this specific hash
         const apiAt = await hyperbridge.at(block_hash)
         const events = (await apiAt.query.system.events()) as unknown as any[]
 
-        events.forEach((record) => {
+        for (const record of events) {
           const { event } = record
 
           if (event.section === "xcmGateway" && event.method === "AssetTeleported") {
@@ -278,7 +283,7 @@ async function watchForRequestCommitment(
               })
             }
           }
-        })
+        }
       }
 
       last_block = finalized + 1
@@ -287,7 +292,14 @@ async function watchForRequestCommitment(
         unsubscribeHyperbridgeEvents?.()
         reject(new Error("No commitment received"))
       }
-    })
+    };
+
+    hyperbridge.rpc.chain.subscribeFinalizedHeads((header) => {
+      // @ts-expect-error Issue referencing type
+      return handleLatestHeader(header)
+    }).then((unsubscribe) => {
+      unsubscribeHyperbridgeEvents = unsubscribe
+    }).catch(reject)
   })
 }
 

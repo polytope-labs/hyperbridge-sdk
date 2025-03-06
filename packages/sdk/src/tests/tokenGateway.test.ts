@@ -19,55 +19,60 @@ const secret_key = process.env.SECRET_PHRASE || ""
 describe("teleport function", () => {
 	it("should teleport assets correctly", async () => {
 		// Set up the connection to a local node
-		const wsProvider = new WsProvider(process.env.BIFROST_RPC)
+        const wsProvider = new WsProvider(process.env.BIFROST_RPC)
 		const api = await ApiPromise.create({ provider: wsProvider })
 
-		console.log("Api connected")
-		// Set up BOB account from keyring
-		const keyring = new Keyring({ type: "sr25519" })
-		const bob = keyring.addFromUri(secret_key)
-		// Implement the Signer interface
-		const signer: Signer = createKeyringPairSigner(bob)
+        console.log("Api connected")
+        // Set up BOB account from keyring
+        const keyring = new Keyring({ type: "sr25519" })
+        const bob = keyring.addFromUri(secret_key)
+        // Implement the Signer interface
+        const signer: Signer = createKeyringPairSigner(bob)
 
-		// Prepare test parameters
-		const params = {
-			symbol: "BNC",
-			destination: "EVM-84532",
-			recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
-			amount: BigInt(200000000000),
-			timeout: BigInt(3600),
-			tokenGatewayAddress: hexToBytes("0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"),
-			relayerFee: BigInt(0),
-			redeem: false,
-		}
+        // Prepare test parameters
+        const params = {
+            symbol: "BNC",
+            destination: "EVM-84532",
+            recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
+            amount: BigInt(200000000000),
+            timeout: BigInt(3600),
+            tokenGatewayAddress: hexToBytes("0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"),
+            relayerFee: BigInt(0),
+            redeem: false,
+        }
 
-		try {
-			// Call the teleport function
-			//
-			console.log("Teleport started")
-			const result = await teleport(api, bob.address, params, { signer })
-			console.log(result)
-			return
-		} catch (error) {
-			// The extrinsic should be decoded correctly but should fail at transaction fee payment since we are using the BOB account
-			expect(error).toBeUndefined()
-		}
-	}, 75000)
+        try {
+            // Call the teleport function
+            console.log("Teleport started")
+            let result = null;
+
+            for await (const event of teleport(api, bob.address, params, { signer })) {
+                if (event.kind === "Dispatched") {
+                    result = event;
+                }
+            }
+
+            expect(result).not.toBeNull();
+        } catch (error) {
+            // The extrinsic should be decoded correctly but should fail at transaction fee payment since we are using the BOB account
+            expect(error).toBeUndefined()
+        }
+    }, 75000)
 })
 
 function createKeyringPairSigner(pair: KeyringPair): Signer {
-	return {
-		/**
-		 * Signs a raw payload
-		 */
-		async signRaw({ data }: SignerPayloadRaw): Promise<SignerResult> {
-			// Sign the data
-			const signature = u8aToHex(pair.sign(hexToU8a(data), { withType: true }))
+    return {
+        /**
+         * Signs a raw payload
+         */
+        async signRaw({ data }: SignerPayloadRaw): Promise<SignerResult> {
+            // Sign the data
+            const signature = u8aToHex(pair.sign(hexToU8a(data), { withType: true }))
 
-			return {
-				id: 1,
-				signature,
-			}
-		},
-	}
+            return {
+                id: 1,
+                signature,
+            }
+        },
+    }
 }

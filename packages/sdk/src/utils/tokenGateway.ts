@@ -8,6 +8,7 @@ import { keccakAsU8a, xxhashAsU8a } from "@polkadot/util-crypto"
 import type { Option as PolakdotOption } from "@polkadot/types"
 import type { EventRecord, StorageData } from "@polkadot/types/interfaces"
 import type { SignerOptions } from "@polkadot/api/types"
+import { type HyperbridgeTxEvents, readTxEventsFromStream } from "./xcmGateway"
 
 export type Params = {
   /** Asset symbol for the teleport operation */
@@ -118,7 +119,7 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
  * @returns Promise resolving to transaction details
  * @throws Error when asset ID is unknown or transaction fails
  */
-export async function teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>) {
+export async function* teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>) {
   const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
     if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
 
@@ -153,37 +154,62 @@ export async function teleport(apiPromise: ApiPromise, who: string, params: Para
   const encoded = TeleportParams.enc(teleportParams)
   const fullCallData = new Uint8Array([...scaleEncodedAssetId, ...encoded])
 
-  const tx = apiPromise.tx.tokenGateway.teleport(fullCallData)
-  return new Promise((resolve, reject) => {
-    (async () => {
-      const unsub = await tx.signAndSend(
+  const tx = apiPromise.tx.tokenGateway.teleport(fullCallData);
+  let unsub = () => { }
+
+  const stream = new ReadableStream<HyperbridgeTxEvents>({
+    async start(controller) {
+      unsub = await tx.signAndSend(
         who,
         options,
-        async ({ isInBlock, isError, dispatchError, txHash, status, events }) => {
-          if (isInBlock) {
+        async ({ isInBlock, isError, dispatchError, txHash, isFinalized, status, events }) => {
+			const stop = () => {
+				unsub();
+				controller.close()
+			};
+
+          if (isError) {
+            unsub()
+            console.error("Transaction failed: ", dispatchError)
+            controller.enqueue({ kind: "Error", error: dispatchError })
+            return stop();
+          }
+
+		  if (isInBlock) {
             // @ts-expect-error Events aren't identical
             const commitment_hash = readCommitmentHash(events);
 
-            unsub()
+			if (!commitment_hash) {
+				controller.enqueue({
+					kind: "Error",
+					error: new Error("Commitment Hash missing")
+				})
+				return stop()
+			}
+
             const blockHash = status.asInBlock.toHex()
             const header = await apiPromise.rpc.chain.getHeader(blockHash)
-            resolve({
-              blockHash: blockHash,
-              transactionHash: txHash.toHex(),
-              blockNumber: header.number.toNumber(),
+            controller.enqueue({
+				kind: "Dispatched",
+              transaction_hash: txHash.toHex(),
+              block_number: header.number.toBigInt(),
+				commitment: commitment_hash
             })
-          } else if (isError) {
-            unsub()
-            console.error("Transaction failed: ", dispatchError)
-            reject(dispatchError)
+            stop();
           }
         },
       )
-    })()
-  })
+    },
+    cancel: () => unsub()
+  }, {
+    highWaterMark: 3,
+    size: () => 1,
+  });
+
+  yield* readTxEventsFromStream(stream);
 }
 
-function readCommitmentHash(events: EventRecord[]) {
+function readCommitmentHash(events: EventRecord[]): HexString | undefined {
   for (const record of events) {
     const { event } = record;
 
