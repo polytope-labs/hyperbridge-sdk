@@ -317,7 +317,9 @@ export function extractCommitmentHashFromEvent({
     to.toString().toLowerCase() === params.recipient.toLowerCase() &&
     dest.toString().includes(params.destination?.toString())
 
-  if (isExpectedEvent) {
-    return commitment.toString() as HexString
+  if (!isExpectedEvent) {
+    throw new Error("Error extracting commitment. Data mismatch");
   }
+
+  return commitment.toString() as HexString;
 }
