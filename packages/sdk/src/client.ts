@@ -642,11 +642,12 @@ export class IndexerClient {
 
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
-					// wait for the request to be delivered on Hyperbridge
-					let delivered = request.statuses.find((s) => s.status === RequestStatus.HYPERBRIDGE_DELIVERED)
+					// wait for the request to be delivered to the destination
+					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					while (!request || !delivered) {
 						await sleep(self.config.pollInterval)
 						request = await self.queryRequest(hash)
+						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					}
 
 					let index = request.source === self.config.hyperbridge.stateMachineId ? 1 : 2

@@ -21,7 +21,7 @@ describe("teleport DOT", () => {
         const relayProvider = new WsProvider(process.env.PASEO_RPC_URL)
         const relayApi = await ApiPromise.create({ provider: relayProvider })
 
-        const wsProvider = new WsProvider(process.env.HYPERBRIDGE_RPC_URL)
+        const wsProvider = new WsProvider(process.env.HYPERBRIDGE_GARGANTUA)
         const hyperbridge = await ApiPromise.create({ provider: wsProvider })
 
         console.log("Api connected")
