@@ -11,13 +11,13 @@ dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 const fs = require("fs")
 const { RpcWebSocketClient } = require("rpc-websocket-client")
 const { hexToNumber } = require("viem")
-const configs = require(`./configs/config-${currentEnv}.json`)
+const configs = require(root + `/configs/config-${currentEnv}.json`)
 
 const getChainTypesPath = (chain) => {
     // Extract base chain name before the hyphen
     const baseChainName = chain.split("-")[0]
 
-    const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
+    const potentialPath = root + `/dist/substrate-chaintypes/${baseChainName}.js`
 
     // Check if file exists
     if (fs.existsSync(potentialPath)) {
@@ -255,7 +255,7 @@ async function generateAllChainYamls() {
                 ? await generateSubstrateYaml(chain, config)
                 : await generateEvmYaml(chain, config)
 
-        const filePath = `./configs/${chain}.yaml`
+        const filePath = root + `/configs/${chain}.yaml`
         fs.writeFileSync(filePath, yaml)
         console.log(`Generated ${chain}.yaml`)
     }
@@ -271,7 +271,7 @@ query:
 projects:
 ${projects}`
 
-    fs.writeFileSync("./configs/subquery-multichain.yaml", yaml)
+    fs.writeFileSync(root + "/configs/subquery-multichain.yaml", yaml)
     console.log("Generated subquery-multichain.yaml")
 }
 
