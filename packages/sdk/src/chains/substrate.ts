@@ -270,7 +270,7 @@ function requestCommitmentStorageKey(key: HexString): number[] {
  * @param {string} id - The state machine ID string.
  * @returns {IStateMachine} The corresponding enum value.
  */
-function convertStateMachineIdToEnum(id: string): IStateMachine {
+export function convertStateMachineIdToEnum(id: string): IStateMachine {
 	let [tag, value]: any = id.split("-")
 	tag = capitalize(tag)
 	if (["Evm", "Polkadot", "Kusama"].includes(tag)) {
