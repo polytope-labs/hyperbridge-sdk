@@ -224,81 +224,42 @@ export class IndexerClient {
 	private async addRequestFinalityEvents(request: RequestWithStatus): Promise<RequestWithStatus> {
 		const self = this
 
+		let hyperbridgeDelivered: RequestStatusWithMetadata | undefined
 		if (request.source === self.config.hyperbridge.stateMachineId) {
+			// the first status contains the blocknumber of the initial request
+			hyperbridgeDelivered = request.statuses[0]
+		} else {
 			// we assume there's always a SOURCE event which contains the blocknumber of the initial request
-			const hyperbridgeFinality = await self.queryStateMachineUpdateByHeight({
-				statemachineId: self.config.hyperbridge.stateMachineId,
+			const sourceFinality = await self.queryStateMachineUpdateByHeight({
+				statemachineId: request.source,
 				height: request.statuses[0].metadata.blockNumber,
-				chain: request.dest,
+				chain: self.config.hyperbridge.stateMachineId,
 			})
 
-			if (!hyperbridgeFinality) return request
+			// no finality event found, return request as is
+			if (!sourceFinality) return request
 
-			// check if request receipt exists on destination chain
-			const destChain = await getChain(self.config.dest)
-			const hyperbridge = await getChain({
-				...self.config.hyperbridge,
-				hasher: "Keccak",
-			})
-
-			const proof = await hyperbridge.queryRequestsProof(
-				[postRequestCommitment(request)],
-				request.dest,
-				BigInt(hyperbridgeFinality.height),
-			)
-
-			const calldata = destChain.encode({
-				kind: "PostRequest",
-				proof: {
-					stateMachine: self.config.hyperbridge.stateMachineId,
-					consensusStateId: self.config.hyperbridge.consensusStateId,
-					proof,
-					height: BigInt(hyperbridgeFinality.height),
-				},
-				requests: [request],
-				signer: pad("0x"),
-			})
-
-			// Insert finality into request.statuses
-			request.statuses.splice(1, 0, {
-				status: RequestStatus.HYPERBRIDGE_FINALIZED,
+			// Insert finality event into request.statuses at index 1
+			request.statuses.push({
+				status: RequestStatus.SOURCE_FINALIZED,
 				metadata: {
-					blockHash: hyperbridgeFinality.blockHash,
-					blockNumber: hyperbridgeFinality.height,
-					transactionHash: hyperbridgeFinality.transactionHash,
-					calldata,
+					blockHash: sourceFinality.blockHash,
+					blockNumber: sourceFinality.height,
+					transactionHash: sourceFinality.transactionHash,
 				},
 			})
 
-			return request
+			// check if there's a hyperbridge delivered event
+			hyperbridgeDelivered = request.statuses.find((item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED)
+			if (!hyperbridgeDelivered) return request
 		}
 
-		// we assume there's always a SOURCE event which contains the blocknumber of the initial request
-		const sourceFinality = await self.queryStateMachineUpdateByHeight({
-			statemachineId: request.source,
-			height: request.statuses[0].metadata.blockNumber,
-			chain: self.config.hyperbridge.stateMachineId,
-		})
-
-		// no finality event found, return request as is
-		if (!sourceFinality) return request
-
-		// Insert finality event into request.statuses at index 1
-		request.statuses.splice(1, 0, {
-			status: RequestStatus.SOURCE_FINALIZED,
-			metadata: {
-				blockHash: sourceFinality.blockHash,
-				blockNumber: sourceFinality.height,
-				transactionHash: sourceFinality.transactionHash,
-			},
-		})
-
-		// check if there's a hyperbridge delivered event
-		if (request.statuses.length < 3) return request
+		// no need to query finality event if destination is hyperbridge
+		if (request.dest === self.config.hyperbridge.stateMachineId) return request
 
 		const hyperbridgeFinality = await self.queryStateMachineUpdateByHeight({
 			statemachineId: self.config.hyperbridge.stateMachineId,
-			height: request.statuses[2].metadata.blockNumber,
+			height: hyperbridgeDelivered.metadata.blockNumber,
 			chain: request.dest,
 		})
 		if (!hyperbridgeFinality) return request
@@ -328,8 +289,7 @@ export class IndexerClient {
 			signer: pad("0x"),
 		})
 
-		// Insert finality into request.statuses at index 3
-		request.statuses.splice(3, 0, {
+		request.statuses.push({
 			status: RequestStatus.HYPERBRIDGE_FINALIZED,
 			metadata: {
 				blockHash: hyperbridgeFinality.blockHash,
@@ -610,15 +570,19 @@ export class IndexerClient {
 						request = await self.queryRequest(hash)
 					}
 
+					status =
+						request.dest === self.config.hyperbridge.stateMachineId
+							? RequestStatus.DESTINATION
+							: RequestStatus.HYPERBRIDGE_DELIVERED
+
 					yield {
-						status: RequestStatus.HYPERBRIDGE_DELIVERED,
+						status,
 						metadata: {
 							blockHash: request.statuses[1].metadata.blockHash,
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
 						},
 					}
-					status = RequestStatus.HYPERBRIDGE_DELIVERED
 					break
 				}
 
@@ -734,7 +698,12 @@ export class IndexerClient {
 		const destTimestamp = await destChain.timestamp()
 		if (request.timeoutTimestamp > destTimestamp) throw new Error(`Request not timed out`)
 
-		let status: TimeoutStatus = TimeoutStatus.PENDING_TIMEOUT
+		// if the destination is hyperbridge, then just wait for hyperbridge finality
+		let status =
+			request.dest === self.config.hyperbridge.stateMachineId
+				? TimeoutStatus.HYPERBRIDGE_TIMED_OUT
+				: TimeoutStatus.PENDING_TIMEOUT
+
 		const commitment = postRequestCommitment(request)
 		const hyperbridge = (await getChain({
 			...self.config.hyperbridge,
