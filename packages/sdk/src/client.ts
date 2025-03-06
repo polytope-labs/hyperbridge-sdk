@@ -343,6 +343,8 @@ export class IndexerClient {
 		const delivered = request.statuses.find((item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED)
 		let hyperbridgeFinalized: StateMachineUpdate | undefined
 		if (!delivered) {
+			// either the request was never delivered to hyperbridge
+			// or hyperbridge was the destination of the request
 			hyperbridgeFinalized = await self.queryStateMachineUpdateByTimestamp({
 				statemachineId: self.config.hyperbridge.stateMachineId,
 				commitmentTimestamp: request.timeoutTimestamp,
@@ -366,6 +368,7 @@ export class IndexerClient {
 			})
 
 			// if the source is the hyperbridge state machine, no further action is needed
+			// use the timeout stream to timeout on hyperbridge
 			if (request.source === self.config.hyperbridge.stateMachineId) return request
 
 			const hyperbridgeTimedOut = request.statuses.find(
