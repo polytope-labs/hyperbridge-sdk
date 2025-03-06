@@ -17,7 +17,7 @@ const getChainTypesPath = (chain) => {
     // Extract base chain name before the hyphen
     const baseChainName = chain.split("-")[0]
 
-    const potentialPath = root + `/dist/substrate-chaintypes/${baseChainName}.js`
+    const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
 
     // Check if file exists
     if (fs.existsSync(potentialPath)) {
