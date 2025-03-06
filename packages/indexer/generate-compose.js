@@ -46,21 +46,25 @@ const generateNodeServices = () => {
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
       - --db-schema=app
-      - --workers=\${SUBQL_WORKERS:-${config.type === "substrate" ? "32" : "16"}}
+      - --workers=\${SUBQL_WORKERS:-16}
       - --batch-size=\${SUBQL_BATCH_SIZE:-100}
       - --multi-chain
       - --unsafe
       - --log-level=info${config.type === "substrate" ? "" : unfinalized}
-      - --store-cache-async=false
-      - --store-cache-threshold=5
+      - --store-cache-async=true
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
       interval: 3s
       timeout: 5s
       retries: 10`
 
-			fs.outputFileSync(`docker/${currentEnv}/${chain}.yml`, file)
-			console.log(`Generated docker/${currentEnv}/${chain}.yml`)
+			const filePath = `docker/${currentEnv}/${chain}.yml`
+			if (!fs.existsSync(filePath)) {
+				fs.outputFileSync(filePath, file)
+				console.log(`Generated docker/${currentEnv}/${chain}.yml`)
+			} else {
+				console.log(`Skipping docker/${currentEnv}/${chain}.yml - File already exists`)
+			}
 		})
 }
 

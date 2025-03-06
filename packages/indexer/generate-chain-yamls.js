@@ -255,7 +255,8 @@ async function generateAllChainYamls() {
 				? await generateSubstrateYaml(chain, config)
 				: await generateEvmYaml(chain, config)
 
-		fs.writeFileSync(`./configs/${chain}.yaml`, yaml)
+		const filePath = `./configs/${chain}.yaml`
+		fs.writeFileSync(filePath, yaml)
 		console.log(`Generated ${chain}.yaml`)
 	}
 }
