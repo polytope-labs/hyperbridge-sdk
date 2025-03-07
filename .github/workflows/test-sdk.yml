@@ -35,11 +35,6 @@ jobs:
             - name: Install dependencies
               run: pnpm install
 
-            - name: Build packages
-              run: pnpm build
-              env:
-                  ENV: local
-
             - name: Set up environment variables
               run: |
                   # Set up environment variables from secrets
@@ -54,6 +49,11 @@ jobs:
                   PING_MODULE_ADDRESS: "0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
                   TOKEN_GATEWAY_ADDRESS: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
                   EOF
+
+            - name: Build packages
+              run: pnpm build
+              env:
+                  ENV: local
 
             - name: Start local indexer (in background)
               env:
