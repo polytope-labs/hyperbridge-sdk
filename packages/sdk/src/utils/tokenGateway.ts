@@ -11,94 +11,94 @@ import type { SignerOptions } from "@polkadot/api/types"
 import { type HyperbridgeTxEvents, readTxEventsFromStream } from "./xcmGateway"
 
 export type Params = {
-  /** Asset symbol for the teleport operation */
-  symbol: string
-  /**
-   * Destination state machine identifier (e.g., "EVM-1", "SUBSTRATE-cere")
-   * that specifies the target blockchain or network
-   */
-  destination: string
-  /**
-   * Recipient address in hexadecimal format where the assets will be sent
-   * on the destination chain
-   */
-  recipient: HexString
-  /**
-   * Amount of tokens to teleport, represented as a bigint to handle
-   * large numeric values precisely
-   */
-  amount: bigint
-  /**
-   * Request timeout in block numbers or timestamp, after which the
-   * teleport operation will be considered failed
-   */
-  timeout: bigint
-  /**
-   * Address of the token gateway contract on the destination chain
-   * that will process the teleported assets
-   */
-  tokenGatewayAddress: Uint8Array
-  /**
-   * Fee paid to relayers who process the cross-chain transaction,
-   * represented as a bigint
-   */
-  relayerFee: bigint
-  /**
-   * Optional call data to be executed on the destination chain
-   * as part of the teleport operation
-   */
-  callData?: Uint8Array
-  /**
-   * Flag indicating whether to automatically redeem the tokens
-   * for erc20
-   */
-  redeem: boolean
+	/** Asset symbol for the teleport operation */
+	symbol: string
+	/**
+	 * Destination state machine identifier (e.g., "EVM-1", "SUBSTRATE-cere")
+	 * that specifies the target blockchain or network
+	 */
+	destination: string
+	/**
+	 * Recipient address in hexadecimal format where the assets will be sent
+	 * on the destination chain
+	 */
+	recipient: HexString
+	/**
+	 * Amount of tokens to teleport, represented as a bigint to handle
+	 * large numeric values precisely
+	 */
+	amount: bigint
+	/**
+	 * Request timeout in block numbers or timestamp, after which the
+	 * teleport operation will be considered failed
+	 */
+	timeout: bigint
+	/**
+	 * Address of the token gateway contract on the destination chain
+	 * that will process the teleported assets
+	 */
+	tokenGatewayAddress: Uint8Array
+	/**
+	 * Fee paid to relayers who process the cross-chain transaction,
+	 * represented as a bigint
+	 */
+	relayerFee: bigint
+	/**
+	 * Optional call data to be executed on the destination chain
+	 * as part of the teleport operation
+	 */
+	callData?: Uint8Array
+	/**
+	 * Flag indicating whether to automatically redeem the tokens
+	 * for erc20
+	 */
+	redeem: boolean
 }
 
 const TeleportParams = Struct({
-  /// StateMachine
-  destination: StateMachine,
-  /// Receipient
-  recepient: H256,
-  /// Amount
-  amount: u128,
-  /// Request timeout
-  timeout: u64,
-  /// Token gateway address
-  tokenGatewayAddress: Vector(u8),
-  /// Relayer fee
-  relayerFee: u128,
-  /// Call data
-  callData: Option(Vector(u8)),
-  /// Redeem
-  redeem: bool,
+	/// StateMachine
+	destination: StateMachine,
+	/// Receipient
+	recepient: H256,
+	/// Amount
+	amount: u128,
+	/// Request timeout
+	timeout: u64,
+	/// Token gateway address
+	tokenGatewayAddress: Vector(u8),
+	/// Relayer fee
+	relayerFee: u128,
+	/// Call data
+	callData: Option(Vector(u8)),
+	/// Redeem
+	redeem: bool,
 })
 
 async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array }) {
-  const { api, assetId } = params
+	const { api, assetId } = params
 
-  // twox_128
-  const palletPrefix = xxhashAsU8a("TokenGateway", 128)
-  // twox_128
-  const storagePrefix = xxhashAsU8a("LocalAssets", 128)
+	// twox_128
+	const palletPrefix = xxhashAsU8a("TokenGateway", 128)
+	// twox_128
+	const storagePrefix = xxhashAsU8a("LocalAssets", 128)
 
-  const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...assetId])
+	const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...assetId])
 
-  const hexKey = bytesToHex(full_key)
+	const hexKey = bytesToHex(full_key)
 
-  // read account balance
+	// read account balance
 
-  const storage_value: PolakdotOption<StorageData> = (await api.rpc.state.getStorage(
-    hexKey,
-  )) as PolakdotOption<StorageData>
+	const storage_value: PolakdotOption<StorageData> = (await api.rpc.state.getStorage(
+		hexKey,
+	)) as PolakdotOption<StorageData>
 
-  if (storage_value.isSome) {
-    const assetId = storage_value.value.toU8a()
+	if (storage_value.isSome) {
+		const assetId = storage_value.value.toU8a()
 
-    return assetId
-  }
+		return assetId
+	}
 
-  return null
+	return null
 }
 
 /**
@@ -116,109 +116,116 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
  * @param params.relayerFee - Fee for the relayer
  * @param params.redeem - Whether to redeem on arrival
  * @param params.callData - Optional additional call data
- * @returns Promise resolving to transaction details
+ * @param options - Signer options
+ * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  * @throws Error when asset ID is unknown or transaction fails
  */
-export async function* teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>) {
-  const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
-    if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
+export async function* teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>):
+	AsyncGenerator<HyperbridgeTxEvents> {
+	const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
+		if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
 
-    return address
-  }
+		return address
+	}
 
-  const assetId = keccakAsU8a(params.symbol)
+	const assetId = keccakAsU8a(params.symbol)
 
-  // Fetch scale encoded local asset id
+	// Fetch scale encoded local asset id
 
-  const scaleEncodedAssetId = await fetchLocalAssetId({ api: apiPromise, assetId })
+	const scaleEncodedAssetId = await fetchLocalAssetId({ api: apiPromise, assetId })
 
-  if (scaleEncodedAssetId === null) {
-    throw new Error("Unknown asset id provided")
-  }
+	if (scaleEncodedAssetId === null) {
+		throw new Error("Unknown asset id provided")
+	}
 
-  const destination = convertStateMachineIdToEnum(params.destination)
+	const destination = convertStateMachineIdToEnum(params.destination)
 
-  const recipient = hexToBytes(substrateComplianceAddr(params.recipient, params.destination))
+	const recipient = hexToBytes(substrateComplianceAddr(params.recipient, params.destination))
 
-  const teleportParams = {
-    destination: destination,
-    recepient: Array.from(recipient),
-    amount: params.amount,
-    timeout: BigInt(params.timeout),
-    tokenGatewayAddress: Array.from(params.tokenGatewayAddress),
-    relayerFee: BigInt(params.relayerFee),
-    redeem: params.redeem,
-    callData: params.callData ? Array.from(params.callData) : undefined,
-  }
+	const teleportParams = {
+		destination: destination,
+		recepient: Array.from(recipient),
+		amount: params.amount,
+		timeout: BigInt(params.timeout),
+		tokenGatewayAddress: Array.from(params.tokenGatewayAddress),
+		relayerFee: BigInt(params.relayerFee),
+		redeem: params.redeem,
+		callData: params.callData ? Array.from(params.callData) : undefined,
+	}
 
-  const encoded = TeleportParams.enc(teleportParams)
-  const fullCallData = new Uint8Array([...scaleEncodedAssetId, ...encoded])
+	const encoded = TeleportParams.enc(teleportParams)
+	const fullCallData = new Uint8Array([...scaleEncodedAssetId, ...encoded])
 
-  const tx = apiPromise.tx.tokenGateway.teleport(fullCallData);
-  let unsub = () => { }
+	const tx = apiPromise.tx.tokenGateway.teleport(fullCallData)
+	let unsub = () => {}
 
-  const stream = new ReadableStream<HyperbridgeTxEvents>({
-    async start(controller) {
-      unsub = await tx.signAndSend(
-        who,
-        options,
-        async ({ isInBlock, isError, dispatchError, txHash, isFinalized, status, events }) => {
-			const stop = () => {
-				unsub();
-				controller.close()
-			};
+	const stream = new ReadableStream<HyperbridgeTxEvents>(
+		{
+			async start(controller) {
+				unsub = await tx.signAndSend(who, options, async (result) => {
+					const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result;
+					// @ts-expect-error Type Misamatch
+					const events = result.events as ISubmittableResult['events']
 
-          if (isError) {
-            unsub()
-            console.error("Transaction failed: ", dispatchError)
-            controller.enqueue({ kind: "Error", error: dispatchError })
-            return stop();
-          }
+					if (isError) {
+						console.error("Transaction failed: ", dispatchError)
+						controller.enqueue({ kind: "Error", error: dispatchError })
+						return controller.close()
+					}
 
-		  if (isInBlock) {
-            // @ts-expect-error Events aren't identical
-            const commitment_hash = readCommitmentHash(events);
+					if (isFinalized) {
+						controller.enqueue({
+							kind: "Finalized",
+							transaction_hash: txHash.toHex(),
+							events: events
+						})
+						return controller.close()
+					}
 
-			if (!commitment_hash) {
-				controller.enqueue({
-					kind: "Error",
-					error: new Error("Commitment Hash missing")
+					if (isInBlock) {
+						const commitment_hash = readIsmpCommitmentHash(events)
+
+						if (!commitment_hash) {
+							controller.enqueue({
+								kind: "Error",
+								error: new Error("Commitment Hash missing"),
+							})
+							return controller.close()
+						}
+
+						const blockHash = status.asInBlock.toHex()
+						const header = await apiPromise.rpc.chain.getHeader(blockHash)
+						controller.enqueue({
+							kind: "Dispatched",
+							transaction_hash: txHash.toHex(),
+							block_number: header.number.toBigInt(),
+							commitment: commitment_hash,
+							events: events
+						})
+					}
 				})
-				return stop()
-			}
+			},
+			cancel: () => unsub(),
+		},
+		{
+			highWaterMark: 3,
+			size: () => 1,
+		},
+	)
 
-            const blockHash = status.asInBlock.toHex()
-            const header = await apiPromise.rpc.chain.getHeader(blockHash)
-            controller.enqueue({
-				kind: "Dispatched",
-              transaction_hash: txHash.toHex(),
-              block_number: header.number.toBigInt(),
-				commitment: commitment_hash
-            })
-            stop();
-          }
-        },
-      )
-    },
-    cancel: () => unsub()
-  }, {
-    highWaterMark: 3,
-    size: () => 1,
-  });
-
-  yield* readTxEventsFromStream(stream);
+	yield* readTxEventsFromStream(stream)
 }
 
-function readCommitmentHash(events: EventRecord[]): HexString | undefined {
-  for (const record of events) {
-    const { event } = record;
+function readIsmpCommitmentHash(events: EventRecord[]): HexString | undefined {
+	for (const record of events) {
+		const { event } = record
 
-    if (event.section === "ismp" && event.method === "Request") {
-      const commitment = event.data[3].toHex();
+		if (event.section === "ismp" && event.method === "Request") {
+			const commitment = event.data[3].toHex()
 
-      if (!commitment) return;
+			if (!commitment) return
 
-      return commitment
-    }
-  }
+			return commitment
+		}
+	}
 }
