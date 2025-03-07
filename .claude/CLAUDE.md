@@ -59,3 +59,9 @@ pnpm release
     - Push to main (only when files in sdk/, indexer/, or the workflow itself change)
     - Pull requests to main (same path filtering)
     - Manual workflow dispatch
+
+## Fixes Applied
+- Fixed package filter in root package.json to use the correct package name (`@hyperbridge/subql-indexer` instead of `@hyperbridge/indexer`)
+- Fixed TypeScript type errors in test files:
+  - Added type casting for unknown error types to string
+  - Changed number literals to BigInt for values requiring BigInt type
