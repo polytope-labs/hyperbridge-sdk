@@ -93,7 +93,7 @@ export const SONEMIUM = {
 	mainnet: "EVM-1868",
 }
 
-export const SUBSTRATE_RPC_URL = JSON.parse(require("./substrate-ws.json"))
+export const SUBSTRATE_RPC_URL = require("./substrate-ws.json")
 
 export const CHAIN_IDS_BY_GENESIS = {
 	// Hyperbridge
