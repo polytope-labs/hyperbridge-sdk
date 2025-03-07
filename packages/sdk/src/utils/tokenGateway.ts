@@ -8,7 +8,7 @@ import { keccakAsU8a, xxhashAsU8a } from "@polkadot/util-crypto"
 import type { Option as PolakdotOption } from "@polkadot/types"
 import type { EventRecord, StorageData } from "@polkadot/types/interfaces"
 import type { SignerOptions } from "@polkadot/api/types"
-import { type HyperbridgeTxEvents, readTxEventsFromStream } from "./xcmGateway"
+import { type HyperbridgeTxEvents } from "./xcmGateway"
 
 export type Params = {
 	/** Asset symbol for the teleport operation */
@@ -120,8 +120,8 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  * @throws Error when asset ID is unknown or transaction fails
  */
-export async function* teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>):
-	AsyncGenerator<HyperbridgeTxEvents> {
+export async function teleport(apiPromise: ApiPromise, who: string, params: Params, options: Partial<SignerOptions>):
+ Promise<ReadableStream<HyperbridgeTxEvents>> {
 	const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
 		if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
 
@@ -220,7 +220,7 @@ export async function* teleport(apiPromise: ApiPromise, who: string, params: Par
 		},
 	)
 
-	yield* readTxEventsFromStream(stream)
+	return stream
 }
 
 function readIsmpCommitmentHash(events: EventRecord[]): HexString | undefined {

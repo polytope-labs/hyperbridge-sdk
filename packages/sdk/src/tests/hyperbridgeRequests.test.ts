@@ -72,7 +72,7 @@ describe("Hyperbridge Requests", () => {
 			// Call the teleport function
 			//
 			console.log("Teleport Dot started")
-			const result = teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
 
 			let commitment
 			for await (const event of result) {
@@ -162,7 +162,7 @@ describe("Hyperbridge Requests", () => {
 			// Call the teleport function
 			//
 			console.log("Teleport Dot started")
-			const result = teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
 
 			let commitment
 			for await (const event of result) {
@@ -363,7 +363,7 @@ describe("Hyperbridge Requests", () => {
 			timeout: BigInt(3600),
 			paraId: 4009,
 		}
-		const result = teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+		const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
 
 		let hyp_commitment
 		for await (const event of result) {

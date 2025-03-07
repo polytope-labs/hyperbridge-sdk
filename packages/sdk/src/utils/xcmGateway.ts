@@ -64,11 +64,6 @@ export type XcmGatewayParams = {
 	paraId: number
 }
 
-export async function* readTxEventsFromStream(stream: ReadableStream<HyperbridgeTxEvents>) {
-	return yield* stream.values({
-		preventCancel: false
-	})
-}
 
 /**
  * Teleports DOT tokens from Polkadot relay chain to an EVM-based destination chain
@@ -90,13 +85,13 @@ export async function* readTxEventsFromStream(stream: ReadableStream<Hyperbridge
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  * @throws {Error} If there's an issue getting the Hyperbridge block or other failures
  */
-export async function* teleportDot(
+export async function teleportDot(
 	relayApi: ApiPromise,
 	hyperbridge: ApiPromise,
 	who: string,
 	options: Partial<SignerOptions>,
 	params: XcmGatewayParams,
-): AsyncGenerator<HyperbridgeTxEvents> {
+): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	// 2. initiate the transaction
 	const destination = {
 		V3: {
@@ -241,7 +236,7 @@ export async function* teleportDot(
 		},
 	)
 
-	yield* readTxEventsFromStream(stream)
+	return stream
 }
 
 // Watch for the request to be dispatched from hyperbridge

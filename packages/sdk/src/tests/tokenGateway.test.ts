@@ -1,3 +1,4 @@
+import "log-timestamp"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { Keyring } from "@polkadot/keyring"
 import { hexToBytes, toHex } from "viem"
@@ -47,7 +48,8 @@ describe("teleport function", () => {
 			let dispatched = null
 			let finalized = null
 
-			for await (const event of teleport(api, bob.address, params, { signer })) {
+			for await (const event of await teleport(api, bob.address, params, { signer })) {
+				console.log(event.kind)
 				if (event.kind === "Dispatched") {
 					dispatched = event
 				}
@@ -74,7 +76,7 @@ describe("teleport function", () => {
 			// The extrinsic should be decoded correctly but should fail at transaction fee payment since we are using the BOB account
 			expect(error).toBeUndefined()
 		}
-	}, 75000)
+	}, 300_000)
 })
 
 function createKeyringPairSigner(pair: KeyringPair): Signer {

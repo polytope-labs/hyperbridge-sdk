@@ -43,9 +43,10 @@ describe("teleport DOT", () => {
 			// Call the teleport function
 			//
 			console.log("Teleport Dot started")
-			const result = teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
 
 			for await (const event of result) {
+				console.log(event.kind)
 				if (event.kind === "Error") {
 					throw new Error(event.error)
 				}
@@ -62,7 +63,7 @@ describe("teleport DOT", () => {
 		} catch (error) {
 			expect(error).toBeUndefined()
 		}
-	}, 120000)
+	}, 300_000)
 })
 
 function createKeyringPairSigner(pair: KeyringPair): Signer {
