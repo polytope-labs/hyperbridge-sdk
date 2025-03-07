@@ -421,7 +421,7 @@ describe("Hyperbridge Requests", () => {
 })
 
 async function bscSetup() {
-	const account = privateKeyToAccount(process.env.BSC_PRIVATE_KEY as any)
+	const account = privateKeyToAccount(process.env.PRIVATE_KEY as any)
 
 	const bscWalletClient = createWalletClient({
 		chain: bscTestnet,

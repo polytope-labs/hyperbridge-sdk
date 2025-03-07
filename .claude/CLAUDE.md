@@ -53,12 +53,24 @@ pnpm release
 - GitHub Actions workflow `.github/workflows/test-sdk.yml` is set up to:
   - Run tests for the SDK package
   - Automatically starts the indexer with the local environment configuration
+  - Creates necessary environment variables from GitHub secrets
   - Waits for the GraphQL server to be available on port 3000 before running tests
   - Cleans up resources after tests complete
   - Triggers on:
     - Push to main (only when files in sdk/, indexer/, or the workflow itself change)
     - Pull requests to main (same path filtering)
     - Manual workflow dispatch
+  - Requires the following secrets to be configured in the repository settings:
+    - `BSC_CHAPEL`: BSC testnet RPC URL
+    - `GNOSIS_CHIADO`: Gnosis Chiado RPC URL
+    - `HYPERBRIDGE_GARGANTUA`: Hyperbridge Gargantua websocket URL
+    - `PASEO_RPC_URL`: Paseo RPC URL
+    - `BIFROST_RPC`: Bifrost RPC URL
+    - `BSC_PRIVATE_KEY`: Private key for BSC testnet transactions
+    - `PRIVATE_KEY`: Private key for transactions
+    - `SECRET_PHRASE`: Secret phrase for keyring
+    - `PING_MODULE_ADDRESS`: Address of the ping module
+    - `TOKEN_GATEWAY_ADDRESS`: Address of the token gateway
 
 ## Fixes Applied
 - Fixed package filter in root package.json to use the correct package name (`@hyperbridge/subql-indexer` instead of `@hyperbridge/indexer`)
