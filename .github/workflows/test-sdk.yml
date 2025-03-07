@@ -1,5 +1,10 @@
 name: Test SDK
 
+# Cancel running workflows from the same PR
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
     push:
         branches: [main]
@@ -55,6 +60,12 @@ jobs:
               env:
                   ENV: local
 
+            - name: Install Docker Compose
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y docker-compose-plugin
+                  docker compose version
+
             - name: Start local indexer (in background)
               env:
                   DB_USER: "postgres"
@@ -95,7 +106,7 @@ jobs:
               if: always()
               run: |
                   # Stop any containers started by the indexer
-                  docker-compose -f packages/indexer/docker/docker-compose.local.yml down || true
+                  docker compose -f packages/indexer/docker/docker-compose.local.yml down || true
                   # Show logs in case of failure
                   if [ -f packages/indexer/indexer_output.log ]; then
                     echo "Indexer logs:"

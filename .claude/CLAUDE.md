@@ -56,6 +56,7 @@ pnpm release
   - Creates necessary environment variables from GitHub secrets
   - Waits for the GraphQL server to be available on port 3000 before running tests
   - Cleans up resources after tests complete
+  - Implements concurrency control to cancel in-progress workflow runs when new commits are pushed to the same PR
   - Triggers on:
     - Push to main (only when files in sdk/, indexer/, or the workflow itself change)
     - Pull requests to main (same path filtering)
