@@ -179,7 +179,7 @@ describe("PostRequest", () => {
 
 		const req = await indexer.queryRequestWithStatus(commitment)
 		console.log(JSON.stringify(req, null, 4))
-		// expect(req?.statuses.length).toBe(5)
+		expect(req?.statuses.length).toBe(5)
 	}, 600_000)
 
 	it("should stream and query the timeout status", async () => {
