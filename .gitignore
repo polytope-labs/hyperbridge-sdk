@@ -70,3 +70,5 @@ Thumbs.db
 .env*
 .tsconfig
 .tsbuildinfo
+
+substrate-ws.json
