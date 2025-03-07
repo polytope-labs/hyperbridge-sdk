@@ -65,20 +65,9 @@ export type XcmGatewayParams = {
 }
 
 export async function* readTxEventsFromStream(stream: ReadableStream<HyperbridgeTxEvents>) {
-	const reader = stream.getReader()
-	while (true) {
-		const { value: event } = await reader.read()
-		if (!event) continue
-
-		yield event
-
-		if (["Dispatched", "Error"].includes(event.kind)) {
-			// cancel the stream
-			reader.releaseLock()
-			await stream.cancel()
-			break
-		}
-	}
+	return yield* stream.values({
+		preventCancel: false
+	})
 }
 
 /**

@@ -164,13 +164,20 @@ export async function* teleport(apiPromise: ApiPromise, who: string, params: Par
 			async start(controller) {
 				unsub = await tx.signAndSend(who, options, async (result) => {
 					const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result;
-					// @ts-expect-error Type Misamatch
+					// @ts-expect-error Type Mismatch
 					const events = result.events as ISubmittableResult['events']
 
 					if (isError) {
 						console.error("Transaction failed: ", dispatchError)
 						controller.enqueue({ kind: "Error", error: dispatchError })
 						return controller.close()
+					}
+
+					if (status.type === "Ready") {
+						controller.enqueue({
+							kind: "Ready",
+							transaction_hash: txHash.toHex()
+						})
 					}
 
 					if (isFinalized) {
