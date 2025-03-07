@@ -2,7 +2,6 @@ services:
     subquery-node-hyperbridge-gargantua-local:
         image: subquerynetwork/subql-node-substrate:v5.9.1
         restart: unless-stopped
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -38,7 +37,6 @@ services:
     subquery-node-bsc-chapel-local:
         image: subquerynetwork/subql-node-ethereum:v5.5.0
         restart: unless-stopped
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -76,7 +74,6 @@ services:
     subquery-node-gnosis-chiado-local:
         image: subquerynetwork/subql-node-ethereum:v5.5.0
         restart: unless-stopped
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -113,9 +110,6 @@ services:
 
     graphql-engine:
         image: subquerynetwork/subql-query:v2.21.0
-        ports:
-            - 3000:3000
-
         restart: always
         network_mode: host
         environment:
