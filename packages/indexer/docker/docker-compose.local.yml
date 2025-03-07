@@ -111,7 +111,6 @@ services:
     graphql-engine:
         image: subquerynetwork/subql-query:v2.21.0
         restart: always
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
