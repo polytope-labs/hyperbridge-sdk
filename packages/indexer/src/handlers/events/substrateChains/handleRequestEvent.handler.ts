@@ -51,7 +51,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		params: [[{ commitment: commitment.toString() }]],
 	}
 
-	const response = await fetch(SUBSTRATE_RPC_URL[sourceId], {
+	const response = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -83,7 +83,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		]),
 	)
 
-	const metadataResponse = await fetch(SUBSTRATE_RPC_URL[sourceId], {
+	const metadataResponse = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -122,4 +122,13 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
 		blockTimestamp: BigInt(event.block?.timestamp!.getTime()),
 	})
+}
+
+export function replaceWebsocketWithHttp(url: string): string {
+	if (url.startsWith("ws://")) {
+		return url.replace("ws://", "http://")
+	} else if (url.startsWith("wss://")) {
+		return url.replace("wss://", "https://")
+	}
+	return url
 }
