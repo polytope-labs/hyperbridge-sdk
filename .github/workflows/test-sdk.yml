@@ -76,8 +76,7 @@ jobs:
                   DB_PATH: "./.indexer"
               run: |
                   cd packages/indexer
-                  # nohup pnpm start:local > indexer_output.log 2>&1 &
-                  pnpm start:local
+                  nohup pnpm start:local > indexer_output.log 2>&1 &
                   echo "Started indexer process in background"
 
             - name: Wait for GraphQL server to be available
