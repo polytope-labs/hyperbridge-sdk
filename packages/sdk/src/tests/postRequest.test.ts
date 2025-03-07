@@ -192,7 +192,7 @@ describe("PostRequest", () => {
 				count: BigInt(1),
 				fee: BigInt(0),
 				module: process.env.PING_MODULE_ADDRESS! as HexString,
-				timeout: BigInt(150), // so it can timeout
+				timeout: BigInt(180), // so it can timeout
 			},
 		])
 
