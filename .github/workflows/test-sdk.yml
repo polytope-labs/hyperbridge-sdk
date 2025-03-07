@@ -1,0 +1,82 @@
+name: Test SDK
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "packages/sdk/**"
+            - "packages/indexer/**"
+            - ".github/workflows/test-sdk.yml"
+    pull_request:
+        branches: [main]
+        paths:
+            - "packages/sdk/**"
+            - "packages/indexer/**"
+            - ".github/workflows/test-sdk.yml"
+    workflow_dispatch:
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: "7"
+
+            - name: Install dependencies
+              run: pnpm install
+
+            - name: Build packages
+              run: pnpm build
+              env:
+                  ENV: local
+
+            - name: Start local indexer (in background)
+              run: |
+                  cd packages/indexer
+                  # Create a local .env file if needed
+                  touch ../../.env.local
+                  nohup pnpm start:local > indexer_output.log 2>&1 &
+                  echo "Started indexer process in background"
+
+            - name: Wait for GraphQL server to be available
+              run: |
+                  echo "Waiting for GraphQL server to be available on port 3000..."
+                  timeout=300  # 5 minutes timeout
+                  elapsed=0
+                  interval=5
+                  while ! nc -z localhost 3000; do
+                    if [ "$elapsed" -ge "$timeout" ]; then
+                      echo "Timed out waiting for GraphQL server on port 3000"
+                      cat packages/indexer/indexer_output.log
+                      exit 1
+                    fi
+                    echo "Waiting for GraphQL server (elapsed: ${elapsed}s)..."
+                    sleep $interval
+                    elapsed=$((elapsed + interval))
+                  done
+                  echo "GraphQL server is available!"
+                  sleep 10  # Give it a few more seconds to fully initialize
+
+            - name: Run SDK tests
+              run: pnpm --filter="@hyperbridge/sdk" test
+
+            - name: Clean up
+              if: always()
+              run: |
+                  # Stop any containers started by the indexer
+                  docker-compose -f packages/indexer/docker/docker-compose.local.yml down || true
+                  # Show logs in case of failure
+                  if [ -f packages/indexer/indexer_output.log ]; then
+                    echo "Indexer logs:"
+                    cat packages/indexer/indexer_output.log
+                  fi

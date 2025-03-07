@@ -1,0 +1,61 @@
+# Hyperbridge SDK Workspace
+
+## Package Structure
+- Root package: `hyperbridge-sdk` (private, workspace container)
+- Packages:
+  - `@hyperbridge/sdk` - located in `/packages/sdk`
+  - `@hyperbridge/subql-indexer` - located in `/packages/indexer`
+
+## Build Commands
+```bash
+# Build both packages
+pnpm build
+
+# Build specific packages
+pnpm --filter="@hyperbridge/indexer" build
+pnpm --filter="@hyperbridge/sdk" build
+
+# Run tests
+pnpm test
+
+# Lint code
+pnpm lint
+
+# Format code
+pnpm format
+
+# Clean
+pnpm clean
+```
+
+## Release Process
+```bash
+# Create a changeset
+pnpm changeset
+
+# Version packages
+pnpm version-packages
+
+# Release
+pnpm release
+```
+
+## CI/CD
+
+### Publishing
+- GitHub Actions workflow `.github/workflows/publish-sdk.yml` is set up to:
+  - Automatically publish the SDK to npm when a new tag is pushed
+  - Create a GitHub release draft that includes a changelog of commits since the last release
+  - Process is triggered by pushing a tag that starts with 'v' (e.g., v1.0.1)
+  - Requires an NPM_TOKEN secret to be configured in the repository settings
+
+### Testing
+- GitHub Actions workflow `.github/workflows/test-sdk.yml` is set up to:
+  - Run tests for the SDK package
+  - Automatically starts the indexer with the local environment configuration
+  - Waits for the GraphQL server to be available on port 3000 before running tests
+  - Cleans up resources after tests complete
+  - Triggers on:
+    - Push to main (only when files in sdk/, indexer/, or the workflow itself change)
+    - Pull requests to main (same path filtering)
+    - Manual workflow dispatch
