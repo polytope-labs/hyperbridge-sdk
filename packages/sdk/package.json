@@ -33,7 +33,7 @@
 	"scripts": {
 		"build": "tsc && resolve-tspaths",
 		"prepublishOnly": "npm run build",
-		"test": "vitest --watch=false",
+		"test": "vitest --watch=false --maxConcurrency=1",
 		"test:watch": "vitest",
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",
