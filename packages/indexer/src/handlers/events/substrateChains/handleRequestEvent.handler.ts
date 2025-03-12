@@ -2,11 +2,11 @@ import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
 import { bytesToHex, hexToBytes, toHex } from "viem"
 
-import { RequestService } from "../../../services/request.service"
+import { RequestService } from "@/services/request.service"
 import { Status } from "../../../../configs/src/types"
-import { formatChain, getHostStateMachine, isSubstrateChain } from "../../../utils/substrate.helpers"
-import { SUBSTRATE_RPC_URL } from "../../../constants"
-import { RequestMetadata } from "../../../utils/state-machine.helper"
+import { formatChain, getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
+import { SUBSTRATE_RPC_URL } from "@/constants"
+import { RequestMetadata } from "@/utils/state-machine.helper"
 
 export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw Ismp.Request Event on ${getHostStateMachine(chainId)}`)
