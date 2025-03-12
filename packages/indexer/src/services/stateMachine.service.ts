@@ -1,4 +1,4 @@
-import { StateMachineUpdateEvent } from "../../configs/src/types"
+import { StateMachineUpdateEvent } from "@/configs/src/types"
 import { getConsensusStateId } from "@/constants"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate, getStateId } from "@/utils/state-machine.helper"
 

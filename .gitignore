@@ -13,7 +13,9 @@ yarn.lock
 package-lock.json
 
 packages/indexer/configs/*.yaml
+packages/indexer/src/configs/*.yaml
 packages/indexer/configs/src/types*
+packages/indexer/src/configs/src/types*
 
 # Compiled Java class files
 *.class

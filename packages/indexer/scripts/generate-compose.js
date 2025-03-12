@@ -16,19 +16,19 @@ const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
 
 const generateNodeServices = () => {
-    const unfinalized = `
+	const unfinalized = `
       - --historical=timestamp
       - --block-confirmations=0
       - --unfinalized-blocks`
 
-    Object.entries(configs)
-        .filter(([chain]) => {
-            const envKey = chain.replace(/-/g, "_").toUpperCase()
-            return !!process.env[envKey]
-        })
-        .map(([chain, config]) => {
-            const image = config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE
-            const file = `services:
+	Object.entries(configs)
+		.filter(([chain]) => {
+			const envKey = chain.replace(/-/g, "_").toUpperCase()
+			return !!process.env[envKey]
+		})
+		.map(([chain, config]) => {
+			const image = config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE
+			const file = `services:
   subquery-${chain}:
     image: ${image}
     restart: unless-stopped
@@ -40,7 +40,7 @@ const generateNodeServices = () => {
       DB_PORT: \${DB_PORT}
     network_mode: host
     volumes:
-      - ../../configs:/app
+      - ../../src/configs:/app
       - ../../dist:/app/dist
     command:
       - \${SUB_COMMAND:-}
@@ -58,14 +58,14 @@ const generateNodeServices = () => {
       timeout: 5s
       retries: 10`
 
-            const filePath = `${root}/docker/${currentEnv}/${chain}.yml`
-            if (!fs.existsSync(filePath)) {
-                fs.outputFileSync(filePath, file)
-                console.log(`Generated docker/${currentEnv}/${chain}.yml`)
-            } else {
-                console.log(`Skipping docker/${currentEnv}/${chain}.yml - File already exists`)
-            }
-        })
+			const filePath = `${root}/docker/${currentEnv}/${chain}.yml`
+			if (!fs.existsSync(filePath)) {
+				fs.outputFileSync(filePath, file)
+				console.log(`Generated docker/${currentEnv}/${chain}.yml`)
+			} else {
+				console.log(`Skipping docker/${currentEnv}/${chain}.yml - File already exists`)
+			}
+		})
 }
 
 generateNodeServices()

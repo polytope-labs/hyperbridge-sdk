@@ -6,7 +6,7 @@
 		"importHelpers": true,
 		"module": "commonjs",
 		"outDir": "dist",
-		"rootDirs": ["src", "config/src"],
+		"rootDirs": ["src"],
 		"noImplicitAny": false,
 		"baseUrl": ".",
 		"paths": {
@@ -15,7 +15,6 @@
 	},
 	"include": [
 		"src/**/*",
-		"config/src/**/*",
 		"src/substrate-chaintypes/**/*",
 		"src/global.d.ts",
 		"node_modules/@subql/types-core/dist/global.d.ts",
