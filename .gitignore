@@ -18,6 +18,7 @@ packages/indexer/configs/src/types*
 packages/indexer/src/configs/src/types*
 packages/indexer/docker/testnet/
 packages/indexer/docker/mainnet/
+.claude/
 
 # Compiled Java class files
 *.class
