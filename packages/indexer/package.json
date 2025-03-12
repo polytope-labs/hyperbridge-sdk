@@ -41,7 +41,7 @@
 		"start": "./scripts/up.sh ./docker/$ENV",
 		"down": "./scripts/down.sh ./docker/$ENV",
 		"start:local": "ENV=local npm run build && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local rm -fsv",
-		"build": "ENV=local npm run codegen:yamls && npm run codegen:subql && ./node_modules/.bin/subql build"
+		"build": "npm run codegen:yamls && npm run codegen:subql && ./node_modules/.bin/subql build"
 	},
 	"dependencies": {
 		"@bifrost-finance/type-definitions": "^1.11.9",

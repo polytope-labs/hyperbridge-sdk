@@ -16,6 +16,7 @@ packages/indexer/configs/*.yaml
 packages/indexer/src/configs/*.yaml
 packages/indexer/configs/src/types*
 packages/indexer/src/configs/src/types*
+packages/indexer/docker/testnet/
 
 # Compiled Java class files
 *.class
