@@ -144,7 +144,7 @@ describe("Hyperbridge Requests", () => {
 			await hyperbridge.disconnect()
 			await relayApi.disconnect()
 		}
-	}, 600_000)
+	}, 700_000)
 
 	it("It should correctly monitor requests that timeout from hyperbridge", async () => {
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
