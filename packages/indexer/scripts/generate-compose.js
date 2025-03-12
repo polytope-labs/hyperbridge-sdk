@@ -10,7 +10,7 @@ const root = process.cwd()
 dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 
 const fs = require("fs-extra")
-const configs = require(`${root}/configs/config-${currentEnv}.json`)
+const configs = require(`${root}/src/configs/config-${currentEnv}.json`)
 
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
