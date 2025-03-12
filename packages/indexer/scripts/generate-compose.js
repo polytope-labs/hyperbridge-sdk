@@ -38,7 +38,6 @@ const generateNodeServices = () => {
       DB_DATABASE: \${DB_DATABASE}
       DB_HOST: \${DB_HOST}
       DB_PORT: \${DB_PORT}
-    network_mode: host
     volumes:
       - ../../src/configs:/app
       - ../../dist:/app/dist
