@@ -288,7 +288,7 @@ async function watchForRequestCommitment(
 
 			last_block = finalized + 1
 
-			if (blockCount >= 30) {
+			if (blockCount >= 50) {
 				unsubscribeHyperbridgeEvents?.()
 				reject(new Error("No commitment received"))
 			}
