@@ -50,7 +50,7 @@ describe("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: "http://localhost:3000",
+			url: "http://localhost:3100",
 			pollInterval: 1_000, // every second
 		})
 	})
@@ -302,7 +302,7 @@ describe("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: "http://localhost:3000",
+			url: "http://localhost:3100",
 			pollInterval: 1_000, // every second
 		})
 
