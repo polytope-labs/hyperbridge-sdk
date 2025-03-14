@@ -699,8 +699,6 @@ export class IndexerClient {
 		if (!request) throw new Error(`Request not found`)
 
 		const destChain = await getChain(self.config.dest)
-		const destTimestamp = await destChain.timestamp()
-		if (request.timeoutTimestamp > destTimestamp) throw new Error(`Request not timed out`)
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
 		let status =
