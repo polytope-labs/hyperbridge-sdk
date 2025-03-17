@@ -72,7 +72,11 @@ describe("Hyperbridge Requests", () => {
 			// Call the teleport function
 			//
 			console.log("Teleport Dot started")
-			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+			// Ensure indexer is defined
+			if (!indexer) {
+				throw new Error("Indexer client is not defined")
+			}
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
 
 			let commitment
 			for await (const event of result) {
@@ -164,7 +168,11 @@ describe("Hyperbridge Requests", () => {
 			// Call the teleport function
 			//
 			console.log("Teleport Dot started")
-			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+			// Ensure indexer is defined
+			if (!indexer) {
+				throw new Error("Indexer client is not defined")
+			}
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
 
 			let commitment
 			for await (const event of result) {
@@ -365,7 +373,11 @@ describe("Hyperbridge Requests", () => {
 			timeout: BigInt(3600),
 			paraId: 4009,
 		}
-		const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params)
+		// Ensure indexer is defined
+		if (!indexer) {
+			throw new Error("Indexer client is not defined")
+		}
+		const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
 
 		let hyp_commitment
 		for await (const event of result) {

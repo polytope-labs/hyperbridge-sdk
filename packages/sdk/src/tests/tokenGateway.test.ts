@@ -64,7 +64,6 @@ describe("teleport function", () => {
 					transaction_hash: expect.stringContaining("0x"),
 					block_number: expect.any(BigInt),
 					commitment: expect.stringContaining("0x"),
-					events: expect.arrayContaining([]),
 				}),
 			)
 
@@ -72,7 +71,8 @@ describe("teleport function", () => {
 				expect.objectContaining({
 					kind: "Finalized",
 					transaction_hash: expect.stringContaining("0x"),
-					events: expect.arrayContaining([]),
+					block_number: expect.any(BigInt),
+					commitment: expect.stringContaining("0x"),
 				}),
 			)
 		} catch (error) {

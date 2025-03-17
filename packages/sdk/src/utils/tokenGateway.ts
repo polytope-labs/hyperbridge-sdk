@@ -184,16 +184,7 @@ export async function teleport(
 						})
 					}
 
-					if (isFinalized) {
-						controller.enqueue({
-							kind: "Finalized",
-							transaction_hash: txHash.toHex(),
-							events: events,
-						})
-						return controller.close()
-					}
-
-					if (isInBlock) {
+					if (isInBlock || isFinalized) {
 						const commitment_hash = readIsmpCommitmentHash(events)
 
 						if (!commitment_hash) {
@@ -207,11 +198,10 @@ export async function teleport(
 						const blockHash = status.asInBlock.toHex()
 						const header = await apiPromise.rpc.chain.getHeader(blockHash)
 						controller.enqueue({
-							kind: "Dispatched",
+							kind: isInBlock ? "Dispatched" : "Finalized",
 							transaction_hash: txHash.toHex(),
 							block_number: header.number.toBigInt(),
 							commitment: commitment_hash,
-							events: events,
 						})
 					}
 				})
