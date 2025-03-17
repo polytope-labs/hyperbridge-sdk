@@ -276,7 +276,7 @@ type Request
 	"""
 	The commitment of the request
 	"""
-	commitment: String!
+	commitment: String! @index
 
 	"""
 	The chain on which the request was made
@@ -412,7 +412,7 @@ type Response
 	"""
 	The commitment of the response
 	"""
-	commitment: String!
+	commitment: String! @index
 
 	"""
 	The response message
