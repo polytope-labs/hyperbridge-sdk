@@ -241,6 +241,10 @@ export async function teleportDot(
 								block_number: blockNumber,
 								commitment: commitment,
 							})
+
+							if (status.isFinalized) {
+								return controller.close()
+							}
 						}
 					} catch (err) {
 						controller.enqueue({

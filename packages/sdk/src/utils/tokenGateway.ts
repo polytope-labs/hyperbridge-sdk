@@ -203,6 +203,10 @@ export async function teleport(
 							block_number: header.number.toBigInt(),
 							commitment: commitment_hash,
 						})
+
+						if (isFinalized) {
+							return controller.close()
+						}
 					}
 				})
 			},
