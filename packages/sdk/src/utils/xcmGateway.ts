@@ -6,6 +6,8 @@ import { decodeAddress } from "@polkadot/util-crypto"
 import { parseUnits } from "viem"
 import type { EventRecord, Header } from "@polkadot/types/interfaces"
 import type { ISubmittableResult } from "@polkadot/types/types"
+import { IndexerClient } from "@/client"
+import { sleep } from "@/utils"
 
 export type HyperbridgeTxEvents =
 	| {
@@ -17,12 +19,12 @@ export type HyperbridgeTxEvents =
 			transaction_hash: HexString
 			block_number: bigint
 			commitment: HexString
-			events: ISubmittableResult["events"]
 	  }
 	| {
 			kind: "Finalized"
 			transaction_hash: HexString
-			events: ISubmittableResult["events"]
+			block_number?: bigint
+			commitment?: HexString
 	  }
 	| {
 			kind: "Error"
@@ -202,7 +204,6 @@ export async function teleportDot(
 								block_number: block_number,
 								transaction_hash: txHash.toHex(),
 								commitment,
-								events: events,
 							})
 						}
 
@@ -210,7 +211,6 @@ export async function teleportDot(
 							controller.enqueue({
 								kind: "Finalized",
 								transaction_hash: txHash.toHex(),
-								events: events,
 							})
 						}
 					} catch (err) {
@@ -304,6 +304,198 @@ async function watchForRequestCommitment(
 			})
 			.catch(reject)
 	})
+}
+
+/**
+ * Teleports DOT tokens from Polkadot relay chain to an EVM-based destination chain
+ * using XCM (Cross-Consensus Message Format) and uses the indexer client to track
+ * the transaction instead of polling hyperbridge blocks.
+ *
+ * This function initiates a teleport transaction, monitors its status through the indexer,
+ * and yields events about the transaction's progress through a ReadableStream.
+ * It handles the complete lifecycle of a teleport operation:
+ * 1. Transaction preparation and signing
+ * 2. Broadcasting to the relay chain
+ * 3. Tracking the transaction via the indexer client
+ *
+ * @param relayApi - Polkadot API instance connected to the relay chain
+ * @param hyperbridge - Polkadot API instance connected to the Hyperbridge parachain
+ * @param who - Sender's SS58Address address
+ * @param options - Transaction signing options
+ * @param params - Teleport parameters including destination, recipient, and amount
+ * @param indexerClient - The indexer client to track the transaction
+ * @param pollInterval - Optional polling interval in milliseconds (default: 2000)
+ * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
+ */
+export async function teleportDotWithIndexer(
+	relayApi: ApiPromise,
+	hyperbridge: ApiPromise,
+	who: string,
+	options: Partial<SignerOptions>,
+	params: XcmGatewayParams,
+	indexerClient: IndexerClient,
+	pollInterval: number = 2000,
+): Promise<ReadableStream<HyperbridgeTxEvents>> {
+	// Set up the transaction parameters
+	const destination = {
+		V3: {
+			parents: 0,
+			interior: {
+				X1: {
+					Parachain: params.paraId,
+				},
+			},
+		},
+	}
+
+	const beneficiary = {
+		V3: {
+			parents: 0,
+			interior: {
+				X3: [
+					{
+						AccountId32: {
+							id: u8aToHex(decodeAddress(who)),
+							network: null,
+						},
+					},
+					{
+						AccountKey20: {
+							network: {
+								Ethereum: {
+									chainId: params.destination,
+								},
+							},
+							key: params.recipient,
+						},
+					},
+					{
+						GeneralIndex: params.timeout,
+					},
+				],
+			},
+		},
+	}
+	const assets = {
+		V3: [
+			{
+				id: {
+					Concrete: {
+						parents: 0,
+						interior: "Here",
+					},
+				},
+				fun: {
+					Fungible: parseUnits(params.amount.toString(), DECIMALS),
+				},
+			},
+		],
+	}
+
+	const feeAssetItem = 0
+	const weightLimit = "Unlimited"
+
+	const tx = relayApi.tx.xcmPallet.limitedReserveTransferAssets(
+		destination,
+		beneficiary,
+		assets,
+		feeAssetItem,
+		weightLimit,
+	)
+
+	// Create the stream to report events
+	let unsubscribe: () => void
+	const stream = new ReadableStream<HyperbridgeTxEvents>(
+		{
+			async start(controller) {
+				unsubscribe = await tx.signAndSend(who, options, async (result) => {
+					try {
+						const { status, dispatchError, txHash } = result
+						// @ts-expect-error Type Mismatch
+						const events = result.events as ISubmittableResult["events"]
+
+						if (dispatchError) {
+							controller.enqueue({
+								kind: "Error",
+								error: `Error watching extrinsic: ${dispatchError.toString()}`,
+							})
+							return
+						}
+
+						if (status.isReady) {
+							// Send tx hash as soon as it is available
+							controller.enqueue({
+								kind: "Ready",
+								transaction_hash: txHash.toHex(),
+							})
+						} else if (status.isInBlock || status.isFinalized) {
+							// We need to have the block header
+							await relayApi.rpc.chain.getHeader(status.isInBlock ? status.asInBlock : status.asFinalized)
+
+							// Get the sender address in hex format for the indexer query
+							const decodedWho = u8aToHex(decodeAddress(who, false))
+
+							// Poll the indexer until we find the AssetTeleported event
+							let assetTeleported = undefined
+							let attempts = 0
+							// Calculate max attempts for 5 minutes of polling (300 seconds)
+							const maxAttempts = Math.ceil(300000 / pollInterval) // 5 minutes in milliseconds / poll interval
+
+							while (!assetTeleported && attempts < maxAttempts) {
+								await sleep(pollInterval)
+
+								assetTeleported = await indexerClient.queryAssetTeleported(
+									decodedWho,
+									params.recipient.toLowerCase(),
+									params.destination.toString(),
+								)
+
+								attempts++
+							}
+
+							if (!assetTeleported) {
+								controller.enqueue({
+									kind: "Error",
+									error: "Failed to locate AssetTeleported event in the indexer after maximum attempts",
+								})
+								return
+							}
+
+							// We found the asset teleported event through the indexer
+							const commitment = assetTeleported.commitment as HexString
+							const blockNumber = BigInt(assetTeleported.blockNumber)
+
+							// Send event with the status kind (either Dispatched or Finalized)
+							controller.enqueue({
+								kind: status.isInBlock ? "Dispatched" : "Finalized",
+								transaction_hash: txHash.toHex(),
+								block_number: blockNumber,
+								commitment: commitment,
+							})
+						}
+					} catch (err) {
+						controller.enqueue({
+							kind: "Error",
+							error: String(err),
+						})
+					}
+				})
+			},
+			pull() {
+				// We don't really need a pull in this example
+			},
+			cancel() {
+				// This is called if the reader cancels,
+				unsubscribe?.()
+			},
+		},
+		{
+			highWaterMark: 3,
+			size: () => 1,
+		},
+	)
+
+	return stream
 }
 
 /**

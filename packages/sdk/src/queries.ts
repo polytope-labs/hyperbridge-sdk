@@ -1,7 +1,7 @@
 export const REQUEST_STATUS = `
   query RequestStatusM($hash: String!) {
   requests(
-    filter: { commitment: { equalTo: $hash } } 
+    filter: { commitment: { equalTo: $hash } }
   ) {
     nodes {
       commitment
@@ -76,4 +76,31 @@ query StateMachineUpdatesByTimestamp($statemachineId: String!, $commitmentTimest
       }
     }
   }
+`
+
+export const ASSET_TELEPORTED_BY_PARAMS = `
+query AssetTeleportedByParams($from: String!, $to: String!, $dest: String!) {
+  assetTeleporteds(
+    filter: {
+      and: [
+        { from: { equalTo: $from } }
+        { to: { equalTo: $to } }
+        { dest: { includes: $dest } }
+      ]
+    }
+    orderBy: CREATED_AT_DESC
+    first: 1
+  ) {
+    nodes {
+      id
+      from
+      to
+      amount
+      dest
+      commitment
+      createdAt
+      blockNumber
+    }
+  }
+}
 `
