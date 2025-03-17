@@ -172,7 +172,16 @@ describe("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
+			const result = await teleportDot(
+				relayApi,
+				hyperbridge,
+				bob.address,
+				{ signer },
+				params,
+				indexer,
+				2000,
+				false,
+			)
 
 			let commitment
 			for await (const event of result) {
