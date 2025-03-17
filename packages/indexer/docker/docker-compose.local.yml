@@ -42,8 +42,8 @@ services:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
             DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: postgres
-            DB_PORT: 5432
+            DB_HOST: ${DB_HOST}
+            DB_PORT: ${DB_PORT}
 
         depends_on:
             postgres:
@@ -79,8 +79,8 @@ services:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
             DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: postgres
-            DB_PORT: 5432
+            DB_HOST: ${DB_HOST}
+            DB_PORT: ${DB_PORT}
 
         depends_on:
             postgres:
@@ -113,13 +113,13 @@ services:
         image: subquerynetwork/subql-query:v2.21.0
         restart: always
         ports:
-            - ${GQL_PORT}:3000
+            - 3100:3000
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
             DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: postgres
-            DB_PORT: 5432
+            DB_HOST: ${DB_HOST}
+            DB_PORT: ${DB_PORT}
         depends_on:
             postgres:
                 condition: service_healthy
@@ -130,7 +130,7 @@ services:
     postgres:
         image: postgres:14-alpine
         ports:
-            - ${DB_PORT}:5432
+            - 5432:5432
         volumes:
             - ${DB_PATH}:/var/lib/postgresql/data
         environment:
