@@ -76,7 +76,6 @@ describe("teleport DOT", () => {
 				params,
 				indexerClient,
 				2000, // Poll interval
-				true  // Wait for finalization
 			)
 
 			for await (const event of result) {

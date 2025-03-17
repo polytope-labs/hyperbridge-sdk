@@ -197,7 +197,7 @@ export async function teleport(
 							return controller.close()
 						}
 
-						const blockHash = status.asInBlock.toHex()
+						const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
 						const header = await apiPromise.rpc.chain.getHeader(blockHash)
 						controller.enqueue({
 							kind: isInBlock ? "Dispatched" : "Finalized",
