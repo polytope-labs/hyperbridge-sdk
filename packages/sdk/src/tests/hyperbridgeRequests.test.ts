@@ -40,13 +40,13 @@ describe("Hyperbridge Requests", () => {
 				host: bscIsmpHost.address,
 			},
 			source: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 				stateMachineId: "KUSAMA-4009",
 				hasher: "Keccak",
 			},
 			hyperbridge: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
@@ -294,13 +294,13 @@ describe("Hyperbridge Requests", () => {
 				host: bscIsmpHost.address,
 			},
 			dest: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 				stateMachineId: "KUSAMA-4009",
 				hasher: "Keccak",
 			},
 			hyperbridge: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},

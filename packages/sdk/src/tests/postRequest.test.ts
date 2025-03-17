@@ -42,7 +42,7 @@ describe("PostRequest", () => {
 				host: gnosisChiadoHost.address,
 			},
 			hyperbridge: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},

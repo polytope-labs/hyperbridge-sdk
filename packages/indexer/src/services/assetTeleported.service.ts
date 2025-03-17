@@ -40,7 +40,7 @@ export class AssetTeleportedService {
 				chain,
 				blockNumber: parseInt(blockNumber),
 				transactionHash,
-				createdAt: new Date(Number(blockTimestamp)),
+				createdAt: new Date(Number(blockTimestamp)), // Using block timestamp for createdAt instead of current time
 			})
 		}
 

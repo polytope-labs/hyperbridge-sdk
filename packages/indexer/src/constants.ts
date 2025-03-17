@@ -32,17 +32,12 @@ export function getConsensusStateId(stateMachineId: string): string {
 	}
 
 	// For Polkadot/Kusama chains
-	if (stateMachineId.startsWith("POLKADOT-") || stateMachineId.startsWith("KUSAMA-")) {
-		return "PARA"
+	if (stateMachineId.startsWith("POLKADOT-")) {
+		return "DOT0"
 	}
 
-	// For Hyperbridge special case
-	if (stateMachineId === HYPERBRIDGE.testnet || stateMachineId === HYPERBRIDGE.mainnet) {
-		// Check if chain is Polkadot/Kusama
-		if (stateMachineId.startsWith("POLKADOT-") || stateMachineId.startsWith("KUSAMA-")) {
-			return "PARA"
-		}
-		return "DOT0"
+	if (stateMachineId.startsWith("KUSAMA-")) {
+		return "PAS0"
 	}
 
 	return ""
