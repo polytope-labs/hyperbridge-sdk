@@ -117,6 +117,7 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
  * @param params.redeem - Whether to redeem on arrival
  * @param params.callData - Optional additional call data
  * @param options - Signer options
+ * @param wait_for_finalization - Whether to wait for finalization or close stream on inBlock (default: true)
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  * @throws Error when asset ID is unknown or transaction fails
  */
@@ -125,6 +126,7 @@ export async function teleport(
 	who: string,
 	params: Params,
 	options: Partial<SignerOptions>,
+	wait_for_finalization: boolean = true,
 ): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
 		if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
@@ -204,7 +206,7 @@ export async function teleport(
 							commitment: commitment_hash,
 						})
 
-						if (isFinalized) {
+						if (isFinalized || (isInBlock && !wait_for_finalization)) {
 							return controller.close()
 						}
 					}

@@ -85,6 +85,7 @@ export type XcmGatewayParams = {
  * @param params - Teleport parameters including destination, recipient, and amount
  * @param indexerClient - The indexer client to track the transaction
  * @param pollInterval - Optional polling interval in milliseconds (default: 2000)
+ * @param wait_for_finalization - Whether to wait for finalization or close stream on inBlock (default: true)
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  */
 export async function teleportDot(
@@ -95,6 +96,7 @@ export async function teleportDot(
 	params: XcmGatewayParams,
 	indexerClient: IndexerClient,
 	pollInterval: number = 2000,
+	wait_for_finalization: boolean = true,
 ): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	// Set up the transaction parameters
 	const destination = {
@@ -242,7 +244,7 @@ export async function teleportDot(
 								commitment: commitment,
 							})
 
-							if (status.isFinalized) {
+							if (status.isFinalized || (status.isInBlock && !wait_for_finalization)) {
 								return controller.close()
 							}
 						}
