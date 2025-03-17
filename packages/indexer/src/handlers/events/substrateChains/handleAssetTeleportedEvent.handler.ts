@@ -48,7 +48,6 @@ export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent)
 		chain: host,
 		blockNumber: event.block.block.header.number.toString(),
 		blockHash: event.block.block.header.hash.toString(),
-		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
 		blockTimestamp: BigInt(event.block?.timestamp!.getTime()),
 	})
 }

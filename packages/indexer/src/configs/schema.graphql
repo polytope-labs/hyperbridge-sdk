@@ -568,9 +568,4 @@ type AssetTeleported @entity {
 	The block in which the event occurred
 	"""
 	blockNumber: Int!
-	
-	"""
-	The hash of the transaction in which the event occurred
-	"""
-	transactionHash: String!
 }

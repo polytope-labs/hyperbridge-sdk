@@ -10,7 +10,6 @@ export interface IAssetTeleportedArgs {
 	chain: string
 	blockNumber: string
 	blockHash: string
-	transactionHash: string
 	blockTimestamp: bigint
 }
 
@@ -19,8 +18,7 @@ export class AssetTeleportedService {
 	 * Create or update an AssetTeleported record
 	 */
 	static async createOrUpdate(args: IAssetTeleportedArgs): Promise<AssetTeleported> {
-		const { from, to, amount, dest, commitment, chain, blockNumber, blockHash, transactionHash, blockTimestamp } =
-			args
+		const { from, to, amount, dest, commitment, chain, blockNumber, blockHash, blockTimestamp } = args
 
 		// Use commitment as the unique identifier for the asset teleport
 		const id = commitment
@@ -39,7 +37,6 @@ export class AssetTeleportedService {
 				commitment,
 				chain,
 				blockNumber: parseInt(blockNumber),
-				transactionHash,
 				createdAt: new Date(Number(blockTimestamp)), // Using block timestamp for createdAt instead of current time
 			})
 		}
