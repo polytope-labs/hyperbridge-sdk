@@ -532,3 +532,58 @@ type RewardPointsActivityLog
 	description: String!
 	createdAt: Date! @index
 }
+
+"""
+Record of assets teleported via the XCM Gateway
+"""
+type AssetTeleported @entity {
+	"""
+	Unique identifier of the teleported asset
+	"""
+	id: ID!
+	
+	"""
+	The chain on which the teleport event occurred
+	"""
+	chain: String!
+	
+	"""
+	Source account on the relaychain
+	"""
+	from: String! @index
+	
+	"""
+	Beneficiary account on destination
+	"""
+	to: String! @index
+	
+	"""
+	Amount transferred
+	"""
+	amount: BigInt! @index
+	
+	"""
+	Destination chain
+	"""
+	dest: String! @index
+	
+	"""
+	Request commitment
+	"""
+	commitment: String! @index
+	
+	"""
+	The timestamp of the event
+	"""
+	createdAt: Date!
+	
+	"""
+	The block in which the event occurred
+	"""
+	blockNumber: Int!
+	
+	"""
+	The hash of the transaction in which the event occurred
+	"""
+	transactionHash: String!
+}
