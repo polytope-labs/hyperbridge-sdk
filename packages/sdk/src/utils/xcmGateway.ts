@@ -186,6 +186,8 @@ export async function teleportDot(
 								kind: "Error",
 								error: `Error watching extrinsic: ${dispatchError.toString()}`,
 							})
+							unsubscribe?.()
+							controller.close()
 							return
 						}
 
@@ -247,10 +249,9 @@ export async function teleportDot(
 								commitment: commitment,
 							})
 
-							if (status.isFinalized) {
-								unsubscribe?.()
-								return controller.close()
-							}
+							unsubscribe?.()
+							controller.close()
+							return
 						}
 					} catch (err) {
 						controller.enqueue({

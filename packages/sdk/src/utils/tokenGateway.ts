@@ -178,7 +178,8 @@ export async function teleport(
 					if (isError) {
 						console.error("Transaction failed: ", dispatchError)
 						controller.enqueue({ kind: "Error", error: dispatchError })
-						return controller.close()
+						controller.close()
+						return
 					}
 
 					if (status.type === "Ready") {
@@ -210,7 +211,8 @@ export async function teleport(
 
 						if (isFinalized) {
 							unsub?.()
-							return controller.close()
+							controller.close()
+							return
 						}
 					}
 				})
