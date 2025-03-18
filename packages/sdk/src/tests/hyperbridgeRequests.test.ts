@@ -27,7 +27,7 @@ import { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { postRequestCommitment } from "@/utils"
 
-describe("Hyperbridge Requests", () => {
+describe.sequential("Hyperbridge Requests", () => {
 	let indexer: IndexerClient
 
 	beforeAll(async () => {
@@ -54,6 +54,84 @@ describe("Hyperbridge Requests", () => {
 			pollInterval: 1_000, // every second
 		})
 	})
+
+	it("should teleport DOT using indexer client", async () => {
+		const params = {
+			destination: 97,
+			recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
+			amount: BigInt(1),
+			timeout: BigInt(3600),
+			paraId: 4009,
+		}
+
+		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
+
+		console.log("Api connected")
+
+		// Create a real indexer client for integration testing
+		const indexerClient = new IndexerClient({
+			url: "http://localhost:3100",
+			pollInterval: 1000,
+			source: {
+				stateMachineId: "KUSAMA-2004", // Polkadot
+				consensusStateId: "PAS0",
+				rpcUrl: process.env.HYPERBRIDGE_GARGANTUA as string,
+				host: "0x", // Not needed for this test
+			},
+			dest: {
+				stateMachineId: `EVM-${params.destination}`, // BSC Chapel
+				consensusStateId: "ETH0",
+				rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
+				host: "0x", // Not needed for this test
+			},
+			hyperbridge: {
+				stateMachineId: "KUSAMA-4009", // Hyperbridge
+				consensusStateId: "PAS0",
+				wsUrl: process.env.HYPERBRIDGE_GARGANTUA as string,
+			},
+		})
+
+		try {
+			// Call the teleport function with indexer
+			console.log("Teleport Dot with Indexer started")
+			const result = await teleportDot(
+				relayApi,
+				hyperbridge,
+				bob.address,
+				{ signer },
+				params,
+				indexerClient,
+				2000, // Poll interval
+			)
+
+			for await (const event of result) {
+				console.log(event.kind)
+				if (event.kind === "Error") {
+					throw new Error(event.error as string)
+				}
+
+				if (event.kind === "Ready") {
+					console.log(event)
+				}
+
+				if (event.kind === "Dispatched") {
+					// Verify that required fields are present
+					expect(event.commitment).toBeDefined()
+					expect(event.block_number).toBeDefined()
+					console.log(event)
+				}
+
+				if (event.kind === "Finalized") {
+					// Verify that required fields are present
+					expect(event.commitment).toBeDefined()
+					expect(event.block_number).toBeDefined()
+					console.log(event)
+				}
+			}
+		} catch (error) {
+			expect(error).toBeUndefined()
+		}
+	}, 300_000)
 
 	it("It should correctly monitor requests that originate from hyperbridge", async () => {
 		const { bscTestnetClient, bscHandler, bscWalletClient } = await bscSetup()
