@@ -77,6 +77,10 @@ export type XcmGatewayParams = {
  * 1. Transaction preparation and signing
  * 2. Broadcasting to the relay chain
  * 3. Tracking the transaction via the indexer client
+ * 4. Yielding events about transaction status
+ *
+ * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
+ * Consumers should listen for either one of these events instead of expecting both.
  *
  * @param relayApi - Polkadot API instance connected to the relay chain
  * @param hyperbridge - Polkadot API instance connected to the Hyperbridge parachain
@@ -85,7 +89,6 @@ export type XcmGatewayParams = {
  * @param params - Teleport parameters including destination, recipient, and amount
  * @param indexerClient - The indexer client to track the transaction
  * @param pollInterval - Optional polling interval in milliseconds (default: 2000)
- * @param wait_for_finalization - Whether to wait for finalization or close stream on inBlock (default: true)
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  */
 export async function teleportDot(
@@ -96,7 +99,6 @@ export async function teleportDot(
 	params: XcmGatewayParams,
 	indexerClient: IndexerClient,
 	pollInterval: number = 2000,
-	wait_for_finalization: boolean = true,
 ): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	// Set up the transaction parameters
 	const destination = {
@@ -165,6 +167,9 @@ export async function teleportDot(
 		weightLimit,
 	)
 
+	let finalized_hash = await hyperbridge.rpc.chain.getFinalizedHead()
+	let hyperbridgeBlock = (await hyperbridge.rpc.chain.getHeader(finalized_hash)).number.toNumber()
+
 	// Create the stream to report events
 	let unsubscribe: () => void
 	const stream = new ReadableStream<HyperbridgeTxEvents>(
@@ -216,6 +221,7 @@ export async function teleportDot(
 									decodedWho,
 									params.recipient.toLowerCase(),
 									params.destination.toString(),
+									hyperbridgeBlock,
 								)
 
 								attempts++
@@ -241,7 +247,8 @@ export async function teleportDot(
 								commitment: commitment,
 							})
 
-							if (status.isFinalized || (status.isInBlock && !wait_for_finalization)) {
+							if (status.isFinalized) {
+								unsubscribe?.()
 								return controller.close()
 							}
 						}

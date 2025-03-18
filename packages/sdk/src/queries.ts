@@ -79,13 +79,14 @@ query StateMachineUpdatesByTimestamp($statemachineId: String!, $commitmentTimest
 `
 
 export const ASSET_TELEPORTED_BY_PARAMS = `
-query AssetTeleportedByParams($from: String!, $to: String!, $dest: String!) {
+query AssetTeleportedByParams($from: String!, $to: String!, $dest: String!, $blockNumber: Int!) {
   assetTeleporteds(
     filter: {
       and: [
         { from: { equalTo: $from } }
         { to: { equalTo: $to } }
         { dest: { includes: $dest } }
+        { blockNumber: { greaterThanOrEqualTo: $blockNumber } }
       ]
     }
     orderBy: CREATED_AT_DESC

@@ -20,11 +20,11 @@ import {
 	AssetTeleported,
 	AssetTeleportedResponse,
 } from "@/types"
-import { 
-	REQUEST_STATUS, 
-	STATE_MACHINE_UPDATES_BY_HEIGHT, 
-	STATE_MACHINE_UPDATES_BY_TIMESTAMP, 
-	ASSET_TELEPORTED_BY_PARAMS 
+import {
+	REQUEST_STATUS,
+	STATE_MACHINE_UPDATES_BY_HEIGHT,
+	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
+	ASSET_TELEPORTED_BY_PARAMS,
 } from "@/queries"
 import {
 	COMBINED_STATUS_WEIGHTS,
@@ -913,12 +913,18 @@ export class IndexerClient {
 	 * @param dest - The destination chain ID
 	 * @returns The asset teleported event if found, undefined otherwise
 	 */
-	async queryAssetTeleported(from: string, to: string, dest: string): Promise<AssetTeleported | undefined> {
+	async queryAssetTeleported(
+		from: string,
+		to: string,
+		dest: string,
+		blockNumber: number,
+	): Promise<AssetTeleported | undefined> {
 		const response = await this.withRetry(() =>
 			this.client.request<AssetTeleportedResponse>(ASSET_TELEPORTED_BY_PARAMS, {
 				from,
 				to,
 				dest,
+				blockNumber,
 			}),
 		)
 

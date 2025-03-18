@@ -104,6 +104,10 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
 /**
  * Teleports assets across chains through the token gateway.
  *
+ * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
+ * Consumers should listen for either one of these events instead of expecting both.
+ *
+ *
  * @param apiPromise - Polkadot API instance
  * @param who - SS58Address
  * @param params - Teleport parameters
@@ -117,7 +121,6 @@ async function fetchLocalAssetId(params: { api: ApiPromise; assetId: Uint8Array 
  * @param params.redeem - Whether to redeem on arrival
  * @param params.callData - Optional additional call data
  * @param options - Signer options
- * @param wait_for_finalization - Whether to wait for finalization or close stream on inBlock (default: true)
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  * @throws Error when asset ID is unknown or transaction fails
  */
@@ -126,7 +129,6 @@ export async function teleport(
 	who: string,
 	params: Params,
 	options: Partial<SignerOptions>,
-	wait_for_finalization: boolean = true,
 ): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
 		if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
@@ -206,7 +208,8 @@ export async function teleport(
 							commitment: commitment_hash,
 						})
 
-						if (isFinalized || (isInBlock && !wait_for_finalization)) {
+						if (isFinalized) {
+							unsub?.()
 							return controller.close()
 						}
 					}

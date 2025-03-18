@@ -131,16 +131,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const result = await teleportDot(
-				relayApi,
-				hyperbridge,
-				bob.address,
-				{ signer },
-				params,
-				indexer,
-				2000,
-				false,
-			)
+			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer, 2000)
 
 			let commitment
 			for await (const event of result) {
@@ -153,6 +144,12 @@ describe.sequential("Hyperbridge Requests", () => {
 				}
 
 				if (event.kind === "Dispatched") {
+					console.log(event)
+					commitment = event.commitment
+					break
+				}
+
+				if (event.kind === "Finalized") {
 					console.log(event)
 					commitment = event.commitment
 					break
@@ -236,16 +233,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const stream = await teleportDot(
-				relayApi,
-				hyperbridge,
-				bob.address,
-				{ signer },
-				params,
-				indexer,
-				2000,
-				false,
-			)
+			const stream = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer, 2000)
 
 			let commitment
 			for await (const event of stream) {
@@ -258,6 +246,12 @@ describe.sequential("Hyperbridge Requests", () => {
 				}
 
 				if (event.kind === "Dispatched") {
+					console.log(event)
+					commitment = event.commitment
+					break
+				}
+
+				if (event.kind === "Finalized") {
 					console.log(event)
 					commitment = event.commitment
 					break
@@ -469,6 +463,12 @@ describe.sequential("Hyperbridge Requests", () => {
 				hyp_commitment = event.commitment
 				break
 			}
+
+			if (event.kind === "Finalized") {
+				console.log(event)
+				hyp_commitment = event.commitment
+				break
+			}
 		}
 
 		expect(hyp_commitment).toBeDefined()
@@ -510,7 +510,7 @@ describe.sequential("Hyperbridge Requests", () => {
 })
 
 async function bscSetup() {
-	const account = privateKeyToAccount(process.env.PRIVATE_KEY as any)
+	const account = privateKeyToAccount(process.env.ACCOUNT_KEY as any)
 
 	const bscWalletClient = createWalletClient({
 		chain: bscTestnet,
