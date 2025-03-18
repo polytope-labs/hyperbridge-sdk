@@ -126,6 +126,7 @@ describe.sequential("Hyperbridge Requests", () => {
 					expect(event.commitment).toBeDefined()
 					expect(event.block_number).toBeDefined()
 					console.log(event)
+					await result.cancel()
 				}
 			}
 		} catch (error) {
@@ -169,6 +170,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				if (event.kind === "Dispatched") {
 					console.log(event)
 					commitment = event.commitment
+					await result.cancel()
 					break
 				}
 			}
@@ -250,7 +252,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const result = await teleportDot(
+			const stream = await teleportDot(
 				relayApi,
 				hyperbridge,
 				bob.address,
@@ -262,7 +264,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			)
 
 			let commitment
-			for await (const event of result) {
+			for await (const event of stream) {
 				if (event.kind === "Error") {
 					throw new Error(event.error as string)
 				}
@@ -274,6 +276,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				if (event.kind === "Dispatched") {
 					console.log(event)
 					commitment = event.commitment
+					await stream.cancel()
 					break
 				}
 			}
@@ -479,6 +482,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (event.kind === "Dispatched") {
 				console.log(event)
 				hyp_commitment = event.commitment
+				await result.cancel()
 				break
 			}
 		}

@@ -47,14 +47,15 @@ describe("teleport function", () => {
 			console.log("Teleport started")
 			let dispatched = null
 			let finalized = null
-
-			for await (const event of await teleport(api, bob.address, params, { signer })) {
+			const stream = await teleport(api, bob.address, params, { signer })
+			for await (const event of stream) {
 				console.log(event.kind)
 				if (event.kind === "Dispatched") {
 					dispatched = event
 				}
 				if (event.kind === "Finalized") {
 					finalized = event
+					await stream.cancel()
 				}
 			}
 
