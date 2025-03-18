@@ -191,9 +191,6 @@ export async function teleportDot(
 								transaction_hash: txHash.toHex(),
 							})
 						} else if (status.isInBlock || status.isFinalized) {
-							// We need to have the block header
-							await relayApi.rpc.chain.getHeader(status.isInBlock ? status.asInBlock : status.asFinalized)
-
 							// Get the sender address in hex format for the indexer query
 							const decodedWho = u8aToHex(decodeAddress(who, false))
 

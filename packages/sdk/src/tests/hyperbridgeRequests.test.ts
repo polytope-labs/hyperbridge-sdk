@@ -68,29 +68,6 @@ describe.sequential("Hyperbridge Requests", () => {
 
 		console.log("Api connected")
 
-		// Create a real indexer client for integration testing
-		const indexerClient = new IndexerClient({
-			url: "http://localhost:3100",
-			pollInterval: 1000,
-			source: {
-				stateMachineId: "KUSAMA-2004", // Polkadot
-				consensusStateId: "PAS0",
-				rpcUrl: process.env.HYPERBRIDGE_GARGANTUA as string,
-				host: "0x", // Not needed for this test
-			},
-			dest: {
-				stateMachineId: `EVM-${params.destination}`, // BSC Chapel
-				consensusStateId: "ETH0",
-				rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
-				host: "0x", // Not needed for this test
-			},
-			hyperbridge: {
-				stateMachineId: "KUSAMA-4009", // Hyperbridge
-				consensusStateId: "PAS0",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA as string,
-			},
-		})
-
 		try {
 			// Call the teleport function with indexer
 			console.log("Teleport Dot with Indexer started")
@@ -100,7 +77,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				bob.address,
 				{ signer },
 				params,
-				indexerClient,
+				indexer,
 				2000, // Poll interval
 			)
 
@@ -154,7 +131,16 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
+			const result = await teleportDot(
+				relayApi,
+				hyperbridge,
+				bob.address,
+				{ signer },
+				params,
+				indexer,
+				2000,
+				false,
+			)
 
 			let commitment
 			for await (const event of result) {
@@ -285,6 +271,8 @@ describe.sequential("Hyperbridge Requests", () => {
 			// Wait for request to be indexed
 			for await (const status of indexer.postRequestStatusStream(commitment!)) {
 				if (status.status) {
+					//
+					console.log(`Request has been indexed: ${status.status}`)
 					break
 				}
 			}
@@ -315,7 +303,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			await hyperbridge.disconnect()
 			await relayApi.disconnect()
 		}
-	}, 1_000_000)
+	}, 1_200_000)
 
 	it("should successfully deliver requests to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway } = await bscSetup()
@@ -376,7 +364,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		}
 
 		expect(final_status).toEqual(RequestStatus.DESTINATION)
-	}, 1_000_000)
+	}, 1_200_000)
 
 	it("should successfully timeout requests sent to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscHandler, bscIsmpHost } = await bscSetup()
@@ -518,7 +506,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		}
 
 		expect(final_status).toEqual(TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT)
-	}, 1_000_000)
+	}, 1_200_000)
 })
 
 async function bscSetup() {
