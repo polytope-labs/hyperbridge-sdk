@@ -126,7 +126,6 @@ describe.sequential("Hyperbridge Requests", () => {
 					expect(event.commitment).toBeDefined()
 					expect(event.block_number).toBeDefined()
 					console.log(event)
-					await result.cancel()
 				}
 			}
 		} catch (error) {
@@ -170,7 +169,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				if (event.kind === "Dispatched") {
 					console.log(event)
 					commitment = event.commitment
-					await result.cancel()
 					break
 				}
 			}
@@ -276,7 +274,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				if (event.kind === "Dispatched") {
 					console.log(event)
 					commitment = event.commitment
-					await stream.cancel()
 					break
 				}
 			}
@@ -482,7 +479,6 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (event.kind === "Dispatched") {
 				console.log(event)
 				hyp_commitment = event.commitment
-				await result.cancel()
 				break
 			}
 		}
