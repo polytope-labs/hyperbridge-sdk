@@ -166,11 +166,15 @@ export async function teleport(
 
 	const tx = apiPromise.tx.tokenGateway.teleport(fullCallData)
 	let unsub = () => {}
+	let closed = false
 
 	const stream = new ReadableStream<HyperbridgeTxEvents>(
 		{
 			async start(controller) {
 				unsub = await tx.signAndSend(who, options, async (result) => {
+					if (closed) {
+						return
+					}
 					const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result
 					// @ts-expect-error Type Mismatch
 					const events = result.events as ISubmittableResult["events"]
@@ -179,6 +183,7 @@ export async function teleport(
 						console.error("Transaction failed: ", dispatchError)
 						controller.enqueue({ kind: "Error", error: dispatchError })
 						controller.close()
+						closed = true
 						return
 					}
 
@@ -212,6 +217,7 @@ export async function teleport(
 						if (isFinalized) {
 							unsub?.()
 							controller.close()
+							closed = true
 							return
 						}
 					}

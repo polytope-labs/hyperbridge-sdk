@@ -170,6 +170,7 @@ export async function teleportDot(
 	let finalized_hash = await hyperbridge.rpc.chain.getFinalizedHead()
 	let hyperbridgeBlock = (await hyperbridge.rpc.chain.getHeader(finalized_hash)).number.toNumber()
 
+	let closed = false
 	// Create the stream to report events
 	let unsubscribe: () => void
 	const stream = new ReadableStream<HyperbridgeTxEvents>(
@@ -177,9 +178,10 @@ export async function teleportDot(
 			async start(controller) {
 				unsubscribe = await tx.signAndSend(who, options, async (result) => {
 					try {
+						if (closed) {
+							return
+						}
 						const { status, dispatchError, txHash } = result
-						// @ts-expect-error Type Mismatch
-						const events = result.events as ISubmittableResult["events"]
 
 						if (dispatchError) {
 							controller.enqueue({
@@ -188,6 +190,7 @@ export async function teleportDot(
 							})
 							unsubscribe?.()
 							controller.close()
+							closed = true
 							return
 						}
 
@@ -243,7 +246,7 @@ export async function teleportDot(
 
 							// Send event with the status kind (either Dispatched or Finalized)
 							controller.enqueue({
-								kind: status.isInBlock ? "Dispatched" : "Finalized",
+								kind: "Finalized",
 								transaction_hash: txHash.toHex(),
 								block_number: blockNumber,
 								commitment: commitment,
@@ -252,6 +255,7 @@ export async function teleportDot(
 							// We can end the stream because indexer only indexes finalized events from hyperbridge
 							unsubscribe?.()
 							controller.close()
+							closed = true
 							return
 						}
 					} catch (err) {

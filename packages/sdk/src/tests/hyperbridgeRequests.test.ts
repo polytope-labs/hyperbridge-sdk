@@ -91,13 +91,6 @@ describe.sequential("Hyperbridge Requests", () => {
 					console.log(event)
 				}
 
-				if (event.kind === "Dispatched") {
-					// Verify that required fields are present
-					expect(event.commitment).toBeDefined()
-					expect(event.block_number).toBeDefined()
-					console.log(event)
-				}
-
 				if (event.kind === "Finalized") {
 					// Verify that required fields are present
 					expect(event.commitment).toBeDefined()
@@ -141,12 +134,6 @@ describe.sequential("Hyperbridge Requests", () => {
 
 				if (event.kind === "Ready") {
 					console.log(event)
-				}
-
-				if (event.kind === "Dispatched") {
-					console.log(event)
-					commitment = event.commitment
-					break
 				}
 
 				if (event.kind === "Finalized") {
@@ -243,12 +230,6 @@ describe.sequential("Hyperbridge Requests", () => {
 
 				if (event.kind === "Ready") {
 					console.log(event)
-				}
-
-				if (event.kind === "Dispatched") {
-					console.log(event)
-					commitment = event.commitment
-					break
 				}
 
 				if (event.kind === "Finalized") {
@@ -456,12 +437,6 @@ describe.sequential("Hyperbridge Requests", () => {
 
 			if (event.kind === "Ready") {
 				console.log(event)
-			}
-
-			if (event.kind === "Dispatched") {
-				console.log(event)
-				hyp_commitment = event.commitment
-				break
 			}
 
 			if (event.kind === "Finalized") {
