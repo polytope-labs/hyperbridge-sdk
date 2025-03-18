@@ -249,6 +249,7 @@ export async function teleportDot(
 								commitment: commitment,
 							})
 
+							// We can end the stream because indexer only indexes finalized events from hyperbridge
 							unsubscribe?.()
 							controller.close()
 							return
