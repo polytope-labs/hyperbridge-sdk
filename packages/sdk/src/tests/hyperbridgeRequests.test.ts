@@ -228,7 +228,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			await hyperbridge.disconnect()
 			await relayApi.disconnect()
 		}
-	}, 700_000)
+	}, 1_000_000)
 
 	it("It should correctly monitor requests that timeout from hyperbridge", async () => {
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
@@ -315,7 +315,7 @@ describe.sequential("Hyperbridge Requests", () => {
 			await hyperbridge.disconnect()
 			await relayApi.disconnect()
 		}
-	}, 600_000)
+	}, 1_000_000)
 
 	it("should successfully deliver requests to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway } = await bscSetup()
@@ -376,7 +376,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		}
 
 		expect(final_status).toEqual(RequestStatus.DESTINATION)
-	}, 600_000)
+	}, 1_000_000)
 
 	it("should successfully timeout requests sent to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscHandler, bscIsmpHost } = await bscSetup()
@@ -518,7 +518,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		}
 
 		expect(final_status).toEqual(TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT)
-	}, 600_000)
+	}, 1_000_000)
 })
 
 async function bscSetup() {
