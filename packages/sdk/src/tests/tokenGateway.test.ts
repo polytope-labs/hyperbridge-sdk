@@ -55,7 +55,6 @@ describe("teleport function", () => {
 				}
 				if (event.kind === "Finalized") {
 					finalized = event
-					await stream.cancel()
 				}
 			}
 
