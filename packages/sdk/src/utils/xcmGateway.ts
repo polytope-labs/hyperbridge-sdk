@@ -178,9 +178,6 @@ export async function teleportDot(
 			async start(controller) {
 				unsubscribe = await tx.signAndSend(who, options, async (result) => {
 					try {
-						if (closed) {
-							return
-						}
 						const { status, dispatchError, txHash } = result
 
 						if (dispatchError) {
@@ -253,21 +250,22 @@ export async function teleportDot(
 							})
 
 							// We can end the stream because indexer only indexes finalized events from hyperbridge
+							closed = true
 							unsubscribe?.()
 							controller.close()
-							closed = true
 							return
 						}
 					} catch (err) {
+						// For some unknown reason the call back is called again after unsubscribing, this check prevents it from trying to push an event to the closed stream
+						if (closed) {
+							return
+						}
 						controller.enqueue({
 							kind: "Error",
 							error: String(err),
 						})
 					}
 				})
-			},
-			pull() {
-				// We don't really need a pull in this example
 			},
 			cancel() {
 				// This is called if the reader cancels,

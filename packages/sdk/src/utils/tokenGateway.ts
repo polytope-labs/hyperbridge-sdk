@@ -172,58 +172,67 @@ export async function teleport(
 		{
 			async start(controller) {
 				unsub = await tx.signAndSend(who, options, async (result) => {
-					if (closed) {
-						return
-					}
-					const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result
-					// @ts-expect-error Type Mismatch
-					const events = result.events as ISubmittableResult["events"]
+					try {
+						const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result
+						// @ts-expect-error Type Mismatch
+						const events = result.events as ISubmittableResult["events"]
 
-					if (isError) {
-						console.error("Transaction failed: ", dispatchError)
-						controller.enqueue({ kind: "Error", error: dispatchError })
-						controller.close()
-						closed = true
-						return
-					}
-
-					if (status.type === "Ready") {
-						controller.enqueue({
-							kind: "Ready",
-							transaction_hash: txHash.toHex(),
-						})
-					}
-
-					if (isInBlock || isFinalized) {
-						const commitment_hash = readIsmpCommitmentHash(events)
-
-						if (!commitment_hash) {
-							controller.enqueue({
-								kind: "Error",
-								error: new Error("Commitment Hash missing"),
-							})
-							return controller.close()
-						}
-
-						const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
-						const header = await apiPromise.rpc.chain.getHeader(blockHash)
-						controller.enqueue({
-							kind: isInBlock ? "Dispatched" : "Finalized",
-							transaction_hash: txHash.toHex(),
-							block_number: header.number.toBigInt(),
-							commitment: commitment_hash,
-						})
-
-						if (isFinalized) {
+						if (isError) {
+							console.error("Transaction failed: ", dispatchError)
+							controller.enqueue({ kind: "Error", error: dispatchError })
 							unsub?.()
 							controller.close()
 							closed = true
 							return
 						}
+
+						if (status.type === "Ready") {
+							controller.enqueue({
+								kind: "Ready",
+								transaction_hash: txHash.toHex(),
+							})
+						}
+
+						if (isInBlock || isFinalized) {
+							const commitment_hash = readIsmpCommitmentHash(events)
+
+							if (!commitment_hash) {
+								controller.enqueue({
+									kind: "Error",
+									error: new Error("Commitment Hash missing"),
+								})
+								return controller.close()
+							}
+
+							const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
+							const header = await apiPromise.rpc.chain.getHeader(blockHash)
+							controller.enqueue({
+								kind: isInBlock ? "Dispatched" : "Finalized",
+								transaction_hash: txHash.toHex(),
+								block_number: header.number.toBigInt(),
+								commitment: commitment_hash,
+							})
+
+							if (isFinalized) {
+								unsub?.()
+								controller.close()
+								closed = true
+								return
+							}
+						}
+					} catch (err) {
+						// For some unknown reason the call back is called again after unsubscribing, this check prevents it from trying to push an event to the closed stream
+						if (closed) {
+							return
+						}
+						controller.enqueue({
+							kind: "Error",
+							error: String(err),
+						})
 					}
 				})
 			},
-			cancel: () => unsub(),
+			cancel: () => unsub?.(),
 		},
 		{
 			highWaterMark: 3,
