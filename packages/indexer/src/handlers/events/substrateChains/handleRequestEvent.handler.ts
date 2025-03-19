@@ -2,11 +2,11 @@ import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
 import { bytesToHex, hexToBytes, toHex } from "viem"
 
-import { RequestService } from "../../../services/request.service"
-import { Status } from "../../../../configs/src/types"
-import { formatChain, getHostStateMachine, isSubstrateChain } from "../../../utils/substrate.helpers"
-import { SUBSTRATE_RPC_URL } from "../../../constants"
-import { RequestMetadata } from "../../../utils/state-machine.helper"
+import { RequestService } from "@/services/request.service"
+import { RequestStatusMetadata, Status } from "@/configs/src/types"
+import { formatChain, getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
+import { SUBSTRATE_RPC_URL } from "@/constants"
+import { RequestMetadata } from "@/utils/state-machine.helper"
 
 export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw Ismp.Request Event on ${getHostStateMachine(chainId)}`)
@@ -51,7 +51,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		params: [[{ commitment: commitment.toString() }]],
 	}
 
-	const response = await fetch(SUBSTRATE_RPC_URL[sourceId], {
+	const response = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -83,7 +83,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		]),
 	)
 
-	const metadataResponse = await fetch(SUBSTRATE_RPC_URL[sourceId], {
+	const metadataResponse = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -105,7 +105,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 	}
 
 	const host = getHostStateMachine(chainId)
-	await RequestService.findOrCreate({
+	await RequestService.createOrUpdate({
 		chain: host,
 		commitment: commitment.toString(),
 		body,
@@ -122,4 +122,28 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
 		blockTimestamp: BigInt(event.block?.timestamp!.getTime()),
 	})
+
+	// Always create a new status metadata entry
+	let requestStatusMetadata = RequestStatusMetadata.create({
+		id: `${commitment.toHex()}.${Status.SOURCE}`,
+		requestId: commitment.toHex(),
+		status: Status.SOURCE,
+		chain: host,
+		timestamp: BigInt(event.block?.timestamp!.getTime()),
+		blockNumber: event.block.block.header.number.toString(),
+		blockHash: event.block.block.header.hash.toString(),
+		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
+		createdAt: new Date(Number(event.block?.timestamp!.getTime())),
+	})
+
+	await requestStatusMetadata.save()
+}
+
+export function replaceWebsocketWithHttp(url: string): string {
+	if (url.startsWith("ws://")) {
+		return url.replace("ws://", "http://")
+	} else if (url.startsWith("wss://")) {
+		return url.replace("wss://", "https://")
+	}
+	return url
 }

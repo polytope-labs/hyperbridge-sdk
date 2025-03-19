@@ -17,8 +17,15 @@ import {
 	TimeoutStatus,
 	PostRequestTimeoutStatus,
 	RequestStatusWithMetadata,
+	AssetTeleported,
+	AssetTeleportedResponse,
 } from "@/types"
-import { REQUEST_STATUS, STATE_MACHINE_UPDATES_BY_HEIGHT, STATE_MACHINE_UPDATES_BY_TIMESTAMP } from "@/queries"
+import {
+	REQUEST_STATUS,
+	STATE_MACHINE_UPDATES_BY_HEIGHT,
+	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
+	ASSET_TELEPORTED_BY_PARAMS,
+} from "@/queries"
 import {
 	COMBINED_STATUS_WEIGHTS,
 	REQUEST_STATUS_WEIGHTS,
@@ -699,8 +706,6 @@ export class IndexerClient {
 		if (!request) throw new Error(`Request not found`)
 
 		const destChain = await getChain(self.config.dest)
-		const destTimestamp = await destChain.timestamp()
-		if (request.timeoutTimestamp > destTimestamp) throw new Error(`Request not timed out`)
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
 		let status =
@@ -826,15 +831,15 @@ export class IndexerClient {
 							})
 						}
 					} else {
-						let req: RequestWithStatus | undefined
-						while (!req) {
+						let timeout: RequestStatusWithMetadata | undefined
+						while (!timeout || timeout?.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) {
 							await sleep(self.config.pollInterval)
-							req = await self.queryRequest(hash)
+							const req = await self.queryRequest(hash)
+							if (!req) continue
+							timeout = req.statuses
+								.sort((a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status])
+								.pop()
 						}
-						const timeout = req.statuses
-							.sort((a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status])
-							.pop()
-						if (!timeout || timeout.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) break
 
 						while (!update) {
 							await sleep(self.config.pollInterval)
@@ -889,6 +894,41 @@ export class IndexerClient {
 					return
 			}
 		}
+	}
+
+	/**
+	 * Executes an async operation with exponential backoff retry
+	 * @param operation - Async function to execute
+	 * @param retryConfig - Optional retry configuration
+	 * @returns Result of the operation
+	 * @throws Last encountered error after all retries are exhausted
+	 *
+	 * @example
+	 * const result = await this.withRetry(() => this.queryStatus(hash));
+	 */
+	/**
+	 * Query for asset teleported events by sender, recipient, and destination chain
+	 * @param from - The sender address
+	 * @param to - The recipient address
+	 * @param dest - The destination chain ID
+	 * @returns The asset teleported event if found, undefined otherwise
+	 */
+	async queryAssetTeleported(
+		from: string,
+		to: string,
+		dest: string,
+		blockNumber: number,
+	): Promise<AssetTeleported | undefined> {
+		const response = await this.withRetry(() =>
+			this.client.request<AssetTeleportedResponse>(ASSET_TELEPORTED_BY_PARAMS, {
+				from,
+				to,
+				dest,
+				blockNumber,
+			}),
+		)
+
+		return response.assetTeleporteds.nodes[0]
 	}
 
 	/**

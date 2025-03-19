@@ -7,7 +7,7 @@ services:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
             DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: ${DB_HOST}
+            DB_HOST: 0.0.0.0
             DB_PORT: ${DB_PORT}
 
         depends_on:
@@ -15,7 +15,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -38,7 +38,6 @@ services:
     subquery-node-bsc-chapel-local:
         image: subquerynetwork/subql-node-ethereum:v5.5.0
         restart: unless-stopped
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -51,7 +50,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -76,7 +75,6 @@ services:
     subquery-node-gnosis-chiado-local:
         image: subquerynetwork/subql-node-ethereum:v5.5.0
         restart: unless-stopped
-        network_mode: host
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -89,7 +87,7 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../configs:/app
+            - ../src/configs:/app
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -113,11 +111,9 @@ services:
 
     graphql-engine:
         image: subquerynetwork/subql-query:v2.21.0
-        ports:
-            - 3000:3000
-
         restart: always
-        network_mode: host
+        ports:
+            - 3100:3000
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -127,7 +123,6 @@ services:
         depends_on:
             postgres:
                 condition: service_healthy
-
         command:
             - --name=app
             - --playground

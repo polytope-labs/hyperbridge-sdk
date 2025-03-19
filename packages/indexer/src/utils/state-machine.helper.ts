@@ -6,10 +6,10 @@ import type { StorageData } from "@polkadot/types/interfaces"
 import { Option as PolkadotOption } from "@polkadot/types"
 import { logger } from "ethers"
 import { TextEncoder } from "util"
-import { CHAINS_BY_ISMP_HOST } from "../constants"
+import { CHAINS_BY_ISMP_HOST } from "@/constants"
 import { Codec } from "@polkadot/types/types"
 import { Provider } from "@ethersproject/providers"
-import { getHostStateMachine } from "./substrate.helpers"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 // Define ConsensusStateId as 4-byte array
 const ConsensusStateId = Vector(u8, 4)
@@ -161,7 +161,7 @@ export async function fetchStateCommitmentsEVM(params: {
 	const stateRootValue = await client.getStorageAt(hostContract, bytesToHex(stateRootKey))
 
 	// Parse timestamp from big-endian bytes to BigInt
-	const timestamp = BigInt(timestampValue) / 2n
+	const timestamp = BigInt(timestampValue) / 1000n
 
 	// Create the StateCommitment object
 	return {

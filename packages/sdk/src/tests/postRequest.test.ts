@@ -21,7 +21,7 @@ import ERC6160 from "@/abis/erc6160"
 import PING_MODULE from "@/abis/pingModule"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { DEFAULT_ADDRESS, EvmChain, SubstrateChain } from "@/chain"
+import { EvmChain, SubstrateChain } from "@/chain"
 
 describe("PostRequest", () => {
 	let indexer: IndexerClient
@@ -42,10 +42,11 @@ describe("PostRequest", () => {
 				host: gnosisChiadoHost.address,
 			},
 			hyperbridge: {
-				consensusStateId: "PARA",
+				consensusStateId: "PAS0",
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
+			url: "http://0.0.0.0:3100",
 			pollInterval: 1_000, // every second
 		})
 	})
@@ -179,8 +180,8 @@ describe("PostRequest", () => {
 
 		const req = await indexer.queryRequestWithStatus(commitment)
 		console.log(JSON.stringify(req, null, 4))
-		// expect(req?.statuses.length).toBe(5)
-	}, 600_000)
+		expect(req?.statuses.length).toBe(5)
+	}, 1_000_000)
 
 	it("should stream and query the timeout status", async () => {
 		const { bscTestnetClient, bscHandler, bscPing, gnosisChiadoHost } = await setUp()
@@ -192,9 +193,12 @@ describe("PostRequest", () => {
 				count: BigInt(1),
 				fee: BigInt(0),
 				module: process.env.PING_MODULE_ADDRESS! as HexString,
-				timeout: BigInt(150), // so it can timeout
+				timeout: BigInt(180), // so it can timeout
 			},
 		])
+
+		// wait for tx receipt to become available
+		await new Promise((resolve) => setTimeout(resolve, 5000))
 
 		const receipt = await bscTestnetClient.waitForTransactionReceipt({
 			hash,
@@ -214,6 +218,8 @@ describe("PostRequest", () => {
 		const request = event.args
 
 		console.log("PostRequestEvent", { request })
+
+		console.log("Request Commitment: ", postRequestCommitment(request))
 
 		const commitment = postRequestCommitment(request)
 		const statusStream = indexer.postRequestStatusStream(commitment)
