@@ -614,11 +614,16 @@ export class IndexerClient {
 				? RequestStatus.HYPERBRIDGE_DELIVERED
 				: RequestStatus.SOURCE
 		const latestMetadata = request.statuses[request.statuses.length - 1]
-		// start with the latest status
-		status = maxBy(
+
+		const latest_request = maxBy(
 			[status, latestMetadata.status as RequestStatus],
 			(item) => REQUEST_STATUS_WEIGHTS[item as RequestStatus],
-		)!
+		)
+
+		if (!latest_request) return
+
+		// start with the latest status
+		status = latest_request
 
 		while (true) {
 			switch (status) {
@@ -1015,12 +1020,15 @@ export class IndexerClient {
 		})) as unknown as SubstrateChain
 
 		const latest = request.statuses[request.statuses.length - 1]
-
-		// we're always interested in the latest status
-		status = maxBy(
+		const latest_request = maxBy(
 			[status, latest.status as TimeoutStatus],
 			(item) => TIMEOUT_STATUS_WEIGHTS[item as TimeoutStatus],
-		)!
+		)
+
+		if (!latest_request) return
+
+		// we're always interested in the latest status
+		status = latest_request
 
 		while (true) {
 			switch (status) {
