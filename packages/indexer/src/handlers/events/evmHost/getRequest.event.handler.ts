@@ -2,6 +2,7 @@ import { GetRequestEventLog } from "@/configs/src/types/abi-interfaces/EthereumH
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { GetRequestService } from "@/services/getRequest.service"
+import { Status } from "@/configs/src/types"
 
 /**
  * Handles the GetRequest event from Evm Hosts
@@ -18,17 +19,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	let { source, dest, from, keys, nonce, height, context, timeoutTimestamp, fee } = args
 	let { hash, timestamp } = block
 
-	// Get chain ID from the event's address
-	const chainId = event.address
-	if (!chainId) {
-		logger.error(`Chain ID not found for event address`)
-		return
-	}
-
 	const chain: string = getHostStateMachine(chainId)
-
-	// Update HyperBridge stats
-	await HyperBridgeService.incrementNumberOfSentMessages(chain)
 
 	logger.info(
 		`Processing GetRequest Event: ${JSON.stringify({
@@ -61,7 +52,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		})}`,
 	)
 
-	await GetRequestService.createGetRequest({
+	await GetRequestService.createOrUpdate({
 		id: get_request_commitment,
 		source,
 		dest,
@@ -76,5 +67,8 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		blockNumber: blockNumber.toString(),
 		blockHash: hash,
 		blockTimestamp: timestamp,
+		status: Status.SOURCE,
+		chain,
+		commitment: get_request_commitment,
 	})
 }

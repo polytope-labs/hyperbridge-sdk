@@ -1,26 +1,39 @@
-import { GetRequest } from "@/configs/src/types"
+import { GetRequest, GetRequestStatusMetadata, Status } from "@/configs/src/types"
 import { ethers } from "ethers"
 import { solidityKeccak256 } from "ethers/lib/utils"
 
 export interface IGetRequestArgs {
 	id: string
-	source: string
-	dest: string
-	from: string
-	keys: string[]
-	nonce: bigint
-	height: bigint
-	context: string
-	timeoutTimestamp: bigint
-	fee: bigint
+	source: string | undefined
+	dest: string | undefined
+	from: string | undefined
+	keys: string[] | [""]
+	nonce: bigint | undefined
+	height: bigint | undefined
+	context: string | undefined
+	timeoutTimestamp: bigint | undefined
+	fee: bigint | undefined
 	blockNumber: string
 	blockHash: string
 	transactionHash: string
 	blockTimestamp: bigint
+	status: Status
+	chain: string
+	commitment: string
+}
+
+export interface IUpdateGetRequestStatusArgs {
+	commitment: string
+	blockNumber: string
+	blockHash: string
+	blockTimestamp: bigint
+	status: Status
+	transactionHash: string
+	chain: string
 }
 
 export class GetRequestService {
-	static async createGetRequest(args: IGetRequestArgs): Promise<GetRequest> {
+	static async createOrUpdate(args: IGetRequestArgs): Promise<GetRequest> {
 		const {
 			id,
 			source,
@@ -36,33 +49,137 @@ export class GetRequestService {
 			blockHash,
 			blockTimestamp,
 			transactionHash,
+			status,
+			chain,
 		} = args
-		let getRequest = GetRequest.create({
-			id,
-			source,
-			dest,
-			from,
-			keys,
-			nonce,
-			height,
-			context,
-			timeoutTimestamp,
-			fee,
-			blockNumber,
-			blockHash,
-			transactionHash,
-			blockTimestamp,
-		})
-
-		await getRequest.save()
+		let getRequest = await GetRequest.get(id)
 
 		logger.info(
-			`Saved GetRequest Event: ${JSON.stringify({
-				id: getRequest.id,
+			`Processing Get Request: ${JSON.stringify({
+				id,
+				transactionHash,
+				status,
 			})}`,
 		)
 
+		if (!getRequest) {
+			getRequest = GetRequest.create({
+				id,
+				chain,
+				source: source || "",
+				dest: dest || "",
+				from: from || "",
+				keys: keys || [""],
+				nonce: nonce || BigInt(0),
+				height: height || BigInt(0),
+				context: context || "",
+				timeoutTimestamp: timeoutTimestamp || BigInt(0),
+				fee: fee || BigInt(0),
+				blockNumber: blockNumber || "",
+				blockHash: blockHash || "",
+				transactionHash: transactionHash || "",
+				blockTimestamp: blockTimestamp || BigInt(0),
+				status,
+				commitment: id,
+			})
+
+			getRequest.save()
+
+			logger.info(
+				`Saved GetRequest Event: ${JSON.stringify({
+					id: getRequest.id,
+				})}`,
+			)
+		} else {
+			if (source !== undefined) getRequest.source = source
+			if (dest !== undefined) getRequest.dest = dest
+			if (from !== undefined) getRequest.from = from
+			if (keys !== undefined) getRequest.keys = keys
+			if (nonce !== undefined) getRequest.nonce = nonce
+			if (height !== undefined) getRequest.height = height
+			if (context !== undefined) getRequest.context = context
+			if (timeoutTimestamp !== undefined) getRequest.timeoutTimestamp = timeoutTimestamp
+			if (fee !== undefined) getRequest.fee = fee
+			if (blockNumber !== undefined) getRequest.blockNumber = blockNumber
+			if (blockHash !== undefined) getRequest.blockHash = blockHash
+			if (transactionHash !== undefined) getRequest.transactionHash = transactionHash
+			if (blockTimestamp !== undefined) getRequest.blockTimestamp = blockTimestamp
+			if (status !== undefined) getRequest.status = status
+			if (chain !== undefined) getRequest.chain = chain
+
+			getRequest.save()
+
+			logger.info(
+				`Updated GetRequest Event: ${JSON.stringify({
+					id: getRequest.id,
+				})}`,
+			)
+		}
+
 		return getRequest
+	}
+
+	/**
+	 * Update the status of a get request
+	 * Also adds a new entry to the get request status metadata
+	 */
+	static async updateStatus(args: IUpdateGetRequestStatusArgs): Promise<void> {
+		const { commitment, blockNumber, blockHash, blockTimestamp, status, transactionHash, chain } = args
+
+		logger.info(
+			`Updating Get Request Status: ${JSON.stringify({
+				commitment,
+				transactionHash,
+				status,
+			})}`,
+		)
+
+		let getRequest = await GetRequest.get(commitment)
+
+		if (!getRequest) {
+			// Create new get request and get request status metadata
+			await this.createOrUpdate({
+				id: commitment,
+				chain,
+				source: undefined,
+				dest: undefined,
+				from: undefined,
+				keys: [""],
+				nonce: undefined,
+				height: undefined,
+				context: undefined,
+				timeoutTimestamp: undefined,
+				fee: undefined,
+				blockNumber: "",
+				blockHash: "",
+				blockTimestamp: 0n,
+				status,
+				transactionHash: "",
+				commitment,
+			})
+
+			logger.info(
+				`Created new get request while attempting get request update with details ${JSON.stringify({
+					commitment,
+					transactionHash,
+					status,
+				})}`,
+			)
+		}
+
+		let getRequestStatusMetadata = GetRequestStatusMetadata.create({
+			id: `${commitment}.${status}`,
+			requestId: commitment,
+			status,
+			chain,
+			timestamp: blockTimestamp,
+			blockNumber,
+			blockHash,
+			transactionHash,
+			createdAt: new Date(Number(blockTimestamp)),
+		})
+
+		await getRequestStatusMetadata.save()
 	}
 
 	/**

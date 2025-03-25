@@ -619,4 +619,82 @@ type GetRequest @entity {
 	Timestamp of the block containing the request
 	"""
 	blockTimestamp: BigInt!
+	"""
+	Status of the request
+	"""
+	status: Status!
+	"""
+	Chain on which the request was made
+	"""
+	chain: String!
+	"""
+	commitment of the request
+	"""
+	commitment: String!
+}
+
+"""
+Metadata about the status of a Request
+"""
+type GetRequestStatusMetadata @entity {
+	"""
+	The ID of the GetRequestStatusMetadata
+	"""
+	id: ID!
+
+	"""
+	The status of the request
+	"""
+	status: Status!
+
+	"""
+	The chain on which the request occured
+	"""
+	chain: String!
+
+	"""
+	The timestamp of the event
+	"""
+	timestamp: BigInt!
+
+	"""
+	The number of the block in which the event occured
+	"""
+	blockNumber: String!
+
+	"""
+	The hash of the block in which the event occured
+	"""
+	blockHash: String!
+
+	"""
+	The hash of the transaction in which the event occured
+	"""
+	transactionHash: String!
+
+	"""
+	The request that owns this status change
+	"""
+	request: GetRequest!
+
+	"""
+	The timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}
+
+type GetRequestHandled @entity {
+	id: ID!
+	request: GetRequest!
+	blockNumber: String!
+	blockHash: String!
+	transactionHash: String!
+}
+
+type GetRequestTimedOut @entity {
+	id: ID!
+	request: GetRequest!
+	blockNumber: String!
+	blockHash: String!
+	transactionHash: String!
 }
