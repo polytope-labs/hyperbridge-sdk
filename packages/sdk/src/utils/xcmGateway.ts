@@ -6,7 +6,7 @@ import { decodeAddress } from "@polkadot/util-crypto"
 import { parseUnits } from "viem"
 import type { EventRecord, Header } from "@polkadot/types/interfaces"
 import type { ISubmittableResult } from "@polkadot/types/types"
-import { IndexerClient } from "@/client"
+import type { IndexerClient } from "@/client"
 import { sleep } from "@/utils"
 
 export type HyperbridgeTxEvents =
@@ -98,7 +98,7 @@ export async function teleportDot(
 	options: Partial<SignerOptions>,
 	params: XcmGatewayParams,
 	indexerClient: IndexerClient,
-	pollInterval: number = 2000,
+	pollInterval = 2000,
 ): Promise<ReadableStream<HyperbridgeTxEvents>> {
 	// Set up the transaction parameters
 	const destination = {
@@ -167,8 +167,8 @@ export async function teleportDot(
 		weightLimit,
 	)
 
-	let finalized_hash = await hyperbridge.rpc.chain.getFinalizedHead()
-	let hyperbridgeBlock = (await hyperbridge.rpc.chain.getHeader(finalized_hash)).number.toNumber()
+	const finalized_hash = await hyperbridge.rpc.chain.getFinalizedHead()
+	const hyperbridgeBlock = (await hyperbridge.rpc.chain.getHeader(finalized_hash)).number.toNumber()
 
 	let closed = false
 	// Create the stream to report events

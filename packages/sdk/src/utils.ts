@@ -1,4 +1,4 @@
-import { HexString, IGetRequest, IPostRequest, RequestStatus, StateMachineIdParams, TimeoutStatus } from "@/types"
+import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, StateMachineIdParams, TimeoutStatus } from "@/types"
 import { ApiPromise } from "@polkadot/api"
 import { WsProvider } from "@polkadot/api"
 import { encodePacked, keccak256, toHex } from "viem"

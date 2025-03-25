@@ -8,7 +8,7 @@ import { keccakAsU8a, xxhashAsU8a } from "@polkadot/util-crypto"
 import type { Option as PolakdotOption } from "@polkadot/types"
 import type { EventRecord, StorageData } from "@polkadot/types/interfaces"
 import type { SignerOptions } from "@polkadot/api/types"
-import { type HyperbridgeTxEvents } from "./xcmGateway"
+import type { HyperbridgeTxEvents } from "./xcmGateway"
 
 export type Params = {
 	/** Asset symbol for the teleport operation */

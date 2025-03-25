@@ -1,6 +1,6 @@
 import "log-timestamp"
 
-import { HexString, RequestStatus, TimeoutStatus } from "@/types"
+import { type HexString, RequestStatus, TimeoutStatus } from "@/types"
 import {
 	createWalletClient,
 	http,
@@ -19,11 +19,11 @@ import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
 import TOKEN_GATEWAY from "@/abis/tokenGateway"
 import { WsProvider, ApiPromise, Keyring } from "@polkadot/api"
-import { Signer, SignerResult } from "@polkadot/api/types"
+import type { Signer, SignerResult } from "@polkadot/api/types"
 import { IndexerClient } from "@/client"
 import { teleportDot } from "@/utils/xcmGateway"
-import { KeyringPair } from "@polkadot/keyring/types"
-import { SignerPayloadRaw } from "@polkadot/types/types"
+import type { KeyringPair } from "@polkadot/keyring/types"
+import type { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { postRequestCommitment } from "@/utils"
 

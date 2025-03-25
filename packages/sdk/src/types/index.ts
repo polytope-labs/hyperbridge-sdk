@@ -1,4 +1,4 @@
-import { Hex } from "viem"
+import type { Hex } from "viem"
 
 export type HexString = `0x${string}`
 
@@ -108,6 +108,7 @@ export type IMessage = { Requests: HexString[] } | { Responses: HexString[] }
 export interface ClientConfig {
 	pollInterval?: number
 	url?: string
+	tracing?: boolean
 	source: IEvmConfig | ISubstrateConfig
 	dest: IEvmConfig | ISubstrateConfig
 	hyperbridge: IHyperbridgeConfig

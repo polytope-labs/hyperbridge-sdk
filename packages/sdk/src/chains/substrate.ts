@@ -2,11 +2,11 @@ import { ApiPromise, WsProvider } from "@polkadot/api"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { toHex, hexToBytes, toBytes, bytesToHex } from "viem"
 import { match } from "ts-pattern"
-import capitalize from "lodash/capitalize"
+import { capitalize } from "lodash-es"
 import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
-import { IChain, IIsmpMessage } from "@/chain"
+import type { IChain, IIsmpMessage } from "@/chain"
 import { HexString, IGetRequest, IPostRequest, IMessage, StateMachineIdParams } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
@@ -182,17 +182,16 @@ export class SubstrateChain implements IChain {
 	async submitUnsigned(
 		message: IIsmpMessage,
 	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number }> {
-		const self = this
-		if (!self.api) throw new Error("API not initialized")
+		if (!this.api) throw new Error("API not initialized")
 		// remove the call and method selectors
-		const args = hexToBytes(self.encode(message)).slice(2)
-		const tx = self.api.tx.ismp.handleUnsigned(args)
+		const args = hexToBytes(this.encode(message)).slice(2)
+		const tx = this.api.tx.ismp.handleUnsigned(args)
 		return new Promise(async (resolve, reject) => {
 			const unsub = await tx.send(async ({ isFinalized, isError, dispatchError, txHash, status }) => {
 				if (isFinalized) {
 					unsub()
 					const blockHash = status.asFinalized.toHex()
-					const header = await self.api!.rpc.chain.getHeader(blockHash)
+					const header = await this.api!.rpc.chain.getHeader(blockHash)
 					resolve({
 						transactionHash: txHash.toHex(),
 						blockHash: blockHash,
@@ -360,7 +359,7 @@ export function convertStateMachineIdToEnum(id: string): IStateMachine {
 	let [tag, value]: any = id.split("-")
 	tag = capitalize(tag)
 	if (["Evm", "Polkadot", "Kusama"].includes(tag)) {
-		value = parseInt(value)
+		value = Number.parseInt(value)
 	} else {
 		value = Array.from(toBytes(value))
 	}
