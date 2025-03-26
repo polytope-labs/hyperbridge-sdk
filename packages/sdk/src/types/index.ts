@@ -86,6 +86,7 @@ export interface IGetRequest {
 	keys: HexString[]
 	// Timestamp which this request expires in seconds.
 	timeoutTimestamp: bigint
+	context: string
 }
 
 export interface IPostResponse {
@@ -202,6 +203,32 @@ export interface RequestResponse {
 	}
 }
 
+export interface GetRequestResponse {
+	getRequests: {
+		nodes: Array<{
+			source: string
+			dest: string
+			to: HexString
+			from: HexString
+			nonce: bigint
+			height: bigint
+			keys: HexString[]
+			context: string
+			timeoutTimestamp: bigint
+			statusMetadata: {
+				nodes: Array<{
+					blockHash: string
+					blockNumber: string
+					timestamp: string
+					chain: string
+					status: string
+					transactionHash: string
+				}>
+			}
+		}>
+	}
+}
+
 export type RequestStatusWithMetadata =
 	| {
 			status: RequestStatus.SOURCE
@@ -293,6 +320,18 @@ export interface RequestWithStatus {
 	from: HexString
 	nonce: bigint
 	body: HexString
+	timeoutTimestamp: bigint
+	statuses: Array<RequestStatusWithMetadata>
+}
+
+export interface GetRequestWithStatus {
+	source: string
+	dest: string
+	from: HexString
+	keys: HexString[]
+	nonce: bigint
+	height: bigint
+	context: string
 	timeoutTimestamp: bigint
 	statuses: Array<RequestStatusWithMetadata>
 }
