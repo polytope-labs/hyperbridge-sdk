@@ -313,7 +313,7 @@ export class EvmChain implements IChain {
 				}
 				const encoded = encodeFunctionData({
 					abi: HandlerV1.ABI,
-					functionName: "handlePostRequests", // This does not exist in the abi
+					functionName: "handleGetRequests", // This does not exist in the abi
 					args: [
 						this.params.host,
 						{
