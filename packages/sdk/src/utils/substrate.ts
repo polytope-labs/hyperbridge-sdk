@@ -421,8 +421,4 @@ export const Message = Enum({
 	 * A request timeout message
 	 */
 	TimeoutMessage: TimeoutMessage,
-	/*
-	 * A get request message
-	 */
-	GetRequestMessage: GetRequestMessage,
 })

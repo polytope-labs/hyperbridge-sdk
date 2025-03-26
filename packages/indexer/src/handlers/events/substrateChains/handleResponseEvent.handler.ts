@@ -7,6 +7,7 @@ import { ResponseStatusMetadata, Status } from "@/configs/src/types"
 import { formatChain, getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
 import { ResponseMetadata } from "@/utils/state-machine.helper"
+import { replaceWebsocketWithHttp } from "./handleRequestEvent.handler"
 
 export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw Ismp.Response Event on ${getHostStateMachine(chainId)}`)
@@ -136,13 +137,4 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 	})
 
 	await responseStatusMetadata.save()
-}
-
-export function replaceWebsocketWithHttp(url: string): string {
-	if (url.startsWith("ws://")) {
-		return url.replace("ws://", "http://")
-	} else if (url.startsWith("wss://")) {
-		return url.replace("wss://", "https://")
-	}
-	return url
 }

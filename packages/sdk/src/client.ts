@@ -832,7 +832,7 @@ export class IndexerClient {
 					}
 
 					status =
-						request.dest === self.config.hyperbridge.stateMachineId
+						request.source === self.config.hyperbridge.stateMachineId
 							? RequestStatus.DESTINATION
 							: RequestStatus.HYPERBRIDGE_DELIVERED
 
@@ -900,6 +900,11 @@ export class IndexerClient {
 
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
+					// If Hyperbridge was the source, the request is already complete
+					if (request.source === self.config.hyperbridge.stateMachineId) {
+						return
+					}
+
 					// wait for the request to be delivered to the destination
 					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					while (!request || !delivered) {
@@ -908,14 +913,12 @@ export class IndexerClient {
 						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					}
 
-					let index = request.source === self.config.hyperbridge.stateMachineId ? 1 : 2
-
 					yield {
 						status: RequestStatus.DESTINATION,
 						metadata: {
-							blockHash: request.statuses[index].metadata.blockHash,
-							blockNumber: request.statuses[index].metadata.blockNumber,
-							transactionHash: request.statuses[index].metadata.transactionHash,
+							blockHash: request.statuses[2].metadata.blockHash,
+							blockNumber: request.statuses[2].metadata.blockNumber,
+							transactionHash: request.statuses[2].metadata.transactionHash,
 						},
 					}
 					status = RequestStatus.DESTINATION

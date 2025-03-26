@@ -249,25 +249,9 @@ export class SubstrateChain implements IChain {
 				]),
 			)
 			.with({ kind: "GetRequest" }, (message) =>
-				Vector(Message).enc([
-					{
-						tag: "GetRequestMessage",
-						value: {
-							requests: message.requests.map((r) => convertIGetRequestToCodec(r)),
-							proof: {
-								height: {
-									height: message.proof.height,
-									id: {
-										consensusStateId: Array.from(toBytes(message.proof.consensusStateId)),
-										id: convertStateMachineIdToEnum(message.proof.stateMachine) as any,
-									},
-								},
-								proof: Array.from(hexToBytes(message.proof.proof)),
-							},
-							signer: Array.from(hexToBytes(message.signer)),
-						},
-					},
-				]),
+				(() => {
+					throw new Error("GetRequest is not yet supported on Substrate chains")
+				})(),
 			)
 			.with({ kind: "TimeoutPostRequest" }, (message) =>
 				Vector(Message).enc([

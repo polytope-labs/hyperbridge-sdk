@@ -2,7 +2,7 @@ import { SubstrateEvent } from "@subql/types"
 import { Status } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Request } from "@/configs/src/types/models"
+import { GetRequest, Request } from "@/configs/src/types/models"
 import { GetRequestService } from "@/services/getRequest.service"
 
 type EventData = {
@@ -35,7 +35,7 @@ export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEven
 
 	const host = getHostStateMachine(chainId)
 
-	const request = await Request.get(eventData.commitment.toString())
+	const request = await GetRequest.get(eventData.commitment.toString())
 
 	if (!request) {
 		logger.error(`Get Request not found for commitment ${eventData.commitment.toString()}`)
@@ -43,7 +43,7 @@ export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEven
 	}
 
 	let status: Status
-	if (request.dest === host) {
+	if (request.source === host) {
 		status = Status.DESTINATION
 	} else {
 		status = Status.HYPERBRIDGE_DELIVERED
