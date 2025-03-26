@@ -67,7 +67,7 @@ export interface IGetRequest {
 	// The destination state machine of this request.
 	dest: string
 	// Module Id of the sending module
-	from: string
+	from: HexString
 	// The nonce of this request on the source chain
 	nonce: bigint
 	// Height at which to read the state machine.

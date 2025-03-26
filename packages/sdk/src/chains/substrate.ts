@@ -7,7 +7,7 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
-import { HexString, IPostRequest } from "@/types"
+import { HexString, IGetRequest, IPostRequest } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -248,6 +248,27 @@ export class SubstrateChain implements IChain {
 					},
 				]),
 			)
+			.with({ kind: "GetRequest" }, (message) =>
+				Vector(Message).enc([
+					{
+						tag: "GetRequestMessage",
+						value: {
+							requests: message.requests.map((r) => convertIGetRequestToCodec(r)),
+							proof: {
+								height: {
+									height: message.proof.height,
+									id: {
+										consensusStateId: Array.from(toBytes(message.proof.consensusStateId)),
+										id: convertStateMachineIdToEnum(message.proof.stateMachine) as any,
+									},
+								},
+								proof: Array.from(hexToBytes(message.proof.proof)),
+							},
+							signer: Array.from(hexToBytes(message.signer)),
+						},
+					},
+				]),
+			)
 			.with({ kind: "TimeoutPostRequest" }, (message) =>
 				Vector(Message).enc([
 					{
@@ -344,6 +365,27 @@ function convertIPostRequestToCodec(request: IPostRequest): any {
 			nonce: request.nonce,
 			body: Array.from(hexToBytes(request.body)),
 			timeoutTimestamp: request.timeoutTimestamp,
+		},
+	}
+}
+
+/**
+ * Converts an IGetRequest object to a codec representation.
+ * @param {IGetRequest} request - The get request object.
+ * @returns {any} The codec representation of the request.
+ */
+function convertIGetRequestToCodec(request: IGetRequest): any {
+	return {
+		tag: "Get",
+		value: {
+			source: convertStateMachineIdToEnum(request.source),
+			dest: convertStateMachineIdToEnum(request.dest),
+			from: Array.from(hexToBytes(request.from)),
+			nonce: request.nonce,
+			timeoutTimestamp: request.timeoutTimestamp,
+			height: request.height,
+			keys: Array.from(hexToBytes(request.keys.map((key) => toHex(key)).join("") as `0x${string}`)),
+			context: Array.from(hexToBytes(toHex(request.context) as `0x${string}`)),
 		},
 	}
 }

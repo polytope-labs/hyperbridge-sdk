@@ -321,6 +321,21 @@ export const RequestMessage = Struct({
 	signer: Vector(u8),
 })
 
+export const GetRequestMessage = Struct({
+	/*
+	 * Requests from source chain
+	 */
+	requests: Vector(GetRequest),
+	/*
+	 * Membership batch proof for these requests
+	 */
+	proof: Proof,
+	/*
+	 * Signer information. Ideally should be their account identifier
+	 */
+	signer: Vector(u8),
+})
+
 export const RequestResponse = Enum({
 	/*
 	 * A set of requests
@@ -406,4 +421,8 @@ export const Message = Enum({
 	 * A request timeout message
 	 */
 	TimeoutMessage: TimeoutMessage,
+	/*
+	 * A get request message
+	 */
+	GetRequestMessage: GetRequestMessage,
 })

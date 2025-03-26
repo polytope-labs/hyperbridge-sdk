@@ -278,6 +278,53 @@ export class EvmChain implements IChain {
 
 				return encoded
 			})
+			.with({ kind: "GetRequest" }, (request) => {
+				const mmrProof = MmrProof.dec(request.proof.proof)
+				const requests = zip(request.requests, mmrProof.leafIndexAndPos)
+					.map(([req, leafIndexAndPos]) => {
+						if (!req || !leafIndexAndPos) return
+						const [[, kIndex]] = mmrPositionToKIndex(
+							[leafIndexAndPos?.pos],
+							calculateMMRSize(mmrProof.leafCount),
+						)
+						return {
+							request: {
+								source: toHex(req.source),
+								dest: toHex(req.dest),
+								from: req.from,
+								nonce: req.nonce,
+								timeoutTimestamp: req.timeoutTimestamp,
+								keys: req.keys,
+								context: req.context,
+							} as any,
+							index: leafIndexAndPos?.leafIndex!,
+							kIndex,
+						}
+					})
+					.filter((item) => !!item)
+
+				const proof = {
+					height: {
+						stateMachineId: BigInt(parseInt(request.proof.stateMachine.split("-")[1])),
+						height: request.proof.height,
+					},
+					multiproof: mmrProof.items.map((item) => bytesToHex(new Uint8Array(item))),
+					leafCount: mmrProof.leafCount,
+				}
+				const encoded = encodeFunctionData({
+					abi: HandlerV1.ABI,
+					functionName: "handlePostRequests", // This does not exist in the abi
+					args: [
+						this.params.host,
+						{
+							proof,
+							requests,
+						},
+					],
+				})
+
+				return encoded
+			})
 			.exhaustive()
 
 		return encoded
