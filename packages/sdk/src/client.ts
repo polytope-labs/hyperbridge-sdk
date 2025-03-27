@@ -191,11 +191,11 @@ export class IndexerClient {
 	}
 
 	/**
-	 * Queries a request by CommitmentHash
+   * Queries a request by CommitmentHash
 
-	 * @param hash - Can be commitment
-	 * @returns Latest status and block metadata of the request
-	 */
+   * @param hash - Can be commitment
+   * @returns Latest status and block metadata of the request
+   */
 	async queryRequest(hash: string): Promise<RequestWithStatus | undefined> {
 		const logger = this.logger.withTag(`CommitmentHash(${hash})`)
 
@@ -519,9 +519,9 @@ export class IndexerClient {
 	}
 
 	/**
-	 * Queries a request by any of its associated hashes and returns it alongside its statuses,
+	 * Queries a request returns it alongside its statuses,
 	 * including any finalization events.
-	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
+	 * @param hash - Commitment hash
 	 * @returns Full request data with all inferred status events, including SOURCE_FINALIZED and HYPERBRIDGE_FINALIZED
 	 * @remarks Unlike queryRequest(), this method adds derived finalization status events by querying state machine updates
 	 */
@@ -567,25 +567,36 @@ export class IndexerClient {
 	 *
 	 */
 	async *postRequestStatusStream(hash: HexString): AsyncGenerator<RequestStatusWithMetadata, void> {
+		const logger = this.logger.withTag("postRequestStatusStream()")
+
 		// wait for request to be created
 		let request: RequestWithStatus | undefined
 
 		while (!request) {
-			this.logger.trace(`Sleep for ${this.config.pollInterval}`)
+			logger.trace(`Sleep for ${this.config.pollInterval}`)
 			await sleep(this.config.pollInterval)
 			request = await this.queryRequest(hash)
 		}
 
+		logger.trace("Request found")
+
 		const chain = await getChain(this.config.dest)
 		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
 		const statusStream = this.postRequestStatusStreamInternal(hash)
+
 		const combined = mergeRace(timeoutStream, statusStream)
 
+		logger.trace("Listening for events")
 		let item = await combined.next()
+
 		while (!item.done) {
+			logger.trace(`Yielding ${item.value.status}`)
+
 			yield item.value
 			item = await combined.next()
 		}
+
+		logger.trace("Streaming complete")
 		return
 	}
 

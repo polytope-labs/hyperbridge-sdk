@@ -71,15 +71,15 @@ describe.sequential("Hyperbridge Requests", () => {
 		try {
 			// Call the teleport function with indexer
 			console.log("Teleport Dot with Indexer started")
-			const result = await teleportDot(
+			const result = await teleportDot({
 				relayApi,
 				hyperbridge,
-				bob.address,
-				{ signer },
-				params,
-				indexer,
-				2000, // Poll interval
-			)
+				who: bob.address,
+				options: { signer },
+				xcmGatewayParams: params,
+				indexerClient: indexer,
+				pollInterval: 2000,
+			})
 
 			for await (const event of result) {
 				console.log(event.kind)
@@ -124,7 +124,16 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer, 2000)
+
+			const result = await teleportDot({
+				relayApi,
+				hyperbridge,
+				who: bob.address,
+				options: { signer },
+				xcmGatewayParams: params,
+				indexerClient: indexer,
+				pollInterval: 2000,
+			})
 
 			let commitment
 			for await (const event of result) {
@@ -220,7 +229,15 @@ describe.sequential("Hyperbridge Requests", () => {
 			if (!indexer) {
 				throw new Error("Indexer client is not defined")
 			}
-			const stream = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer, 2000)
+			const stream = await teleportDot({
+				relayApi,
+				hyperbridge,
+				who: bob.address,
+				options: { signer },
+				xcmGatewayParams: params,
+				indexerClient: indexer,
+				pollInterval: 2000,
+			})
 
 			let commitment
 			for await (const event of stream) {
@@ -427,7 +444,14 @@ describe.sequential("Hyperbridge Requests", () => {
 		if (!indexer) {
 			throw new Error("Indexer client is not defined")
 		}
-		const result = await teleportDot(relayApi, hyperbridge, bob.address, { signer }, params, indexer)
+		const result = await teleportDot({
+			relayApi,
+			hyperbridge,
+			who: bob.address,
+			options: { signer },
+			xcmGatewayParams: params,
+			indexerClient: indexer,
+		})
 
 		let hyp_commitment
 		for await (const event of result) {

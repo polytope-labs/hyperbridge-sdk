@@ -159,7 +159,6 @@ export class EvmChain implements IChain {
 	 * @returns {Promise<HexString>} The encoded storage proof.
 	 */
 	async queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
-
 		const config: GetProofParameters = {
 			address: this.params.host,
 			storageKeys: keys,
