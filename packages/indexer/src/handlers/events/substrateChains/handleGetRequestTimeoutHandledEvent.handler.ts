@@ -1,6 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
 import { Status } from "@/configs/src/types"
-import { GetRequest, Request } from "@/configs/src/types/models"
+import { GetRequest } from "@/configs/src/types/models"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { GetRequestService } from "@/services/getRequest.service"
 

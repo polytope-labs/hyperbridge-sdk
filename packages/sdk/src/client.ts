@@ -849,14 +849,17 @@ export class IndexerClient {
 
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+					// If Hyperbridge was the source, the request is already complete
+					if (request.source === self.config.hyperbridge.stateMachineId) {
+						return
+					}
 					// Get the latest state machine update for hyperbridge on the destination chain
 					let hyperbridgeFinalized: StateMachineUpdate | undefined
-					let index = request.source === self.config.hyperbridge.stateMachineId ? 0 : 1
 					while (!hyperbridgeFinalized) {
 						await sleep(self.config.pollInterval)
 						hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight({
 							statemachineId: self.config.hyperbridge.stateMachineId,
-							height: request.statuses[index].metadata.blockNumber,
+							height: request.statuses[1].metadata.blockNumber,
 							chain: request.dest,
 						})
 					}

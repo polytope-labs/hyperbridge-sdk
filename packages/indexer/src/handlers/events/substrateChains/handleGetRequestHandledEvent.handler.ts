@@ -2,7 +2,7 @@ import { SubstrateEvent } from "@subql/types"
 import { Status } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { GetRequest, Request } from "@/configs/src/types/models"
+import { GetRequest } from "@/configs/src/types/models"
 import { GetRequestService } from "@/services/getRequest.service"
 
 type EventData = {
