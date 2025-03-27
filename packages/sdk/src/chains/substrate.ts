@@ -352,24 +352,3 @@ function convertIPostRequestToCodec(request: IPostRequest): any {
 		},
 	}
 }
-
-/**
- * Converts an IGetRequest object to a codec representation.
- * @param {IGetRequest} request - The get request object.
- * @returns {any} The codec representation of the request.
- */
-function convertIGetRequestToCodec(request: IGetRequest): any {
-	return {
-		tag: "Get",
-		value: {
-			source: convertStateMachineIdToEnum(request.source),
-			dest: convertStateMachineIdToEnum(request.dest),
-			from: Array.from(hexToBytes(request.from)),
-			nonce: request.nonce,
-			timeoutTimestamp: request.timeoutTimestamp,
-			height: request.height,
-			keys: Array.from(hexToBytes(request.keys.map((key) => toHex(key)).join("") as `0x${string}`)),
-			context: Array.from(hexToBytes(toHex(request.context) as `0x${string}`)),
-		},
-	}
-}
