@@ -7,7 +7,7 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
-import { HexString, IPostRequest } from "@/types"
+import { HexString, IGetRequest, IPostRequest } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -247,6 +247,11 @@ export class SubstrateChain implements IChain {
 						},
 					},
 				]),
+			)
+			.with({ kind: "GetRequest" }, (message) =>
+				(() => {
+					throw new Error("GetRequest is not yet supported on Substrate chains")
+				})(),
 			)
 			.with({ kind: "TimeoutPostRequest" }, (message) =>
 				Vector(Message).enc([

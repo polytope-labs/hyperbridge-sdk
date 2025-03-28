@@ -278,6 +278,57 @@ export class EvmChain implements IChain {
 
 				return encoded
 			})
+			.with({ kind: "GetRequest" }, (request) => {
+				const mmrProof = MmrProof.dec(request.proof.proof)
+				const responses = zip(request.requests, mmrProof.leafIndexAndPos)
+					.map(([req, leafIndexAndPos]) => {
+						if (!req || !leafIndexAndPos) return
+						const [[, kIndex]] = mmrPositionToKIndex(
+							[leafIndexAndPos?.pos],
+							calculateMMRSize(mmrProof.leafCount),
+						)
+						return {
+							response: {
+								request: {
+									source: toHex(req.source),
+									dest: toHex(req.dest),
+									from: toHex(req.from),
+									nonce: req.nonce,
+									timeoutTimestamp: req.timeoutTimestamp,
+									keys: req.keys,
+									context: toHex(req.context),
+									height: req.height,
+								},
+								values: [],
+							},
+							index: leafIndexAndPos?.leafIndex!,
+							kIndex,
+						}
+					})
+					.filter((item) => !!item)
+
+				const proof = {
+					height: {
+						stateMachineId: BigInt(parseInt(request.proof.stateMachine.split("-")[1])),
+						height: request.proof.height,
+					},
+					multiproof: mmrProof.items.map((item) => bytesToHex(new Uint8Array(item))),
+					leafCount: mmrProof.leafCount,
+				}
+				const encoded = encodeFunctionData({
+					abi: HandlerV1.ABI,
+					functionName: "handleGetResponses",
+					args: [
+						this.params.host,
+						{
+							proof,
+							responses,
+						},
+					],
+				})
+
+				return encoded
+			})
 			.exhaustive()
 
 		return encoded

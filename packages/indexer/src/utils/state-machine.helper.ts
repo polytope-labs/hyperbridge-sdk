@@ -36,6 +36,18 @@ export const RequestMetadata = Struct({
 	claimed: bool,
 })
 
+export const ResponseMetadata = Struct({
+	offchain: Struct({
+		leaf_index: u64,
+		pos: u64,
+	}),
+	fee: Struct({
+		payer: H256,
+		fee: u128,
+	}),
+	claimed: bool,
+})
+
 // Define StateMachine
 const StateMachine = Enum({
 	Evm: u32,

@@ -10,6 +10,10 @@ export { handlePostResponseTimeoutHandledEvent } from "@/handlers/events/evmHost
 export { handleTransferEvent } from "@/handlers/events/erc6160ext20/transfer.event.handlers"
 export { handleStateMachineUpdatedEvent } from "@/handlers/events/evmHost/stateMachineUpdated.event.handler"
 
+export { handleGetRequestEvent } from "@/handlers/events/evmHost/getRequest.event.handler"
+export { handleGetRequestHandledEvent } from "@/handlers/events/evmHost/getRequestHandled.event.handler"
+export { handleGetRequestTimeoutHandled } from "@/handlers/events/evmHost/getRequestTimeoutHandled.event.handler"
+
 // HandlerV1 Handlers
 // export { handlePostRequestTransactionHandler } from '@/handlers/transactions/handlerV1/handlePostRequestTransactionHandler.handler';
 // export { handlePostResponseTransactionHandler } from '@/handlers/transactions/handlerV1/handlePostResponseTransactionHandler.handler';

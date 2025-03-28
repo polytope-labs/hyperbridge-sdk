@@ -27,6 +27,43 @@ export const REQUEST_STATUS = `
 }
 `
 
+export const GET_REQUEST_STATUS = `
+query GetRequestDetails($commitment: String!) {
+  getRequests(
+    filter: { commitment: { equalTo: $commitment } }
+  ) {
+    nodes {
+      id
+      source
+      dest
+      from
+      keys
+      nonce
+      height
+      context
+      timeoutTimestamp
+      fee
+      blockNumber
+      blockHash
+      transactionHash
+      blockTimestamp
+      status
+      chain
+      commitment
+      statusMetadata {
+        nodes {
+          status
+          chain
+          timestamp
+          blockNumber
+          blockHash
+          transactionHash
+        }
+      }
+    }
+  }
+}`
+
 export const STATE_MACHINE_UPDATES_BY_HEIGHT = `
 query StateMachineUpdatesByHeight($statemachineId: String!, $height: Int!, $chain: String!) {
 	stateMachineUpdateEvents(

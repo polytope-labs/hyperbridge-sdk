@@ -1,4 +1,4 @@
-import { HexString, IEvmConfig, IPostRequest, ISubstrateConfig } from "@/types"
+import { HexString, IEvmConfig, IGetRequest, IPostRequest, ISubstrateConfig } from "@/types"
 import { isEvmChain, isSubstrateChain } from "@/utils"
 import { EvmChain, SubstrateChain } from "@/chain"
 
@@ -8,7 +8,7 @@ export * from "@/chains/substrate"
 /**
  * Type representing an ISMP message.
  */
-export type IIsmpMessage = IRequestMessage | ITimeoutPostRequestMessage
+export type IIsmpMessage = IRequestMessage | ITimeoutPostRequestMessage | IGetRequestMessage
 
 export interface IRequestMessage {
 	/**
@@ -19,6 +19,25 @@ export interface IRequestMessage {
 	 * The requests to be posted.
 	 */
 	requests: IPostRequest[]
+	/**
+	 * The proof of the requests.
+	 */
+	proof: IProof
+	/**
+	 * The signer of the message.
+	 */
+	signer: HexString
+}
+
+export interface IGetRequestMessage {
+	/**
+	 * The kind of message.
+	 */
+	kind: "GetRequest"
+	/**
+	 * The requests to be posted.
+	 */
+	requests: IGetRequest[]
 	/**
 	 * The proof of the requests.
 	 */
