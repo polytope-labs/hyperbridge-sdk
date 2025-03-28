@@ -280,7 +280,7 @@ export class EvmChain implements IChain {
 			})
 			.with({ kind: "GetRequest" }, (request) => {
 				const mmrProof = MmrProof.dec(request.proof.proof)
-				const requests = zip(request.requests, mmrProof.leafIndexAndPos)
+				const responses = zip(request.requests, mmrProof.leafIndexAndPos)
 					.map(([req, leafIndexAndPos]) => {
 						if (!req || !leafIndexAndPos) return
 						const [[, kIndex]] = mmrPositionToKIndex(
@@ -288,15 +288,19 @@ export class EvmChain implements IChain {
 							calculateMMRSize(mmrProof.leafCount),
 						)
 						return {
-							request: {
-								source: toHex(req.source),
-								dest: toHex(req.dest),
-								from: req.from,
-								nonce: req.nonce,
-								timeoutTimestamp: req.timeoutTimestamp,
-								keys: req.keys,
-								context: req.context,
-							} as any,
+							response: {
+								request: {
+									source: toHex(req.source),
+									dest: toHex(req.dest),
+									from: toHex(req.from),
+									nonce: req.nonce,
+									timeoutTimestamp: req.timeoutTimestamp,
+									keys: req.keys,
+									context: toHex(req.context),
+									height: req.height,
+								},
+								values: [],
+							},
 							index: leafIndexAndPos?.leafIndex!,
 							kIndex,
 						}
@@ -313,12 +317,12 @@ export class EvmChain implements IChain {
 				}
 				const encoded = encodeFunctionData({
 					abi: HandlerV1.ABI,
-					functionName: "handleGetRequests", // This does not exist in the abi
+					functionName: "handleGetResponses",
 					args: [
 						this.params.host,
 						{
 							proof,
-							requests,
+							responses,
 						},
 					],
 				})
