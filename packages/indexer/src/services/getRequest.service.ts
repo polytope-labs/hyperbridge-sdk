@@ -209,9 +209,9 @@ export class GetRequestService {
 		)
 
 		// Concatenate all keys into a single bytes array
-		const keysEncoding = keys.reduce((acc, key) => {
+		const keysEncoding = Array.isArray(keys) ? keys.reduce((acc, key) => {
 			return acc + key
-		}, "")
+		}, "") : ""
 
 		// Convert strings to bytes
 		const sourceBytes = ethers.utils.toUtf8Bytes(source)
