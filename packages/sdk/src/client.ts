@@ -227,7 +227,7 @@ export class IndexerClient {
 		const self = this
 		const response = await self.withRetry(() =>
 			self.client.request<GetRequestResponse>(GET_REQUEST_STATUS, {
-				hash,
+				commitment: hash,
 			}),
 		)
 
