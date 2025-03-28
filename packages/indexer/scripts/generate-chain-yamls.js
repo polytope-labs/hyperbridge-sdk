@@ -208,6 +208,21 @@ dataSources:
           filter:
             topics:
               - 'PostResponseTimeoutHandled(bytes32,string)'
+          - kind: ethereum/LogHandler
+          handler: handleGetRequestEvent
+          filter:
+            topics:
+              - 'GetRequestEvent(string,string,address,bytes,uint256,uint256,uint256,bytes,uint256)'
+        - kind: ethereum/LogHandler
+          handler: handleGetRequestHandledEvent
+          filter:
+            topics:
+              - 'GetRequestHandled(bytes32,address)'
+        - kind: ethereum/LogHandler
+          handler: handleGetRequestTimeoutHandledEvent
+          filter:
+            topics:
+              - 'GetRequestTimeoutHandled(bytes32,string)'
   - kind: ethereum/Runtime
     startBlock: ${blockNumber}
     options:
