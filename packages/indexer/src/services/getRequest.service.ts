@@ -203,27 +203,22 @@ export class GetRequestService {
 				height: height.toString(),
 				timeoutTimestamp: timeoutTimestamp.toString(),
 				from,
-				keys,
+				keys,	
 				context,
 			})}`,
 		)
 
-		// Concatenate all keys into a single bytes array
-		const keysEncoding = keys.reduce((acc, key) => {
-			return acc + key
-		}, "")
+		
+		let keysEncoding = "0x".concat(keys.map((key) => key.slice(2)).join(""))
 
 		// Convert strings to bytes
 		const sourceBytes = ethers.utils.toUtf8Bytes(source)
 		const destBytes = ethers.utils.toUtf8Bytes(dest)
-		const fromBytes = ethers.utils.toUtf8Bytes(from)
-		const keysBytes = ethers.utils.toUtf8Bytes(keysEncoding)
-		const contextBytes = ethers.utils.toUtf8Bytes(context)
 
 		// Pack the data in the same order as the Solidity code
 		const hash = solidityKeccak256(
 			["bytes", "bytes", "uint64", "uint64", "uint64", "bytes", "bytes", "bytes"],
-			[sourceBytes, destBytes, nonce, height, timeoutTimestamp, fromBytes, keysBytes, contextBytes],
+			[sourceBytes, destBytes, nonce, height, timeoutTimestamp, from, keysEncoding, context],
 		)
 
 		return hash

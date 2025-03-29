@@ -227,7 +227,7 @@ export class IndexerClient {
 		const self = this
 		const response = await self.withRetry(() =>
 			self.client.request<GetRequestResponse>(GET_REQUEST_STATUS, {
-				hash,
+				commitment: hash,
 			}),
 		)
 
@@ -871,6 +871,7 @@ export class IndexerClient {
 					})
 
 					const proof = await hyperbridge.queryRequestsProof(
+						// @ts-ignore
 						[getRequestCommitment(request)],
 						request.dest,
 						BigInt(hyperbridgeFinalized.height),
@@ -884,6 +885,7 @@ export class IndexerClient {
 							proof,
 							height: BigInt(hyperbridgeFinalized.height),
 						},
+						// @ts-ignore
 						requests: [request],
 						signer: pad("0x"),
 					})

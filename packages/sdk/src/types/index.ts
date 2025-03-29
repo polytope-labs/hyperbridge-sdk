@@ -86,7 +86,7 @@ export interface IGetRequest {
 	keys: HexString[]
 	// Timestamp which this request expires in seconds.
 	timeoutTimestamp: bigint
-	context: string
+	context: HexString
 }
 
 export interface IPostResponse {

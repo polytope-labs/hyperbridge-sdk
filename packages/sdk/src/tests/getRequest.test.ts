@@ -9,6 +9,7 @@ import {
 	http,
 	parseAbi,
 	parseEventLogs,
+	toHex,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { bscTestnet, gnosisChiado } from "viem/chains"
@@ -21,7 +22,24 @@ import ERC6160 from "@/abis/erc6160"
 import PING_MODULE from "@/abis/pingModule"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { EvmChain, SubstrateChain } from "@/chain"
+import { ApiPromise, WsProvider } from "@polkadot/api"
+
+
+interface StateMachineIdTest {
+	// Only for testing purposes
+	stateId: { Evm: number }
+	consensusStateId: HexString
+}
+
+async function latestStateMachineHeight(wsUrl: string, stateMachineId: StateMachineIdTest): Promise<bigint> {
+	const api = await ApiPromise.create({ provider: new WsProvider(wsUrl) });
+
+	// Query with the corrected argument
+	const latestHeight = await api.query.ismp.latestStateMachineHeight(stateMachineId)
+	console.log("latestStateMachineHeight:", BigInt(latestHeight.toString()))
+
+	return BigInt(latestHeight.toString())
+}
 
 describe("GetRequest", () => {
 	let indexer: IndexerClient
@@ -56,6 +74,11 @@ describe("GetRequest", () => {
 			await setUp()
 		console.log("\n\nSending Get Request\n\n")
 
+		const latestHeight = await latestStateMachineHeight(process.env.HYPERBRIDGE_GARGANTUA!, {
+			stateId: { Evm: 10200 },
+			consensusStateId: toHex("GNO0"),
+		})
+
 		const hash = await bscPing.write.dispatch([
 			{
 				source: await bscIsmpHost.read.host(),
@@ -64,9 +87,9 @@ describe("GetRequest", () => {
 				from: process.env.PING_MODULE_ADDRESS! as `0x${string}`,
 				timeoutTimestamp: BigInt(Math.floor(Date.now() / 1000) + 60 * 60),
 				keys: [
-					`0x${process.env.PING_MODULE_ADDRESS!.slice(2)}0000000000000000000000000000000000000000000000000000000000000001`,
+					`0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35`,
 				],
-				height: await gnosisChiadoClient.getBlockNumber(),
+				height: latestHeight,
 				context: "0x",
 			},
 		])

@@ -16,8 +16,9 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	if (!event.args) return
 
 	const { blockNumber, transactionHash, args, block } = event
-	let { source, dest, from, keys, nonce, height, context, timeoutTimestamp, fee } = args
+	let { source, dest, from, nonce, height, context, timeoutTimestamp, fee } = args
 	let { hash, timestamp } = block
+	let keys = args[3]
 
 	const chain: string = getHostStateMachine(chainId)
 
@@ -75,7 +76,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		commitment: get_request_commitment,
 	})
 
-	GetRequestStatusMetadata.create({
+	const getRequestStatusMetadata = GetRequestStatusMetadata.create({
 		id: `${get_request_commitment}.${Status.SOURCE}`,
 		requestId: get_request_commitment,
 		status: Status.SOURCE,
@@ -86,4 +87,6 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		transactionHash,
 		createdAt: new Date(Number(timestamp)),
 	})
+
+	await getRequestStatusMetadata.save()
 }

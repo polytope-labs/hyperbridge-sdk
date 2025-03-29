@@ -62,9 +62,7 @@ export function postRequestCommitment(post: IPostRequest): HexString {
  * @returns The commitment hash.
  */
 export function getRequestCommitment(get: IGetRequest): HexString {
-	const keysEncoding = get.keys.reduce((acc, key) => {
-		return acc + key
-	}, "")
+	let keysEncoding = "0x".concat(get.keys.map((key) => key.slice(2)).join(""))
 	return keccak256(
 		encodePacked(
 			["bytes", "bytes", "uint64", "uint64", "uint64", "bytes", "bytes", "bytes"],
@@ -74,9 +72,9 @@ export function getRequestCommitment(get: IGetRequest): HexString {
 				get.nonce,
 				get.height,
 				get.timeoutTimestamp,
-				toHex(get.from),
-				toHex(keysEncoding),
-				toHex(get.context),
+				get.from,
+				keysEncoding as HexString,
+				get.context,
 			],
 		),
 	)
