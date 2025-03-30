@@ -1,4 +1,6 @@
 import { HexString, IGetRequest, IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
+import { ApiPromise } from "@polkadot/api"
+import { WsProvider } from "@polkadot/api"
 import { encodePacked, keccak256, toHex } from "viem"
 
 export * from "./utils/mmr"
@@ -133,4 +135,21 @@ export const COMBINED_STATUS_WEIGHTS: Record<RequestStatus | TimeoutStatus, numb
 	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 7,
 	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
 	[TimeoutStatus.TIMED_OUT]: 9,
+}
+
+
+interface StateMachineId {
+	// Only for testing purposes
+	stateId: { Evm: number }
+	consensusStateId: HexString
+}
+
+export async function latestStateMachineHeight(wsUrl: string, stateMachineId: StateMachineId): Promise<bigint> {
+	const api = await ApiPromise.create({ provider: new WsProvider(wsUrl) });
+
+	// Query with the corrected argument
+	const latestHeight = await api.query.ismp.latestStateMachineHeight(stateMachineId)
+	console.log("latestStateMachineHeight:", BigInt(latestHeight.toString()))
+
+	return BigInt(latestHeight.toString())
 }

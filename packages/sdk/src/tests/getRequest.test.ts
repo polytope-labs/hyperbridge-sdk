@@ -22,24 +22,7 @@ import ERC6160 from "@/abis/erc6160"
 import PING_MODULE from "@/abis/pingModule"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { ApiPromise, WsProvider } from "@polkadot/api"
-
-
-interface StateMachineIdTest {
-	// Only for testing purposes
-	stateId: { Evm: number }
-	consensusStateId: HexString
-}
-
-async function latestStateMachineHeight(wsUrl: string, stateMachineId: StateMachineIdTest): Promise<bigint> {
-	const api = await ApiPromise.create({ provider: new WsProvider(wsUrl) });
-
-	// Query with the corrected argument
-	const latestHeight = await api.query.ismp.latestStateMachineHeight(stateMachineId)
-	console.log("latestStateMachineHeight:", BigInt(latestHeight.toString()))
-
-	return BigInt(latestHeight.toString())
-}
+import { latestStateMachineHeight } from "@/utils"
 
 describe("GetRequest", () => {
 	let indexer: IndexerClient
@@ -69,7 +52,7 @@ describe("GetRequest", () => {
 		})
 	})
 
-	it.only("should successfully stream and query the request status", async () => {
+	it("should successfully stream and query the request status", async () => {
 		const { bscTestnetClient, gnosisChiadoHandler, bscPing, gnosisChiadoClient, gnosisChiadoHost, bscIsmpHost } =
 			await setUp()
 		console.log("\n\nSending Get Request\n\n")
@@ -86,9 +69,7 @@ describe("GetRequest", () => {
 				nonce: await bscIsmpHost.read.nonce(),
 				from: process.env.PING_MODULE_ADDRESS! as `0x${string}`,
 				timeoutTimestamp: BigInt(Math.floor(Date.now() / 1000) + 60 * 60),
-				keys: [
-					`0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35`,
-				],
+				keys: [`0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35`],
 				height: latestHeight,
 				context: "0x",
 			},

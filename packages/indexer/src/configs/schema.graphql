@@ -686,3 +686,104 @@ type GetRequestStatusMetadata @entity {
 	"""
 	createdAt: Date! @index
 }
+
+
+"""
+A Hyperbridge Response for a Get Request
+"""
+type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
+	"""
+	Unique identifier of the GetResponse (This is the response commitment)
+	"""
+	id: ID!
+
+	"""
+	The chain on which the response was made
+	"""
+	chain: String! @index
+
+	"""
+	The commitment of the response
+	"""
+	commitment: String! @index
+
+	"""
+	The response message
+	"""
+	response_message: [String!]!
+
+	"""
+	The Timestamp at which this response expires in seconds
+	"""
+	responseTimeoutTimestamp: BigInt
+
+	"""
+	Status of the response
+	"""
+	status: Status!
+
+	"""
+	The request that triggered this response
+	"""
+	request: GetRequest
+
+	"""
+	Metatdata about the response's progression through different statuses
+	"""
+	statusMetadata: [GetResponseStatusMetadata]! @derivedFrom(field: "response")
+
+	"""
+	The timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}
+
+"""
+Metadata about the status of a Get Response
+"""
+type GetResponseStatusMetadata @entity {
+	"""
+	The ID of the GetResponseStatusMetadata
+	"""
+	id: ID!
+
+	"""
+	The status of the response
+	"""
+	status: Status!
+
+	"""
+	The chain on which the response occured
+	"""
+	chain: String!
+
+	"""
+	The timestamp of the event
+	"""
+	timestamp: BigInt!
+
+	"""
+	The number of the block in which the event occured
+	"""
+	blockNumber: String!
+
+	"""
+	The hash of the block in which the event occured
+	"""
+	blockHash: String!
+
+	"""
+	The hash of the transaction in which the event occured
+	"""
+	transactionHash: String!
+
+	"""
+	The response that owns this status change
+	"""
+	response: GetResponse!
+
+	"""
+	The timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}

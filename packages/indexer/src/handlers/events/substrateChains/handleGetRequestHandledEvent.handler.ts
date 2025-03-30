@@ -52,18 +52,6 @@ export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEven
 	logger.info(`Updating Hyperbridge chain stats for ${host}`)
 	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
 
-	logger.info(
-		`Handling ISMP GetRequestHandled Event: ${JSON.stringify({
-			commitment: eventData.commitment.toString(),
-			chain: host,
-			blockNumber: blockNumber,
-			blockHash: blockHash,
-			blockTimestamp: timestamp,
-			status,
-			transactionHash: extrinsic?.extrinsic.hash || "",
-		})}`,
-	)
-
 	await GetRequestService.updateStatus({
 		commitment: eventData.commitment.toString(),
 		chain: host,

@@ -1,16 +1,17 @@
 import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
 import { bytesToHex, hexToBytes, toHex } from "viem"
-
-import { ResponseService } from "@/services/response.service"
-import { ResponseStatusMetadata, Status } from "@/configs/src/types"
+import { GetResponseStatusMetadata, Status } from "@/configs/src/types"
 import { formatChain, getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
 import { ResponseMetadata } from "@/utils/state-machine.helper"
 import { replaceWebsocketWithHttp } from "./handleRequestEvent.handler"
+import { Get } from "@/utils/substrate.helpers"
+import { GetResponseService } from "@/services/getResponse.service"
 
 export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw Ismp.Response Event on ${getHostStateMachine(chainId)}`)
+	const host = getHostStateMachine(chainId)
+	logger.info(`Saw Ismp.Response Event on ${host}`)
 
 	if (!event.event.data) return
 
@@ -29,22 +30,15 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 	const sourceId = formatChain(source_chain.toString())
 	const destId = formatChain(dest_chain.toString())
 
+	logger.info(`Source ID: ${sourceId}`)
+	logger.info(`Dest ID: ${destId}`)
+
 	logger.info(
 		`Chain Ids: ${JSON.stringify({
 			sourceId,
 			destId,
 		})}`,
 	)
-
-	if (!isSubstrateChain(sourceId)) {
-		logger.error(`Skipping hyperbridge aggregated response`)
-		return
-	}
-
-	if (!SUBSTRATE_RPC_URL[sourceId]) {
-		logger.error(`No WS URL found for chain ${sourceId}`)
-		return
-	}
 
 	const method = {
 		id: 1,
@@ -53,7 +47,7 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 		params: [[{ commitment: commitment.toString() }]],
 	}
 
-	const response = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
+	const response = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[host]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -63,23 +57,19 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 	})
 	const data = await response.json()
 
+	logger.info(`Response from calling ismp_queryResponses: ${JSON.stringify(data)}`)
+
 	if (data.result.length === 0) {
 		logger.error(`No responses found for commitment ${commitment.toString()}`)
 		return
 	}
 
-	const postResponse = data.result[0].Post
+	const getResponse = data.result[0].Get as Get
 
-	if (!postResponse) {
+	if (!getResponse) {
 		logger.error(`Response not found for commitment ${commitment.toString()}`)
 		return
 	}
-
-	const {
-		response: response_message,
-		request: request_message,
-		timeoutTimestamp: responseTimeoutTimestamp,
-	} = postResponse
 	const prefix = toHex(":child_storage:default:ISMP")
 	const key = bytesToHex(
 		new Uint8Array([
@@ -88,7 +78,7 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 		]),
 	)
 
-	const metadataResponse = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[sourceId]), {
+	const metadataResponse = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[host]), {
 		method: "POST",
 		headers: {
 			accept: "application/json",
@@ -109,32 +99,28 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 		fee = BigInt(Number(metadata.fee.fee))
 	}
 
-	const host = getHostStateMachine(chainId)
-	await ResponseService.findOrCreate({
+	await GetResponseService.findOrCreate({
 		chain: host,
 		commitment: commitment.toString(),
-		request: request_message,
-		response_message,
-		responseTimeoutTimestamp: BigInt(Number(responseTimeoutTimestamp)),
+		request: req_commitment.toString(),
+		response_message: getResponse.values.map((value) => value.value),
+		responseTimeoutTimestamp: BigInt(Number(getResponse.get.timeoutTimestamp)),
 		status: Status.SOURCE,
 		blockNumber: event.block.block.header.number.toString(),
 		blockHash: event.block.block.header.hash.toString(),
 		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-		blockTimestamp: BigInt(event.block?.timestamp!.getTime()),
+		blockTimestamp: BigInt(event.block.timestamp!.getTime()),
 	})
 
-	// Always create a new status metadata entry
-	let responseStatusMetadata = ResponseStatusMetadata.create({
-		id: `${commitment.toHex()}.${Status.SOURCE}`,
-		responseId: commitment.toHex(),
+	await GetResponseStatusMetadata.create({
+		id: `${commitment.toString()}.${Status.SOURCE}`,
+		responseId: commitment.toString(),
 		status: Status.SOURCE,
 		chain: host,
-		timestamp: BigInt(event.block?.timestamp!.getTime()),
+		timestamp: BigInt(event.block.timestamp!.getTime()),
 		blockNumber: event.block.block.header.number.toString(),
 		blockHash: event.block.block.header.hash.toString(),
 		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-		createdAt: new Date(Number(event.block?.timestamp!.getTime())),
+		createdAt: new Date(Number(event.block.timestamp!.getTime())),
 	})
-
-	await responseStatusMetadata.save()
 }

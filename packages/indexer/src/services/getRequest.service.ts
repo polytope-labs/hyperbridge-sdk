@@ -203,12 +203,11 @@ export class GetRequestService {
 				height: height.toString(),
 				timeoutTimestamp: timeoutTimestamp.toString(),
 				from,
-				keys,	
+				keys,
 				context,
 			})}`,
 		)
 
-		
 		let keysEncoding = "0x".concat(keys.map((key) => key.slice(2)).join(""))
 
 		// Convert strings to bytes

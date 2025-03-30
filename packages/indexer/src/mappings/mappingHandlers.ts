@@ -27,3 +27,5 @@ export { handleSubstrateResponseEvent } from "@/handlers/events/substrateChains/
 export { handleSubstratePostRequestHandledEvent } from "@/handlers/events/substrateChains/handlePostRequestHandledEvent.handler"
 export { handleSubstratePostResponseHandledEvent } from "@/handlers/events/substrateChains/handlePostResponseHandledEvent.handler"
 export { handleSubstrateAssetTeleportedEvent } from "@/handlers/events/substrateChains/handleAssetTeleportedEvent.handler"
+export { handleSubstrateGetRequestHandledEvent } from "@/handlers/events/substrateChains/handleGetRequestHandledEvent.handler"
+export { handleSubstrateGetRequestTimeoutHandledEvent } from "@/handlers/events/substrateChains/handleGetRequestTimeoutHandledEvent.handler"
