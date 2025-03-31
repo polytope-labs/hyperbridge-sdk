@@ -119,7 +119,7 @@ describe("GetRequest", () => {
 						data: status.metadata.calldata,
 					})
 
-					expect(functionName).toBe("handlePostRequests")
+					expect(functionName).toBe("handlePostResponses")
 
 					try {
 						const hash = await gnosisChiadoHandler.write.handlePostRequests(args as any)
