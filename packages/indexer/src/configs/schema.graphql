@@ -698,39 +698,25 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	id: ID!
 
 	"""
-	The chain on which the response was made
-	"""
-	chain: String! @index
-
-	"""
 	The commitment of the response
 	"""
 	commitment: String! @index
 
 	"""
-	The response message
+	The hex-encoded response message
 	"""
-	response_message: [String!]!
+	response_message: String!
 
 	"""
 	The Timestamp at which this response expires in seconds
 	"""
 	responseTimeoutTimestamp: BigInt
 
-	"""
-	Status of the response
-	"""
-	status: Status!
 
 	"""
 	The request that triggered this response
 	"""
 	request: GetRequest
-
-	"""
-	Metatdata about the response's progression through different statuses
-	"""
-	statusMetadata: [GetResponseStatusMetadata]! @derivedFrom(field: "response")
 
 	"""
 	The timestamp when this record was created
