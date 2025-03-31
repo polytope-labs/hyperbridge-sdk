@@ -1,6 +1,6 @@
 import { type ConsolaInstance, createConsola, LogLevels } from "consola"
 import { GraphQLClient } from "graphql-request"
-import { maxBy, omit } from "lodash"
+import { maxBy } from "lodash"
 import { pad } from "viem"
 
 // @ts-ignore
@@ -215,7 +215,7 @@ export class IndexerClient {
 		const { statusMetadata, ...first_node } = first_record
 
 		logger.trace("Statuses found")
-		const statuses = statusMetadata.nodes.map((item) => ({
+		const statuses = structuredClone(statusMetadata.nodes).map((item) => ({
 			status: item.status as any,
 			metadata: {
 				blockHash: item.blockHash,
@@ -225,6 +225,7 @@ export class IndexerClient {
 		}))
 
 		logger.trace("Sorting statuses", statuses)
+
 		// sort by ascending order
 		const sorted = statuses.sort(
 			(a, b) =>
@@ -431,12 +432,18 @@ export class IndexerClient {
 		// request not timed out
 		if (reciept || request.timeoutTimestamp > destTimestamp) return request
 
-		request.statuses.push({
-			status: TimeoutStatus.PENDING_TIMEOUT,
-			metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
+		const is_finished = request.statuses.find((item) => item.status === RequestStatus.DESTINATION)
+		if (!is_finished) {
+			request.statuses.push({
+				status: TimeoutStatus.PENDING_TIMEOUT,
+				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
+			})
+		}
+
+		const delivered = request.statuses.find((item) => {
+			return item.status === RequestStatus.HYPERBRIDGE_DELIVERED
 		})
 
-		const delivered = request.statuses.find((item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED)
 		let hyperbridgeFinalized: StateMachineUpdate | undefined
 		if (!delivered) {
 			// either the request was never delivered to hyperbridge
@@ -1025,9 +1032,11 @@ export class IndexerClient {
 	 * }
 	 */
 	async *postRequestTimeoutStream(hash: HexString): AsyncGenerator<PostRequestTimeoutStatus, void> {
+		const logger = this.logger.withTag("PostRequestTimeoutStream")
 		const request = await this.queryRequest(hash)
 		if (!request) throw new Error("Request not found")
 
+		logger.trace("Reading destination chain")
 		const destChain = await getChain(this.config.dest)
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
@@ -1048,7 +1057,12 @@ export class IndexerClient {
 			(item) => TIMEOUT_STATUS_WEIGHTS[item as TimeoutStatus],
 		)
 
-		if (!latest_request) return
+		logger.trace(`Reading last lastest request: ${latest_request}`)
+
+		if (!latest_request) {
+			logger.trace("Ending stream. Latest request not found")
+			return
+		}
 
 		// we're always interested in the latest status
 		status = latest_request
