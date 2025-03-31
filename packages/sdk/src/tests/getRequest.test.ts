@@ -119,10 +119,10 @@ describe("GetRequest", () => {
 						data: status.metadata.calldata,
 					})
 
-					expect(functionName).toBe("handlePostResponses")
+					expect(functionName).toBe("handleGetResponses")
 
 					try {
-						const hash = await gnosisChiadoHandler.write.handlePostRequests(args as any)
+						const hash = await gnosisChiadoHandler.write.handleGetResponses(args as any)
 						await gnosisChiadoClient.waitForTransactionReceipt({
 							hash,
 							confirmations: 1,
