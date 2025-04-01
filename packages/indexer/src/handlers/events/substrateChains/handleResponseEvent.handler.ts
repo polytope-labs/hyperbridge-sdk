@@ -64,63 +64,34 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 		return
 	}
 
-	const getResponse = data.result[0].Get as Get
+	if (data.result[0].Get) {
+		const getResponse = data.result[0].Get as Get
 
-	if (!getResponse) {
-		logger.error(`Response not found for commitment ${commitment.toString()}`)
-		return
-	}
-	const prefix = toHex(":child_storage:default:ISMP")
-	const key = bytesToHex(
-		new Uint8Array([
-			...new TextEncoder().encode("ResponseCommitments"),
-			...hexToBytes(commitment.toString() as any),
-		]),
-	)
+		await GetResponseService.findOrCreate({
+			chain: host,
+			commitment: commitment.toString(),
+			request: req_commitment.toString(),
+			response_message: getResponse.values.map((value) => value.value).join(""),
+			responseTimeoutTimestamp: BigInt(Number(getResponse.get.timeoutTimestamp)),
+			status: Status.SOURCE,
+			blockNumber: event.block.block.header.number.toString(),
+			blockHash: event.block.block.header.hash.toString(),
+			transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
+			blockTimestamp: BigInt(event.block.timestamp!.getTime()),
+		})
 
-	const metadataResponse = await fetch(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[host]), {
-		method: "POST",
-		headers: {
-			accept: "application/json",
-			"content-type": "application/json",
-		},
-		body: JSON.stringify({
-			id: 1,
-			jsonrpc: "2.0",
-			method: "childstate_getStorage",
-			params: [prefix, key],
-		}),
-	})
-	const storageValue = (await metadataResponse.json()).result as `0x${string}` | undefined
-
-	let fee = BigInt(0)
-	if (typeof storageValue === "string") {
-		const metadata = ResponseMetadata.dec(hexToBytes(storageValue))
-		fee = BigInt(Number(metadata.fee.fee))
+		await GetResponseStatusMetadata.create({
+			id: `${commitment.toString()}.${Status.SOURCE}`,
+			responseId: commitment.toString(),
+			status: Status.SOURCE,
+			chain: host,
+			timestamp: BigInt(event.block.timestamp!.getTime()),
+			blockNumber: event.block.block.header.number.toString(),
+			blockHash: event.block.block.header.hash.toString(),
+			transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
+			createdAt: new Date(Number(event.block.timestamp!.getTime())),
+		})
 	}
 
-	await GetResponseService.findOrCreate({
-		chain: host,
-		commitment: commitment.toString(),
-		request: req_commitment.toString(),
-		response_message: getResponse.values.map((value) => value.value),
-		responseTimeoutTimestamp: BigInt(Number(getResponse.get.timeoutTimestamp)),
-		status: Status.SOURCE,
-		blockNumber: event.block.block.header.number.toString(),
-		blockHash: event.block.block.header.hash.toString(),
-		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-		blockTimestamp: BigInt(event.block.timestamp!.getTime()),
-	})
-
-	await GetResponseStatusMetadata.create({
-		id: `${commitment.toString()}.${Status.SOURCE}`,
-		responseId: commitment.toString(),
-		status: Status.SOURCE,
-		chain: host,
-		timestamp: BigInt(event.block.timestamp!.getTime()),
-		blockNumber: event.block.block.header.number.toString(),
-		blockHash: event.block.block.header.hash.toString(),
-		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-		createdAt: new Date(Number(event.block.timestamp!.getTime())),
-	})
+	// TODO: handle post response
 }

@@ -142,3 +142,14 @@ query AssetTeleportedByParams($from: String!, $to: String!, $dest: String!, $blo
   }
 }
 `
+
+export const GET_RESPONSE_COMMITMENT_BY_REQUEST_ID = `
+query GetResponseCommitmentByRequestId($requestId: ID!) {
+  getResponses(filter: {requestId: {equalTo: $requestId}}) {
+    nodes {
+      id
+      commitment
+    }
+  }
+}
+`

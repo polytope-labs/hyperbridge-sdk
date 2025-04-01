@@ -4,7 +4,7 @@ import { GetResponse, GetResponseStatusMetadata, Status } from "@/configs/src/ty
 export interface ICreateGetResponseArgs {
 	chain: string
 	commitment: string
-	response_message?: string[] | undefined
+	response_message?: string
 	responseTimeoutTimestamp?: bigint | undefined
 	request?: string | undefined
 	status: Status
@@ -58,8 +58,7 @@ export class GetResponseService {
 				commitment,
 				chain,
 				requestId: request,
-				response_message: response_message || [],
-				status,
+				response_message: response_message || "",
 				responseTimeoutTimestamp,
 				createdAt: new Date(Number(blockTimestamp)),
 			})

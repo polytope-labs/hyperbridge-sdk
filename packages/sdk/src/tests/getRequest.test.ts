@@ -53,8 +53,7 @@ describe("GetRequest", () => {
 	})
 
 	it("should successfully stream and query the request status", async () => {
-		const { bscTestnetClient, gnosisChiadoHandler, bscPing, gnosisChiadoClient, gnosisChiadoHost, bscIsmpHost } =
-			await setUp()
+		const { bscTestnetClient, bscPing, gnosisChiadoHost, bscIsmpHost, bscHandler } = await setUp()
 		console.log("\n\nSending Get Request\n\n")
 
 		const latestHeight = await latestStateMachineHeight(process.env.HYPERBRIDGE_GARGANTUA!, {
@@ -112,7 +111,7 @@ describe("GetRequest", () => {
 				}
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					console.log(
-						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+						`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
 					)
 					const { args, functionName } = decodeFunctionData({
 						abi: HANDLER.ABI,
@@ -122,13 +121,13 @@ describe("GetRequest", () => {
 					expect(functionName).toBe("handleGetResponses")
 
 					try {
-						const hash = await gnosisChiadoHandler.write.handleGetResponses(args as any)
-						await gnosisChiadoClient.waitForTransactionReceipt({
+						const hash = await bscHandler.write.handleGetResponses(args as any)
+						await bscTestnetClient.waitForTransactionReceipt({
 							hash,
 							confirmations: 1,
 						})
 
-						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
+						console.log(`Transaction submitted: https://testnet.bscscan.com/tx/${hash}`)
 					} catch (e) {
 						console.error("Error self-relaying: ", e)
 					}

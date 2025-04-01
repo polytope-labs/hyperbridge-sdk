@@ -213,7 +213,7 @@ export interface GetRequestResponse {
 			nonce: bigint
 			height: bigint
 			keys: HexString[]
-			context: string
+			context: HexString
 			timeoutTimestamp: bigint
 			statusMetadata: {
 				nodes: Array<{
@@ -331,9 +331,18 @@ export interface GetRequestWithStatus {
 	keys: HexString[]
 	nonce: bigint
 	height: bigint
-	context: string
+	context: HexString
 	timeoutTimestamp: bigint
 	statuses: Array<RequestStatusWithMetadata>
+}
+
+export interface GetResponseCommitmentByRequestIdResponse {
+	getResponses: {
+		nodes: Array<{
+			id: string
+			commitment: string
+		}>
+	}
 }
 
 export interface RequestCommitment {

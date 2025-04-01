@@ -21,6 +21,7 @@ import {
 	AssetTeleportedResponse,
 	GetRequestWithStatus,
 	GetRequestResponse,
+	GetResponseCommitmentByRequestIdResponse,
 } from "@/types"
 import {
 	REQUEST_STATUS,
@@ -28,6 +29,7 @@ import {
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 	ASSET_TELEPORTED_BY_PARAMS,
 	GET_REQUEST_STATUS,
+	GET_RESPONSE_COMMITMENT_BY_REQUEST_ID,
 } from "@/queries"
 import {
 	COMBINED_STATUS_WEIGHTS,
@@ -257,6 +259,28 @@ export class IndexerClient {
 		delete request.statusMetadata
 
 		return request
+	}
+
+	/**
+	 * Queries the response associated with a specific request ID and returns its commitment
+	 * @param requestId - The ID of the request to find the associated response for
+	 * @returns The response commitment associated with the given request ID, or undefined if not found
+	 */
+	async queryResponseCommitmentByRequestId(requestId: string): Promise<string | undefined> {
+		const self = this
+		const response = await self.withRetry(() =>
+			self.client.request<GetResponseCommitmentByRequestIdResponse>(GET_RESPONSE_COMMITMENT_BY_REQUEST_ID, {
+				requestId,
+			}),
+		)
+
+		// If no responses are found or nodes array is empty, return undefined
+		if (!response.getResponses.nodes.length) return undefined
+
+		// Return just the first response
+		const firstResponse = response.getResponses.nodes[0]
+
+		return firstResponse.commitment
 	}
 
 	/**
@@ -860,24 +884,24 @@ export class IndexerClient {
 						hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight({
 							statemachineId: self.config.hyperbridge.stateMachineId,
 							height: request.statuses[1].metadata.blockNumber,
-							chain: request.dest,
+							chain: request.source,
 						})
 					}
 
-					const destChain = await getChain(self.config.dest)
+					const sourceChain = await getChain(self.config.source)
 					const hyperbridge = await getChain({
 						...self.config.hyperbridge,
 						hasher: "Keccak",
 					})
 
+					let responseCommitment = (await self.queryResponseCommitmentByRequestId(hash)) || "0x"
 					const proof = await hyperbridge.queryRequestsProof(
-						// @ts-ignore
-						[getRequestCommitment(request)],
-						request.dest,
+						[responseCommitment as HexString],
+						request.source,
 						BigInt(hyperbridgeFinalized.height),
 					)
 
-					const calldata = destChain.encode({
+					const calldata = sourceChain.encode({
 						kind: "GetRequest",
 						proof: {
 							stateMachine: self.config.hyperbridge.stateMachineId,
@@ -885,7 +909,6 @@ export class IndexerClient {
 							proof,
 							height: BigInt(hyperbridgeFinalized.height),
 						},
-						// @ts-ignore
 						requests: [request],
 						signer: pad("0x"),
 					})

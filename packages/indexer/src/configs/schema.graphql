@@ -687,7 +687,6 @@ type GetRequestStatusMetadata @entity {
 	createdAt: Date! @index
 }
 
-
 """
 A Hyperbridge Response for a Get Request
 """
@@ -703,6 +702,11 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	commitment: String! @index
 
 	"""
+	The chain on which the response was made
+	"""
+	chain: String! @index
+
+	"""
 	The hex-encoded response message
 	"""
 	response_message: String!
@@ -711,7 +715,6 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	The Timestamp at which this response expires in seconds
 	"""
 	responseTimeoutTimestamp: BigInt
-
 
 	"""
 	The request that triggered this response
