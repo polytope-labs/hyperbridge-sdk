@@ -21,7 +21,7 @@ import {
 	AssetTeleportedResponse,
 	GetRequestWithStatus,
 	GetRequestResponse,
-	GetResponseCommitmentByRequestIdResponse,
+	GetResponseByRequestIdResponse,
 	ResponseCommitmentWithValues,
 } from "@/types"
 import {
@@ -30,7 +30,7 @@ import {
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 	ASSET_TELEPORTED_BY_PARAMS,
 	GET_REQUEST_STATUS,
-	GET_RESPONSE_COMMITMENT_BY_REQUEST_ID,
+	GET_RESPONSE_BY_REQUEST_ID,
 } from "@/queries"
 import {
 	COMBINED_STATUS_WEIGHTS,
@@ -270,7 +270,7 @@ export class IndexerClient {
 	async queryResponseByRequestId(requestId: string): Promise<ResponseCommitmentWithValues | undefined> {
 		const self = this
 		const response = await self.withRetry(() =>
-			self.client.request<GetResponseCommitmentByRequestIdResponse>(GET_RESPONSE_COMMITMENT_BY_REQUEST_ID, {
+			self.client.request<GetResponseByRequestIdResponse>(GET_RESPONSE_BY_REQUEST_ID, {
 				requestId,
 			}),
 		)

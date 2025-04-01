@@ -92,10 +92,9 @@ describe("GetRequest", () => {
 		const request = event.args
 		console.log("GetRequestEvent", { request })
 		const commitment = getRequestCommitment({ ...request, keys: [...request.keys] })
-		console.log(commitment)
+		console.log("Get Request Commitment: ", commitment)
 
 		for await (const status of indexer.getRequestStatusStream(commitment)) {
-			console.log("query done")
 			switch (status.status) {
 				case RequestStatus.SOURCE_FINALIZED: {
 					console.log(
@@ -143,10 +142,8 @@ describe("GetRequest", () => {
 			}
 		}
 
-		// TODO: Update this
-		const req = await indexer.queryRequestWithStatus(commitment)
-		console.log(JSON.stringify(req, null, 4))
-		expect(req?.statuses.length).toBe(5)
+		const req = await indexer.queryGetRequest(commitment)
+		expect(req?.statuses.length).toBe(3)
 	}, 1_000_000)
 })
 

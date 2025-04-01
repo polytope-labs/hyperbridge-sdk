@@ -1,4 +1,4 @@
-import { HexString, IEvmConfig, IGetRequest, IPostRequest, ISubstrateConfig } from "@/types"
+import { GetResponseStorageValues, HexString, IEvmConfig, IGetRequest, IPostRequest, ISubstrateConfig } from "@/types"
 import { isEvmChain, isSubstrateChain } from "@/utils"
 import { EvmChain, SubstrateChain } from "@/chain"
 
@@ -48,11 +48,6 @@ export interface IGetRequestMessage {
 	signer: HexString
 }
 
-export interface StorageValues {
-	key: HexString
-	value: HexString
-}
-
 export interface IGetResponse {
 	/**
 	 * The request that triggered this response.
@@ -61,7 +56,7 @@ export interface IGetResponse {
 	/**
 	 * The response message.
 	 */
-	values: StorageValues[]
+	values: GetResponseStorageValues[]
 }
 
 export interface IGetResponseMessage {

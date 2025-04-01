@@ -1,13 +1,11 @@
 import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
-import { bytesToHex, hexToBytes, toHex } from "viem"
-import { GetResponseStatusMetadata, Status } from "@/configs/src/types"
-import { formatChain, getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
+import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
-import { ResponseMetadata } from "@/utils/state-machine.helper"
 import { replaceWebsocketWithHttp } from "./handleRequestEvent.handler"
 import { Get } from "@/utils/substrate.helpers"
 import { GetResponseService } from "@/services/getResponse.service"
+import { Status } from "@/configs/src/types"
 
 export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promise<void> {
 	const host = getHostStateMachine(chainId)
@@ -29,9 +27,6 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 
 	const sourceId = formatChain(source_chain.toString())
 	const destId = formatChain(dest_chain.toString())
-
-	logger.info(`Source ID: ${sourceId}`)
-	logger.info(`Dest ID: ${destId}`)
 
 	logger.info(
 		`Chain Ids: ${JSON.stringify({
@@ -64,22 +59,15 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 		return
 	}
 
+	// Only handling get response here as we not using post response anywhere.
 	if (data.result[0].Get) {
 		const getResponse = data.result[0].Get as Get
-
-		let values: string[] = []
-
-		for (const value of getResponse.values) {
-			values.push(value.value)
-		}
-
-		logger.info(`Values Array: ${JSON.stringify(values)}`)
 
 		await GetResponseService.findOrCreate({
 			chain: host,
 			commitment: commitment.toString(),
 			request: req_commitment.toString(),
-			response_message: values,
+			response_message: getResponse.values.map((value) => value.value),
 			responseTimeoutTimestamp: BigInt(Number(getResponse.get.timeoutTimestamp)),
 			status: Status.SOURCE,
 			blockNumber: event.block.block.header.number.toString(),
@@ -87,19 +75,5 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 			transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
 			blockTimestamp: BigInt(event.block.timestamp!.getTime()),
 		})
-
-		await GetResponseStatusMetadata.create({
-			id: `${commitment.toString()}.${Status.SOURCE}`,
-			responseId: commitment.toString(),
-			status: Status.SOURCE,
-			chain: host,
-			timestamp: BigInt(event.block.timestamp!.getTime()),
-			blockNumber: event.block.block.header.number.toString(),
-			blockHash: event.block.block.header.hash.toString(),
-			transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-			createdAt: new Date(Number(event.block.timestamp!.getTime())),
-		})
 	}
-
-	// TODO: handle post response
 }

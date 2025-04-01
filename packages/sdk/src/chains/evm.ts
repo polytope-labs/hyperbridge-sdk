@@ -117,27 +117,43 @@ export class EvmChain implements IChain {
 		return relayer === DEFAULT_ADDRESS ? undefined : relayer
 	}
 
+	/**
+	 * Queries the proof of the commitments.
+	 * @param {HexString[]} commitments - The commitments to query.
+	 * @param {string} counterparty - The counterparty address.
+	 * @param {boolean} isRequest - Whether the commitments are requests or responses.
+	 * @param {bigint} [at] - The block number to query at.
+	 * @returns {Promise<HexString>} The proof.
+	 */
 	async queryProof(
 		commitments: HexString[],
 		counterparty: string,
 		isRequest: boolean,
 		at?: bigint,
 	): Promise<HexString> {
-		const response = await fetch(this.params.url, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				jsonrpc: "2.0",
-				id: 1,
-				method: "mmr_queryProof",
-				params: [
-					at ? Number(at) : undefined,
-					isRequest ? { Requests: commitments } : { Responses: commitments },
-				],
-			}),
+		const self = this
+		// for each request derive the commitment key collect into a new array
+		const commitmentKeys = commitments.map(requestCommitmentKey)
+		const config: GetProofParameters = {
+			address: this.params.host,
+			storageKeys: commitmentKeys,
+		}
+		if (!at) {
+			config.blockTag = "latest"
+		} else {
+			config.blockNumber = at
+		}
+		const proof = await self.publicClient.getProof(config)
+		const flattenedProof = Array.from(new Set(flatten(proof.storageProof.map((item) => item.proof))))
+
+		const encoded = EvmStateProof.enc({
+			contractProof: proof.accountProof.map((item) => Array.from(hexToBytes(item))),
+			storageProof: [
+				[Array.from(hexToBytes(self.params.host)), flattenedProof.map((item) => Array.from(hexToBytes(item)))],
+			],
 		})
-		const { result } = await response.json()
-		return result
+
+		return toHex(encoded)
 	}
 
 	/**
@@ -286,12 +302,12 @@ export class EvmChain implements IChain {
 									nonce: req.get.nonce,
 									timeoutTimestamp: req.get.timeoutTimestamp,
 									keys: req.get.keys,
-									context: toHex(req.get.context),
+									context: req.get.context,
 									height: req.get.height,
 								},
 
 								values: req.values,
-							},
+							} as any,
 							index: leafIndexAndPos?.leafIndex!,
 							kIndex,
 						}

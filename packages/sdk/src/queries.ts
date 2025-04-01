@@ -143,8 +143,8 @@ query AssetTeleportedByParams($from: String!, $to: String!, $dest: String!, $blo
 }
 `
 
-export const GET_RESPONSE_COMMITMENT_BY_REQUEST_ID = `
-query GetResponseCommitmentByRequestId($requestId: String!) {
+export const GET_RESPONSE_BY_REQUEST_ID = `
+query GetResponseByRequestId($requestId: String!) {
   getResponses(filter: {requestId: {equalTo: $requestId}}) {
     nodes {
       id

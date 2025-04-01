@@ -707,7 +707,7 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	chain: String! @index
 
 	"""
-	The hex-encoded response message
+	The key-values fetch from hyperbridge host
 	"""
 	response_message: [String!]!
 
@@ -725,54 +725,16 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	The timestamp when this record was created
 	"""
 	createdAt: Date! @index
-}
-
-"""
-Metadata about the status of a Get Response
-"""
-type GetResponseStatusMetadata @entity {
 	"""
-	The ID of the GetResponseStatusMetadata
-	"""
-	id: ID!
-
-	"""
-	The status of the response
-	"""
-	status: Status!
-
-	"""
-	The chain on which the response occured
-	"""
-	chain: String!
-
-	"""
-	The timestamp of the event
-	"""
-	timestamp: BigInt!
-
-	"""
-	The number of the block in which the event occured
+	Block number where the response was made
 	"""
 	blockNumber: String!
-
 	"""
-	The hash of the block in which the event occured
+	Hash of the block containing the response
 	"""
 	blockHash: String!
-
 	"""
-	The hash of the transaction in which the event occured
+	Hash of the transaction that created the response
 	"""
 	transactionHash: String!
-
-	"""
-	The response that owns this status change
-	"""
-	response: GetResponse!
-
-	"""
-	The timestamp when this record was created
-	"""
-	createdAt: Date! @index
 }

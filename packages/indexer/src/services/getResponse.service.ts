@@ -1,5 +1,4 @@
-import { solidityKeccak256 } from "ethers/lib/utils"
-import { GetResponse, GetResponseStatusMetadata, Status } from "@/configs/src/types"
+import { GetResponse, Status } from "@/configs/src/types"
 
 export interface ICreateGetResponseArgs {
 	chain: string
@@ -12,17 +11,6 @@ export interface ICreateGetResponseArgs {
 	blockHash: string
 	transactionHash: string
 	blockTimestamp: bigint
-}
-
-export interface IUpdateResponseStatusArgs {
-	commitment: string
-	status: Status
-	blockNumber: string
-	blockHash: string
-	transactionHash: string
-	timeoutHash?: string
-	blockTimestamp: bigint
-	chain: string
 }
 
 export class GetResponseService {
@@ -61,6 +49,9 @@ export class GetResponseService {
 				response_message: response_message || [""],
 				responseTimeoutTimestamp,
 				createdAt: new Date(Number(blockTimestamp)),
+				blockNumber,
+				blockHash,
+				transactionHash,
 			})
 
 			await response.save()
@@ -72,87 +63,9 @@ export class GetResponseService {
 					status,
 				})}`,
 			)
-
-			let responseStatusMetadata = GetResponseStatusMetadata.create({
-				id: `${commitment}.${status}`,
-				responseId: commitment,
-				status,
-				chain,
-				timestamp: blockTimestamp,
-				blockNumber,
-				blockHash,
-				transactionHash,
-				createdAt: new Date(Number(blockTimestamp)),
-			})
-
-			await responseStatusMetadata.save()
 		}
 
 		return response
-	}
-
-	/**
-	 * Update the status of a get response
-	 * Also adds a new entry to the get response status metadata
-	 */
-	static async updateStatus(args: IUpdateResponseStatusArgs): Promise<void> {
-		const { commitment, blockNumber, blockHash, blockTimestamp, status, transactionHash, chain } = args
-
-		let response = await GetResponse.get(commitment)
-
-		if (response) {
-			let responseStatusMetadata = GetResponseStatusMetadata.create({
-				id: `${commitment}.${status}`,
-				responseId: commitment,
-				status,
-				chain,
-				timestamp: blockTimestamp,
-				blockNumber,
-				blockHash,
-				transactionHash,
-				createdAt: new Date(Number(blockTimestamp)),
-			})
-
-			await responseStatusMetadata.save()
-		} else {
-			await this.findOrCreate({
-				chain,
-				commitment,
-				blockHash,
-				blockNumber,
-				blockTimestamp,
-				status,
-				transactionHash,
-				request: undefined,
-				responseTimeoutTimestamp: undefined,
-				response_message: undefined,
-			})
-
-			logger.error(
-				`Attempted to update status of non-existent response with commitment: ${commitment} in transaction: ${transactionHash}`,
-			)
-
-			logger.info(
-				`Created new response while attempting response update with details: ${JSON.stringify({
-					commitment,
-					transactionHash,
-					status,
-				})}`,
-			)
-		}
-	}
-
-	/**
-	 * Compute the get response commitment
-	 */
-	static computeResponseCommitment(getRequestCommitment: string, keys: string[], values: string[]): string {
-		let keyValueEncoding = keys
-			.map((key, index) => {
-				return `${key.slice(2)}${values[index].slice(2)}`
-			})
-			.join(",")
-
-		return solidityKeccak256(["bytes", "bytes"], [getRequestCommitment, keyValueEncoding])
 	}
 
 	/**

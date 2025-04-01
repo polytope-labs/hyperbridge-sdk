@@ -89,6 +89,11 @@ export interface IGetRequest {
 	context: HexString
 }
 
+export interface GetResponseStorageValues {
+	key: HexString
+	value: HexString
+}
+
 export interface IPostResponse {
 	// The request that triggered this response.
 	post: IPostRequest
@@ -336,7 +341,7 @@ export interface GetRequestWithStatus {
 	statuses: Array<RequestStatusWithMetadata>
 }
 
-export interface GetResponseCommitmentByRequestIdResponse {
+export interface GetResponseByRequestIdResponse {
 	getResponses: {
 		nodes: Array<{
 			id: string
@@ -381,4 +386,9 @@ export interface AssetTeleportedResponse {
 	assetTeleporteds: {
 		nodes: AssetTeleported[]
 	}
+}
+
+export interface StateMachineIdParams {
+	stateId: { Evm: number }
+	consensusStateId: HexString
 }

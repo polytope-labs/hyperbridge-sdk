@@ -127,9 +127,10 @@ export class SubstrateChain implements IChain {
 	}
 
 	/**
-	 * Queries the proof of the requests.
-	 * @param {HexString[]} requests - The requests to query.
+	 * Queries the proof of the commitments.
+	 * @param {HexString[]} commitments - The commitments to query.
 	 * @param {string} counterparty - The counterparty address.
+	 * @param {boolean} isRequest - Whether the commitments are requests or responses.
 	 * @param {bigint} [at] - The block number to query at.
 	 * @returns {Promise<HexString>} The proof.
 	 */
@@ -143,7 +144,6 @@ export class SubstrateChain implements IChain {
 		await rpc.connect(this.params.ws)
 		if (isEvmChain(counterparty)) {
 			// for evm chains, query the mmr proof
-			console.log("querying mmr proof")
 			const proof: any = await rpc.call("mmr_queryProof", [
 				Number(at),
 				isRequest ? { Requests: commitments } : { Responses: commitments },
