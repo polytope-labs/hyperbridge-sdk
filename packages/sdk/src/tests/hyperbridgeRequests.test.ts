@@ -50,7 +50,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: "http://localhost:3100",
+			url: process.env.INDEXER_URL,
 			pollInterval: 1_000, // every second
 		})
 	})
@@ -379,7 +379,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: "http://localhost:3100",
+			url: process.env.INDEXER_URL,
 			pollInterval: 1_000, // every second
 		})
 
