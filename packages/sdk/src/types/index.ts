@@ -341,8 +341,14 @@ export interface GetResponseCommitmentByRequestIdResponse {
 		nodes: Array<{
 			id: string
 			commitment: string
+			responseMessage: string[]
 		}>
 	}
+}
+
+export interface ResponseCommitmentWithValues {
+	commitment: string
+	values: string[]
 }
 
 export interface RequestCommitment {

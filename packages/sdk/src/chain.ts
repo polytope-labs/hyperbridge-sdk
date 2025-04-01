@@ -8,7 +8,7 @@ export * from "@/chains/substrate"
 /**
  * Type representing an ISMP message.
  */
-export type IIsmpMessage = IRequestMessage | ITimeoutPostRequestMessage | IGetRequestMessage
+export type IIsmpMessage = IRequestMessage | ITimeoutPostRequestMessage | IGetResponseMessage
 
 export interface IRequestMessage {
 	/**
@@ -40,6 +40,41 @@ export interface IGetRequestMessage {
 	requests: IGetRequest[]
 	/**
 	 * The proof of the requests.
+	 */
+	proof: IProof
+	/**
+	 * The signer of the message.
+	 */
+	signer: HexString
+}
+
+export interface StorageValues {
+	key: HexString
+	value: HexString
+}
+
+export interface IGetResponse {
+	/**
+	 * The request that triggered this response.
+	 */
+	get: IGetRequest
+	/**
+	 * The response message.
+	 */
+	values: StorageValues[]
+}
+
+export interface IGetResponseMessage {
+	/**
+	 * The kind of message.
+	 */
+	kind: "GetResponse"
+	/**
+	 * The responses to be posted.
+	 */
+	responses: IGetResponse[]
+	/**
+	 * The proof of the responses.
 	 */
 	proof: IProof
 	/**
@@ -113,7 +148,7 @@ export interface IChain {
 	/*
 	 * Query and return the encoded storage proof for requests
 	 */
-	queryRequestsProof(requests: HexString[], counterparty: string, at?: bigint): Promise<HexString>
+	queryProof(commitments: HexString[], counterparty: string, isRequest: boolean, at?: bigint): Promise<HexString>
 
 	/*
 	 * Encode an ISMP message into the appropriate calldata for this chain.

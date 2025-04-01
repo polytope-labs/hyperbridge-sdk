@@ -709,7 +709,7 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	The hex-encoded response message
 	"""
-	response_message: String!
+	response_message: [String!]!
 
 	"""
 	The Timestamp at which this response expires in seconds

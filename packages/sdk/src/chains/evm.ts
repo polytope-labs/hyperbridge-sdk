@@ -117,37 +117,27 @@ export class EvmChain implements IChain {
 		return relayer === DEFAULT_ADDRESS ? undefined : relayer
 	}
 
-	/**
-	 * Queries the proof of the requests.
-	 * @param {HexString[]} requests - The requests to query.
-	 * @param {string} counterparty - The counterparty address.
-	 * @param {bigint} [at] - The block number to query at.
-	 * @returns {Promise<HexString>} The proof.
-	 */
-	async queryRequestsProof(requests: HexString[], counterparty: string, at?: bigint): Promise<HexString> {
-		const self = this
-		// for each request derive the commitment key collect into a new array
-		const commitmentKeys = requests.map(requestCommitmentKey)
-		const config: GetProofParameters = {
-			address: this.params.host,
-			storageKeys: commitmentKeys,
-		}
-		if (!at) {
-			config.blockTag = "latest"
-		} else {
-			config.blockNumber = at
-		}
-		const proof = await self.publicClient.getProof(config)
-		const flattenedProof = Array.from(new Set(flatten(proof.storageProof.map((item) => item.proof))))
-
-		const encoded = EvmStateProof.enc({
-			contractProof: proof.accountProof.map((item) => Array.from(hexToBytes(item))),
-			storageProof: [
-				[Array.from(hexToBytes(self.params.host)), flattenedProof.map((item) => Array.from(hexToBytes(item)))],
-			],
+	async queryProof(
+		commitments: HexString[],
+		counterparty: string,
+		isRequest: boolean,
+		at?: bigint,
+	): Promise<HexString> {
+		const response = await fetch(this.params.url, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "mmr_queryProof",
+				params: [
+					at ? Number(at) : undefined,
+					isRequest ? { Requests: commitments } : { Responses: commitments },
+				],
+			}),
 		})
-
-		return toHex(encoded)
+		const { result } = await response.json()
+		return result
 	}
 
 	/**
@@ -278,9 +268,9 @@ export class EvmChain implements IChain {
 
 				return encoded
 			})
-			.with({ kind: "GetRequest" }, (request) => {
+			.with({ kind: "GetResponse" }, (request) => {
 				const mmrProof = MmrProof.dec(request.proof.proof)
-				const responses = zip(request.requests, mmrProof.leafIndexAndPos)
+				const responses = zip(request.responses, mmrProof.leafIndexAndPos)
 					.map(([req, leafIndexAndPos]) => {
 						if (!req || !leafIndexAndPos) return
 						const [[, kIndex]] = mmrPositionToKIndex(
@@ -290,16 +280,17 @@ export class EvmChain implements IChain {
 						return {
 							response: {
 								request: {
-									source: toHex(req.source),
-									dest: toHex(req.dest),
-									from: toHex(req.from),
-									nonce: req.nonce,
-									timeoutTimestamp: req.timeoutTimestamp,
-									keys: req.keys,
-									context: toHex(req.context),
-									height: req.height,
+									source: toHex(req.get.source),
+									dest: toHex(req.get.dest),
+									from: req.get.from,
+									nonce: req.get.nonce,
+									timeoutTimestamp: req.get.timeoutTimestamp,
+									keys: req.get.keys,
+									context: toHex(req.get.context),
+									height: req.get.height,
 								},
-								values: [],
+
+								values: req.values,
 							},
 							index: leafIndexAndPos?.leafIndex!,
 							kIndex,

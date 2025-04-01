@@ -143,6 +143,7 @@ describe("GetRequest", () => {
 			}
 		}
 
+		// TODO: Update this
 		const req = await indexer.queryRequestWithStatus(commitment)
 		console.log(JSON.stringify(req, null, 4))
 		expect(req?.statuses.length).toBe(5)

@@ -22,6 +22,7 @@ import {
 	GetRequestWithStatus,
 	GetRequestResponse,
 	GetResponseCommitmentByRequestIdResponse,
+	ResponseCommitmentWithValues,
 } from "@/types"
 import {
 	REQUEST_STATUS,
@@ -264,9 +265,9 @@ export class IndexerClient {
 	/**
 	 * Queries the response associated with a specific request ID and returns its commitment
 	 * @param requestId - The ID of the request to find the associated response for
-	 * @returns The response commitment associated with the given request ID, or undefined if not found
+	 * @returns The response associated with the given request ID, or undefined if not found
 	 */
-	async queryResponseCommitmentByRequestId(requestId: string): Promise<string | undefined> {
+	async queryResponseByRequestId(requestId: string): Promise<ResponseCommitmentWithValues | undefined> {
 		const self = this
 		const response = await self.withRetry(() =>
 			self.client.request<GetResponseCommitmentByRequestIdResponse>(GET_RESPONSE_COMMITMENT_BY_REQUEST_ID, {
@@ -280,7 +281,10 @@ export class IndexerClient {
 		// Return just the first response
 		const firstResponse = response.getResponses.nodes[0]
 
-		return firstResponse.commitment
+		return {
+			commitment: firstResponse.commitment,
+			values: firstResponse.responseMessage,
+		}
 	}
 
 	/**
@@ -348,9 +352,10 @@ export class IndexerClient {
 			hasher: "Keccak",
 		})
 
-		const proof = await hyperbridge.queryRequestsProof(
+		const proof = await hyperbridge.queryProof(
 			[postRequestCommitment(request)],
 			request.dest,
+			true,
 			BigInt(hyperbridgeFinality.height),
 		)
 
@@ -686,9 +691,10 @@ export class IndexerClient {
 						hasher: "Keccak",
 					})
 
-					const proof = await hyperbridge.queryRequestsProof(
+					const proof = await hyperbridge.queryProof(
 						[postRequestCommitment(request)],
 						request.dest,
+						true,
 						BigInt(hyperbridgeFinalized.height),
 					)
 
@@ -894,22 +900,32 @@ export class IndexerClient {
 						hasher: "Keccak",
 					})
 
-					let responseCommitment = (await self.queryResponseCommitmentByRequestId(hash)) || "0x"
-					const proof = await hyperbridge.queryRequestsProof(
-						[responseCommitment as HexString],
+					const response = await self.queryResponseByRequestId(hash)
+
+					const proof = await hyperbridge.queryProof(
+						[response?.commitment as HexString],
 						request.source,
+						false,
 						BigInt(hyperbridgeFinalized.height),
 					)
 
 					const calldata = sourceChain.encode({
-						kind: "GetRequest",
+						kind: "GetResponse",
 						proof: {
 							stateMachine: self.config.hyperbridge.stateMachineId,
 							consensusStateId: self.config.hyperbridge.consensusStateId,
 							proof,
 							height: BigInt(hyperbridgeFinalized.height),
 						},
-						requests: [request],
+						responses: [
+							{
+								get: request,
+								values: request.keys.map((key, index) => ({
+									key,
+									value: (response?.values[index] as HexString) || "0x",
+								})),
+							},
+						],
 						signer: pad("0x"),
 					})
 

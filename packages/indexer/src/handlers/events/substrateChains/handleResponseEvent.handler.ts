@@ -15,7 +15,7 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 
 	if (!event.event.data) return
 
-	const [source_chain, dest_chain, request_nonce, commitment, req_commitment] = event.event.data
+	const [dest_chain, source_chain, request_nonce, commitment, req_commitment] = event.event.data
 
 	logger.info(
 		`Handling ISMP Response Event: ${JSON.stringify({
@@ -67,11 +67,19 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 	if (data.result[0].Get) {
 		const getResponse = data.result[0].Get as Get
 
+		let values: string[] = []
+
+		for (const value of getResponse.values) {
+			values.push(value.value)
+		}
+
+		logger.info(`Values Array: ${JSON.stringify(values)}`)
+
 		await GetResponseService.findOrCreate({
 			chain: host,
 			commitment: commitment.toString(),
 			request: req_commitment.toString(),
-			response_message: getResponse.values.map((value) => value.value).join(""),
+			response_message: values,
 			responseTimeoutTimestamp: BigInt(Number(getResponse.get.timeoutTimestamp)),
 			status: Status.SOURCE,
 			blockNumber: event.block.block.header.number.toString(),

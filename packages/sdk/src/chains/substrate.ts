@@ -133,16 +133,25 @@ export class SubstrateChain implements IChain {
 	 * @param {bigint} [at] - The block number to query at.
 	 * @returns {Promise<HexString>} The proof.
 	 */
-	async queryRequestsProof(requests: HexString[], counterparty: string, at?: bigint): Promise<HexString> {
+	async queryProof(
+		commitments: HexString[],
+		counterparty: string,
+		isRequest: boolean,
+		at?: bigint,
+	): Promise<HexString> {
 		const rpc = new RpcWebSocketClient()
 		await rpc.connect(this.params.ws)
 		if (isEvmChain(counterparty)) {
 			// for evm chains, query the mmr proof
-			const proof: any = await rpc.call("mmr_queryProof", [Number(at), { Requests: requests }])
+			console.log("querying mmr proof")
+			const proof: any = await rpc.call("mmr_queryProof", [
+				Number(at),
+				isRequest ? { Requests: commitments } : { Responses: commitments },
+			])
 			return toHex(proof.proof)
 		} else if (isSubstrateChain(counterparty)) {
 			// for substrate chains, we use the child trie proof
-			const childTrieKeys = requests.map(requestCommitmentStorageKey)
+			const childTrieKeys = commitments.map(requestCommitmentStorageKey)
 			const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
 			const basicProof = BasicProof.dec(toHex(proof.proof))
 			const encoded = SubstrateStateProof.enc({
@@ -248,9 +257,9 @@ export class SubstrateChain implements IChain {
 					},
 				]),
 			)
-			.with({ kind: "GetRequest" }, (message) =>
+			.with({ kind: "GetResponse" }, (message) =>
 				(() => {
-					throw new Error("GetRequest is not yet supported on Substrate chains")
+					throw new Error("GetResponse is not yet supported on Substrate chains")
 				})(),
 			)
 			.with({ kind: "TimeoutPostRequest" }, (message) =>
