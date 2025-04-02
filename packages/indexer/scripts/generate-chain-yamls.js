@@ -303,10 +303,48 @@ const generateSubstrateWsJson = () => {
 	console.log("Generated substrate-ws.json")
 }
 
+const generateChainIdsByGenesis = () => {
+	const chainIdsByGenesis = {}
+
+	validChains.forEach(([chain, config]) => {
+		if (config.genesisHash) {
+			chainIdsByGenesis[config.genesisHash] = config.stateMachineId
+		} else if (config.chainId) {
+			// For EVM chains, use chainId as key
+			chainIdsByGenesis[config.chainId] = config.stateMachineId
+		}
+	})
+
+	const chainIdsByGenesisContent = `// Auto-generated, DO NOT EDIT
+export const CHAIN_IDS_BY_GENESIS = ${JSON.stringify(chainIdsByGenesis, null, 2)}`
+
+	fs.writeFileSync(root + "/src/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
+	console.log("Generated chain-ids-by-genesis.ts")
+}
+
+const generateChainsByIsmpHost = () => {
+	const chainsByIsmpHost = {}
+
+	validChains.forEach(([chain, config]) => {
+		// Only include EVM chains with ethereumHost contract
+		if (config.type === 'evm' && config.contracts?.ethereumHost) {
+			chainsByIsmpHost[config.stateMachineId] = config.contracts.ethereumHost
+		}
+	})
+
+	const chainsByIsmpHostContent = `// Auto-generated, DO NOT EDIT
+export const CHAINS_BY_ISMP_HOST = ${JSON.stringify(chainsByIsmpHost, null, 2)}`
+
+	fs.writeFileSync(root + "/src/chains-by-ismp-host.ts", chainsByIsmpHostContent)
+	console.log("Generated chains-by-ismp-host.ts")
+}
+
 generateAllChainYamls()
 	.then(() => {
 		generateMultichainYaml()
 		generateSubstrateWsJson()
+		generateChainIdsByGenesis()
+		generateChainsByIsmpHost()
 		process.exit(0)
 	})
 	.catch((err) => {
