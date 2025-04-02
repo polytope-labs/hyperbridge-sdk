@@ -73,7 +73,6 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		blockTimestamp: timestamp,
 		status: Status.SOURCE,
 		chain,
-		commitment: get_request_commitment,
 	})
 
 	const getRequestStatusMetadata = GetRequestStatusMetadata.create({

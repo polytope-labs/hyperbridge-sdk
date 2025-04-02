@@ -353,9 +353,8 @@ export class IndexerClient {
 		})
 
 		const proof = await hyperbridge.queryProof(
-			[postRequestCommitment(request)],
+			{ Requests: [postRequestCommitment(request)] },
 			request.dest,
-			true,
 			BigInt(hyperbridgeFinality.height),
 		)
 
@@ -692,9 +691,8 @@ export class IndexerClient {
 					})
 
 					const proof = await hyperbridge.queryProof(
-						[postRequestCommitment(request)],
+						{ Requests: [postRequestCommitment(request)] },
 						request.dest,
-						true,
 						BigInt(hyperbridgeFinalized.height),
 					)
 
@@ -903,9 +901,8 @@ export class IndexerClient {
 					const response = await self.queryResponseByRequestId(hash)
 
 					const proof = await hyperbridge.queryProof(
-						[response?.commitment as HexString],
+						{ Responses: [response?.commitment as HexString] },
 						request.source,
-						false,
 						BigInt(hyperbridgeFinalized.height),
 					)
 

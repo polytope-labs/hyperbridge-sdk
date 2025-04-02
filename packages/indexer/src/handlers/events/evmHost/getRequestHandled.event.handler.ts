@@ -22,19 +22,15 @@ export async function handleGetRequestHandledEvent(event: GetRequestHandledLog):
 
 	const chain = getHostStateMachine(chainId)
 
-	try {
-		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, chain)
+	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, chain)
 
-		await GetRequestService.updateStatus({
-			commitment,
-			chain,
-			blockNumber: blockNumber.toString(),
-			blockHash: block.hash,
-			blockTimestamp: block.timestamp,
-			status: Status.DESTINATION,
-			transactionHash,
-		})
-	} catch (error) {
-		;`Error handling GetRequestHandled event: ${JSON.stringify(error)}`
-	}
+	await GetRequestService.updateStatus({
+		commitment,
+		chain,
+		blockNumber: blockNumber.toString(),
+		blockHash: block.hash,
+		blockTimestamp: block.timestamp,
+		status: Status.DESTINATION,
+		transactionHash,
+	})
 }

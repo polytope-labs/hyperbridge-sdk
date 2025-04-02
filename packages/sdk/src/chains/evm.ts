@@ -35,7 +35,7 @@ import EvmHost from "@/abis/evmHost"
 import { IChain, IIsmpMessage } from "@/chain"
 import HandlerV1 from "@/abis/handler"
 import { calculateMMRSize, EvmStateProof, mmrPositionToKIndex, MmrProof, SubstrateStateProof } from "@/utils"
-import { HexString } from "@/types"
+import { HexString, IMessage } from "@/types"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -119,21 +119,18 @@ export class EvmChain implements IChain {
 
 	/**
 	 * Queries the proof of the commitments.
-	 * @param {HexString[]} commitments - The commitments to query.
+	 * @param {IMessage} message - The message to query.
 	 * @param {string} counterparty - The counterparty address.
-	 * @param {boolean} isRequest - Whether the commitments are requests or responses.
 	 * @param {bigint} [at] - The block number to query at.
 	 * @returns {Promise<HexString>} The proof.
 	 */
-	async queryProof(
-		commitments: HexString[],
-		counterparty: string,
-		isRequest: boolean,
-		at?: bigint,
-	): Promise<HexString> {
+	async queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
 		const self = this
 		// for each request derive the commitment key collect into a new array
-		const commitmentKeys = commitments.map(requestCommitmentKey)
+		const commitmentKeys =
+			"Requests" in message
+				? message.Requests.map((key) => commitmentKey(key, true))
+				: message.Responses.map((key) => commitmentKey(key, false))
 		const config: GetProofParameters = {
 			address: this.params.host,
 			storageKeys: commitmentKeys,
@@ -362,10 +359,11 @@ export const REQUEST_RECEIPTS_SLOT = 2n
  */
 export const RESPONSE_RECEIPTS_SLOT = 3n
 
-function requestCommitmentKey(key: Hex): Hex {
+function commitmentKey(key: Hex, isRequest: boolean = true): Hex {
 	// First derive the map key
 	const keyBytes = hexToBytes(key)
-	const mappedKey = deriveMapKey(keyBytes, REQUEST_COMMITMENTS_SLOT)
+	const slot = isRequest ? REQUEST_COMMITMENTS_SLOT : RESPONSE_COMMITMENTS_SLOT
+	const mappedKey = deriveMapKey(keyBytes, slot)
 
 	// Convert the derived key to BigInt and add 1
 	const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n

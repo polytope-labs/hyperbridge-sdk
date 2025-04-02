@@ -7,7 +7,7 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
-import { HexString, IGetRequest, IPostRequest } from "@/types"
+import { HexString, IGetRequest, IPostRequest, IMessage } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -128,29 +128,21 @@ export class SubstrateChain implements IChain {
 
 	/**
 	 * Queries the proof of the commitments.
-	 * @param {HexString[]} commitments - The commitments to query.
+	 * @param {IMessage} message - The message to query.
 	 * @param {string} counterparty - The counterparty address.
-	 * @param {boolean} isRequest - Whether the commitments are requests or responses.
 	 * @param {bigint} [at] - The block number to query at.
 	 * @returns {Promise<HexString>} The proof.
 	 */
-	async queryProof(
-		commitments: HexString[],
-		counterparty: string,
-		isRequest: boolean,
-		at?: bigint,
-	): Promise<HexString> {
+	async queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
 		const rpc = new RpcWebSocketClient()
 		await rpc.connect(this.params.ws)
 		if (isEvmChain(counterparty)) {
 			// for evm chains, query the mmr proof
-			const proof: any = await rpc.call("mmr_queryProof", [
-				Number(at),
-				isRequest ? { Requests: commitments } : { Responses: commitments },
-			])
+			const proof: any = await rpc.call("mmr_queryProof", [Number(at), message])
 			return toHex(proof.proof)
 		} else if (isSubstrateChain(counterparty)) {
 			// for substrate chains, we use the child trie proof
+			const commitments = "Requests" in message ? message.Requests : message.Responses
 			const childTrieKeys = commitments.map(requestCommitmentStorageKey)
 			const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
 			const basicProof = BasicProof.dec(toHex(proof.proof))

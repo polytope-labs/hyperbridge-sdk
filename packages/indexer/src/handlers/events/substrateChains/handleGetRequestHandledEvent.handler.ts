@@ -35,12 +35,9 @@ export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEven
 
 	const host = getHostStateMachine(chainId)
 
-	const request = await GetRequest.get(eventData.commitment.toString())
-
-	if (!request) {
-		logger.error(`Get Request not found for commitment ${eventData.commitment.toString()}`)
-		return
-	}
+	const request = await GetRequestService.createOrUpdate({
+		id: eventData.commitment.toString(),
+	})
 
 	let status: Status
 	if (request.source === host) {

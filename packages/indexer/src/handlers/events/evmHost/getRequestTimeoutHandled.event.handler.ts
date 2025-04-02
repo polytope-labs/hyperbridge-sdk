@@ -22,19 +22,15 @@ export async function handleGetRequestTimeoutHandled(event: GetRequestTimeoutHan
 
 	const chain = getHostStateMachine(chainId)
 
-	try {
-		await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
+	await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
 
-		await GetRequestService.updateStatus({
-			commitment,
-			chain,
-			blockNumber: blockNumber.toString(),
-			blockHash: block.hash,
-			blockTimestamp: block.timestamp,
-			status: Status.TIMED_OUT,
-			transactionHash,
-		})
-	} catch (error) {
-		;`Error handling GetRequestHandled event: ${JSON.stringify(error)}`
-	}
+	await GetRequestService.updateStatus({
+		commitment,
+		chain,
+		blockNumber: blockNumber.toString(),
+		blockHash: block.hash,
+		blockTimestamp: block.timestamp,
+		status: Status.TIMED_OUT,
+		transactionHash,
+	})
 }

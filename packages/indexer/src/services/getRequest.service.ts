@@ -4,22 +4,22 @@ import { solidityKeccak256 } from "ethers/lib/utils"
 
 export interface IGetRequestArgs {
 	id: string
-	source: string | undefined
-	dest: string | undefined
-	from: string | undefined
-	keys: string[] | [""]
-	nonce: bigint | undefined
-	height: bigint | undefined
-	context: string | undefined
-	timeoutTimestamp: bigint | undefined
-	fee: bigint | undefined
-	blockNumber: string
-	blockHash: string
-	transactionHash: string
-	blockTimestamp: bigint
-	status: Status
-	chain: string
-	commitment: string
+	source?: string
+	dest?: string
+	from?: string
+	keys?: string[]
+	nonce?: bigint
+	height?: bigint
+	context?: string
+	timeoutTimestamp?: bigint
+	fee?: bigint
+	blockNumber?: string
+	blockHash?: string
+	transactionHash?: string
+	blockTimestamp?: bigint
+	status?: Status
+	chain?: string
+	commitment?: string
 }
 
 export interface IUpdateGetRequestStatusArgs {
@@ -65,7 +65,7 @@ export class GetRequestService {
 		if (!getRequest) {
 			getRequest = GetRequest.create({
 				id,
-				chain,
+				chain: chain || "",
 				source: source || "",
 				dest: dest || "",
 				from: from || "",
@@ -79,7 +79,7 @@ export class GetRequestService {
 				blockHash: blockHash || "",
 				transactionHash: transactionHash || "",
 				blockTimestamp: blockTimestamp || BigInt(0),
-				status,
+				status: status || Status.SOURCE,
 				commitment: id,
 			})
 
@@ -134,38 +134,20 @@ export class GetRequestService {
 			})}`,
 		)
 
-		let getRequest = await GetRequest.get(commitment)
+		let getRequest = await this.createOrUpdate({
+			id: commitment,
+			status,
+		})
 
-		if (!getRequest) {
-			// Create new get request and get request status metadata
-			await this.createOrUpdate({
-				id: commitment,
-				chain,
-				source: undefined,
-				dest: undefined,
-				from: undefined,
-				keys: [""],
-				nonce: undefined,
-				height: undefined,
-				context: undefined,
-				timeoutTimestamp: undefined,
-				fee: undefined,
-				blockNumber: "",
-				blockHash: "",
-				blockTimestamp: 0n,
-				status,
-				transactionHash: "",
+		getRequest.save()
+
+		logger.info(
+			`Created new get request while attempting get request update with details ${JSON.stringify({
 				commitment,
-			})
-
-			logger.info(
-				`Created new get request while attempting get request update with details ${JSON.stringify({
-					commitment,
-					transactionHash,
-					status,
-				})}`,
-			)
-		}
+				transactionHash,
+				status,
+			})}`,
+		)
 
 		let getRequestStatusMetadata = GetRequestStatusMetadata.create({
 			id: `${commitment}.${status}`,

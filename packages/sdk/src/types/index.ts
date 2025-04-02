@@ -103,6 +103,8 @@ export interface IPostResponse {
 	timeoutTimestamp: bigint
 }
 
+export type IMessage = { Requests: HexString[] } | { Responses: HexString[] }
+
 export interface ClientConfig {
 	pollInterval?: number
 	url?: string

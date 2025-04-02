@@ -1,4 +1,12 @@
-import { GetResponseStorageValues, HexString, IEvmConfig, IGetRequest, IPostRequest, ISubstrateConfig } from "@/types"
+import {
+	GetResponseStorageValues,
+	HexString,
+	IEvmConfig,
+	IGetRequest,
+	IPostRequest,
+	ISubstrateConfig,
+	IMessage,
+} from "@/types"
 import { isEvmChain, isSubstrateChain } from "@/utils"
 import { EvmChain, SubstrateChain } from "@/chain"
 
@@ -143,7 +151,7 @@ export interface IChain {
 	/*
 	 * Query and return the encoded storage proof for requests
 	 */
-	queryProof(commitments: HexString[], counterparty: string, isRequest: boolean, at?: bigint): Promise<HexString>
+	queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString>
 
 	/*
 	 * Encode an ISMP message into the appropriate calldata for this chain.
