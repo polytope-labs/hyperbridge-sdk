@@ -27,7 +27,7 @@ import {
 } from "viem/chains"
 
 import type { GetProofParameters, Hex } from "viem"
-import { zip, flatten } from "lodash"
+import { zip, flatten } from "lodash-es"
 import { match } from "ts-pattern"
 
 import EvmHost from "@/abis/evmHost"

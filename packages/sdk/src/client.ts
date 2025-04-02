@@ -1,6 +1,6 @@
 import { type ConsolaInstance, createConsola, LogLevels } from "consola"
 import { GraphQLClient } from "graphql-request"
-import { maxBy } from "lodash"
+import { maxBy } from "lodash-es"
 import { pad } from "viem"
 
 // @ts-ignore
