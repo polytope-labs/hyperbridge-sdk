@@ -68,6 +68,9 @@ export const CHAIN_IDS_BY_GENESIS = {
 	// cere network
 	"0x81443836a9a24caaa23f1241897d1235717535711d1d3fe24eae4fdc942c092c": "SUBSTRATE-cere",
 
+	// argon network
+	"0xee11bf2ff8838fcb0832c09085c5319a08ba6111c225ecd899fe659872d9d45d": "SUBSTRATE-argn",
+
 	// BSC
 	"97": "EVM-97",
 	"56": "EVM-56",
