@@ -1,6 +1,6 @@
-import {
+import type {
 	GetResponseStorageValues,
-	type HexString,
+	HexString,
 	IEvmConfig,
 	IGetRequest,
 	IPostRequest,

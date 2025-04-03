@@ -15,7 +15,7 @@ import { privateKeyToAccount } from "viem/accounts"
 import { bscTestnet, gnosisChiado } from "viem/chains"
 
 import { IndexerClient } from "@/client"
-import { HexString, RequestStatus, TimeoutStatus } from "@/types"
+import { type HexString, RequestStatus, TimeoutStatus } from "@/types"
 import { getRequestCommitment, postRequestCommitment } from "@/utils"
 
 import ERC6160 from "@/abis/erc6160"

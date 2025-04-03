@@ -1,5 +1,5 @@
 import type { ConsolaInstance } from "consola"
-import { GraphQLClient } from "graphql-request"
+import type { GraphQLClient } from "graphql-request"
 import type { Hex } from "viem"
 
 export type HexString = `0x${string}`

@@ -124,7 +124,6 @@ export class EvmChain implements IChain {
 	 * @returns {Promise<HexString>} The proof.
 	 */
 	async queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
-		const self = this
 		// for each request derive the commitment key collect into a new array
 		const commitmentKeys =
 			"Requests" in message
@@ -310,7 +309,7 @@ export class EvmChain implements IChain {
 
 				const proof = {
 					height: {
-						stateMachineId: BigInt(parseInt(request.proof.stateMachine.split("-")[1])),
+						stateMachineId: BigInt(Number.parseInt(request.proof.stateMachine.split("-")[1])),
 						height: request.proof.height,
 					},
 					multiproof: mmrProof.items.map((item) => bytesToHex(new Uint8Array(item))),

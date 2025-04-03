@@ -5,9 +5,9 @@ import { match } from "ts-pattern"
 import { capitalize } from "lodash-es"
 import { u8, Vector } from "scale-ts"
 
-import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
+import { BasicProof, isEvmChain, isSubstrateChain, type IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import type { IChain, IIsmpMessage } from "@/chain"
-import { HexString, IGetRequest, IPostRequest, IMessage, StateMachineIdParams } from "@/types"
+import { type HexString, IGetRequest, type IPostRequest, type IMessage, type StateMachineIdParams } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
