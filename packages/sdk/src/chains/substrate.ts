@@ -7,7 +7,7 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import { IChain, IIsmpMessage } from "@/chain"
-import { HexString, IGetRequest, IPostRequest, IMessage } from "@/types"
+import { HexString, IGetRequest, IPostRequest, IMessage, StateMachineIdParams } from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -51,6 +51,16 @@ export class SubstrateChain implements IChain {
 			provider: wsProvider,
 			typesBundle,
 		})
+	}
+
+	/**
+	 * Disconnects the Substrate chain connection.
+	 */
+	public async disconnect() {
+		if (this.api) {
+			await this.api.disconnect()
+			this.api = undefined
+		}
 	}
 
 	/**
@@ -142,8 +152,10 @@ export class SubstrateChain implements IChain {
 			return toHex(proof.proof)
 		} else if (isSubstrateChain(counterparty)) {
 			// for substrate chains, we use the child trie proof
-			const commitments = "Requests" in message ? message.Requests : message.Responses
-			const childTrieKeys = commitments.map(requestCommitmentStorageKey)
+			const childTrieKeys =
+				"Requests" in message
+					? message.Requests.map(requestCommitmentStorageKey)
+					: message.Responses.map(responseCommitmentStorageKey)
 			const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
 			const basicProof = BasicProof.dec(toHex(proof.proof))
 			const encoded = SubstrateStateProof.enc({
@@ -218,6 +230,17 @@ export class SubstrateChain implements IChain {
 			},
 		})
 		return toHex(encoded)
+	}
+
+	/**
+	 * Get the latest state machine height for a given state machine ID.
+	 * @param {StateMachineIdParams} stateMachineId - The state machine ID.
+	 * @returns {Promise<bigint>} The latest state machine height.
+	 */
+	async latestStateMachineHeight(stateMachineId: StateMachineIdParams): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+		const latestHeight = await this.api.query.ismp.latestStateMachineHeight(stateMachineId)
+		return BigInt(latestHeight.toString())
 	}
 
 	/**
@@ -309,6 +332,17 @@ export class SubstrateChain implements IChain {
 function requestCommitmentStorageKey(key: HexString): number[] {
 	// Convert "RequestCommitments" to bytes
 	const prefix = new TextEncoder().encode("RequestCommitments")
+
+	// Convert hex key to bytes
+	const keyBytes = hexToBytes(key)
+
+	// Combine prefix and key bytes
+	return Array.from(new Uint8Array([...prefix, ...keyBytes]))
+}
+
+function responseCommitmentStorageKey(key: HexString): number[] {
+	// Convert "ResponseCommitments" to bytes
+	const prefix = new TextEncoder().encode("ResponseCommitments")
 
 	// Convert hex key to bytes
 	const keyBytes = hexToBytes(key)

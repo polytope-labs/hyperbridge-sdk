@@ -129,8 +129,8 @@ export class EvmChain implements IChain {
 		// for each request derive the commitment key collect into a new array
 		const commitmentKeys =
 			"Requests" in message
-				? message.Requests.map((key) => commitmentKey(key, true))
-				: message.Responses.map((key) => commitmentKey(key, false))
+				? message.Requests.map((key) => requestCommitmentKey(key))
+				: message.Responses.map((key) => responseCommitmentKey(key))
 		const config: GetProofParameters = {
 			address: this.params.host,
 			storageKeys: commitmentKeys,
@@ -359,10 +359,23 @@ export const REQUEST_RECEIPTS_SLOT = 2n
  */
 export const RESPONSE_RECEIPTS_SLOT = 3n
 
-function commitmentKey(key: Hex, isRequest: boolean = true): Hex {
+function requestCommitmentKey(key: Hex): Hex {
 	// First derive the map key
 	const keyBytes = hexToBytes(key)
-	const slot = isRequest ? REQUEST_COMMITMENTS_SLOT : RESPONSE_COMMITMENTS_SLOT
+	const slot = REQUEST_COMMITMENTS_SLOT
+	const mappedKey = deriveMapKey(keyBytes, slot)
+
+	// Convert the derived key to BigInt and add 1
+	const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
+
+	// Convert back to 32-byte hex
+	return pad(`0x${number.toString(16)}`, { size: 32 })
+}
+
+function responseCommitmentKey(key: Hex): Hex {
+	// First derive the map key
+	const keyBytes = hexToBytes(key)
+	const slot = RESPONSE_COMMITMENTS_SLOT
 	const mappedKey = deriveMapKey(keyBytes, slot)
 
 	// Convert the derived key to BigInt and add 1

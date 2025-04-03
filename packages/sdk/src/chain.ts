@@ -6,6 +6,7 @@ import {
 	IPostRequest,
 	ISubstrateConfig,
 	IMessage,
+	StateMachineIdParams,
 } from "@/types"
 import { isEvmChain, isSubstrateChain } from "@/utils"
 import { EvmChain, SubstrateChain } from "@/chain"
@@ -157,6 +158,11 @@ export interface IChain {
 	 * Encode an ISMP message into the appropriate calldata for this chain.
 	 */
 	encode(message: IIsmpMessage): HexString
+
+	/**
+	 * Get the latest state machine height for a given state machine ID.
+	 */
+	latestStateMachineHeight?(stateMachineId: StateMachineIdParams): Promise<bigint>
 }
 
 /**

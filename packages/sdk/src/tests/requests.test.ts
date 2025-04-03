@@ -22,14 +22,14 @@ import ERC6160 from "@/abis/erc6160"
 import PING_MODULE from "@/abis/pingModule"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { latestStateMachineHeight } from "@/utils"
 import { EvmChain, SubstrateChain } from "@/chain"
 
 describe.sequential("Get and Post Requests", () => {
 	let indexer: IndexerClient
+	let hyperbridgeInstance: SubstrateChain
 
 	beforeAll(async () => {
-		const { gnosisChiadoHost, bscIsmpHost } = await setUp()
+		const { gnosisChiadoHost, bscIsmpHost, hyperbridge } = await setUp()
 		indexer = new IndexerClient({
 			source: {
 				consensusStateId: "BSC0",
@@ -51,14 +51,21 @@ describe.sequential("Get and Post Requests", () => {
 			url: "http://0.0.0.0:3100",
 			pollInterval: 1_000, // every second
 		})
+
+		await hyperbridge.connect()
+		hyperbridgeInstance = hyperbridge
+	})
+
+	afterAll(async () => {
+		await hyperbridgeInstance.disconnect()
 	})
 
 	describe("Get Request", () => {
-		it("should successfully stream and query the get request status", async () => {
+		it.only("should successfully stream and query the get request status", async () => {
 			const { bscTestnetClient, bscPing, gnosisChiadoHost, bscIsmpHost, bscHandler } = await setUp()
 			console.log("\n\nSending Get Request\n\n")
 
-			const latestHeight = await latestStateMachineHeight(process.env.HYPERBRIDGE_GARGANTUA!, {
+			const latestHeight = await hyperbridgeInstance.latestStateMachineHeight({
 				stateId: { Evm: 10200 },
 				consensusStateId: toHex("GNO0"),
 			})
@@ -151,15 +158,7 @@ describe.sequential("Get and Post Requests", () => {
 
 	describe("Post Request", () => {
 		it("Should scale encode the ISMP message correctly", async () => {
-			const hyperbridge = new SubstrateChain({
-				// stateMachineId: "KUSAMA-4009",
-				ws: process.env.HYPERBRIDGE_GARGANTUA!,
-				hasher: "Keccak",
-			})
-
-			await hyperbridge.connect()
-
-			const tx = hyperbridge.encode({
+			const tx = hyperbridgeInstance.encode({
 				kind: "TimeoutPostRequest",
 				proof: {
 					consensusStateId: "GNO0",
@@ -193,7 +192,7 @@ describe.sequential("Get and Post Requests", () => {
 			expect(receipt).toBeUndefined()
 
 			// should not throw
-			hyperbridge.api!.tx.ismp.handleUnsigned(hexToBytes(tx).slice(2))
+			hyperbridgeInstance.api!.tx.ismp.handleUnsigned(hexToBytes(tx).slice(2))
 		})
 
 		it("should successfully stream and query the post request status", async () => {
@@ -471,6 +470,11 @@ async function setUp() {
 		client: { public: bscTestnetClient, wallet: bscWalletClient },
 	})
 
+	const hyperbridge = new SubstrateChain({
+		ws: process.env.HYPERBRIDGE_GARGANTUA!,
+		hasher: "Keccak",
+	})
+
 	return {
 		bscTestnetClient,
 		bscFeeToken,
@@ -482,5 +486,6 @@ async function setUp() {
 		gnosisChiadoClient,
 		gnosisChiadoHost,
 		bscIsmpHost,
+		hyperbridge,
 	}
 }

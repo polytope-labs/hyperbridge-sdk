@@ -136,11 +136,3 @@ export const COMBINED_STATUS_WEIGHTS: Record<RequestStatus | TimeoutStatus, numb
 	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
 	[TimeoutStatus.TIMED_OUT]: 9,
 }
-
-export async function latestStateMachineHeight(wsUrl: string, stateMachineId: StateMachineIdParams): Promise<bigint> {
-	const api = await ApiPromise.create({ provider: new WsProvider(wsUrl) })
-
-	const latestHeight = await api.query.ismp.latestStateMachineHeight(stateMachineId)
-
-	return BigInt(latestHeight.toString())
-}
