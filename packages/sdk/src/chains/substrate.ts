@@ -146,11 +146,14 @@ export class SubstrateChain implements IChain {
 	async queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
 		const rpc = new RpcWebSocketClient()
 		await rpc.connect(this.params.ws)
+
 		if (isEvmChain(counterparty)) {
 			// for evm chains, query the mmr proof
 			const proof: any = await rpc.call("mmr_queryProof", [Number(at), message])
 			return toHex(proof.proof)
-		} else if (isSubstrateChain(counterparty)) {
+		}
+
+		if (isSubstrateChain(counterparty)) {
 			// for substrate chains, we use the child trie proof
 			const childTrieKeys =
 				"Requests" in message
@@ -169,9 +172,9 @@ export class SubstrateChain implements IChain {
 				},
 			})
 			return toHex(encoded)
-		} else {
-			throw new Error(`Unsupported chain type for counterparty: ${counterparty}`)
 		}
+
+		throw new Error(`Unsupported chain type for counterparty: ${counterparty}`)
 	}
 
 	/**
