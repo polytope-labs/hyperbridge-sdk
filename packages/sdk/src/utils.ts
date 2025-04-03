@@ -1,6 +1,10 @@
 import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, StateMachineIdParams, TimeoutStatus } from "@/types"
 import { ApiPromise } from "@polkadot/api"
 import { WsProvider } from "@polkadot/api"
+import {
+	type RequestStatusKey,
+	type TimeoutStatusKey,
+} from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
 
 export * from "./utils/mmr"
@@ -88,7 +92,7 @@ export function getRequestCommitment(get: IGetRequest): HexString {
  * Higher weights represent more advanced states in the processing pipeline.
  * @returns A record mapping each RequestStatus to its corresponding weight value.
  */
-export const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
+export const REQUEST_STATUS_WEIGHTS: Record<RequestStatusKey, number> = {
 	[RequestStatus.SOURCE]: 0,
 	[RequestStatus.SOURCE_FINALIZED]: 1,
 	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
@@ -104,7 +108,7 @@ export const REQUEST_STATUS_WEIGHTS: Record<RequestStatus, number> = {
  * Higher weights represent more advanced states in the timeout processing.
  * @returns A record mapping each TimeoutStatus to its corresponding weight value.
  */
-export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatus, number> = {
+export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatusKey, number> = {
 	[TimeoutStatus.PENDING_TIMEOUT]: 1,
 	[TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 2,
 	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 3,
@@ -124,7 +128,7 @@ export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatus, number> = {
  *
  * @returns A record mapping each RequestStatus and TimeoutStatus to its corresponding weight value.
  */
-export const COMBINED_STATUS_WEIGHTS: Record<RequestStatus | TimeoutStatus, number> = {
+export const COMBINED_STATUS_WEIGHTS: Record<RequestStatusKey | TimeoutStatusKey, number> = {
 	[RequestStatus.SOURCE]: 0,
 	[RequestStatus.SOURCE_FINALIZED]: 1,
 	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,

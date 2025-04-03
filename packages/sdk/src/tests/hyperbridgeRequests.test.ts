@@ -59,7 +59,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		const params = {
 			destination: 97,
 			recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
-			amount: BigInt(1),
+			amount: 1,
 			timeout: BigInt(3600),
 			paraId: 4009,
 		}
@@ -109,7 +109,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		const params = {
 			destination: 97,
 			recipient: bscWalletClient.account.address as HexString,
-			amount: BigInt(5),
+			amount: 5,
 			timeout: BigInt(3600),
 			paraId: 4009,
 		}
@@ -214,7 +214,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		const params = {
 			destination: 97,
 			recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
-			amount: BigInt(1),
+			amount: 1,
 			timeout: BigInt(1),
 			paraId: 4009,
 		}
@@ -436,7 +436,7 @@ describe.sequential("Hyperbridge Requests", () => {
 		const params = {
 			destination: 97,
 			recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" as HexString,
-			amount: BigInt(1),
+			amount: 1,
 			timeout: BigInt(3600),
 			paraId: 4009,
 		}

@@ -24,6 +24,8 @@ import {
 	GetRequestResponse,
 	GetResponseByRequestIdResponse,
 	ResponseCommitmentWithValues,
+	type RequestStatusKey,
+	type TimeoutStatusKey,
 } from "@/types"
 import {
 	REQUEST_STATUS,
@@ -238,7 +240,8 @@ export class IndexerClient {
 		// sort by ascending order
 		const sorted = statuses.sort(
 			(a, b) =>
-				REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
+				REQUEST_STATUS_WEIGHTS[a.status as RequestStatusKey] -
+				REQUEST_STATUS_WEIGHTS[b.status as RequestStatusKey],
 		)
 
 		const request: RequestWithStatus = {
@@ -673,15 +676,16 @@ export class IndexerClient {
 			request = await this.queryRequest(hash)
 		}
 
-		let status =
+		let status: RequestStatusKey =
 			request.source === this.config.hyperbridge.stateMachineId
 				? RequestStatus.HYPERBRIDGE_DELIVERED
 				: RequestStatus.SOURCE
+
 		const latestMetadata = request.statuses[request.statuses.length - 1]
 
 		const latest_request = maxBy(
-			[status, latestMetadata.status as RequestStatus],
-			(item) => REQUEST_STATUS_WEIGHTS[item as RequestStatus],
+			[status, latestMetadata.status as RequestStatusKey],
+			(item) => REQUEST_STATUS_WEIGHTS[item],
 		)
 
 		if (!latest_request) return
@@ -1073,7 +1077,7 @@ export class IndexerClient {
 		const destChain = await getChain(this.config.dest)
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
-		let status =
+		let status: TimeoutStatusKey =
 			request.dest === this.config.hyperbridge.stateMachineId
 				? TimeoutStatus.HYPERBRIDGE_TIMED_OUT
 				: TimeoutStatus.PENDING_TIMEOUT
@@ -1086,11 +1090,11 @@ export class IndexerClient {
 
 		const latest = request.statuses[request.statuses.length - 1]
 		const latest_request = maxBy(
-			[status, latest.status as TimeoutStatus],
-			(item) => TIMEOUT_STATUS_WEIGHTS[item as TimeoutStatus],
+			[status, latest.status as TimeoutStatusKey],
+			(item) => TIMEOUT_STATUS_WEIGHTS[item],
 		)
 
-		logger.trace(`Reading last lastest request: ${latest_request}`)
+		logger.trace(`Reading lastest request: ${latest_request}`)
 
 		if (!latest_request) {
 			logger.trace("Ending stream. Latest request not found")
