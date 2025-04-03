@@ -4,8 +4,11 @@ import { WsProvider } from "@polkadot/api"
 import {
 	type RequestStatusKey,
 	type TimeoutStatusKey,
+	type RetryConfig,
 } from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
+import { createConsola, LogLevels } from "consola"
+import { _queryRequestInternal } from "./query-client"
 
 export * from "./utils/mmr"
 export * from "./utils/substrate"
@@ -60,6 +63,27 @@ export function postRequestCommitment(post: IPostRequest): HexString {
 			[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
 		),
 	)
+}
+
+export const DEFAULT_LOGGER = createConsola({
+	level: LogLevels.silent,
+})
+
+export async function retryPromise<T>(operation: () => Promise<T>, retryConfig: RetryConfig): Promise<T> {
+	const { logger = DEFAULT_LOGGER, logMessage = "Retry operation failed" } = retryConfig
+
+	let lastError: unknown
+	for (let i = 0; i < retryConfig.maxRetries; i++) {
+		try {
+			return await operation()
+		} catch (error) {
+			logger.trace(`Retrying(${i}) > ${logMessage}`)
+			lastError = error
+			await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * 2 ** i))
+		}
+	}
+
+	throw lastError
 }
 
 /**

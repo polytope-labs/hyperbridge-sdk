@@ -1,4 +1,5 @@
 import type { ConsolaInstance } from "consola"
+import { GraphQLClient } from "graphql-request"
 import type { Hex } from "viem"
 
 export type HexString = `0x${string}`
@@ -106,9 +107,11 @@ export interface IPostResponse {
 
 export type IMessage = { Requests: HexString[] } | { Responses: HexString[] }
 
+export type IndexerQueryClient = GraphQLClient
+
 export interface ClientConfig {
 	pollInterval: number
-	url?: string
+	queryClient: IndexerQueryClient
 	tracing?: boolean
 	source: IEvmConfig | ISubstrateConfig
 	dest: IEvmConfig | ISubstrateConfig

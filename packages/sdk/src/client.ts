@@ -1,5 +1,4 @@
 import { type ConsolaInstance, createConsola, LogLevels } from "consola"
-import { GraphQLClient } from "graphql-request"
 import { maxBy } from "lodash-es"
 import { pad } from "viem"
 
@@ -9,7 +8,6 @@ import mergeRace from "@async-generator/merge-race"
 import {
 	RequestStatus,
 	type StateMachineUpdate,
-	type RequestResponse,
 	type StateMachineResponse,
 	type ClientConfig,
 	type RetryConfig,
@@ -26,9 +24,9 @@ import {
 	ResponseCommitmentWithValues,
 	type RequestStatusKey,
 	type TimeoutStatusKey,
+	type IndexerQueryClient,
 } from "@/types"
 import {
-	REQUEST_STATUS,
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 	ASSET_TELEPORTED_BY_PARAMS,
@@ -43,8 +41,10 @@ import {
 	getRequestCommitment,
 	postRequestCommitment,
 	sleep,
+	retryPromise,
 } from "@/utils"
 import { getChain, type IChain, type SubstrateChain } from "@/chain"
+import { _queryRequestInternal } from "./query-client"
 
 /**
  * IndexerClient provides methods for interacting with the Hyperbridge indexer.
@@ -103,7 +103,7 @@ export class IndexerClient {
 	/**
 	 * GraphQL client used for making requests to the indexer
 	 */
-	private client: GraphQLClient
+	private client: IndexerQueryClient
 
 	/**
 	 * Configuration for the IndexerClient including URLs, poll intervals, and chain-specific settings
@@ -126,7 +126,7 @@ export class IndexerClient {
 	 * Creates a new IndexerClient instance
 	 */
 	constructor(config: PartialClientConfig) {
-		this.client = new GraphQLClient(config?.url || "http://localhost:3000/graphql")
+		this.client = config.queryClient
 		this.config = {
 			pollInterval: DEFAULT_POLL_INTERVAL,
 			...config,
@@ -216,49 +216,15 @@ export class IndexerClient {
 	/**
    * Queries a request by CommitmentHash
 
-   * @param hash - Can be commitment
+   * @param commitment_hash - Can be commitment
    * @returns Latest status and block metadata of the request
    */
-	async queryRequest(hash: string): Promise<RequestWithStatus | undefined> {
-		const logger = this.logger.withTag("[queryRequest]")
-
-		logger.trace(`querying 'Request' with Statuses by CommitmentHash(${hash})`)
-
-		const response = await this.withRetry(() =>
-			this.client.request<RequestResponse>(REQUEST_STATUS, {
-				hash,
-			}),
-		)
-
-		const first_record = response.requests.nodes[0]
-		if (!first_record) return
-
-		logger.trace("Request found")
-		const { statusMetadata, ...first_node } = first_record
-
-		const statuses = structuredClone(statusMetadata.nodes).map((item) => ({
-			status: item.status as any,
-			metadata: {
-				blockHash: item.blockHash,
-				blockNumber: Number.parseInt(item.blockNumber),
-				transactionHash: item.transactionHash,
-			},
-		}))
-
-		// sort by ascending order
-		const sorted = statuses.sort(
-			(a, b) =>
-				REQUEST_STATUS_WEIGHTS[a.status as RequestStatusKey] -
-				REQUEST_STATUS_WEIGHTS[b.status as RequestStatusKey],
-		)
-		logger.trace("Statuses found", statuses)
-
-		const request: RequestWithStatus = {
-			...first_node,
-			statuses: sorted,
-		}
-
-		return request
+	private async queryRequest(commitment_hash: string): Promise<RequestWithStatus | undefined> {
+		return _queryRequestInternal({
+			commitmentHash: commitment_hash,
+			queryClient: this.client,
+			logger: this.logger,
+		})
 	}
 
 	/**
@@ -629,7 +595,7 @@ export class IndexerClient {
 			request = await this.queryRequest(hash)
 		}
 
-		logger.trace("Request found")
+		logger.trace("`Request` found")
 
 		const chain = await getChain(this.config.dest)
 		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
@@ -1332,23 +1298,11 @@ export class IndexerClient {
 	 * @example
 	 * const result = await this.withRetry(() => this.queryStatus(hash));
 	 */
-	private async withRetry<T>(operation: () => Promise<T>, retryConfig_: Partial<RetryConfig> = {}): Promise<T> {
-		const retryConfig = { ...this.defaultRetryConfig, ...retryConfig_ }
-		const { logger, logMessage = "Retry operation failed" } = retryConfig
-
-		let lastError: unknown
-		for (let i = 0; i < retryConfig.maxRetries; i++) {
-			try {
-				return await operation()
-			} catch (error) {
-				if (logger) {
-					logger.trace(`Retrying(${i}) > ${logMessage}`)
-				}
-				lastError = error
-				await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * 2 ** i))
-			}
-		}
-		throw lastError
+	private async withRetry<T>(operation: () => Promise<T>, retryConfig: Partial<RetryConfig> = {}): Promise<T> {
+		return retryPromise(operation, {
+			...this.defaultRetryConfig,
+			...retryConfig,
+		})
 	}
 }
 
