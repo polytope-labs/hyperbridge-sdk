@@ -7,24 +7,24 @@ import mergeRace from "@async-generator/merge-race"
 
 import {
 	RequestStatus,
+	type IndexerQueryClient,
 	type StateMachineUpdate,
 	type StateMachineResponse,
 	type ClientConfig,
 	type RetryConfig,
-	type RequestWithStatus,
+	type PostRequestWithStatus,
 	type HexString,
 	TimeoutStatus,
-	PostRequestTimeoutStatus,
-	RequestStatusWithMetadata,
-	AssetTeleported,
-	AssetTeleportedResponse,
-	GetRequestWithStatus,
-	GetRequestResponse,
-	GetResponseByRequestIdResponse,
-	ResponseCommitmentWithValues,
+	type PostRequestTimeoutStatus,
+	type RequestStatusWithMetadata,
+	type AssetTeleported,
+	type AssetTeleportedResponse,
+	type GetRequestWithStatus,
+	type GetRequestResponse,
+	type GetResponseByRequestIdResponse,
+	type ResponseCommitmentWithValues,
 	type RequestStatusKey,
 	type TimeoutStatusKey,
-	type IndexerQueryClient,
 } from "@/types"
 import {
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
@@ -40,11 +40,11 @@ import {
 	TIMEOUT_STATUS_WEIGHTS,
 	getRequestCommitment,
 	postRequestCommitment,
-	sleep,
 	retryPromise,
+	sleep,
 } from "@/utils"
 import { getChain, type IChain, type SubstrateChain } from "@/chain"
-import { _queryRequestInternal } from "./query-client"
+import { _queryGetRequestInternal, _queryRequestInternal } from "./query-client"
 
 /**
  * IndexerClient provides methods for interacting with the Hyperbridge indexer.
@@ -214,12 +214,12 @@ export class IndexerClient {
 	}
 
 	/**
-   * Queries a request by CommitmentHash
-
-   * @param commitment_hash - Can be commitment
-   * @returns Latest status and block metadata of the request
-   */
-	private async queryRequest(commitment_hash: string): Promise<RequestWithStatus | undefined> {
+	 * Queries a request by CommitmentHash
+	 *
+	 * @param commitment_hash - Can be commitment
+	 * @returns Latest status and block metadata of the request
+	 */
+	private async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
 		return _queryRequestInternal({
 			commitmentHash: commitment_hash,
 			queryClient: this.client,
@@ -234,39 +234,11 @@ export class IndexerClient {
 	 * @returns Latest status and block metadata of the request
 	 */
 	async queryGetRequest(hash: string): Promise<GetRequestWithStatus | undefined> {
-		const self = this
-		const response = await self.withRetry(() =>
-			self.client.request<GetRequestResponse>(GET_REQUEST_STATUS, {
-				commitment: hash,
-			}),
-		)
-
-		if (!response.getRequests.nodes[0]) return
-
-		const statuses = response.getRequests.nodes[0].statusMetadata.nodes.map((item) => ({
-			status: item.status as any,
-			metadata: {
-				blockHash: item.blockHash,
-				blockNumber: parseInt(item.blockNumber),
-				transactionHash: item.transactionHash,
-			},
-		}))
-
-		// sort by ascending order
-		const sorted = statuses.sort(
-			(a, b) =>
-				REQUEST_STATUS_WEIGHTS[a.status as RequestStatus] - REQUEST_STATUS_WEIGHTS[b.status as RequestStatus],
-		)
-
-		const request: GetRequestWithStatus = {
-			...response.getRequests.nodes[0],
-			statuses: sorted,
-		}
-
-		// @ts-ignore
-		delete request.statusMetadata
-
-		return request
+		return _queryGetRequestInternal({
+			commitmentHash: hash,
+			queryClient: this.client,
+			logger: this.logger,
+		})
 	}
 
 	/**
@@ -275,9 +247,8 @@ export class IndexerClient {
 	 * @returns The response associated with the given request ID, or undefined if not found
 	 */
 	async queryResponseByRequestId(requestId: string): Promise<ResponseCommitmentWithValues | undefined> {
-		const self = this
-		const response = await self.withRetry(() =>
-			self.client.request<GetResponseByRequestIdResponse>(GET_RESPONSE_BY_REQUEST_ID, {
+		const response = await this.withRetry(() =>
+			this.client.request<GetResponseByRequestIdResponse>(GET_RESPONSE_BY_REQUEST_ID, {
 				requestId,
 			}),
 		)
@@ -309,10 +280,10 @@ export class IndexerClient {
 	 * @returns The request with finality events added
 	 * @private
 	 */
-	private async addRequestFinalityEvents(request: RequestWithStatus): Promise<RequestWithStatus> {
+	private async addRequestFinalityEvents(request: PostRequestWithStatus): Promise<PostRequestWithStatus> {
 		const events: RequestStatusWithMetadata[] = []
 
-		const addFinalityEvents = (request: RequestWithStatus) => {
+		const addFinalityEvents = (request: PostRequestWithStatus) => {
 			this.logger.trace(`Added ${events.length} \`Request\` finality events`, events)
 
 			request.statuses = [...request.statuses, ...events]
@@ -418,7 +389,7 @@ export class IndexerClient {
 	 * @returns Request with timeout events filled in, including any proof calldata for timeout submissions
 	 * @private
 	 */
-	private async addTimeoutFinalityEvents(request: RequestWithStatus): Promise<RequestWithStatus> {
+	private async addTimeoutFinalityEvents(request: PostRequestWithStatus): Promise<PostRequestWithStatus> {
 		// check if request receipt exists on destination chain
 		const destChain = await getChain(this.config.dest)
 		const hyperbridge = await getChain({
@@ -430,7 +401,7 @@ export class IndexerClient {
 		const reciept = await destChain.queryRequestReceipt(commitment)
 		const destTimestamp = await destChain.timestamp()
 
-		const addTimeoutEvents = (req: RequestWithStatus) => {
+		const addTimeoutEvents = (req: PostRequestWithStatus) => {
 			this.logger.trace(`Added ${events.length} timeout events`, events)
 			request.statuses = [...req.statuses, ...events]
 			return request
@@ -543,8 +514,8 @@ export class IndexerClient {
 	 * @returns Full request data with all inferred status events, including SOURCE_FINALIZED and HYPERBRIDGE_FINALIZED
 	 * @remarks Unlike queryRequest(), this method adds derived finalization status events by querying state machine updates
 	 */
-	async queryRequestWithStatus(hash: string): Promise<RequestWithStatus | undefined> {
-		let request = await this.queryRequest(hash)
+	async queryRequestWithStatus(hash: string): Promise<PostRequestWithStatus | undefined> {
+		let request = await this.queryPostRequest(hash)
 
 		if (!request) return
 		request = await this.addRequestFinalityEvents(request)
@@ -588,11 +559,11 @@ export class IndexerClient {
 		const logger = this.logger.withTag("[postRequestStatusStream]")
 
 		// wait for request to be created
-		let request: RequestWithStatus | undefined
+		let request: PostRequestWithStatus | undefined
 
 		while (!request) {
-			await this.sleep(this.config.pollInterval)
-			request = await this.queryRequest(hash)
+			await this.sleep_for_interval()
+			request = await this.queryPostRequest(hash)
 		}
 
 		logger.trace("`Request` found")
@@ -627,7 +598,7 @@ export class IndexerClient {
 			let timestamp = await chain.timestamp()
 			while (timestamp < timeoutTimestamp) {
 				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
-				await this.sleep(Number(diff))
+				await this.sleep_for(Number(diff))
 				timestamp = await chain.timestamp()
 			}
 			yield {
@@ -644,10 +615,10 @@ export class IndexerClient {
 	 * @returns AsyncGenerator that emits status updates until a terminal state is reached
 	 */
 	private async *postRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
-		let request: RequestWithStatus | undefined
+		let request: PostRequestWithStatus | undefined
 		while (!request) {
-			await this.sleep(this.config.pollInterval)
-			request = await this.queryRequest(hash)
+			await this.sleep_for_interval()
+			request = await this.queryPostRequest(hash)
 		}
 
 		let status: RequestStatusKey =
@@ -673,7 +644,7 @@ export class IndexerClient {
 				case RequestStatus.SOURCE: {
 					let sourceUpdate: StateMachineUpdate | undefined
 					while (!sourceUpdate) {
-						await this.sleep(this.config.pollInterval)
+						await this.sleep_for_interval()
 						sourceUpdate = await this.queryStateMachineUpdateByHeight({
 							statemachineId: request.source,
 							height: request.statuses[0].metadata.blockNumber,
@@ -698,8 +669,8 @@ export class IndexerClient {
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (!request || request.statuses.length < 2) {
-						await this.sleep(this.config.pollInterval)
-						request = await this.queryRequest(hash)
+						await this.sleep_for_interval()
+						request = await this.queryPostRequest(hash)
 					}
 
 					status =
@@ -724,7 +695,7 @@ export class IndexerClient {
 					let hyperbridgeFinalized: StateMachineUpdate | undefined
 					const index = request.source === this.config.hyperbridge.stateMachineId ? 0 : 1
 					while (!hyperbridgeFinalized) {
-						await this.sleep(this.config.pollInterval)
+						await this.sleep_for_interval()
 						hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
 							statemachineId: this.config.hyperbridge.stateMachineId,
 							height: request.statuses[index].metadata.blockNumber,
@@ -774,8 +745,8 @@ export class IndexerClient {
 					// wait for the request to be delivered to the destination
 					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					while (!request || !delivered) {
-						await this.sleep(this.config.pollInterval)
-						request = await this.queryRequest(hash)
+						await this.sleep_for_interval()
+						request = await this.queryPostRequest(hash)
 						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					}
 
@@ -799,9 +770,13 @@ export class IndexerClient {
 		}
 	}
 
-	private sleep(milliseconds: number): Promise<void> {
-		this.logger.trace(`Sleeping for ${this.config.pollInterval}ms`)
-		return sleep(milliseconds)
+	private sleep_for(duration: number): Promise<void> {
+		this.logger.trace(`Sleeping for ${duration}ms`)
+		return sleep(duration)
+	}
+
+	private sleep_for_interval(): Promise<void> {
+		return this.sleep_for(this.config.pollInterval)
 	}
 
 	/**
@@ -831,19 +806,16 @@ export class IndexerClient {
 	 *
 	 */
 	async *getRequestStatusStream(hash: HexString): AsyncGenerator<RequestStatusWithMetadata, void> {
-		const self = this
-
 		// wait for request to be created
 		let request: GetRequestWithStatus | undefined
 		while (!request) {
-			await sleep(self.config.pollInterval)
-			request = await self.queryGetRequest(hash)
-			continue
+			await this.sleep_for_interval()
+			request = await this.queryGetRequest(hash)
 		}
 
-		const chain = await getChain(self.config.dest)
-		const timeoutStream = self.timeoutStream(request.timeoutTimestamp, chain)
-		const statusStream = self.getRequestStatusStreamInternal(hash)
+		const chain = await getChain(this.config.dest)
+		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
+		const statusStream = this.getRequestStatusStreamInternal(hash)
 		const combined = mergeRace(timeoutStream, statusStream)
 
 		let item = await combined.next()
@@ -860,23 +832,23 @@ export class IndexerClient {
 	 * @returns AsyncGenerator that emits status updates until a terminal state is reached
 	 */
 	private async *getRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
-		const self = this
 		let request: GetRequestWithStatus | undefined
 		while (!request) {
-			await sleep(self.config.pollInterval)
-			request = await self.queryGetRequest(hash)
+			await this.sleep_for_interval()
+			request = await this.queryGetRequest(hash)
 		}
 
-		let status =
-			request.source === self.config.hyperbridge.stateMachineId
+		let status: RequestStatusKey | undefined =
+			request.source === this.config.hyperbridge.stateMachineId
 				? RequestStatus.HYPERBRIDGE_DELIVERED
 				: RequestStatus.SOURCE
+
 		const latestMetadata = request.statuses[request.statuses.length - 1]
+
 		// start with the latest status
-		status = maxBy(
-			[status, latestMetadata.status as RequestStatus],
-			(item) => REQUEST_STATUS_WEIGHTS[item as RequestStatus],
-		)!
+		status = maxBy([status, latestMetadata.status as RequestStatusKey], (item) => REQUEST_STATUS_WEIGHTS[item])
+
+		if (!status) return
 
 		while (true) {
 			switch (status) {
@@ -884,11 +856,11 @@ export class IndexerClient {
 				case RequestStatus.SOURCE: {
 					let sourceUpdate: StateMachineUpdate | undefined
 					while (!sourceUpdate) {
-						await sleep(self.config.pollInterval)
-						sourceUpdate = await self.queryStateMachineUpdateByHeight({
+						await this.sleep_for_interval()
+						sourceUpdate = await this.queryStateMachineUpdateByHeight({
 							statemachineId: request.source,
 							height: request.statuses[0].metadata.blockNumber,
-							chain: self.config.hyperbridge.stateMachineId,
+							chain: this.config.hyperbridge.stateMachineId,
 						})
 					}
 
@@ -908,12 +880,12 @@ export class IndexerClient {
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (!request || request.statuses.length < 2) {
-						await sleep(self.config.pollInterval)
-						request = await self.queryGetRequest(hash)
+						await this.sleep_for_interval()
+						request = await this.queryGetRequest(hash)
 					}
 
 					status =
-						request.source === self.config.hyperbridge.stateMachineId
+						request.source === this.config.hyperbridge.stateMachineId
 							? RequestStatus.DESTINATION
 							: RequestStatus.HYPERBRIDGE_DELIVERED
 
@@ -931,27 +903,27 @@ export class IndexerClient {
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
 					// If Hyperbridge was the source, the request is already complete
-					if (request.source === self.config.hyperbridge.stateMachineId) {
+					if (request.source === this.config.hyperbridge.stateMachineId) {
 						return
 					}
 					// Get the latest state machine update for hyperbridge on the destination chain
 					let hyperbridgeFinalized: StateMachineUpdate | undefined
 					while (!hyperbridgeFinalized) {
-						await sleep(self.config.pollInterval)
-						hyperbridgeFinalized = await self.queryStateMachineUpdateByHeight({
-							statemachineId: self.config.hyperbridge.stateMachineId,
+						await this.sleep_for_interval()
+						hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
+							statemachineId: this.config.hyperbridge.stateMachineId,
 							height: request.statuses[1].metadata.blockNumber,
 							chain: request.source,
 						})
 					}
 
-					const sourceChain = await getChain(self.config.source)
+					const sourceChain = await getChain(this.config.source)
 					const hyperbridge = await getChain({
-						...self.config.hyperbridge,
+						...this.config.hyperbridge,
 						hasher: "Keccak",
 					})
 
-					const response = await self.queryResponseByRequestId(hash)
+					const response = await this.queryResponseByRequestId(hash)
 
 					const proof = await hyperbridge.queryProof(
 						{ Responses: [response?.commitment as HexString] },
@@ -962,8 +934,8 @@ export class IndexerClient {
 					const calldata = sourceChain.encode({
 						kind: "GetResponse",
 						proof: {
-							stateMachine: self.config.hyperbridge.stateMachineId,
-							consensusStateId: self.config.hyperbridge.consensusStateId,
+							stateMachine: this.config.hyperbridge.stateMachineId,
+							consensusStateId: this.config.hyperbridge.consensusStateId,
 							proof,
 							height: BigInt(hyperbridgeFinalized.height),
 						},
@@ -995,15 +967,15 @@ export class IndexerClient {
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					// If Hyperbridge was the source, the request is already complete
-					if (request.source === self.config.hyperbridge.stateMachineId) {
+					if (request.source === this.config.hyperbridge.stateMachineId) {
 						return
 					}
 
 					// wait for the request to be delivered to the destination
 					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					while (!request || !delivered) {
-						await sleep(self.config.pollInterval)
-						request = await self.queryGetRequest(hash)
+						await this.sleep_for_interval()
+						request = await this.queryGetRequest(hash)
 						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					}
 
@@ -1050,7 +1022,7 @@ export class IndexerClient {
 	 */
 	async *postRequestTimeoutStream(hash: HexString): AsyncGenerator<PostRequestTimeoutStatus, void> {
 		const logger = this.logger.withTag("PostRequestTimeoutStream")
-		const request = await this.queryRequest(hash)
+		const request = await this.queryPostRequest(hash)
 		if (!request) throw new Error("Request not found")
 
 		logger.trace("Reading destination chain")
@@ -1095,7 +1067,7 @@ export class IndexerClient {
 
 					let update: StateMachineUpdate | undefined
 					while (!update) {
-						await this.sleep(this.config.pollInterval)
+						await this.sleep_for_interval()
 						update = await this.queryStateMachineUpdateByTimestamp({
 							statemachineId: request.dest,
 							commitmentTimestamp: request.timeoutTimestamp,
@@ -1180,7 +1152,7 @@ export class IndexerClient {
 						// if request was never delivered to Hyperbridge
 						// then query for any state machine update > requestTimestamp
 						while (!update) {
-							await this.sleep(this.config.pollInterval)
+							await this.sleep_for_interval()
 							update = await this.queryStateMachineUpdateByTimestamp({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								commitmentTimestamp: request.timeoutTimestamp,
@@ -1190,8 +1162,8 @@ export class IndexerClient {
 					} else {
 						let timeout: RequestStatusWithMetadata | undefined
 						while (!timeout || timeout?.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) {
-							await this.sleep(this.config.pollInterval)
-							const req = await this.queryRequest(hash)
+							await this.sleep_for_interval()
+							const req = await this.queryPostRequest(hash)
 							if (!req) continue
 							timeout = req.statuses
 								.sort((a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status])
@@ -1199,7 +1171,7 @@ export class IndexerClient {
 						}
 
 						while (!update) {
-							await this.sleep(this.config.pollInterval)
+							await this.sleep_for_interval()
 							update = await this.queryStateMachineUpdateByHeight({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								height: timeout.metadata.blockNumber,

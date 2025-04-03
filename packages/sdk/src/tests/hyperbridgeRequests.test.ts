@@ -26,13 +26,21 @@ import type { KeyringPair } from "@polkadot/keyring/types"
 import type { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { postRequestCommitment } from "@/utils"
+import { createQueryClient } from "@/query-client"
+
+const query_client = createQueryClient({
+	url: process.env.INDEXER_URL!,
+})
 
 describe.sequential("Hyperbridge Requests", () => {
 	let indexer: IndexerClient
 
 	beforeAll(async () => {
 		const { bscIsmpHost } = await bscSetup()
+
 		indexer = new IndexerClient({
+			queryClient: query_client,
+			pollInterval: 1_000, // every second
 			dest: {
 				consensusStateId: "BSC0",
 				rpcUrl: process.env.BSC_CHAPEL!,
@@ -50,8 +58,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: process.env.INDEXER_URL,
-			pollInterval: 1_000, // every second
 		})
 	})
 
@@ -379,7 +385,7 @@ describe.sequential("Hyperbridge Requests", () => {
 				stateMachineId: "KUSAMA-4009",
 				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
 			},
-			url: process.env.INDEXER_URL,
+			queryClient: query_client,
 			pollInterval: 1_000, // every second
 		})
 

@@ -1,11 +1,5 @@
-import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, StateMachineIdParams, TimeoutStatus } from "@/types"
-import { ApiPromise } from "@polkadot/api"
-import { WsProvider } from "@polkadot/api"
-import {
-	type RequestStatusKey,
-	type TimeoutStatusKey,
-	type RetryConfig,
-} from "@/types"
+import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
+import type { RequestStatusKey, TimeoutStatusKey, RetryConfig } from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
@@ -92,7 +86,7 @@ export async function retryPromise<T>(operation: () => Promise<T>, retryConfig: 
  * @returns The commitment hash.
  */
 export function getRequestCommitment(get: IGetRequest): HexString {
-	let keysEncoding = "0x".concat(get.keys.map((key) => key.slice(2)).join(""))
+	const keysEncoding = "0x".concat(get.keys.map((key) => key.slice(2)).join(""))
 	return keccak256(
 		encodePacked(
 			["bytes", "bytes", "uint64", "uint64", "uint64", "bytes", "bytes", "bytes"],

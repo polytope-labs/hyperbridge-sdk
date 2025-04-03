@@ -334,27 +334,24 @@ export type RequestStatusWithMetadata =
 			}
 	  }
 
-export interface RequestWithStatus {
+interface GenericRequestWithStatuses {
 	source: string
 	dest: string
-	to: HexString
 	from: HexString
 	nonce: bigint
-	body: HexString
 	timeoutTimestamp: bigint
 	statuses: Array<RequestStatusWithMetadata>
 }
 
-export interface GetRequestWithStatus {
-	source: string
-	dest: string
-	from: HexString
-	keys: HexString[]
-	nonce: bigint
+export interface PostRequestWithStatus extends GenericRequestWithStatuses {
+	to: HexString
+	body: HexString
+}
+
+export interface GetRequestWithStatus extends GenericRequestWithStatuses {
 	height: bigint
+	keys: HexString[]
 	context: HexString
-	timeoutTimestamp: bigint
-	statuses: Array<RequestStatusWithMetadata>
 }
 
 export interface GetResponseByRequestIdResponse {
