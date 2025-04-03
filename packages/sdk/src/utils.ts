@@ -16,7 +16,7 @@ export const DEFAULT_POLL_INTERVAL = 5_000
  * Sleeps for the specified number of milliseconds.
  * @param ms The number of milliseconds to sleep.
  */
-export function sleep(ms?: number) {
+export function sleep(ms?: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms || DEFAULT_POLL_INTERVAL))
 }
 

@@ -37,6 +37,7 @@ import {
 } from "@/queries"
 import {
 	COMBINED_STATUS_WEIGHTS,
+	DEFAULT_POLL_INTERVAL,
 	REQUEST_STATUS_WEIGHTS,
 	TIMEOUT_STATUS_WEIGHTS,
 	getRequestCommitment,
@@ -124,9 +125,12 @@ export class IndexerClient {
 	/**
 	 * Creates a new IndexerClient instance
 	 */
-	constructor(config: ClientConfig) {
+	constructor(config: PartialClientConfig) {
 		this.client = new GraphQLClient(config?.url || "http://localhost:3000/graphql")
-		this.config = config
+		this.config = {
+			pollInterval: DEFAULT_POLL_INTERVAL,
+			...config,
+		}
 		this.logger = createConsola({
 			level: LogLevels[config.tracing ? "trace" : "info"],
 			formatOptions: {
@@ -169,7 +173,7 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		logger.trace("Response =>", first_node)
+		logger.trace("Response >", first_node)
 
 		return first_node
 	}
@@ -190,15 +194,23 @@ export class IndexerClient {
 		commitmentTimestamp: bigint
 		chain: string
 	}): Promise<StateMachineUpdate | undefined> {
-		const response = await this.withRetry(() =>
-			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_TIMESTAMP, {
-				statemachineId,
-				commitmentTimestamp: commitmentTimestamp.toString(),
-				chain,
-			}),
+		const logger = this.logger.withTag("[queryStateMachineUpdateByTimestamp]")
+		const message = `querying StateMachineId(${statemachineId}) update by Timestamp(${commitmentTimestamp}) in Chain(${chain})`
+
+		const response = await this.withRetry(
+			() =>
+				this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_TIMESTAMP, {
+					statemachineId,
+					commitmentTimestamp: commitmentTimestamp.toString(),
+					chain,
+				}),
+			{ logger, logMessage: message },
 		)
 
-		return response.stateMachineUpdateEvents.nodes[0]
+		const first_node = response?.stateMachineUpdateEvents?.nodes?.[0]
+		logger.trace("Response >", first_node)
+
+		return first_node
 	}
 
 	/**
@@ -208,9 +220,9 @@ export class IndexerClient {
    * @returns Latest status and block metadata of the request
    */
 	async queryRequest(hash: string): Promise<RequestWithStatus | undefined> {
-		const logger = this.logger.withTag(`CommitmentHash(${hash})`)
+		const logger = this.logger.withTag("[queryRequest]")
 
-		logger.trace(`querying IPostRequest with CommitmentHash(${hash})`)
+		logger.trace(`querying 'Request' with Statuses by CommitmentHash(${hash})`)
 
 		const response = await this.withRetry(() =>
 			this.client.request<RequestResponse>(REQUEST_STATUS, {
@@ -222,10 +234,8 @@ export class IndexerClient {
 		if (!first_record) return
 
 		logger.trace("Request found")
-
 		const { statusMetadata, ...first_node } = first_record
 
-		logger.trace("Statuses found")
 		const statuses = structuredClone(statusMetadata.nodes).map((item) => ({
 			status: item.status as any,
 			metadata: {
@@ -235,14 +245,13 @@ export class IndexerClient {
 			},
 		}))
 
-		logger.trace("Sorting statuses", statuses)
-
 		// sort by ascending order
 		const sorted = statuses.sort(
 			(a, b) =>
 				REQUEST_STATUS_WEIGHTS[a.status as RequestStatusKey] -
 				REQUEST_STATUS_WEIGHTS[b.status as RequestStatusKey],
 		)
+		logger.trace("Statuses found", statuses)
 
 		const request: RequestWithStatus = {
 			...first_node,
@@ -338,7 +347,7 @@ export class IndexerClient {
 		const events: RequestStatusWithMetadata[] = []
 
 		const addFinalityEvents = (request: RequestWithStatus) => {
-			this.logger.trace(`Adding ${events.length} finality events`, events)
+			this.logger.trace(`Added ${events.length} \`Request\` finality events`, events)
 
 			request.statuses = [...request.statuses, ...events]
 			return request
@@ -610,14 +619,13 @@ export class IndexerClient {
 	 *
 	 */
 	async *postRequestStatusStream(hash: HexString): AsyncGenerator<RequestStatusWithMetadata, void> {
-		const logger = this.logger.withTag("postRequestStatusStream()")
+		const logger = this.logger.withTag("[postRequestStatusStream]")
 
 		// wait for request to be created
 		let request: RequestWithStatus | undefined
 
 		while (!request) {
-			logger.trace(`Sleep for ${this.config.pollInterval}`)
-			await sleep(this.config.pollInterval)
+			await this.sleep(this.config.pollInterval)
 			request = await this.queryRequest(hash)
 		}
 
@@ -633,7 +641,7 @@ export class IndexerClient {
 		let item = await combined.next()
 
 		while (!item.done) {
-			logger.trace(`Yielding ${item.value.status}`)
+			logger.trace(`Yielding Event(${item.value.status})`)
 
 			yield item.value
 			item = await combined.next()
@@ -645,7 +653,7 @@ export class IndexerClient {
 
 	/*
 	 * Returns a generator that will yield true if the request is timed out
-	 * If the request does not have a timeout, it will yield never yield
+	 * If the request does not have a timeout, it will never yield
 	 * @param request - Request to timeout
 	 */
 	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
@@ -653,7 +661,7 @@ export class IndexerClient {
 			let timestamp = await chain.timestamp()
 			while (timestamp < timeoutTimestamp) {
 				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
-				await sleep(Number(diff))
+				await this.sleep(Number(diff))
 				timestamp = await chain.timestamp()
 			}
 			yield {
@@ -672,7 +680,7 @@ export class IndexerClient {
 	private async *postRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
 		let request: RequestWithStatus | undefined
 		while (!request) {
-			await sleep(this.config.pollInterval)
+			await this.sleep(this.config.pollInterval)
 			request = await this.queryRequest(hash)
 		}
 
@@ -699,7 +707,7 @@ export class IndexerClient {
 				case RequestStatus.SOURCE: {
 					let sourceUpdate: StateMachineUpdate | undefined
 					while (!sourceUpdate) {
-						await sleep(this.config.pollInterval)
+						await this.sleep(this.config.pollInterval)
 						sourceUpdate = await this.queryStateMachineUpdateByHeight({
 							statemachineId: request.source,
 							height: request.statuses[0].metadata.blockNumber,
@@ -715,6 +723,7 @@ export class IndexerClient {
 							transactionHash: sourceUpdate.transactionHash,
 						},
 					}
+
 					status = RequestStatus.SOURCE_FINALIZED
 					break
 				}
@@ -723,7 +732,7 @@ export class IndexerClient {
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (!request || request.statuses.length < 2) {
-						await sleep(this.config.pollInterval)
+						await this.sleep(this.config.pollInterval)
 						request = await this.queryRequest(hash)
 					}
 
@@ -749,7 +758,7 @@ export class IndexerClient {
 					let hyperbridgeFinalized: StateMachineUpdate | undefined
 					const index = request.source === this.config.hyperbridge.stateMachineId ? 0 : 1
 					while (!hyperbridgeFinalized) {
-						await sleep(this.config.pollInterval)
+						await this.sleep(this.config.pollInterval)
 						hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
 							statemachineId: this.config.hyperbridge.stateMachineId,
 							height: request.statuses[index].metadata.blockNumber,
@@ -799,7 +808,7 @@ export class IndexerClient {
 					// wait for the request to be delivered to the destination
 					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					while (!request || !delivered) {
-						await sleep(this.config.pollInterval)
+						await this.sleep(this.config.pollInterval)
 						request = await this.queryRequest(hash)
 						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
 					}
@@ -822,6 +831,11 @@ export class IndexerClient {
 					return
 			}
 		}
+	}
+
+	private sleep(milliseconds: number): Promise<void> {
+		this.logger.trace(`Sleeping for ${this.config.pollInterval}ms`)
+		return sleep(milliseconds)
 	}
 
 	/**
@@ -1115,7 +1129,7 @@ export class IndexerClient {
 
 					let update: StateMachineUpdate | undefined
 					while (!update) {
-						await sleep(this.config.pollInterval)
+						await this.sleep(this.config.pollInterval)
 						update = await this.queryStateMachineUpdateByTimestamp({
 							statemachineId: request.dest,
 							commitmentTimestamp: request.timeoutTimestamp,
@@ -1200,7 +1214,7 @@ export class IndexerClient {
 						// if request was never delivered to Hyperbridge
 						// then query for any state machine update > requestTimestamp
 						while (!update) {
-							await sleep(this.config.pollInterval)
+							await this.sleep(this.config.pollInterval)
 							update = await this.queryStateMachineUpdateByTimestamp({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								commitmentTimestamp: request.timeoutTimestamp,
@@ -1210,7 +1224,7 @@ export class IndexerClient {
 					} else {
 						let timeout: RequestStatusWithMetadata | undefined
 						while (!timeout || timeout?.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) {
-							await sleep(this.config.pollInterval)
+							await this.sleep(this.config.pollInterval)
 							const req = await this.queryRequest(hash)
 							if (!req) continue
 							timeout = req.statuses
@@ -1219,7 +1233,7 @@ export class IndexerClient {
 						}
 
 						while (!update) {
-							await sleep(this.config.pollInterval)
+							await this.sleep(this.config.pollInterval)
 							update = await this.queryStateMachineUpdateByHeight({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								height: timeout.metadata.blockNumber,
@@ -1336,4 +1350,8 @@ export class IndexerClient {
 		}
 		throw lastError
 	}
+}
+
+interface PartialClientConfig extends Omit<ClientConfig, "pollInterval"> {
+	pollInterval?: number
 }

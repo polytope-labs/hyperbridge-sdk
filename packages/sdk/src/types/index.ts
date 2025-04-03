@@ -107,7 +107,7 @@ export interface IPostResponse {
 export type IMessage = { Requests: HexString[] } | { Responses: HexString[] }
 
 export interface ClientConfig {
-	pollInterval?: number
+	pollInterval: number
 	url?: string
 	tracing?: boolean
 	source: IEvmConfig | ISubstrateConfig
