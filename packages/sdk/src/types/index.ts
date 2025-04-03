@@ -1,3 +1,4 @@
+import type { ConsolaInstance } from "consola"
 import type { Hex } from "viem"
 
 export type HexString = `0x${string}`
@@ -117,6 +118,8 @@ export interface ClientConfig {
 export interface RetryConfig {
 	maxRetries: number
 	backoffMs: number
+	logMessage?: string
+	logger?: ConsolaInstance
 }
 
 export interface IsmpRequest {

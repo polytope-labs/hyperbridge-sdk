@@ -152,15 +152,24 @@ export class IndexerClient {
 		chain: string
 		height: number
 	}): Promise<StateMachineUpdate | undefined> {
-		const response = await this.withRetry(() =>
-			this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
-				statemachineId,
-				height,
-				chain,
-			}),
+		const logger = this.logger.withTag("[queryStateMachineUpdateByHeight]()")
+		const message = `querying StateMachineId(${statemachineId}) update by Height(${height}) in chain Chain(${chain})`
+
+		const response = await this.withRetry(
+			() => {
+				return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
+					statemachineId,
+					height,
+					chain,
+				})
+			},
+			{ logger: logger, logMessage: message },
 		)
 
-		return response.stateMachineUpdateEvents.nodes[0]
+		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
+		logger.trace("Response =>", first_node)
+
+		return first_node
 	}
 
 	/**
@@ -1305,17 +1314,20 @@ export class IndexerClient {
 	 * @example
 	 * const result = await this.withRetry(() => this.queryStatus(hash));
 	 */
-	private async withRetry<T>(
-		operation: () => Promise<T>,
-		retryConfig: RetryConfig = this.defaultRetryConfig,
-	): Promise<T> {
-		let lastError
+	private async withRetry<T>(operation: () => Promise<T>, retryConfig_: Partial<RetryConfig> = {}): Promise<T> {
+		const retryConfig = { ...this.defaultRetryConfig, ...retryConfig_ }
+		const { logger, logMessage = "Retry operation failed" } = retryConfig
+
+		let lastError: unknown
 		for (let i = 0; i < retryConfig.maxRetries; i++) {
 			try {
 				return await operation()
 			} catch (error) {
+				if (logger) {
+					logger.trace(`Retrying(${i}) > ${logMessage}`)
+				}
 				lastError = error
-				await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * Math.pow(2, i)))
+				await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * 2 ** i))
 			}
 		}
 		throw lastError
