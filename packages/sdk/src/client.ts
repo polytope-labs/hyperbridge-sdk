@@ -219,7 +219,7 @@ export class IndexerClient {
 	 * @param commitment_hash - Can be commitment
 	 * @returns Latest status and block metadata of the request
 	 */
-	private async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
+	async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
 		return _queryRequestInternal({
 			commitmentHash: commitment_hash,
 			queryClient: this.client,
