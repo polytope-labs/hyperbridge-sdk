@@ -87,7 +87,10 @@ export const formatChain = (chain: any) => {
 	if (chainType) {
 		// Convert chainType to uppercase and combine with chain ID
 		const rawChainId = chainObj[chainType]
-		const id = rawChainId.startsWith("0x") ? Buffer.from(rawChainId.slice(2), "hex").toString() : String(rawChainId)
+		let id = String(rawChainId)
+		if (typeof rawChainId === "string" && rawChainId.startsWith?.("0x")) {
+			id = Buffer.from(rawChainId.slice(2), "hex").toString()
+		}
 		return `${chainType.toUpperCase()}-${id}`
 	}
 	return chain
