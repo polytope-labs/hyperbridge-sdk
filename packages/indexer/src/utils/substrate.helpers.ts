@@ -86,7 +86,9 @@ export const formatChain = (chain: any) => {
 	const chainType = Object.keys(chainObj)[0]
 	if (chainType) {
 		// Convert chainType to uppercase and combine with chain ID
-		return `${chainType.toUpperCase()}-${chainObj[chainType]}`
+		const rawChainId = chainObj[chainType]
+		const id = rawChainId.startsWith("0x") ? Buffer.from(rawChainId.slice(2), "hex").toString() : String(rawChainId)
+		return `${chainType.toUpperCase()}-${id}`
 	}
 	return chain
 }
