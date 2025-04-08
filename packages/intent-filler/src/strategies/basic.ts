@@ -1,11 +1,21 @@
 import { FillerStrategy } from "@/strategies/base"
-import { Order, FillerConfig, ExecutionResult, HexString, FillOptions, PaymentInfo } from "@/types"
+import {
+	Order,
+	FillerConfig,
+	ExecutionResult,
+	HexString,
+	FillOptions,
+	PaymentInfo,
+	DispatchPost,
+	RequestKind,
+} from "@/types"
 import { ethers } from "ethers"
 import { encodePacked, keccak256, toHex } from "viem"
 import { ADDRESS_ZERO, fetchTokenUsdPriceOnchain, getOrderCommitment } from "@/utils"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { addresses, assets } from "@/config/chain"
+import { hexConcat } from "ethers/lib/utils"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -87,6 +97,7 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	async calculateProfitability(order: Order): Promise<number> {
 		try {
+			// Get the gas cost to fill the order
 			const gasPrice = await this.provider.getGasPrice()
 
 			const gasEstimate = await this.estimateGasForFill(order)
@@ -96,27 +107,17 @@ export class BasicFiller implements FillerStrategy {
 
 			const ethPriceUsd = await this.getEthPriceUsd()
 
-			const gasCostUsd = gasCostEth * ethPriceUsd
-
-			const outputValueUsd = await this.calculateTokensValueUsd(order.outputs)
-
-			const inputValueUsd = await this.calculateTokensValueUsd(order.inputs)
-
 			const relayerFeeEth = 0.001 // Fixed fee in ETH, change this
-			const relayerFeeUsd = relayerFeeEth * ethPriceUsd
 
-			// Calculate expected profit
-			const expectedProfitUsd = inputValueUsd - outputValueUsd - gasCostUsd - relayerFeeUsd
+			// Get the HyperBridge protocol fee
+			const protocolFeeEth = await this.getProtocolFeeEth(order)
 
-			console.debug(`Profitability calculation:
-        	Input value: $${inputValueUsd.toFixed(2)}
-        	Output value: $${outputValueUsd.toFixed(2)}
-        	Gas cost: $${gasCostUsd.toFixed(2)}
-        	Relayer fee: $${relayerFeeUsd.toFixed(2)}
-        	Expected profit: $${expectedProfitUsd.toFixed(2)}
-      		`)
+			// Estimate the gas for handling POST requests in the source chain
+			const postGasEstimate = await this.estimateGasForPost(order)
 
-			return expectedProfitUsd
+			const totalCostUsd = (gasCostEth + relayerFeeEth + protocolFeeEth + postGasEstimate) * ethPriceUsd
+
+			return totalCostUsd
 		} catch (error) {
 			console.error(`Error calculating profitability:`, error)
 			return -1 // Negative profitability signals an error
@@ -326,6 +327,51 @@ export class BasicFiller implements FillerStrategy {
 		)
 
 		return ethPriceUsd
+	}
+
+	/**
+	 * Gets the HyperBridge protocol fee in ETH
+	 */
+	private async getProtocolFeeEth(order: Order): Promise<number> {
+		const requestBody = this.constructRedeemEscrowRequest(order)
+
+		const dispatchPost: DispatchPost = {
+			dest: order.sourceChain,
+			to: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+			body: requestBody,
+			timeout: order.deadline,
+			fee: order.fees,
+			payer: order.user,
+		}
+
+		const protocolFeeEth = await this.contract.quote(dispatchPost)
+
+		return protocolFeeEth
+	}
+
+	/**
+	 * Constructs the redeem escrow request body
+	 */
+	private constructRedeemEscrowRequest(order: Order): HexString {
+		const commitment = getOrderCommitment(order)
+
+		// RequestKind.RedeemEscrow is 0 as defined in the contract
+		const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
+
+		const requestBody = encodePacked(
+			["bytes32", "bytes32", "tuple(bytes32 token, uint256 amount)[]"],
+			[commitment as HexString, this.wallet.address as HexString, order.inputs],
+		)
+
+		return hexConcat([requestKind, requestBody]) as HexString
+	}
+
+	/**
+	 * Estimates gas for handling POST requests in the source chain
+	 */
+	private async estimateGasForPost(order: Order): Promise<number> {
+		// TODO: Implement this
+		return 0
 	}
 
 	/**

@@ -2,8 +2,8 @@
  * Enum representing different chains.
  */
 export enum Chains {
-	BSC_CHAPEL = "bscChapel",
-	GNOSIS_CHIADO = "gnosisChiado",
+	BSC_CHAPEL = "EVM-97",
+	GNOSIS_CHIADO = "EVM-10200",
 }
 
 type AddressMap = {
@@ -41,6 +41,10 @@ export const assets = {
  */
 export const addresses: AddressMap = {
 	UniswapV2Router: {
+		[Chains.BSC_CHAPEL]: "0x0000000000000000000000000000000000000000",
+		[Chains.GNOSIS_CHIADO]: "0x0000000000000000000000000000000000000000",
+	},
+	IntentGateway: {
 		[Chains.BSC_CHAPEL]: "0x0000000000000000000000000000000000000000",
 		[Chains.GNOSIS_CHIADO]: "0x0000000000000000000000000000000000000000",
 	},

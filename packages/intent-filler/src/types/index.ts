@@ -316,3 +316,39 @@ export interface ExecutionResult {
 	 */
 	processingTimeMs?: number
 }
+
+/**
+ * Represents a dispatch post for cross-chain communication
+ */
+export interface DispatchPost {
+	/**
+	 * Bytes representation of the destination state machine
+	 */
+	dest: HexString
+
+	/**
+	 * The destination module
+	 */
+	to: HexString
+
+	/**
+	 * The request body
+	 */
+	body: HexString
+
+	/**
+	 * Timeout for this request in seconds
+	 */
+	timeout: bigint
+
+	/**
+	 * The amount put up to be paid to the relayer,
+	 * this is charged in `IIsmpHost.feeToken` to `msg.sender`
+	 */
+	fee: bigint
+
+	/**
+	 * Who pays for this request?
+	 */
+	payer: HexString
+}
