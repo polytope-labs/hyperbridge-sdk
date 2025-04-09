@@ -569,19 +569,25 @@ export class IndexerClient {
 		logger.trace("`Request` found")
 
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
+		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
 		const statusStream = this.postRequestStatusStreamInternal(hash)
 
-		const combined = mergeRace(timeoutStream, statusStream)
-
 		logger.trace("Listening for events")
-		let item = await combined.next()
+		// @todo Test this stream merge logic
+		while (true) {
+			const item = await Promise.race([timeoutStream.next(), statusStream.next()] as const)
 
-		while (!item.done) {
+			if (item.value && item.value.status === "PENDING_TIMEOUT") {
+				logger.trace(`Yielding Event(${item.value.status})`)
+				yield item.value
+				break
+			}
+
+			if (item.done) break
+			if (!item.value) break
+
 			logger.trace(`Yielding Event(${item.value.status})`)
-
 			yield item.value
-			item = await combined.next()
 		}
 
 		logger.trace("Streaming complete")
@@ -593,18 +599,39 @@ export class IndexerClient {
 	 * If the request does not have a timeout, it will never yield
 	 * @param request - Request to timeout
 	 */
-	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
+	async *timeoutStream(
+		timeoutTimestamp: bigint,
+		chain: IChain,
+		commitmentHash: HexString,
+	): AsyncGenerator<RequestStatusWithMetadata, void> {
+		const logger = this.logger.withTag("[timeoutStream()]")
+
+		const check_if_transaction_is_completed = async () => {
+			const value = await this.queryPostRequest(commitmentHash)
+			const statues = value?.statuses ?? []
+
+			return statues.some((e) => e.status === RequestStatus.DESTINATION)
+		}
+
 		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
+
 			while (timestamp < timeoutTimestamp) {
+				if (await check_if_transaction_is_completed()) {
+					logger.debug("Stop timeout stream")
+					return
+				}
+
 				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
 				await this.sleep_for(Number(diff))
 				timestamp = await chain.timestamp()
 			}
+
 			yield {
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
 			}
+
 			return
 		}
 	}
@@ -814,7 +841,7 @@ export class IndexerClient {
 		}
 
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
+		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
 		const statusStream = this.getRequestStatusStreamInternal(hash)
 		const combined = mergeRace(timeoutStream, statusStream)
 
