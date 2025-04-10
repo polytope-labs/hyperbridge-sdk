@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      ckb-mmr-wasm:
+        specifier: link:wasm-b
+        version: link:wasm-b
       ethers:
         specifier: ^5.7.2
         version: 5.8.0

@@ -40,6 +40,7 @@
 		"node": ">=18.0.0"
 	},
 	"dependencies": {
+		"ckb-mmr-wasm": "link:wasm-b",
 		"ethers": "^5.7.2",
 		"p-queue": "^8.1.0",
 		"viem": "^2.23.5"

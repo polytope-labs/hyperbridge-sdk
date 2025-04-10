@@ -3,6 +3,7 @@ import { Order } from "./types"
 import { encodePacked, keccak256, toHex } from "viem"
 import { UNISWAP_V2_ROUTER_ABI } from "./config/abis/UniswapV2Router"
 import { ERC20_ABI } from "./config/abis/ERC20"
+import { generate_root, MMRResult } from "ckb-mmr-wasm/ckb_mmr_wasm"
 
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000"
 
@@ -72,4 +73,8 @@ export async function fetchTokenUsdPriceOnchain(
 		console.error("Error fetching token price from Uniswap:", error)
 		throw error
 	}
+}
+
+export function generateRootWithProof(items: number, targetPos: number): MMRResult {
+	return generate_root(BigInt(items), BigInt(targetPos))
 }
