@@ -49,3 +49,8 @@ export const addresses: AddressMap = {
 		[Chains.GNOSIS_CHIADO]: "0x0000000000000000000000000000000000000000",
 	},
 }
+
+export const rpcUrls = {
+	[Chains.BSC_CHAPEL]: "https://bsc-rpc.publicnode.com",
+	[Chains.GNOSIS_CHIADO]: "https://rpc.chiado.base.org",
+}

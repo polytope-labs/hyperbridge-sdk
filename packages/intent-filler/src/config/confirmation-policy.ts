@@ -1,6 +1,6 @@
 export class ConfirmationPolicy {
 	// Maps chainId -> amount threshold -> confirmation blocks
-	private policies: Map<string, Map<bigint, number>>
+	private policies: Map<number, Map<bigint, number>>
 
 	constructor(policyConfig: Record<string, Record<string, number>>) {
 		this.policies = new Map()
@@ -13,11 +13,11 @@ export class ConfirmationPolicy {
 				thresholdMap.set(BigInt(amount), blocks)
 			})
 
-			this.policies.set(chainId, thresholdMap)
+			this.policies.set(Number(chainId), thresholdMap)
 		})
 	}
 
-	getConfirmationBlocks(chainId: string, amount: bigint): number {
+	getConfirmationBlocks(chainId: number, amount: bigint): number {
 		const chainPolicy = this.policies.get(chainId)
 		if (!chainPolicy) return this.getDefaultConfirmations(chainId)
 
@@ -33,11 +33,11 @@ export class ConfirmationPolicy {
 		return confirmations
 	}
 
-	private getDefaultConfirmations(chainId: string): number {
+	private getDefaultConfirmations(chainId: number): number {
 		// Default confirmation blocks based on chain
-		const defaults: Record<string, number> = {
-			"97": 1, // BSC Testnet
-			"10200": 1, // Gnosis Chiado
+		const defaults: Record<number, number> = {
+			97: 1, // BSC Testnet
+			10200: 1, // Gnosis Chiado
 		}
 
 		return defaults[chainId] || 1

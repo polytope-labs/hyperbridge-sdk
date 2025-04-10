@@ -5,8 +5,8 @@ import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { getOrderCommitment } from "@/utils"
 
 export class EventMonitor extends EventEmitter {
-	private providers: Map<string, ethers.providers.Provider>
-	private contracts: Map<string, ethers.Contract>
+	private providers: Map<number, ethers.providers.Provider>
+	private contracts: Map<number, ethers.Contract>
 	private listening: boolean = false
 
 	constructor(chainConfigs: ChainConfig[]) {
@@ -29,9 +29,11 @@ export class EventMonitor extends EventEmitter {
 		this.listening = true
 
 		this.contracts.forEach((contract, chainId) => {
-			contract.on("OrderPlaced", (...args) => {
-				const order = this.parseOrderEvent(args)
-				this.emit("newOrder", { chainId, order })
+			contract.on("OrderPlaced", (event) => {
+				const order = this.parseOrderEvent(event)
+				const sourceProvider = this.providers.get(chainId)
+				const destProvider = this.providers.get(chainId)
+				this.emit("newOrder", { order, sourceProvider, destProvider })
 			})
 		})
 	}
@@ -43,8 +45,9 @@ export class EventMonitor extends EventEmitter {
 		this.listening = false
 	}
 
-	private parseOrderEvent(eventArgs: any[]): Order {
-		const [user, sourceChain, destChain, deadline, nonce, fees, outputs, inputs, callData] = eventArgs
+	private parseOrderEvent(event: any): Order {
+		const [user, sourceChain, destChain, deadline, nonce, fees, outputs, inputs, callData] = event.args
+		const transactionHash = event.transactionHash
 
 		return {
 			id: getOrderCommitment({
@@ -74,6 +77,7 @@ export class EventMonitor extends EventEmitter {
 				amount: input.amount.toString(),
 			})),
 			callData: callData.toString(),
+			transactionHash: transactionHash,
 		}
 	}
 }

@@ -7,7 +7,7 @@ export interface ChainConfig {
 	/**
 	 * The unique identifier for the chain
 	 */
-	chainId: string
+	chainId: number
 
 	/**
 	 * The RPC URL to connect to the chain
@@ -99,6 +99,12 @@ export interface Order {
 	 * A bytes array to store the calls if any
 	 */
 	callData: HexString
+
+	// Additional Data
+	/**
+	 * The transaction hash of the order
+	 */
+	transactionHash: HexString
 }
 
 /**
@@ -204,7 +210,7 @@ export interface FillerConfig {
 	 * Policy for determining confirmation requirements
 	 */
 	confirmationPolicy: {
-		getConfirmationBlocks: (chainId: string, amount: string) => number
+		getConfirmationBlocks: (chainId: number, amount: string) => number
 	}
 
 	/**
