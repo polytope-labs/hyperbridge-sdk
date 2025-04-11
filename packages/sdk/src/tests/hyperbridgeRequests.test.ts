@@ -304,7 +304,28 @@ describe.sequential("Hyperbridge Requests", () => {
 	}, 1_200_000)
 
 	it("should successfully deliver requests to Hyperbridge", async () => {
-		const { bscTestnetClient, bscTokenGateway } = await bscSetup()
+		const { bscTestnetClient, bscTokenGateway, bscIsmpHost } = await bscSetup()
+		indexer = new IndexerClient({
+			queryClient: query_client,
+			pollInterval: 1_000, // every second
+			source: {
+				consensusStateId: "BSC0",
+				rpcUrl: process.env.BSC_CHAPEL!,
+				stateMachineId: "EVM-97",
+				host: bscIsmpHost.address,
+			},
+			dest: {
+				consensusStateId: "PAS0",
+				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+				stateMachineId: "KUSAMA-4009",
+				hasher: "Keccak",
+			},
+			hyperbridge: {
+				consensusStateId: "PAS0",
+				stateMachineId: "KUSAMA-4009",
+				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			},
+		})
 		console.log("\n\nSending Post Request\n\n")
 
 		const encoder = new TextEncoder()
