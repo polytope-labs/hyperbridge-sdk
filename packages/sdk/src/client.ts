@@ -567,45 +567,26 @@ export class IndexerClient {
 			request = await this.queryPostRequest(hash)
 		}
 
-		// don't stream if the tx is complete
-		if (request.statuses.some((e) => e.status === RequestStatus.DESTINATION)) {
-			logger.debug("Streaming skipped. Transaction completed")
-			return
-		}
-
 		logger.trace("`Request` found")
-
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
+		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
 		const statusStream = this.postRequestStatusStreamInternal(hash)
 
 		logger.trace("Listening for events")
-		// @todo Test this stream merge logic
-		while (true) {
-			const item = await Promise.race([timeoutStream.next(), statusStream.next()] as const)
+		const combined = mergeRace(timeoutStream, statusStream)
 
-			if (item.value && item.value.status === "PENDING_TIMEOUT") {
-				logger.trace(`Yielding Event(${item.value.status})`)
-				yield item.value
-				break
-			}
+		logger.trace("Listening for events")
+		let item = await combined.next()
 
-			if (item.done) break
-			if (!item.value) break
-
+		while (!item.done) {
 			logger.trace(`Yielding Event(${item.value.status})`)
+
 			yield item.value
+			item = await combined.next()
 		}
 
 		logger.trace("Streaming complete")
 		return
-	}
-
-	private async transactionContains(commitmentHash: HexString, event: PostRequestStatus["status"]) {
-		const value = await this.queryPostRequest(commitmentHash)
-		const statues = value?.statuses ?? []
-
-		return statues.some((e) => e.status === event)
 	}
 
 	/*
@@ -613,25 +594,14 @@ export class IndexerClient {
 	 * If the request does not have a timeout, it will never yield
 	 * @param request - Request to timeout
 	 */
-	async *timeoutStream(
-		timeoutTimestamp: bigint,
-		chain: IChain,
-		commitmentHash: HexString,
-	): AsyncGenerator<RequestStatusWithMetadata, void> {
+	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
 		const logger = this.logger.withTag("[timeoutStream()]")
 
 		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
 
 			while (timestamp < timeoutTimestamp) {
-				logger.trace("Comparing timeout timestamps", { current: timestamp, control: timeoutTimestamp })
-
-				const is_tx_complete = await this.transactionContains(commitmentHash, RequestStatus.DESTINATION)
-
-				if (is_tx_complete) {
-					logger.debug("Stop timeout stream")
-					return
-				}
+				logger.trace("Comparing timeout timestamps", { control: timeoutTimestamp, latest: timestamp })
 
 				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
 				await this.sleep_for(Number(diff))
@@ -852,7 +822,7 @@ export class IndexerClient {
 		}
 
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
+		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
 		const statusStream = this.getRequestStatusStreamInternal(hash)
 		const combined = mergeRace(timeoutStream, statusStream)
 
@@ -1062,12 +1032,6 @@ export class IndexerClient {
 		const logger = this.logger.withTag("PostRequestTimeoutStream")
 		const request = await this.queryPostRequest(hash)
 		if (!request) throw new Error("Request not found")
-
-		// don't stream if the tx is complete
-		if (request.statuses.some((e) => e.status === RequestStatus.DESTINATION)) {
-			logger.trace("Timeout Streaming skipped. Transaction completed")
-			return
-		}
 
 		logger.trace("Reading destination chain")
 		const destChain = await getChain(this.config.dest)
