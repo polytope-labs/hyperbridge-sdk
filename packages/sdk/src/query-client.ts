@@ -90,7 +90,7 @@ export async function _queryRequestInternal(params: InternalQueryParams): Promis
 			blockHash: item.blockHash,
 			blockNumber: Number.parseInt(item.blockNumber),
 			transactionHash: item.transactionHash,
-			timestamp: item.timestamp,
+			timestamp: item?.timestamp,
 		},
 	}))
 
@@ -143,7 +143,7 @@ export async function _queryGetRequestInternal(params: InternalQueryParams): Pro
 			blockHash: item.blockHash,
 			blockNumber: Number.parseInt(item.blockNumber),
 			transactionHash: item.transactionHash,
-			timestamp: item.timestamp,
+			timestamp: item?.timestamp,
 		},
 	}))
 
