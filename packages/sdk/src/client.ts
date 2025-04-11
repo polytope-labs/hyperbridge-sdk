@@ -931,7 +931,6 @@ export class IndexerClient {
 							blockHash: request.statuses[1].metadata.blockHash,
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
-							timestamp: request.statuses[1].metadata?.timestamp,
 						},
 					}
 					break
@@ -1022,7 +1021,6 @@ export class IndexerClient {
 							blockHash: request.statuses[2].metadata.blockHash,
 							blockNumber: request.statuses[2].metadata.blockNumber,
 							transactionHash: request.statuses[2].metadata.transactionHash,
-							timestamp: request.statuses[2].metadata?.timestamp,
 						},
 					}
 					status = RequestStatus.DESTINATION
