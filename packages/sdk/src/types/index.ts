@@ -257,7 +257,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {
@@ -266,7 +266,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {
@@ -275,7 +275,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {
@@ -285,7 +285,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {
@@ -294,7 +294,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {
@@ -311,7 +311,7 @@ export type RequestStatusWithMetadata =
 				blockHash: string
 				blockNumber: number
 				transactionHash: string
-				timestamp: number
+				timestamp?: number
 			}
 	  }
 	| {

@@ -1,9 +1,9 @@
-import { type ConsolaInstance, createConsola, LogLevels } from "consola"
-import { maxBy } from "lodash-es"
-import { pad } from "viem"
+import { type ConsolaInstance, createConsola, LogLevels } from "consola";
+import { maxBy } from "lodash-es";
+import { pad } from "viem";
 
 // @ts-ignore
-import mergeRace from "@async-generator/merge-race"
+import mergeRace from "@async-generator/merge-race";
 
 import {
 	RequestStatus,
@@ -25,14 +25,15 @@ import {
 	type ResponseCommitmentWithValues,
 	type RequestStatusKey,
 	type TimeoutStatusKey,
-} from "@/types"
+	type PostRequestStatus,
+} from "@/types";
 import {
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 	ASSET_TELEPORTED_BY_PARAMS,
 	GET_REQUEST_STATUS,
 	GET_RESPONSE_BY_REQUEST_ID,
-} from "@/queries"
+} from "@/queries";
 import {
 	COMBINED_STATUS_WEIGHTS,
 	DEFAULT_POLL_INTERVAL,
@@ -42,9 +43,12 @@ import {
 	postRequestCommitment,
 	retryPromise,
 	sleep,
-} from "@/utils"
-import { getChain, type IChain, type SubstrateChain } from "@/chain"
-import { _queryGetRequestInternal, _queryRequestInternal } from "./query-client"
+} from "@/utils";
+import { getChain, type IChain, type SubstrateChain } from "@/chain";
+import {
+	_queryGetRequestInternal,
+	_queryRequestInternal,
+} from "./query-client";
 
 /**
  * IndexerClient provides methods for interacting with the Hyperbridge indexer.
@@ -103,14 +107,14 @@ export class IndexerClient {
 	/**
 	 * GraphQL client used for making requests to the indexer
 	 */
-	private client: IndexerQueryClient
+	private client: IndexerQueryClient;
 
 	/**
 	 * Configuration for the IndexerClient including URLs, poll intervals, and chain-specific settings
 	 */
-	private config: ClientConfig
+	private config: ClientConfig;
 
-	private logger: ConsolaInstance
+	private logger: ConsolaInstance;
 
 	/**
 	 * Default configuration for retry behavior when network requests fail
@@ -120,17 +124,17 @@ export class IndexerClient {
 	private defaultRetryConfig: RetryConfig = {
 		maxRetries: 3,
 		backoffMs: 1000,
-	}
+	};
 
 	/**
 	 * Creates a new IndexerClient instance
 	 */
 	constructor(config: PartialClientConfig) {
-		this.client = config.queryClient
+		this.client = config.queryClient;
 		this.config = {
 			pollInterval: DEFAULT_POLL_INTERVAL,
 			...config,
-		}
+		};
 		this.logger = createConsola({
 			level: LogLevels[config.tracing ? "trace" : "info"],
 			formatOptions: {
@@ -139,7 +143,7 @@ export class IndexerClient {
 				compact: true,
 				date: false,
 			},
-		})
+		});
 	}
 
 	/**
@@ -154,28 +158,31 @@ export class IndexerClient {
 		height,
 		chain,
 	}: {
-		statemachineId: string
-		chain: string
-		height: number
+		statemachineId: string;
+		chain: string;
+		height: number;
 	}): Promise<StateMachineUpdate | undefined> {
-		const logger = this.logger.withTag("[queryStateMachineUpdateByHeight]()")
-		const message = `querying StateMachineId(${statemachineId}) update by Height(${height}) in chain Chain(${chain})`
+		const logger = this.logger.withTag("[queryStateMachineUpdateByHeight]()");
+		const message = `querying StateMachineId(${statemachineId}) update by Height(${height}) in chain Chain(${chain})`;
 
 		const response = await this.withRetry(
 			() => {
-				return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
-					statemachineId,
-					height,
-					chain,
-				})
+				return this.client.request<StateMachineResponse>(
+					STATE_MACHINE_UPDATES_BY_HEIGHT,
+					{
+						statemachineId,
+						height,
+						chain,
+					},
+				);
 			},
 			{ logger: logger, logMessage: message },
-		)
+		);
 
-		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		logger.trace("Response >", first_node)
+		const first_node = response?.stateMachineUpdateEvents?.nodes[0];
+		logger.trace("Response >", first_node);
 
-		return first_node
+		return first_node;
 	}
 
 	/**
@@ -190,27 +197,30 @@ export class IndexerClient {
 		commitmentTimestamp,
 		chain,
 	}: {
-		statemachineId: string
-		commitmentTimestamp: bigint
-		chain: string
+		statemachineId: string;
+		commitmentTimestamp: bigint;
+		chain: string;
 	}): Promise<StateMachineUpdate | undefined> {
-		const logger = this.logger.withTag("[queryStateMachineUpdateByTimestamp]")
-		const message = `querying StateMachineId(${statemachineId}) update by Timestamp(${commitmentTimestamp}) in Chain(${chain})`
+		const logger = this.logger.withTag("[queryStateMachineUpdateByTimestamp]");
+		const message = `querying StateMachineId(${statemachineId}) update by Timestamp(${commitmentTimestamp}) in Chain(${chain})`;
 
 		const response = await this.withRetry(
 			() =>
-				this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_TIMESTAMP, {
-					statemachineId,
-					commitmentTimestamp: commitmentTimestamp.toString(),
-					chain,
-				}),
+				this.client.request<StateMachineResponse>(
+					STATE_MACHINE_UPDATES_BY_TIMESTAMP,
+					{
+						statemachineId,
+						commitmentTimestamp: commitmentTimestamp.toString(),
+						chain,
+					},
+				),
 			{ logger, logMessage: message },
-		)
+		);
 
-		const first_node = response?.stateMachineUpdateEvents?.nodes?.[0]
-		logger.trace("Response >", first_node)
+		const first_node = response?.stateMachineUpdateEvents?.nodes?.[0];
+		logger.trace("Response >", first_node);
 
-		return first_node
+		return first_node;
 	}
 
 	/**
@@ -219,12 +229,14 @@ export class IndexerClient {
 	 * @param commitment_hash - Can be commitment
 	 * @returns Latest status and block metadata of the request
 	 */
-	async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
+	async queryPostRequest(
+		commitment_hash: string,
+	): Promise<PostRequestWithStatus | undefined> {
 		return _queryRequestInternal({
 			commitmentHash: commitment_hash,
 			queryClient: this.client,
 			logger: this.logger,
-		})
+		});
 	}
 
 	/**
@@ -233,12 +245,14 @@ export class IndexerClient {
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
 	 * @returns Latest status and block metadata of the request
 	 */
-	async queryGetRequest(hash: string): Promise<GetRequestWithStatus | undefined> {
+	async queryGetRequest(
+		hash: string,
+	): Promise<GetRequestWithStatus | undefined> {
 		return _queryGetRequestInternal({
 			commitmentHash: hash,
 			queryClient: this.client,
 			logger: this.logger,
-		})
+		});
 	}
 
 	/**
@@ -246,23 +260,28 @@ export class IndexerClient {
 	 * @param requestId - The ID of the request to find the associated response for
 	 * @returns The response associated with the given request ID, or undefined if not found
 	 */
-	async queryResponseByRequestId(requestId: string): Promise<ResponseCommitmentWithValues | undefined> {
+	async queryResponseByRequestId(
+		requestId: string,
+	): Promise<ResponseCommitmentWithValues | undefined> {
 		const response = await this.withRetry(() =>
-			this.client.request<GetResponseByRequestIdResponse>(GET_RESPONSE_BY_REQUEST_ID, {
-				requestId,
-			}),
-		)
+			this.client.request<GetResponseByRequestIdResponse>(
+				GET_RESPONSE_BY_REQUEST_ID,
+				{
+					requestId,
+				},
+			),
+		);
 
 		// If no responses are found or nodes array is empty, return undefined
-		if (!response.getResponses.nodes.length) return undefined
+		if (!response.getResponses.nodes.length) return undefined;
 
 		// Return just the first response
-		const firstResponse = response.getResponses.nodes[0]
+		const firstResponse = response.getResponses.nodes[0];
 
 		return {
 			commitment: firstResponse.commitment,
 			values: firstResponse.responseMessage,
-		}
+		};
 	}
 
 	/**
@@ -280,31 +299,36 @@ export class IndexerClient {
 	 * @returns The request with finality events added
 	 * @private
 	 */
-	private async addRequestFinalityEvents(request: PostRequestWithStatus): Promise<PostRequestWithStatus> {
-		const events: RequestStatusWithMetadata[] = []
+	private async addRequestFinalityEvents(
+		request: PostRequestWithStatus,
+	): Promise<PostRequestWithStatus> {
+		const events: RequestStatusWithMetadata[] = [];
 
 		const addFinalityEvents = (request: PostRequestWithStatus) => {
-			this.logger.trace(`Added ${events.length} \`Request\` finality events`, events)
+			this.logger.trace(
+				`Added ${events.length} \`Request\` finality events`,
+				events,
+			);
 
-			request.statuses = [...request.statuses, ...events]
-			return request
-		}
+			request.statuses = [...request.statuses, ...events];
+			return request;
+		};
 
-		let hyperbridgeDelivered: RequestStatusWithMetadata | undefined
+		let hyperbridgeDelivered: RequestStatusWithMetadata | undefined;
 
 		if (request.source === this.config.hyperbridge.stateMachineId) {
 			// the first status contains the blocknumber of the initial request
-			hyperbridgeDelivered = request.statuses[0]
+			hyperbridgeDelivered = request.statuses[0];
 		} else {
 			// we assume there's always a SOURCE event which contains the blocknumber of the initial request
 			const sourceFinality = await this.queryStateMachineUpdateByHeight({
 				statemachineId: request.source,
 				height: request.statuses[0].metadata.blockNumber,
 				chain: this.config.hyperbridge.stateMachineId,
-			})
+			});
 
 			// no finality event found, return request as is
-			if (!sourceFinality) return addFinalityEvents(request)
+			if (!sourceFinality) return addFinalityEvents(request);
 
 			// Insert finality event into request.statuses at index 1
 			events.push({
@@ -314,39 +338,41 @@ export class IndexerClient {
 					blockNumber: sourceFinality.height,
 					transactionHash: sourceFinality.transactionHash,
 				},
-			})
+			});
 
 			// check if there's a hyperbridge delivered event
-			hyperbridgeDelivered = request.statuses.find((item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED)
+			hyperbridgeDelivered = request.statuses.find(
+				(item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED,
+			);
 
-			if (!hyperbridgeDelivered) return addFinalityEvents(request)
+			if (!hyperbridgeDelivered) return addFinalityEvents(request);
 		}
 
 		// no need to query finality event if destination is hyperbridge
 		if (request.dest === this.config.hyperbridge.stateMachineId) {
-			return addFinalityEvents(request)
+			return addFinalityEvents(request);
 		}
 
 		const hyperbridgeFinality = await this.queryStateMachineUpdateByHeight({
 			statemachineId: this.config.hyperbridge.stateMachineId,
 			height: hyperbridgeDelivered.metadata.blockNumber,
 			chain: request.dest,
-		})
+		});
 
-		if (!hyperbridgeFinality) return addFinalityEvents(request)
+		if (!hyperbridgeFinality) return addFinalityEvents(request);
 
 		// check if request receipt exists on destination chain
-		const destChain = await getChain(this.config.dest)
+		const destChain = await getChain(this.config.dest);
 		const hyperbridge = await getChain({
 			...this.config.hyperbridge,
 			hasher: "Keccak",
-		})
+		});
 
 		const proof = await hyperbridge.queryProof(
 			{ Requests: [postRequestCommitment(request)] },
 			request.dest,
 			BigInt(hyperbridgeFinality.height),
-		)
+		);
 
 		const calldata = destChain.encode({
 			kind: "PostRequest",
@@ -358,7 +384,7 @@ export class IndexerClient {
 			},
 			requests: [request],
 			signer: pad("0x"),
-		})
+		});
 
 		events.push({
 			status: RequestStatus.HYPERBRIDGE_FINALIZED,
@@ -368,9 +394,9 @@ export class IndexerClient {
 				transactionHash: hyperbridgeFinality.transactionHash,
 				calldata,
 			},
-		})
+		});
 
-		return addFinalityEvents(request)
+		return addFinalityEvents(request);
 	}
 
 	/**
@@ -389,43 +415,47 @@ export class IndexerClient {
 	 * @returns Request with timeout events filled in, including any proof calldata for timeout submissions
 	 * @private
 	 */
-	private async addTimeoutFinalityEvents(request: PostRequestWithStatus): Promise<PostRequestWithStatus> {
+	private async addTimeoutFinalityEvents(
+		request: PostRequestWithStatus,
+	): Promise<PostRequestWithStatus> {
 		// check if request receipt exists on destination chain
-		const destChain = await getChain(this.config.dest)
+		const destChain = await getChain(this.config.dest);
 		const hyperbridge = await getChain({
 			...this.config.hyperbridge,
 			hasher: "Keccak",
-		})
-		const events: RequestStatusWithMetadata[] = []
-		const commitment = postRequestCommitment(request)
-		const reciept = await destChain.queryRequestReceipt(commitment)
-		const destTimestamp = await destChain.timestamp()
+		});
+		const events: RequestStatusWithMetadata[] = [];
+		const commitment = postRequestCommitment(request);
+		const reciept = await destChain.queryRequestReceipt(commitment);
+		const destTimestamp = await destChain.timestamp();
 
 		const addTimeoutEvents = (req: PostRequestWithStatus) => {
-			this.logger.trace(`Added ${events.length} timeout events`, events)
-			request.statuses = [...req.statuses, ...events]
-			return request
-		}
+			this.logger.trace(`Added ${events.length} timeout events`, events);
+			request.statuses = [...req.statuses, ...events];
+			return request;
+		};
 
 		// request not timed out
 		if (reciept || request.timeoutTimestamp > destTimestamp) {
-			return addTimeoutEvents(request)
+			return addTimeoutEvents(request);
 		}
 
-		const is_finished = request.statuses.find((item) => item.status === RequestStatus.DESTINATION)
+		const is_finished = request.statuses.find(
+			(item) => item.status === RequestStatus.DESTINATION,
+		);
 
 		if (!is_finished) {
 			events.push({
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
-			})
+			});
 		}
 
 		const delivered = request.statuses.find((item) => {
-			return item.status === RequestStatus.HYPERBRIDGE_DELIVERED
-		})
+			return item.status === RequestStatus.HYPERBRIDGE_DELIVERED;
+		});
 
-		let hyperbridgeFinalized: StateMachineUpdate | undefined
+		let hyperbridgeFinalized: StateMachineUpdate | undefined;
 		if (!delivered) {
 			// either the request was never delivered to hyperbridge
 			// or hyperbridge was the destination of the request
@@ -433,15 +463,15 @@ export class IndexerClient {
 				statemachineId: this.config.hyperbridge.stateMachineId,
 				commitmentTimestamp: request.timeoutTimestamp,
 				chain: request.source,
-			})
+			});
 		} else {
 			const destFinalized = await this.queryStateMachineUpdateByTimestamp({
 				statemachineId: request.dest,
 				commitmentTimestamp: request.timeoutTimestamp,
 				chain: this.config.hyperbridge.stateMachineId,
-			})
+			});
 
-			if (!destFinalized) return addTimeoutEvents(request)
+			if (!destFinalized) return addTimeoutEvents(request);
 
 			events.push({
 				status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT,
@@ -450,29 +480,31 @@ export class IndexerClient {
 					blockNumber: destFinalized.blockNumber,
 					transactionHash: destFinalized.transactionHash,
 				},
-			})
+			});
 
 			// if the source is the hyperbridge state machine, no further action is needed
 			// use the timeout stream to timeout on hyperbridge
-			if (request.source === this.config.hyperbridge.stateMachineId) return request
+			if (request.source === this.config.hyperbridge.stateMachineId)
+				return request;
 
 			const hyperbridgeTimedOut = request.statuses.find(
 				(item) => item.status === TimeoutStatus.HYPERBRIDGE_TIMED_OUT,
-			)
-			if (!hyperbridgeTimedOut) return addTimeoutEvents(request)
+			);
+			if (!hyperbridgeTimedOut) return addTimeoutEvents(request);
 			hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
 				statemachineId: this.config.hyperbridge.stateMachineId,
 				height: hyperbridgeTimedOut.metadata.blockNumber,
 				chain: request.source,
-			})
+			});
 		}
 
-		if (!hyperbridgeFinalized) return addTimeoutEvents(request)
+		if (!hyperbridgeFinalized) return addTimeoutEvents(request);
 
-		const proof = await hyperbridge.queryStateProof(BigInt(hyperbridgeFinalized.height), [
-			hyperbridge.requestReceiptKey(commitment),
-		])
-		const sourceChain = await getChain(this.config.source)
+		const proof = await hyperbridge.queryStateProof(
+			BigInt(hyperbridgeFinalized.height),
+			[hyperbridge.requestReceiptKey(commitment)],
+		);
+		const sourceChain = await getChain(this.config.source);
 		const calldata = sourceChain.encode({
 			kind: "TimeoutPostRequest",
 			proof: {
@@ -492,7 +524,7 @@ export class IndexerClient {
 					timeoutTimestamp: request.timeoutTimestamp,
 				},
 			],
-		})
+		});
 
 		events.push({
 			status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
@@ -502,9 +534,9 @@ export class IndexerClient {
 				transactionHash: hyperbridgeFinalized.transactionHash,
 				calldata,
 			},
-		})
+		});
 
-		return addTimeoutEvents(request)
+		return addTimeoutEvents(request);
 	}
 
 	/**
@@ -514,19 +546,22 @@ export class IndexerClient {
 	 * @returns Full request data with all inferred status events, including SOURCE_FINALIZED and HYPERBRIDGE_FINALIZED
 	 * @remarks Unlike queryRequest(), this method adds derived finalization status events by querying state machine updates
 	 */
-	async queryRequestWithStatus(hash: string): Promise<PostRequestWithStatus | undefined> {
-		let request = await this.queryPostRequest(hash)
+	async queryRequestWithStatus(
+		hash: string,
+	): Promise<PostRequestWithStatus | undefined> {
+		let request = await this.queryPostRequest(hash);
 
-		if (!request) return
-		request = await this.addRequestFinalityEvents(request)
-		request = await this.addTimeoutFinalityEvents(request)
+		if (!request) return;
+		request = await this.addRequestFinalityEvents(request);
+		request = await this.addTimeoutFinalityEvents(request);
 
 		// ensure all statuses are sorted by weight
 		request.statuses = request.statuses.sort(
-			(a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status],
-		)
+			(a, b) =>
+				COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status],
+		);
 
-		return request
+		return request;
 	}
 
 	/**
@@ -555,43 +590,68 @@ export class IndexerClient {
 	 * }
 	 *
 	 */
-	async *postRequestStatusStream(hash: HexString): AsyncGenerator<RequestStatusWithMetadata, void> {
-		const logger = this.logger.withTag("[postRequestStatusStream]")
+	async *postRequestStatusStream(
+		hash: HexString,
+	): AsyncGenerator<RequestStatusWithMetadata, void> {
+		const logger = this.logger.withTag("[postRequestStatusStream]");
 
 		// wait for request to be created
-		let request: PostRequestWithStatus | undefined
+		let request: PostRequestWithStatus | undefined;
 
 		while (!request) {
-			await this.sleep_for_interval()
-			request = await this.queryPostRequest(hash)
+			await this.sleep_for_interval();
+			request = await this.queryPostRequest(hash);
 		}
 
-		logger.trace("`Request` found")
+		// don't stream if the tx is complete
+		if (request.statuses.some((e) => e.status === RequestStatus.DESTINATION)) {
+			logger.debug("Streaming skipped. Transaction completed");
+			return;
+		}
 
-		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
-		const statusStream = this.postRequestStatusStreamInternal(hash)
+		logger.trace("`Request` found");
 
-		logger.trace("Listening for events")
+		const chain = await getChain(this.config.dest);
+		const timeoutStream = this.timeoutStream(
+			request.timeoutTimestamp,
+			chain,
+			hash,
+		);
+		const statusStream = this.postRequestStatusStreamInternal(hash);
+
+		logger.trace("Listening for events");
 		// @todo Test this stream merge logic
 		while (true) {
-			const item = await Promise.race([timeoutStream.next(), statusStream.next()] as const)
+			const item = await Promise.race([
+				timeoutStream.next(),
+				statusStream.next(),
+			] as const);
 
 			if (item.value && item.value.status === "PENDING_TIMEOUT") {
-				logger.trace(`Yielding Event(${item.value.status})`)
-				yield item.value
-				break
+				logger.trace(`Yielding Event(${item.value.status})`);
+				yield item.value;
+				break;
 			}
 
-			if (item.done) break
-			if (!item.value) break
+			if (item.done) break;
+			if (!item.value) break;
 
-			logger.trace(`Yielding Event(${item.value.status})`)
-			yield item.value
+			logger.trace(`Yielding Event(${item.value.status})`);
+			yield item.value;
 		}
 
-		logger.trace("Streaming complete")
-		return
+		logger.trace("Streaming complete");
+		return;
+	}
+
+	private async transactionContains(
+		commitmentHash: HexString,
+		event: PostRequestStatus["status"],
+	) {
+		const value = await this.queryPostRequest(commitmentHash);
+		const statues = value?.statuses ?? [];
+
+		return statues.some((e) => e.status === event);
 	}
 
 	/*
@@ -604,35 +664,33 @@ export class IndexerClient {
 		chain: IChain,
 		commitmentHash: HexString,
 	): AsyncGenerator<RequestStatusWithMetadata, void> {
-		const logger = this.logger.withTag("[timeoutStream()]")
-
-		const check_if_transaction_is_completed = async () => {
-			const value = await this.queryPostRequest(commitmentHash)
-			const statues = value?.statuses ?? []
-
-			return statues.some((e) => e.status === RequestStatus.DESTINATION)
-		}
+		const logger = this.logger.withTag("[timeoutStream()]");
 
 		if (timeoutTimestamp > 0) {
-			let timestamp = await chain.timestamp()
+			let timestamp = await chain.timestamp();
 
 			while (timestamp < timeoutTimestamp) {
-				if (await check_if_transaction_is_completed()) {
-					logger.debug("Stop timeout stream")
-					return
+				const is_tx_complete = await this.transactionContains(
+					commitmentHash,
+					RequestStatus.DESTINATION,
+				);
+
+				if (is_tx_complete) {
+					logger.debug("Stop timeout stream");
+					return;
 				}
 
-				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
-				await this.sleep_for(Number(diff))
-				timestamp = await chain.timestamp()
+				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp);
+				await this.sleep_for(Number(diff));
+				timestamp = await chain.timestamp();
 			}
 
 			yield {
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
-			}
+			};
 
-			return
+			return;
 		}
 	}
 
@@ -641,42 +699,44 @@ export class IndexerClient {
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
 	 * @returns AsyncGenerator that emits status updates until a terminal state is reached
 	 */
-	private async *postRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
-		let request: PostRequestWithStatus | undefined
+	private async *postRequestStatusStreamInternal(
+		hash: string,
+	): AsyncGenerator<RequestStatusWithMetadata, void> {
+		let request: PostRequestWithStatus | undefined;
 		while (!request) {
-			await this.sleep_for_interval()
-			request = await this.queryPostRequest(hash)
+			await this.sleep_for_interval();
+			request = await this.queryPostRequest(hash);
 		}
 
 		let status: RequestStatusKey =
 			request.source === this.config.hyperbridge.stateMachineId
 				? RequestStatus.HYPERBRIDGE_DELIVERED
-				: RequestStatus.SOURCE
+				: RequestStatus.SOURCE;
 
-		const latestMetadata = request.statuses[request.statuses.length - 1]
+		const latestMetadata = request.statuses[request.statuses.length - 1];
 
 		const latest_request = maxBy(
 			[status, latestMetadata.status as RequestStatusKey],
 			(item) => REQUEST_STATUS_WEIGHTS[item],
-		)
+		);
 
-		if (!latest_request) return
+		if (!latest_request) return;
 
 		// start with the latest status
-		status = latest_request
+		status = latest_request;
 
 		while (true) {
 			switch (status) {
 				// request has been dispatched from source chain
 				case RequestStatus.SOURCE: {
-					let sourceUpdate: StateMachineUpdate | undefined
+					let sourceUpdate: StateMachineUpdate | undefined;
 					while (!sourceUpdate) {
-						await this.sleep_for_interval()
+						await this.sleep_for_interval();
 						sourceUpdate = await this.queryStateMachineUpdateByHeight({
 							statemachineId: request.source,
 							height: request.statuses[0].metadata.blockNumber,
 							chain: this.config.hyperbridge.stateMachineId,
-						})
+						});
 					}
 
 					yield {
@@ -686,24 +746,24 @@ export class IndexerClient {
 							blockNumber: sourceUpdate.height,
 							transactionHash: sourceUpdate.transactionHash,
 						},
-					}
+					};
 
-					status = RequestStatus.SOURCE_FINALIZED
-					break
+					status = RequestStatus.SOURCE_FINALIZED;
+					break;
 				}
 
 				// finality proofs for request has been verified on Hyperbridge
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (!request || request.statuses.length < 2) {
-						await this.sleep_for_interval()
-						request = await this.queryPostRequest(hash)
+						await this.sleep_for_interval();
+						request = await this.queryPostRequest(hash);
 					}
 
 					status =
 						request.dest === this.config.hyperbridge.stateMachineId
 							? RequestStatus.DESTINATION
-							: RequestStatus.HYPERBRIDGE_DELIVERED
+							: RequestStatus.HYPERBRIDGE_DELIVERED;
 
 					yield {
 						status,
@@ -712,35 +772,36 @@ export class IndexerClient {
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
 						},
-					}
-					break
+					};
+					break;
 				}
 
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
 					// Get the latest state machine update for hyperbridge on the destination chain
-					let hyperbridgeFinalized: StateMachineUpdate | undefined
-					const index = request.source === this.config.hyperbridge.stateMachineId ? 0 : 1
+					let hyperbridgeFinalized: StateMachineUpdate | undefined;
+					const index =
+						request.source === this.config.hyperbridge.stateMachineId ? 0 : 1;
 					while (!hyperbridgeFinalized) {
-						await this.sleep_for_interval()
+						await this.sleep_for_interval();
 						hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
 							statemachineId: this.config.hyperbridge.stateMachineId,
 							height: request.statuses[index].metadata.blockNumber,
 							chain: request.dest,
-						})
+						});
 					}
 
-					const destChain = await getChain(this.config.dest)
+					const destChain = await getChain(this.config.dest);
 					const hyperbridge = await getChain({
 						...this.config.hyperbridge,
 						hasher: "Keccak",
-					})
+					});
 
 					const proof = await hyperbridge.queryProof(
 						{ Requests: [postRequestCommitment(request)] },
 						request.dest,
 						BigInt(hyperbridgeFinalized.height),
-					)
+					);
 
 					const calldata = destChain.encode({
 						kind: "PostRequest",
@@ -752,7 +813,7 @@ export class IndexerClient {
 						},
 						requests: [request],
 						signer: pad("0x"),
-					})
+					});
 
 					yield {
 						status: RequestStatus.HYPERBRIDGE_FINALIZED,
@@ -762,22 +823,27 @@ export class IndexerClient {
 							transactionHash: hyperbridgeFinalized.transactionHash,
 							calldata,
 						},
-					}
-					status = RequestStatus.HYPERBRIDGE_FINALIZED
-					break
+					};
+					status = RequestStatus.HYPERBRIDGE_FINALIZED;
+					break;
 				}
 
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					// wait for the request to be delivered to the destination
-					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
+					let delivered = request.statuses.find(
+						(s) => s.status === RequestStatus.DESTINATION,
+					);
 					while (!request || !delivered) {
-						await this.sleep_for_interval()
-						request = await this.queryPostRequest(hash)
-						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
+						await this.sleep_for_interval();
+						request = await this.queryPostRequest(hash);
+						delivered = request?.statuses.find(
+							(s) => s.status === RequestStatus.DESTINATION,
+						);
 					}
 
-					const index = request.source === this.config.hyperbridge.stateMachineId ? 1 : 2
+					const index =
+						request.source === this.config.hyperbridge.stateMachineId ? 1 : 2;
 
 					yield {
 						status: RequestStatus.DESTINATION,
@@ -786,24 +852,24 @@ export class IndexerClient {
 							blockNumber: request.statuses[index].metadata.blockNumber,
 							transactionHash: request.statuses[index].metadata.transactionHash,
 						},
-					}
-					status = RequestStatus.DESTINATION
-					break
+					};
+					status = RequestStatus.DESTINATION;
+					break;
 				}
 
 				case RequestStatus.DESTINATION:
-					return
+					return;
 			}
 		}
 	}
 
 	private sleep_for(duration: number): Promise<void> {
-		this.logger.trace(`Sleeping for ${duration}ms`)
-		return sleep(duration)
+		this.logger.trace(`Sleeping for ${duration}ms`);
+		return sleep(duration);
 	}
 
 	private sleep_for_interval(): Promise<void> {
-		return this.sleep_for(this.config.pollInterval)
+		return this.sleep_for(this.config.pollInterval);
 	}
 
 	/**
@@ -832,25 +898,31 @@ export class IndexerClient {
 	 * }
 	 *
 	 */
-	async *getRequestStatusStream(hash: HexString): AsyncGenerator<RequestStatusWithMetadata, void> {
+	async *getRequestStatusStream(
+		hash: HexString,
+	): AsyncGenerator<RequestStatusWithMetadata, void> {
 		// wait for request to be created
-		let request: GetRequestWithStatus | undefined
+		let request: GetRequestWithStatus | undefined;
 		while (!request) {
-			await this.sleep_for_interval()
-			request = await this.queryGetRequest(hash)
+			await this.sleep_for_interval();
+			request = await this.queryGetRequest(hash);
 		}
 
-		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain, hash)
-		const statusStream = this.getRequestStatusStreamInternal(hash)
-		const combined = mergeRace(timeoutStream, statusStream)
+		const chain = await getChain(this.config.dest);
+		const timeoutStream = this.timeoutStream(
+			request.timeoutTimestamp,
+			chain,
+			hash,
+		);
+		const statusStream = this.getRequestStatusStreamInternal(hash);
+		const combined = mergeRace(timeoutStream, statusStream);
 
-		let item = await combined.next()
+		let item = await combined.next();
 		while (!item.done) {
-			yield item.value
-			item = await combined.next()
+			yield item.value;
+			item = await combined.next();
 		}
-		return
+		return;
 	}
 
 	/**
@@ -858,37 +930,42 @@ export class IndexerClient {
 	 * @param hash - Can be commitment, hyperbridge tx hash, source tx hash, destination tx hash, or timeout tx hash
 	 * @returns AsyncGenerator that emits status updates until a terminal state is reached
 	 */
-	private async *getRequestStatusStreamInternal(hash: string): AsyncGenerator<RequestStatusWithMetadata, void> {
-		let request: GetRequestWithStatus | undefined
+	private async *getRequestStatusStreamInternal(
+		hash: string,
+	): AsyncGenerator<RequestStatusWithMetadata, void> {
+		let request: GetRequestWithStatus | undefined;
 		while (!request) {
-			await this.sleep_for_interval()
-			request = await this.queryGetRequest(hash)
+			await this.sleep_for_interval();
+			request = await this.queryGetRequest(hash);
 		}
 
 		let status: RequestStatusKey | undefined =
 			request.source === this.config.hyperbridge.stateMachineId
 				? RequestStatus.HYPERBRIDGE_DELIVERED
-				: RequestStatus.SOURCE
+				: RequestStatus.SOURCE;
 
-		const latestMetadata = request.statuses[request.statuses.length - 1]
+		const latestMetadata = request.statuses[request.statuses.length - 1];
 
 		// start with the latest status
-		status = maxBy([status, latestMetadata.status as RequestStatusKey], (item) => REQUEST_STATUS_WEIGHTS[item])
+		status = maxBy(
+			[status, latestMetadata.status as RequestStatusKey],
+			(item) => REQUEST_STATUS_WEIGHTS[item],
+		);
 
-		if (!status) return
+		if (!status) return;
 
 		while (true) {
 			switch (status) {
 				// request has been dispatched from source chain
 				case RequestStatus.SOURCE: {
-					let sourceUpdate: StateMachineUpdate | undefined
+					let sourceUpdate: StateMachineUpdate | undefined;
 					while (!sourceUpdate) {
-						await this.sleep_for_interval()
+						await this.sleep_for_interval();
 						sourceUpdate = await this.queryStateMachineUpdateByHeight({
 							statemachineId: request.source,
 							height: request.statuses[0].metadata.blockNumber,
 							chain: this.config.hyperbridge.stateMachineId,
-						})
+						});
 					}
 
 					yield {
@@ -898,23 +975,23 @@ export class IndexerClient {
 							blockNumber: sourceUpdate.height,
 							transactionHash: sourceUpdate.transactionHash,
 						},
-					}
-					status = RequestStatus.SOURCE_FINALIZED
-					break
+					};
+					status = RequestStatus.SOURCE_FINALIZED;
+					break;
 				}
 
 				// finality proofs for request has been verified on Hyperbridge
 				case RequestStatus.SOURCE_FINALIZED: {
 					// wait for the request to be delivered on Hyperbridge
 					while (!request || request.statuses.length < 2) {
-						await this.sleep_for_interval()
-						request = await this.queryGetRequest(hash)
+						await this.sleep_for_interval();
+						request = await this.queryGetRequest(hash);
 					}
 
 					status =
 						request.source === this.config.hyperbridge.stateMachineId
 							? RequestStatus.DESTINATION
-							: RequestStatus.HYPERBRIDGE_DELIVERED
+							: RequestStatus.HYPERBRIDGE_DELIVERED;
 
 					yield {
 						status,
@@ -923,40 +1000,40 @@ export class IndexerClient {
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
 						},
-					}
-					break
+					};
+					break;
 				}
 
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
 					// If Hyperbridge was the source, the request is already complete
 					if (request.source === this.config.hyperbridge.stateMachineId) {
-						return
+						return;
 					}
 					// Get the latest state machine update for hyperbridge on the destination chain
-					let hyperbridgeFinalized: StateMachineUpdate | undefined
+					let hyperbridgeFinalized: StateMachineUpdate | undefined;
 					while (!hyperbridgeFinalized) {
-						await this.sleep_for_interval()
+						await this.sleep_for_interval();
 						hyperbridgeFinalized = await this.queryStateMachineUpdateByHeight({
 							statemachineId: this.config.hyperbridge.stateMachineId,
 							height: request.statuses[1].metadata.blockNumber,
 							chain: request.source,
-						})
+						});
 					}
 
-					const sourceChain = await getChain(this.config.source)
+					const sourceChain = await getChain(this.config.source);
 					const hyperbridge = await getChain({
 						...this.config.hyperbridge,
 						hasher: "Keccak",
-					})
+					});
 
-					const response = await this.queryResponseByRequestId(hash)
+					const response = await this.queryResponseByRequestId(hash);
 
 					const proof = await hyperbridge.queryProof(
 						{ Responses: [response?.commitment as HexString] },
 						request.source,
 						BigInt(hyperbridgeFinalized.height),
-					)
+					);
 
 					const calldata = sourceChain.encode({
 						kind: "GetResponse",
@@ -976,7 +1053,7 @@ export class IndexerClient {
 							},
 						],
 						signer: pad("0x"),
-					})
+					});
 
 					yield {
 						status: RequestStatus.HYPERBRIDGE_FINALIZED,
@@ -986,24 +1063,28 @@ export class IndexerClient {
 							transactionHash: hyperbridgeFinalized.transactionHash,
 							calldata,
 						},
-					}
-					status = RequestStatus.HYPERBRIDGE_FINALIZED
-					break
+					};
+					status = RequestStatus.HYPERBRIDGE_FINALIZED;
+					break;
 				}
 
 				// request has been finalized by hyperbridge
 				case RequestStatus.HYPERBRIDGE_FINALIZED: {
 					// If Hyperbridge was the source, the request is already complete
 					if (request.source === this.config.hyperbridge.stateMachineId) {
-						return
+						return;
 					}
 
 					// wait for the request to be delivered to the destination
-					let delivered = request.statuses.find((s) => s.status === RequestStatus.DESTINATION)
+					let delivered = request.statuses.find(
+						(s) => s.status === RequestStatus.DESTINATION,
+					);
 					while (!request || !delivered) {
-						await this.sleep_for_interval()
-						request = await this.queryGetRequest(hash)
-						delivered = request?.statuses.find((s) => s.status === RequestStatus.DESTINATION)
+						await this.sleep_for_interval();
+						request = await this.queryGetRequest(hash);
+						delivered = request?.statuses.find(
+							(s) => s.status === RequestStatus.DESTINATION,
+						);
 					}
 
 					yield {
@@ -1012,14 +1093,15 @@ export class IndexerClient {
 							blockHash: request.statuses[2].metadata.blockHash,
 							blockNumber: request.statuses[2].metadata.blockNumber,
 							transactionHash: request.statuses[2].metadata.transactionHash,
+							timestamp: request.statuses[2].metadata.
 						},
 					}
-					status = RequestStatus.DESTINATION
-					break
+					status = RequestStatus.DESTINATION;
+					break;
 				}
 
 				case RequestStatus.DESTINATION:
-					return
+					return;
 			}
 		}
 	}
@@ -1047,59 +1129,70 @@ export class IndexerClient {
 	 *   console.log(status.value)
 	 * }
 	 */
-	async *postRequestTimeoutStream(hash: HexString): AsyncGenerator<PostRequestTimeoutStatus, void> {
-		const logger = this.logger.withTag("PostRequestTimeoutStream")
-		const request = await this.queryPostRequest(hash)
-		if (!request) throw new Error("Request not found")
+	async *postRequestTimeoutStream(
+		hash: HexString,
+	): AsyncGenerator<PostRequestTimeoutStatus, void> {
+		const logger = this.logger.withTag("PostRequestTimeoutStream");
+		const request = await this.queryPostRequest(hash);
+		if (!request) throw new Error("Request not found");
 
-		logger.trace("Reading destination chain")
-		const destChain = await getChain(this.config.dest)
+		// don't stream if the tx is complete
+		if (request.statuses.some((e) => e.status === RequestStatus.DESTINATION)) {
+			logger.trace("Timeout Streaming skipped. Transaction completed");
+			return;
+		}
+
+		logger.trace("Reading destination chain");
+		const destChain = await getChain(this.config.dest);
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
 		let status: TimeoutStatusKey =
 			request.dest === this.config.hyperbridge.stateMachineId
 				? TimeoutStatus.HYPERBRIDGE_TIMED_OUT
-				: TimeoutStatus.PENDING_TIMEOUT
+				: TimeoutStatus.PENDING_TIMEOUT;
 
-		const commitment = postRequestCommitment(request)
+		const commitment = postRequestCommitment(request);
 		const hyperbridge = (await getChain({
 			...this.config.hyperbridge,
 			hasher: "Keccak",
-		})) as unknown as SubstrateChain
+		})) as unknown as SubstrateChain;
 
-		const latest = request.statuses[request.statuses.length - 1]
+		const latest = request.statuses[request.statuses.length - 1];
 		const latest_request = maxBy(
 			[status, latest.status as TimeoutStatusKey],
 			(item) => TIMEOUT_STATUS_WEIGHTS[item],
-		)
+		);
 
-		logger.trace(`Reading lastest request: ${latest_request}`)
+		logger.trace(`Reading lastest request: ${latest_request}`);
 
 		if (!latest_request) {
-			logger.trace("Ending stream. Latest request not found")
-			return
+			logger.trace("Ending stream. Latest request not found");
+			return;
 		}
 
 		// we're always interested in the latest status
-		status = latest_request
+		status = latest_request;
 
 		while (true) {
 			switch (status) {
 				case TimeoutStatus.PENDING_TIMEOUT: {
-					const receipt = await hyperbridge.queryRequestReceipt(commitment)
-					if (!receipt && request.source !== this.config.hyperbridge.stateMachineId) {
-						status = TimeoutStatus.HYPERBRIDGE_TIMED_OUT
-						break
+					const receipt = await hyperbridge.queryRequestReceipt(commitment);
+					if (
+						!receipt &&
+						request.source !== this.config.hyperbridge.stateMachineId
+					) {
+						status = TimeoutStatus.HYPERBRIDGE_TIMED_OUT;
+						break;
 					}
 
-					let update: StateMachineUpdate | undefined
+					let update: StateMachineUpdate | undefined;
 					while (!update) {
-						await this.sleep_for_interval()
+						await this.sleep_for_interval();
 						update = await this.queryStateMachineUpdateByTimestamp({
 							statemachineId: request.dest,
 							commitmentTimestamp: request.timeoutTimestamp,
 							chain: this.config.hyperbridge.stateMachineId,
-						})
+						});
 					}
 
 					yield {
@@ -1109,17 +1202,17 @@ export class IndexerClient {
 							blockNumber: update.height,
 							transactionHash: update.transactionHash,
 						},
-					}
-					status = TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT
-					break
+					};
+					status = TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT;
+					break;
 				}
 
 				case TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT: {
 					if (request.source !== this.config.hyperbridge.stateMachineId) {
-						const receipt = await hyperbridge.queryRequestReceipt(commitment)
+						const receipt = await hyperbridge.queryRequestReceipt(commitment);
 						if (!receipt) {
-							status = TimeoutStatus.HYPERBRIDGE_TIMED_OUT
-							break
+							status = TimeoutStatus.HYPERBRIDGE_TIMED_OUT;
+							break;
 						}
 					}
 
@@ -1127,37 +1220,38 @@ export class IndexerClient {
 						statemachineId: request.dest,
 						commitmentTimestamp: request.timeoutTimestamp,
 						chain: this.config.hyperbridge.stateMachineId,
-					}))!
+					}))!;
 
 					const proof = await destChain.queryStateProof(BigInt(update.height), [
 						destChain.requestReceiptKey(commitment),
-					])
+					]);
 
-					const { blockHash, transactionHash, blockNumber } = await hyperbridge.submitUnsigned({
-						kind: "TimeoutPostRequest",
-						proof: {
-							proof,
-							height: BigInt(update.height),
-							stateMachine: request.dest,
-							consensusStateId: this.config.dest.consensusStateId,
-						},
-						requests: [
-							{
-								source: request.source,
-								dest: request.dest,
-								from: request.from,
-								to: request.to,
-								nonce: request.nonce,
-								body: request.body,
-								timeoutTimestamp: request.timeoutTimestamp,
+					const { blockHash, transactionHash, blockNumber } =
+						await hyperbridge.submitUnsigned({
+							kind: "TimeoutPostRequest",
+							proof: {
+								proof,
+								height: BigInt(update.height),
+								stateMachine: request.dest,
+								consensusStateId: this.config.dest.consensusStateId,
 							},
-						],
-					})
+							requests: [
+								{
+									source: request.source,
+									dest: request.dest,
+									from: request.from,
+									to: request.to,
+									nonce: request.nonce,
+									body: request.body,
+									timeoutTimestamp: request.timeoutTimestamp,
+								},
+							],
+						});
 
 					status =
 						request.source === this.config.hyperbridge.stateMachineId
 							? TimeoutStatus.TIMED_OUT
-							: TimeoutStatus.HYPERBRIDGE_TIMED_OUT
+							: TimeoutStatus.HYPERBRIDGE_TIMED_OUT;
 
 					yield {
 						status,
@@ -1166,52 +1260,60 @@ export class IndexerClient {
 							transactionHash,
 							blockNumber,
 						},
-					}
-					break
+					};
+					break;
 				}
 
 				case TimeoutStatus.HYPERBRIDGE_TIMED_OUT: {
 					const hasDelivered = request.statuses.some(
 						(item) => item.status === RequestStatus.HYPERBRIDGE_DELIVERED,
-					)
-					let update: StateMachineUpdate | undefined
+					);
+					let update: StateMachineUpdate | undefined;
 					if (!hasDelivered) {
 						// if request was never delivered to Hyperbridge
 						// then query for any state machine update > requestTimestamp
 						while (!update) {
-							await this.sleep_for_interval()
+							await this.sleep_for_interval();
 							update = await this.queryStateMachineUpdateByTimestamp({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								commitmentTimestamp: request.timeoutTimestamp,
 								chain: request.source,
-							})
+							});
 						}
 					} else {
-						let timeout: RequestStatusWithMetadata | undefined
-						while (!timeout || timeout?.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT) {
-							await this.sleep_for_interval()
-							const req = await this.queryPostRequest(hash)
-							if (!req) continue
+						let timeout: RequestStatusWithMetadata | undefined;
+						while (
+							!timeout ||
+							timeout?.status !== TimeoutStatus.HYPERBRIDGE_TIMED_OUT
+						) {
+							await this.sleep_for_interval();
+							const req = await this.queryPostRequest(hash);
+							if (!req) continue;
 							timeout = req.statuses
-								.sort((a, b) => COMBINED_STATUS_WEIGHTS[a.status] - COMBINED_STATUS_WEIGHTS[b.status])
-								.pop()
+								.sort(
+									(a, b) =>
+										COMBINED_STATUS_WEIGHTS[a.status] -
+										COMBINED_STATUS_WEIGHTS[b.status],
+								)
+								.pop();
 						}
 
 						while (!update) {
-							await this.sleep_for_interval()
+							await this.sleep_for_interval();
 							update = await this.queryStateMachineUpdateByHeight({
 								statemachineId: this.config.hyperbridge.stateMachineId,
 								height: timeout.metadata.blockNumber,
 								chain: request.source,
-							})
+							});
 						}
 					}
 
-					const proof = await hyperbridge.queryStateProof(BigInt(update.height), [
-						hyperbridge.requestReceiptKey(commitment),
-					])
+					const proof = await hyperbridge.queryStateProof(
+						BigInt(update.height),
+						[hyperbridge.requestReceiptKey(commitment)],
+					);
 
-					const sourceChain = await getChain(this.config.source)
+					const sourceChain = await getChain(this.config.source);
 					const calldata = sourceChain.encode({
 						kind: "TimeoutPostRequest",
 						proof: {
@@ -1231,7 +1333,7 @@ export class IndexerClient {
 								timeoutTimestamp: request.timeoutTimestamp,
 							},
 						],
-					})
+					});
 					yield {
 						status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
 						metadata: {
@@ -1240,14 +1342,14 @@ export class IndexerClient {
 							blockHash: update.blockHash,
 							calldata,
 						},
-					}
-					status = TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT
-					break
+					};
+					status = TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT;
+					break;
 				}
 
 				case TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT:
 				case TimeoutStatus.TIMED_OUT:
-					return
+					return;
 			}
 		}
 	}
@@ -1282,9 +1384,9 @@ export class IndexerClient {
 				dest,
 				blockNumber,
 			}),
-		)
+		);
 
-		return response.assetTeleporteds.nodes[0]
+		return response.assetTeleporteds.nodes[0];
 	}
 
 	/**
@@ -1297,14 +1399,17 @@ export class IndexerClient {
 	 * @example
 	 * const result = await this.withRetry(() => this.queryStatus(hash));
 	 */
-	private async withRetry<T>(operation: () => Promise<T>, retryConfig: Partial<RetryConfig> = {}): Promise<T> {
+	private async withRetry<T>(
+		operation: () => Promise<T>,
+		retryConfig: Partial<RetryConfig> = {},
+	): Promise<T> {
 		return retryPromise(operation, {
 			...this.defaultRetryConfig,
 			...retryConfig,
-		})
+		});
 	}
 }
 
 interface PartialClientConfig extends Omit<ClientConfig, "pollInterval"> {
-	pollInterval?: number
+	pollInterval?: number;
 }
