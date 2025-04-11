@@ -624,6 +624,8 @@ export class IndexerClient {
 			let timestamp = await chain.timestamp()
 
 			while (timestamp < timeoutTimestamp) {
+				logger.trace("Comparing timeout timestamps", { current: timestamp, control: timeoutTimestamp })
+
 				const is_tx_complete = await this.transactionContains(commitmentHash, RequestStatus.DESTINATION)
 
 				if (is_tx_complete) {

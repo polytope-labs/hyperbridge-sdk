@@ -133,7 +133,8 @@ export class SubstrateChain implements IChain {
 		if (!this.api) throw new Error("API not initialized")
 
 		const now = await this.api.query.timestamp.now()
-		return BigInt(now.toJSON() as number)
+
+		return BigInt(now.toJSON() as number) / BigInt(1000)
 	}
 
 	/**
