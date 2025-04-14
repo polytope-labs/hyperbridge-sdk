@@ -10,12 +10,20 @@ import {
 	RequestKind,
 } from "@/types"
 import { ethers } from "ethers"
-import { encodePacked, keccak256, toHex } from "viem"
-import { ADDRESS_ZERO, fetchTokenUsdPriceOnchain, getOrderCommitment } from "@/utils"
+import { encodePacked } from "viem"
+import {
+	ADDRESS_ZERO,
+	fetchTokenUsdPriceOnchain,
+	generateRootWithProof,
+	getOrderCommitment,
+	getStateCommitmentFieldSlot,
+} from "@/utils"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { addresses, assets, rpcUrls, chainId } from "@/config/chain"
 import { hexConcat } from "ethers/lib/utils"
+import { IPostRequest } from "hyperbridge-sdk"
+import { EVM_HOST } from "@/config/abis/EvmHost"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -101,10 +109,15 @@ export class BasicFiller implements FillerStrategy {
 			const relayerFeeEth = 0.001 // Fixed fee in ETH, change this
 
 			// Get the HyperBridge protocol fee
-			const protocolFeeEth = await this.getProtocolFeeEth(order, providers)
+			const protocolFeeEth = await this.getProtocolFeeEth(
+				order,
+				providers,
+				BigInt(relayerFeeEth),
+				(await this.getWallet(providers.destProvider)).address as HexString,
+			)
 
 			// Estimate the gas for handling POST requests in the source chain
-			const postGasEstimate = await this.estimateGasForPost(order)
+			const postGasEstimate = await this.estimateGasForPost(order, providers)
 
 			const totalCostUsd = (gasCostEth + relayerFeeEth + protocolFeeEth + postGasEstimate) * ethPriceUsd
 
@@ -186,8 +199,9 @@ export class BasicFiller implements FillerStrategy {
 	private async checkIfOrderFilled(order: Order, sourceProvider: ethers.providers.Provider): Promise<boolean> {
 		try {
 			const commitment = getOrderCommitment(order)
+			const sourceContract = this.getContract(sourceProvider, order.sourceChain)
 
-			const filledSlot = keccak256(encodePacked(["bytes32", "uint256"], [commitment as HexString, 5n]))
+			const filledSlot = await sourceContract.calculateCommitmentSlotHash(commitment as HexString)
 
 			const filledStatus = await sourceProvider.getStorageAt(
 				addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
@@ -327,17 +341,19 @@ export class BasicFiller implements FillerStrategy {
 	private async getProtocolFeeEth(
 		order: Order,
 		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
+		relayerFee: bigint,
+		intentFillerAddr: HexString,
 	): Promise<number> {
-		const requestBody = await this.constructRedeemEscrowRequest(order, providers.sourceProvider)
+		const requestBody = this.constructRedeemEscrowRequestBody(order, providers.sourceProvider)
 		const contract = await this.getContract(providers.destProvider, order.destChain)
 
 		const dispatchPost: DispatchPost = {
 			dest: order.sourceChain,
 			to: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
 			body: requestBody,
-			timeout: order.deadline,
-			fee: order.fees,
-			payer: order.user,
+			timeout: 0n,
+			fee: relayerFee,
+			payer: intentFillerAddr,
 		}
 
 		const protocolFeeEth = await contract.quoteNative(dispatchPost)
@@ -348,19 +364,16 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Constructs the redeem escrow request body
 	 */
-	private async constructRedeemEscrowRequest(
-		order: Order,
-		sourceProvider: ethers.providers.Provider,
-	): Promise<HexString> {
-		const wallet = await this.getWallet(sourceProvider)
+	private constructRedeemEscrowRequestBody(order: Order, sourceProvider: ethers.providers.Provider): HexString {
+		const wallet = this.getWallet(sourceProvider)
 		const commitment = getOrderCommitment(order)
 
 		// RequestKind.RedeemEscrow is 0 as defined in the contract
 		const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
 
 		const requestBody = encodePacked(
-			["bytes32", "bytes32", "tuple(bytes32 token, uint256 amount)[]"],
-			[commitment as HexString, wallet.address as HexString, order.inputs],
+			["bytes32", "tuple(bytes32 token, uint256 amount)[]", "bytes32"],
+			[commitment as HexString, order.inputs, wallet.address as HexString],
 		)
 
 		return hexConcat([requestKind, requestBody]) as HexString
@@ -369,8 +382,33 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Estimates gas for handling POST requests in the source chain
 	 */
-	private async estimateGasForPost(order: Order): Promise<number> {
-		// TODO: Implement this
+	private async estimateGasForPost(
+		order: Order,
+		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
+	): Promise<number> {
+		const postRequest: IPostRequest = {
+			source: order.destChain,
+			dest: order.sourceChain,
+			body: this.constructRedeemEscrowRequestBody(order, providers.sourceProvider),
+			timeoutTimestamp: 0n,
+			nonce: await this.getHostNonce(providers.destProvider, order.destChain),
+			from: addresses.IntentGateway[order.destChain as keyof typeof addresses.IntentGateway]!,
+			to: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+		}
+
+		const { root, proof } = generateRootWithProof(postRequest)
+		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(
+			providers.sourceProvider,
+			order.destChain,
+		)
+		const overlayRootSlot = getStateCommitmentFieldSlot(
+			BigInt(Number.parseInt(order.destChain.split("-")[1])),
+			latestStateMachineHeight,
+			1, // For overlayRoot
+		)
+
+		// TODO: Override the overlayRootSlot with the root we have generated
+
 		return 0
 	}
 
@@ -492,7 +530,7 @@ export class BasicFiller implements FillerStrategy {
 		}
 	}
 
-	private async getContract(provider: ethers.providers.Provider, chain: string): Promise<ethers.Contract> {
+	private getContract(provider: ethers.providers.Provider, chain: string): ethers.Contract {
 		return new ethers.Contract(
 			addresses.IntentGateway[chain as keyof typeof addresses.IntentGateway]!,
 			INTENT_GATEWAY_ABI,
@@ -500,7 +538,19 @@ export class BasicFiller implements FillerStrategy {
 		)
 	}
 
-	private async getWallet(provider: ethers.providers.Provider): Promise<ethers.Wallet> {
+	private getWallet(provider: ethers.providers.Provider): ethers.Wallet {
 		return new ethers.Wallet(this.privateKey, provider)
+	}
+
+	private async getHostNonce(provider: ethers.providers.Provider, chain: string): Promise<bigint> {
+		const contract = new ethers.Contract(addresses.Host[chain as keyof typeof addresses.Host]!, EVM_HOST, provider)
+		const nonce = await contract.nonce()
+		return nonce
+	}
+
+	private async getHostLatestStateMachineHeight(provider: ethers.providers.Provider, chain: string): Promise<bigint> {
+		const contract = new ethers.Contract(addresses.Host[chain as keyof typeof addresses.Host]!, EVM_HOST, provider)
+		const height = await contract.latestStateMachineHeight(chainId[chain as keyof typeof chainId])
+		return height
 	}
 }

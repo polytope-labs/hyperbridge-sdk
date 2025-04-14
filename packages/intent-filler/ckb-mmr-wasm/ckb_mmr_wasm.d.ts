@@ -1,11 +1,8 @@
 /* tslint:disable */
 /* eslint-disable */
-export function generate_root(items_len: bigint, target_pos: bigint): MMRResult;
-export class Blake2bMerge {
-  private constructor();
-  free(): void;
-}
-export class MMRResult {
+export function generate_root(calldata_bytes: Uint8Array): string;
+export function generate_proof(calldata_bytes: Uint8Array): string[];
+export class KeccakMerge {
   private constructor();
   free(): void;
 }

@@ -14,9 +14,15 @@ importers:
       ethers:
         specifier: ^5.7.2
         version: 5.8.0
+      hyperbridge-sdk:
+        specifier: workspace:*
+        version: link:../sdk
       p-queue:
         specifier: ^8.1.0
         version: 8.1.0
+      scale-ts:
+        specifier: ^1.6.1
+        version: 1.6.1
       viem:
         specifier: ^2.23.5
         version: 2.26.0(typescript@5.8.3)
@@ -919,6 +925,9 @@ packages:
     resolution: {integrity: sha512-thI8kNc02yNvnmJp8dr3fNWJ9tCONDhp6TV35X6HkKGGs9E6q7YWCHbe5vKiTa7TAiNcFEmXKj3X/pG2b3ci0g==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
+
+  scale-ts@1.6.1:
+    resolution: {integrity: sha512-PBMc2AWc6wSEqJYBDPcyCLUj9/tMKnLX70jLOSndMtcUoLQucP/DM0vnQo1wJAYjTrQiq8iG9rD0q6wFzgjH7g==}
 
   scrypt-js@3.0.1:
     resolution: {integrity: sha512-cdwTTnqPu0Hyvf5in5asVdZocVDTNRmR7XEcJuIzMjJeSHybHl7vpB66AzwTaIg6CLSbtjcxc8fqcySfnTkccA==}
@@ -2139,6 +2148,8 @@ snapshots:
       '@rollup/rollup-win32-ia32-msvc': 4.39.0
       '@rollup/rollup-win32-x64-msvc': 4.39.0
       fsevents: 2.3.3
+
+  scale-ts@1.6.1: {}
 
   scrypt-js@3.0.1: {}
 

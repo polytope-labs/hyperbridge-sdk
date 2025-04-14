@@ -1,6 +1,6 @@
 export { IndexerClient } from "@/client"
 export { createQueryClient, queryGetRequest, queryPostRequest } from "@/query-client"
-export { postRequestCommitment } from "@/utils"
+export { postRequestCommitment, PostRequest as ScalePostRequest } from "@/utils"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"
 export * from "@/chain"
