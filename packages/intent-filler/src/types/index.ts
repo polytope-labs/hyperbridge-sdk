@@ -63,12 +63,12 @@ export interface Order {
 	/**
 	 * The state machine identifier of the origin chain
 	 */
-	sourceChain: HexString
+	sourceChain: string
 
 	/**
 	 * The state machine identifier of the destination chain
 	 */
-	destChain: HexString
+	destChain: string
 
 	/**
 	 * The block number by which the order must be filled on the destination chain
@@ -114,7 +114,7 @@ export interface FillOptions {
 	/**
 	 * The fee paid to the relayer for processing transactions
 	 */
-	relayerFee: string
+	relayerFee: bigint
 }
 
 /**

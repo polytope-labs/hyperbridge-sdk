@@ -1,6 +1,6 @@
 import { ethers } from "ethers"
 import { HexString, Order } from "./types"
-import { encodePacked, keccak256, toHex, hexToBytes, pad, toBytes, bytesToBigInt } from "viem"
+import { encodePacked, keccak256, toHex, hexToBytes, pad, toBytes, bytesToBigInt, PublicClient } from "viem"
 import { UNISWAP_V2_ROUTER_ABI } from "./config/abis/UniswapV2Router"
 import { ERC20_ABI } from "./config/abis/ERC20"
 import { generate_root, generate_proof } from "ckb-mmr-wasm/ckb_mmr_wasm"
@@ -39,38 +39,49 @@ export function getOrderCommitment(order: Order): string {
 
 export async function fetchTokenUsdPriceOnchain(
 	tokenAddress: string,
-	provider: ethers.providers.Provider,
-	routerAddress: string, // Can be different for each chain
-	wethAddress: string, // Can be different for each chain
-	usdcAddress: string, // Can be different for each chain
+	client: PublicClient,
+	routerAddress: string,
+	wethAddress: string,
+	usdcAddress: string,
 ): Promise<number> {
 	try {
-		const router = new ethers.Contract(routerAddress, UNISWAP_V2_ROUTER_ABI, provider)
-		const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider)
-		const usdcContract = new ethers.Contract(usdcAddress, ERC20_ABI, provider)
+		const tokenDecimals = (await client.readContract({
+			address: tokenAddress as HexString,
+			abi: ERC20_ABI,
+			functionName: "decimals",
+		})) as number
 
-		const tokenDecimals = await tokenContract.decimals()
-		const usdcDecimals = await usdcContract.decimals()
+		const usdcDecimals = (await client.readContract({
+			address: usdcAddress as HexString,
+			abi: ERC20_ABI,
+			functionName: "decimals",
+		})) as number
 
-		let path: string[]
+		let path: HexString[]
 
 		// If the token is WETH, we can go directly to USDC
 		if (tokenAddress.toLowerCase() === wethAddress.toLowerCase()) {
-			path = [wethAddress, usdcAddress]
+			path = [wethAddress as HexString, usdcAddress as HexString]
 		} else {
 			// Otherwise, we need to go through WETH to get to USDC
-			path = [tokenAddress, wethAddress, usdcAddress]
+			path = [tokenAddress as HexString, wethAddress as HexString, usdcAddress as HexString]
 		}
 
 		// Amount of token to convert (1 token)
-		const amountIn = ethers.utils.parseUnits("1", tokenDecimals)
+		const amountIn = BigInt(10 ** tokenDecimals)
 
-		const amounts = await router.getAmountsOut(amountIn, path)
+		// Get amounts out using viem client
+		const amounts = (await client.readContract({
+			address: routerAddress as HexString,
+			abi: UNISWAP_V2_ROUTER_ABI,
+			functionName: "getAmountsOut",
+			args: [amountIn, path],
+		})) as bigint[]
 
 		// The last amount in the array is the output amount (in USDC)
-		const usdcAmount = ethers.utils.formatUnits(amounts[amounts.length - 1], usdcDecimals)
+		const usdcAmount = Number(amounts[amounts.length - 1]) / 10 ** usdcDecimals
 
-		return parseFloat(usdcAmount)
+		return usdcAmount
 	} catch (error) {
 		console.error("Error fetching token price from Uniswap:", error)
 		throw error

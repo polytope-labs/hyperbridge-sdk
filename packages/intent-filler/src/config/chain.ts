@@ -19,12 +19,12 @@ type RpcMap = {
 /**
  * Mapping of chain IDs for different chains.
  */
-export const chainId = {
+export const chainIds = {
 	[Chains.BSC_CHAPEL]: 97,
 	[Chains.GNOSIS_CHIADO]: 10200,
 } as const
 
-export type ChainId = typeof chainId
+export type ChainId = typeof chainIds
 
 /**
  * Mapping of assets for different chains.

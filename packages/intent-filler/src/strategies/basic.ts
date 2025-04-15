@@ -8,9 +8,9 @@ import {
 	PaymentInfo,
 	DispatchPost,
 	RequestKind,
+	ChainConfig,
 } from "@/types"
-import { ethers } from "ethers"
-import { encodePacked } from "viem"
+import { encodePacked,  getContract, maxUint256, parseEther, PublicClient, toHex, WalletClient } from "viem"
 import {
 	ADDRESS_ZERO,
 	fetchTokenUsdPriceOnchain,
@@ -20,10 +20,12 @@ import {
 } from "@/utils"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { ERC20_ABI } from "@/config/abis/ERC20"
-import { addresses, assets, rpcUrls, chainId } from "@/config/chain"
+import { addresses, assets, rpcUrls, chainIds } from "@/config/chain"
 import { hexConcat } from "ethers/lib/utils"
 import { IPostRequest } from "hyperbridge-sdk"
 import { EVM_HOST } from "@/config/abis/EvmHost"
+import { viemClientFactory } from "@/config/client"
+import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -42,10 +44,11 @@ export class BasicFiller implements FillerStrategy {
 	async canFill(
 		order: Order,
 		config: FillerConfig,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
 	): Promise<boolean> {
 		try {
-			const currentBlock = await providers.destProvider.getBlockNumber()
+			const destClient = this.getPublicClient(order.destChain);
+			const sourceClient = this.getPublicClient(order.sourceChain)
+			const currentBlock = await destClient.getBlockNumber()
 			const deadline = BigInt(order.deadline)
 
 			if (deadline < currentBlock) {
@@ -53,28 +56,30 @@ export class BasicFiller implements FillerStrategy {
 				return false
 			}
 
-			const isAlreadyFilled = await this.checkIfOrderFilled(order, providers.sourceProvider)
+			const isAlreadyFilled = await this.checkIfOrderFilled(order, sourceClient)
 			if (isAlreadyFilled) {
 				console.debug(`Order is already filled`)
 				return false
 			}
 
-			const hasEnoughTokens = await this.checkTokenBalances(order.outputs, providers.destProvider)
+			const hasEnoughTokens = await this.checkTokenBalances(order.outputs, destClient)
 			if (!hasEnoughTokens) {
 				console.debug(`Insufficient token balances for order`)
 				return false
 			}
 
-			const orderValue = await this.calculateOrderValue(order, providers.destProvider)
+			const orderValue = await this.calculateOrderValue(order, destClient)
 			const requiredConfirmations = config.confirmationPolicy.getConfirmationBlocks(
-				chainId[order.destChain as keyof typeof chainId]!,
+				chainIds[order.destChain as keyof typeof chainIds]!,
 				orderValue.toString(),
 			)
-			const sourceBlock = await providers.sourceProvider.getBlockNumber()
-			const sourceReceipt = await providers.sourceProvider.getTransactionReceipt(order.transactionHash)
-			if (sourceBlock - sourceReceipt.blockNumber + 1 < requiredConfirmations) {
+			const sourceReceipt = await sourceClient.getTransactionReceipt({ hash: order.transactionHash })
+			const sourceConfirmations = await sourceClient.getTransactionConfirmations({
+				transactionReceipt: sourceReceipt,
+			})
+			if (sourceConfirmations < requiredConfirmations) {
 				console.debug(
-					`Insufficient confirmations for order, ${sourceBlock - sourceReceipt.blockNumber + 1} confirmations, ${requiredConfirmations} required`,
+					`Insufficient confirmations for order, ${sourceConfirmations} confirmations, ${requiredConfirmations} required`,
 				)
 				return false
 			}
@@ -92,34 +97,31 @@ export class BasicFiller implements FillerStrategy {
 	 * @returns The expected profit in a normalized unit (usually USD value or ETH equivalent)
 	 */
 	async calculateProfitability(
-		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
+		order: Order
 	): Promise<number> {
 		try {
-			// Get the gas cost to fill the order
-			const gasPrice = await providers.destProvider.getGasPrice()
 
-			const gasEstimate = await this.estimateGasForFill(order, providers.destProvider)
+			const destClient = this.getPublicClient(order.destChain);
+			const sourceClient = this.getPublicClient(order.sourceChain)
 
-			const gasCostWei = BigInt(gasPrice.toString()) * BigInt(gasEstimate.toString())
-			const gasCostEth = parseFloat(ethers.utils.formatEther(gasCostWei.toString()))
+			const gasEstimateForFill = await this.estimateGasForFill(order, destClient)
 
-			const ethPriceUsd = await this.getEthPriceUsd(order, providers.destProvider)
+			const ethPriceUsd = await this.getEthPriceUsd(order, destClient)
 
-			const relayerFeeEth = 0.001 // Fixed fee in ETH, change this
+			const relayerFeeEth = parseEther("0.001") // Fixed fee in ETH, converted to wei
 
 			// Get the HyperBridge protocol fee
 			const protocolFeeEth = await this.getProtocolFeeEth(
 				order,
-				providers,
-				BigInt(relayerFeeEth),
-				(await this.getWallet(providers.destProvider)).address as HexString,
+				destClient,
+				relayerFeeEth,
+				privateKeyToAddress(this.privateKey),
 			)
 
 			// Estimate the gas for handling POST requests in the source chain
-			const postGasEstimate = await this.estimateGasForPost(order, providers)
+			const postGasEstimate = await this.estimateGasForPost(order, {destClient, sourceClient})
 
-			const totalCostUsd = (gasCostEth + relayerFeeEth + protocolFeeEth + postGasEstimate) * ethPriceUsd
+			const totalCostUsd = (Number(gasEstimateForFill) + Number(relayerFeeEth) + Number(protocolFeeEth) + postGasEstimate) * ethPriceUsd
 
 			return totalCostUsd
 		} catch (error) {
@@ -135,37 +137,32 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	async executeOrder(
 		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
 	): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
 		try {
-			// Prepare the order for the contract
-			// Note: We need to transform our TypeScript order to match the contract's expected format
-			const contractOrder = this.transformOrderForContract(order)
-
+			const destClient = this.getPublicClient(order.destChain);
+			const walletClient = this.getWalletClient(order.destChain)
 			const fillOptions: FillOptions = {
-				relayerFee: ethers.utils.parseEther("0.001").toString(), // Hardcoded it for now
+				relayerFee: parseEther("0.001"), // Hardcoded it for now
 			}
 
 			const ethValue = await this.calculateRequiredEthValue(order.outputs)
 
-			await this.approveTokensIfNeeded(order, providers.destProvider)
+			await this.approveTokensIfNeeded(order, {publicClient: destClient, walletClient})
 
-			const contract = await this.getContract(providers.destProvider, order.destChain)
-
-			console.log(`Executing fill for order with nonce ${order.nonce}`)
-			console.log(`Sending ${ethers.utils.formatEther(ethValue)} ETH with transaction`)
-
-			// Execute the fill transaction
-			const tx = await contract.fillOrder(contractOrder, fillOptions, {
-				value: ethValue,
+			const {request} = await destClient.simulateContract({
+				abi: INTENT_GATEWAY_ABI,
+				address: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+				functionName: "fillOrder",
+				args: [this.transformOrderForContract(order), fillOptions as any],
+				account: privateKeyToAccount(this.privateKey),
+				value: ethValue
 			})
 
-			console.log(`Transaction submitted: ${tx.hash}`)
+			const tx = await walletClient.writeContract(request);
 
-			// Wait for transaction receipt
-			const receipt = await tx.wait(1) // Wait for 1 confirmation
+			const receipt = await destClient.getTransactionReceipt({hash: tx})
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
@@ -175,8 +172,7 @@ export class BasicFiller implements FillerStrategy {
 				txHash: receipt.transactionHash,
 				gasUsed: receipt.gasUsed.toString(),
 				gasPrice: receipt.effectiveGasPrice.toString(),
-				txCost: receipt.gasUsed.mul(receipt.effectiveGasPrice).toString(),
-				confirmedAtBlock: receipt.blockNumber,
+				confirmedAtBlock: Number(receipt.blockNumber),
 				confirmedAt: new Date(),
 				strategyUsed: this.name,
 				processingTimeMs,
@@ -191,21 +187,53 @@ export class BasicFiller implements FillerStrategy {
 		}
 	}
 
+	
+
 	// Helper methods
+
+	/**
+	 * Transforms the order object to match the contract's expected format
+	 */
+	private transformOrderForContract(order: Order) {
+		return {
+			sourceChain: toHex(order.sourceChain),
+			destChain: toHex(order.destChain),
+			fees: order.fees,
+			callData: order.callData,
+			deadline: order.deadline,
+			nonce: order.nonce,
+			inputs: order.inputs.map(input => ({
+				token: input.token,
+				amount: input.amount
+			})),
+			outputs: order.outputs.map(output => ({
+				token: output.token,
+				amount: output.amount,
+				beneficiary: output.beneficiary
+			})),
+			user: order.user
+		}
+	}
 
 	/**
 	 * Checks if an order is already filled by querying contract storage
 	 */
-	private async checkIfOrderFilled(order: Order, sourceProvider: ethers.providers.Provider): Promise<boolean> {
+	private async checkIfOrderFilled(order: Order, sourceClient: PublicClient): Promise<boolean> {
 		try {
 			const commitment = getOrderCommitment(order)
-			const sourceContract = this.getContract(sourceProvider, order.sourceChain)
+			const sourceClient = this.getPublicClient(order.sourceChain)
 
-			const filledSlot = await sourceContract.calculateCommitmentSlotHash(commitment as HexString)
+			const filledSlot = await sourceClient.readContract({
+				abi: INTENT_GATEWAY_ABI,
+				address: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+				functionName: "calculateCommitmentSlotHash",
+				args: [commitment as HexString]
+			})
 
-			const filledStatus = await sourceProvider.getStorageAt(
-				addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
-				filledSlot,
+			const filledStatus = await sourceClient.getStorageAt({
+				address: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+				slot: filledSlot
+			}
 			)
 			return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 		} catch (error) {
@@ -220,26 +248,30 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	private async checkTokenBalances(
 		outputs: PaymentInfo[],
-		destProvider: ethers.providers.Provider,
+		destClient: PublicClient
 	): Promise<boolean> {
-		const wallet = await this.getWallet(destProvider)
-
 		try {
 			let totalNativeTokenNeeded = BigInt(0)
-
+			const fillerWalletAddress = privateKeyToAddress(this.privateKey)
+			
 			// Check all token balances
 			for (const output of outputs) {
 				const tokenAddress = output.token
 				const amount = output.amount
+				
 
 				if (tokenAddress === ADDRESS_ZERO) {
 					// Native token
 					totalNativeTokenNeeded = totalNativeTokenNeeded + amount
 				} else {
 					// ERC20 token
-					const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, destProvider)
-
-					const balance = await tokenContract.balanceOf(wallet.address)
+					const tokenContract = getContract({
+						address: tokenAddress,
+						abi: ERC20_ABI,
+						client: destClient
+					})
+					
+					const balance = await tokenContract.read.balanceOf([fillerWalletAddress])
 
 					if (balance < amount) {
 						console.debug(
@@ -252,7 +284,7 @@ export class BasicFiller implements FillerStrategy {
 
 			// Check if we have enough native token
 			if (totalNativeTokenNeeded > 0n) {
-				const nativeBalance = await destProvider.getBalance(wallet.address)
+				const nativeBalance = await destClient.getBalance({address: fillerWalletAddress})
 
 				// Add some buffer for gas
 				const withGasBuffer = totalNativeTokenNeeded + BigInt(0.001 * 10 ** 18) // 0.001 ETH buffer for gas
@@ -275,13 +307,13 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Calculates the total order value for confirmation policy
 	 */
-	private async calculateOrderValue(order: Order, destProvider: ethers.providers.Provider): Promise<BigInt> {
+	private async calculateOrderValue(order: Order, client: PublicClient): Promise<BigInt> {
 		let totalUSDValue = BigInt(0)
 
 		for (const input of order.inputs) {
 			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
 				input.token,
-				destProvider,
+				client,
 				addresses.UniswapV2Router[order.destChain as keyof typeof addresses.UniswapV2Router]!,
 				assets[order.destChain as keyof typeof assets].WETH,
 				assets[order.destChain as keyof typeof assets].USDC,
@@ -296,23 +328,24 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Estimates gas for filling an order
 	 */
-	private async estimateGasForFill(order: Order, destProvider: ethers.providers.Provider): Promise<BigInt> {
+	private async estimateGasForFill(order: Order, destClient: PublicClient): Promise<bigint> {
 		try {
-			const contract = await this.getContract(destProvider, order.destChain)
-
-			const contractOrder = this.transformOrderForContract(order)
-
 			const fillOptions: FillOptions = {
-				relayerFee: ethers.utils.parseEther("0.001").toString(),
+				relayerFee: parseEther("0.001"),
 			}
 
 			const ethValue = await this.calculateRequiredEthValue(order.outputs)
 
-			const gasEstimate = await contract.estimateGas.fillOrder(contractOrder, fillOptions, {
-				value: ethValue,
+			const gas = await destClient.estimateContractGas({
+				abi: INTENT_GATEWAY_ABI,
+				address: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
+				functionName: "fillOrder",
+				args: [this.transformOrderForContract(order), fillOptions as any],
+				account: privateKeyToAccount(this.privateKey),
+				value: ethValue
 			})
 
-			return BigInt(gasEstimate.toString())
+			return gas
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
@@ -323,10 +356,10 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Gets the current ETH price in USD
 	 */
-	private async getEthPriceUsd(order: Order, destProvider: ethers.providers.Provider): Promise<number> {
+	private async getEthPriceUsd(order: Order, destClient: PublicClient): Promise<number> {
 		const ethPriceUsd = await fetchTokenUsdPriceOnchain(
 			assets[order.destChain as keyof typeof assets].WETH,
-			destProvider,
+			destClient,
 			addresses.UniswapV2Router[order.destChain as keyof typeof addresses.UniswapV2Router]!,
 			assets[order.destChain as keyof typeof assets].WETH,
 			assets[order.destChain as keyof typeof assets].USDC,
@@ -340,15 +373,14 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	private async getProtocolFeeEth(
 		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
+		destClient: PublicClient,
 		relayerFee: bigint,
-		intentFillerAddr: HexString,
-	): Promise<number> {
-		const requestBody = this.constructRedeemEscrowRequestBody(order, providers.sourceProvider)
-		const contract = await this.getContract(providers.destProvider, order.destChain)
+		intentFillerAddr: HexString
+	): Promise<bigint> {
+		const requestBody = this.constructRedeemEscrowRequestBody(order);
 
 		const dispatchPost: DispatchPost = {
-			dest: order.sourceChain,
+			dest: toHex(order.sourceChain),
 			to: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
 			body: requestBody,
 			timeout: 0n,
@@ -356,16 +388,22 @@ export class BasicFiller implements FillerStrategy {
 			payer: intentFillerAddr,
 		}
 
-		const protocolFeeEth = await contract.quoteNative(dispatchPost)
+		const protocolFeeEth = await destClient.readContract({
+			abi: INTENT_GATEWAY_ABI,
+			address: addresses.IntentGateway[order.destChain as keyof typeof addresses.IntentGateway]!,
+			functionName: "quoteNative",
+			args: [dispatchPost as any]
+		})
 
 		return protocolFeeEth
 	}
 
+	
 	/**
 	 * Constructs the redeem escrow request body
 	 */
-	private constructRedeemEscrowRequestBody(order: Order, sourceProvider: ethers.providers.Provider): HexString {
-		const wallet = this.getWallet(sourceProvider)
+	private constructRedeemEscrowRequestBody(order: Order): HexString {
+		const wallet = privateKeyToAddress(this.privateKey)
 		const commitment = getOrderCommitment(order)
 
 		// RequestKind.RedeemEscrow is 0 as defined in the contract
@@ -373,32 +411,34 @@ export class BasicFiller implements FillerStrategy {
 
 		const requestBody = encodePacked(
 			["bytes32", "tuple(bytes32 token, uint256 amount)[]", "bytes32"],
-			[commitment as HexString, order.inputs, wallet.address as HexString],
+			[commitment as HexString, order.inputs, wallet],
 		)
 
 		return hexConcat([requestKind, requestBody]) as HexString
 	}
+
+
 
 	/**
 	 * Estimates gas for handling POST requests in the source chain
 	 */
 	private async estimateGasForPost(
 		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
+		clients: { sourceClient: PublicClient; destClient: PublicClient },,
 	): Promise<number> {
 		const postRequest: IPostRequest = {
 			source: order.destChain,
 			dest: order.sourceChain,
-			body: this.constructRedeemEscrowRequestBody(order, providers.sourceProvider),
+			body: this.constructRedeemEscrowRequestBody(order),
 			timeoutTimestamp: 0n,
-			nonce: await this.getHostNonce(providers.destProvider, order.destChain),
+			nonce: await this.getHostNonce(clients.destClient, order.destChain),
 			from: addresses.IntentGateway[order.destChain as keyof typeof addresses.IntentGateway]!,
 			to: addresses.IntentGateway[order.sourceChain as keyof typeof addresses.IntentGateway]!,
 		}
 
 		const { root, proof } = generateRootWithProof(postRequest)
 		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(
-			providers.sourceProvider,
+			clients.sourceClient,
 			order.destChain,
 		)
 		const overlayRootSlot = getStateCommitmentFieldSlot(
@@ -413,49 +453,21 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Calculates the USD value of tokens
-	 */
-	private async calculateTokensValueUsd(
-		tokens: any[],
-		order: Order,
-		destProvider: ethers.providers.Provider,
-	): Promise<number> {
-		let totalValueUsd = 0
-
-		for (const token of tokens) {
-			const tokenAddress = token.token
-			const amount = ethers.BigNumber.from(token.amount)
-
-			const tokenPriceUsd = await fetchTokenUsdPriceOnchain(
-				tokenAddress,
-				destProvider,
-				addresses.UniswapV2Router[order.destChain as keyof typeof addresses.UniswapV2Router]!,
-				assets[order.destChain as keyof typeof assets].WETH,
-				assets[order.destChain as keyof typeof assets].USDC,
-			)
-
-			// Calculate decimals based on token
-			const decimals = await this.getTokenDecimals(tokenAddress, destProvider)
-
-			// Calculate value
-			const tokenValueUsd = parseFloat(ethers.utils.formatUnits(amount, decimals)) * tokenPriceUsd
-			totalValueUsd += tokenValueUsd
-		}
-
-		return totalValueUsd
-	}
-
-	/**
 	 * Gets the decimals for a token
 	 */
-	private async getTokenDecimals(tokenAddress: string, provider: ethers.providers.Provider): Promise<number> {
+	private async getTokenDecimals(tokenAddress: string, client: PublicClient): Promise<number> {
 		if (tokenAddress === "0x0000000000000000000000000000000000000000") {
 			return 18 // Native token (ETH, MATIC, etc.)
 		}
 
 		try {
-			const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider)
-			return await tokenContract.decimals()
+			const decimals = await client.readContract({
+				address: tokenAddress as HexString,
+				abi: ERC20_ABI,
+				functionName: "decimals"
+			})
+
+			return decimals
 		} catch (error) {
 			console.warn(`Error getting token decimals, defaulting to 18:`, error)
 			return 18 // Default to 18 if we can't determine
@@ -463,28 +475,10 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Transforms the order object to match the contract's expected format
-	 */
-	private transformOrderForContract(order: Order): any {
-		// The contract expects a slightly different format than our TypeScript types
-		return {
-			user: order.user,
-			sourceChain: order.sourceChain,
-			destChain: order.destChain,
-			deadline: order.deadline,
-			nonce: order.nonce,
-			fees: order.fees,
-			outputs: order.outputs,
-			inputs: order.inputs,
-			callData: order.callData,
-		}
-	}
-
-	/**
 	 * Calculates the ETH value to send with the transaction
 	 */
-	private async calculateRequiredEthValue(outputs: any[]): Promise<ethers.BigNumber> {
-		let totalEthValue = ethers.BigNumber.from(0)
+	private calculateRequiredEthValue(outputs: any[]): bigint {
+		let totalEthValue = 0n
 
 		for (const output of outputs) {
 			if (output.token === "0x0000000000000000000000000000000000000000") {
@@ -499,11 +493,11 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Approves ERC20 tokens for the contract if needed
 	 */
-	private async approveTokensIfNeeded(order: Order, provider: ethers.providers.Provider): Promise<void> {
+	private async approveTokensIfNeeded(order: Order, clients: {publicClient: PublicClient, walletClient: WalletClient}): Promise<void> {
 		const uniqueTokens = new Set<string>()
-		const wallet = await this.getWallet(provider)
-		const contract = await this.getContract(provider, order.destChain)
+		const wallet = privateKeyToAccount(this.privateKey)
 		const outputs = order.outputs
+		const intentGateway = addresses.IntentGateway[order.destChain as keyof typeof addresses.IntentGateway]!
 
 		// Collect unique ERC20 tokens
 		for (const output of outputs) {
@@ -514,43 +508,65 @@ export class BasicFiller implements FillerStrategy {
 
 		// Approve each token
 		for (const tokenAddress of uniqueTokens) {
-			const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider)
-
-			const currentAllowance = await tokenContract.allowance(wallet.address, contract.address)
+		
+			const currentAllowance = await clients.publicClient.readContract({
+				abi: ERC20_ABI,
+				address: tokenAddress as HexString,
+				functionName: "allowance",
+				args: [wallet.address, intentGateway]
+			})
 
 			// If allowance is too low, approve a very large amount
-			if (currentAllowance.lt(ethers.constants.MaxUint256)) {
+			if (currentAllowance < maxUint256) {
 				console.log(`Approving ${tokenAddress} for the contract`)
 
-				const tx = await tokenContract.approve(contract.address, ethers.constants.MaxUint256)
+				const request = await clients.publicClient.simulateContract({
+					abi: ERC20_ABI,
+					address: tokenAddress as HexString,
+					functionName: "approve",
+					args: [intentGateway, maxUint256],
+					account: wallet,
+				})
 
-				await tx.wait(1)
+				const tx = await clients.walletClient.writeContract(request.request)
 				console.log(`Approval confirmed for ${tokenAddress}`)
 			}
 		}
 	}
 
-	private getContract(provider: ethers.providers.Provider, chain: string): ethers.Contract {
-		return new ethers.Contract(
-			addresses.IntentGateway[chain as keyof typeof addresses.IntentGateway]!,
-			INTENT_GATEWAY_ABI,
-			provider,
-		)
+	private getPublicClient(chain: string): PublicClient {
+		const config: ChainConfig = {
+			chainId: chainIds[chain as keyof typeof chainIds],
+			rpcUrl: rpcUrls[chain as keyof typeof chainIds],
+			intentGatewayAddress: addresses.IntentGateway[chain as keyof typeof chainIds]!
+		}
+
+		return viemClientFactory.getPublicClient(config)
 	}
 
-	private getWallet(provider: ethers.providers.Provider): ethers.Wallet {
-		return new ethers.Wallet(this.privateKey, provider)
+
+	private getWalletClient(chain: string): WalletClient {
+		const config: ChainConfig = {
+			chainId: chainIds[chain as keyof typeof chainIds],
+			rpcUrl: rpcUrls[chain as keyof typeof chainIds],
+			intentGatewayAddress: addresses.IntentGateway[chain as keyof typeof chainIds]!
+		}
+
+		return viemClientFactory.getWalletClient(config, this.privateKey)
 	}
 
-	private async getHostNonce(provider: ethers.providers.Provider, chain: string): Promise<bigint> {
-		const contract = new ethers.Contract(addresses.Host[chain as keyof typeof addresses.Host]!, EVM_HOST, provider)
-		const nonce = await contract.nonce()
+	private async getHostNonce(client: PublicClient, chain: string): Promise<bigint> {
+		const nonce = await client.readContract({
+			abi: EVM_HOST,
+			address: addresses.Host[chain as keyof typeof addresses.Host]!,
+			functionName: "nonce"
+		})
+
 		return nonce
 	}
 
-	private async getHostLatestStateMachineHeight(provider: ethers.providers.Provider, chain: string): Promise<bigint> {
-		const contract = new ethers.Contract(addresses.Host[chain as keyof typeof addresses.Host]!, EVM_HOST, provider)
-		const height = await contract.latestStateMachineHeight(chainId[chain as keyof typeof chainId])
-		return height
+	private async getHostLatestStateMachineHeight(): Promise<bigint> {
+		// Connect to Hyperbridge using polkadotapi 
+		return 0n
 	}
 }

@@ -1,4 +1,4 @@
-import { chainId } from "@/config/chain"
+import { chainIds } from "@/config/chain"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
 import { Order, FillerConfig, ChainConfig } from "@/types"
@@ -27,8 +27,8 @@ export class IntentFiller {
 		})
 
 		// Set up event handlers
-		this.monitor.on("newOrder", ({ order, sourceProvider, destProvider }) => {
-			this.handleNewOrder(order, sourceProvider, destProvider)
+		this.monitor.on("newOrder", ({ order }) => {
+			this.handleNewOrder(order)
 		})
 	}
 
@@ -51,27 +51,17 @@ export class IntentFiller {
 		})
 	}
 
-	private handleNewOrder(
-		order: Order,
-		sourceProvider: ethers.providers.Provider,
-		destProvider: ethers.providers.Provider,
-	): void {
+	private handleNewOrder(order: Order): void {
 		// Use the global queue for the initial analysis
 		// This can happen in parallel for many orders
 		this.globalQueue.add(async () => {
 			try {
 				const eligibleStrategies = await Promise.all(
 					this.strategies.map(async (strategy) => {
-						const canFill = await strategy.canFill(order, this.config, {
-							sourceProvider,
-							destProvider,
-						})
+						const canFill = await strategy.canFill(order, this.config)
 						if (!canFill) return null
 
-						const profitability = await strategy.calculateProfitability(order, {
-							sourceProvider,
-							destProvider,
-						})
+						const profitability = await strategy.calculateProfitability(order)
 						return { strategy, profitability }
 					}),
 				)
@@ -86,7 +76,7 @@ export class IntentFiller {
 				}
 
 				// Get the chain-specific queue
-				const chainQueue = this.chainQueues.get(chainId[order.destChain as keyof typeof chainId]!)
+				const chainQueue = this.chainQueues.get(chainIds[order.destChain as keyof typeof chainIds]!)
 				if (!chainQueue) {
 					console.error(`No queue configured for chain ${order.destChain}`)
 					return
@@ -101,10 +91,7 @@ export class IntentFiller {
 					)
 
 					try {
-						const result = await bestStrategy.executeOrder(order, {
-							sourceProvider,
-							destProvider,
-						})
+						const result = await bestStrategy.executeOrder(order)
 						console.log(`Order execution result:`, result)
 						return result
 					} catch (error) {

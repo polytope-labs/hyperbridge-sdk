@@ -1,21 +1,11 @@
 import { Order, FillerConfig, ExecutionResult } from "@/types"
-import { ethers } from "ethers"
+import { PublicClient } from "viem"
 export interface FillerStrategy {
 	name: string
 
-	canFill(
-		order: Order,
-		config: FillerConfig,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
-	): Promise<boolean>
+	canFill(order: Order, config: FillerConfig): Promise<boolean>
 
-	calculateProfitability(
-		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
-	): Promise<number>
+	calculateProfitability(order: Order): Promise<number>
 
-	executeOrder(
-		order: Order,
-		providers: { sourceProvider: ethers.providers.Provider; destProvider: ethers.providers.Provider },
-	): Promise<ExecutionResult>
+	executeOrder(order: Order): Promise<ExecutionResult>
 }
