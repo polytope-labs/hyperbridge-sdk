@@ -88,7 +88,7 @@ export async function fetchTokenUsdPriceOnchain(
 	}
 }
 
-export function generateRootWithProof(postRequest: IPostRequest): { root: string; proof: string[] } {
+export function generateRootWithProof(postRequest: IPostRequest): { root: HexString; proof: HexString[] } {
 	const encodedRequest = ScalePostRequest.enc({
 		...postRequest,
 		source: { tag: "Evm", value: Number.parseInt(postRequest.source.split("-")[1]) },
@@ -97,8 +97,8 @@ export function generateRootWithProof(postRequest: IPostRequest): { root: string
 		to: Array.from(hexToBytes(postRequest.to)),
 		body: Array.from(hexToBytes(postRequest.body)),
 	})
-	const root = generate_root(new Uint8Array(encodedRequest))
-	const proof = generate_proof(new Uint8Array(encodedRequest))
+	const root = generate_root(new Uint8Array(encodedRequest)) as HexString
+	const proof = generate_proof(new Uint8Array(encodedRequest)) as HexString[]
 	return {
 		root,
 		proof,

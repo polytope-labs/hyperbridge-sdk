@@ -40,9 +40,10 @@
 		"node": ">=18.0.0"
 	},
 	"dependencies": {
-		"hyperbridge-sdk": "workspace:*",
+		"@polkadot/api": "^15.9.1",
 		"ckb-mmr-wasm": "link:wasm-b",
 		"ethers": "^5.7.2",
+		"hyperbridge-sdk": "workspace:*",
 		"p-queue": "^8.1.0",
 		"scale-ts": "^1.6.1",
 		"viem": "^2.23.5"

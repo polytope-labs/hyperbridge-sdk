@@ -32,7 +32,7 @@ export type ChainId = typeof chainIds
 export const assets = {
 	[Chains.BSC_CHAPEL]: {
 		WETH: "0x0000000000000000000000000000000000000000",
-		USDC: "0x0000000000000000000000000000000000000000",
+		DAI: "0x0000000000000000000000000000000000000000",
 	},
 }
 
@@ -41,6 +41,10 @@ export const assets = {
  */
 export const addresses: AddressMap = {
 	UniswapV2Router: {
+		[Chains.BSC_CHAPEL]: "0x0000000000000000000000000000000000000000",
+		[Chains.GNOSIS_CHIADO]: "0x0000000000000000000000000000000000000000",
+	},
+	Handler: {
 		[Chains.BSC_CHAPEL]: "0x0000000000000000000000000000000000000000",
 		[Chains.GNOSIS_CHIADO]: "0x0000000000000000000000000000000000000000",
 	},
@@ -57,4 +61,9 @@ export const addresses: AddressMap = {
 export const rpcUrls = {
 	[Chains.BSC_CHAPEL]: "https://bsc-rpc.publicnode.com",
 	[Chains.GNOSIS_CHIADO]: "https://rpc.chiado.base.org",
+}
+
+export const consensusStateIds = {
+	[Chains.BSC_CHAPEL]: "",
+	[Chains.GNOSIS_CHIADO]: "GNO0",
 }
