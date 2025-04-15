@@ -92,7 +92,17 @@ export class EventMonitor extends EventEmitter {
 		}
 	}
 
-	public stopListening(): void {
+	public async stopListening(): Promise<void> {
+		for (const [chainId, unwatch] of this.unwatchFunctions.entries()) {
+			try {
+				unwatch()
+				console.log(`Stopped watching for events on chain ${chainId}`)
+			} catch (error) {
+				console.error(`Error stopping event watcher for chain ${chainId}:`, error)
+			}
+		}
+
+		this.unwatchFunctions.clear()
 		this.listening = false
 	}
 }
