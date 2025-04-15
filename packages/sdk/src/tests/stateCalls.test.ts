@@ -8,7 +8,7 @@ import PING_MODULE from "@/abis/pingModule"
 
 import { getChain } from "@/chain"
 
-describe.sequential("Hyperbridge Requests", () => {
+describe.sequential("State Queries", () => {
 	let bscConfig: IEvmConfig
 	let hyperbridgeConfig: ISubstrateConfig
 
