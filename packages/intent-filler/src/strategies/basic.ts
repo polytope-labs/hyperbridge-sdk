@@ -113,18 +113,16 @@ export class BasicFiller implements FillerStrategy {
 
 			const ethPriceUsd = await this.getEthPriceUsd(order, destClient)
 
-			const relayerFeeEth = parseEther("0.001") // Fixed fee in ETH, converted to wei
+			const postGasEstimate = await this.estimateGasForPost(order, { destClient, sourceClient })
 
-			// Get the HyperBridge protocol fee
+			const relayerFeeEth = postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100)
+
 			const protocolFeeEth = await this.getProtocolFeeEth(
 				order,
 				destClient,
 				relayerFeeEth,
 				privateKeyToAddress(this.privateKey),
 			)
-
-			// Estimate the gas for handling POST requests in the source chain
-			const postGasEstimate = await this.estimateGasForPost(order, { destClient, sourceClient })
 
 			const totalCostUsd =
 				(gasEstimateForFill + relayerFeeEth + protocolFeeEth + postGasEstimate) * BigInt(ethPriceUsd)
@@ -149,9 +147,14 @@ export class BasicFiller implements FillerStrategy {
 
 		try {
 			const destClient = this.getPublicClient(order.destChain)
+			const sourceClient = this.getPublicClient(order.sourceChain)
 			const walletClient = this.getWalletClient(order.destChain)
+			const postGasEstimate = await this.estimateGasForPost(order, {
+				sourceClient,
+				destClient,
+			})
 			const fillOptions: FillOptions = {
-				relayerFee: parseEther("0.001"), // Hardcoded it for now
+				relayerFee: postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100),
 			}
 
 			const ethValue = await this.calculateRequiredEthValue(order.outputs)
