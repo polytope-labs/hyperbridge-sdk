@@ -1,6 +1,6 @@
 import { type ConsolaInstance, createConsola, LogLevels } from "consola"
 import { maxBy } from "lodash-es"
-import { pad } from "viem"
+import { pad, toHex } from "viem"
 
 // @ts-ignore
 import mergeRace from "@async-generator/merge-race"
@@ -40,9 +40,11 @@ import {
 	REQUEST_STATUS_WEIGHTS,
 	TIMEOUT_STATUS_WEIGHTS,
 	getRequestCommitment,
+	parseStateMachineId,
 	postRequestCommitment,
 	retryPromise,
 	sleep,
+	waitForChallengePeriod,
 } from "@/utils"
 import { getChain, type IChain, type SubstrateChain } from "@/chain"
 import { _queryGetRequestInternal, _queryRequestInternal } from "./query-client"
@@ -735,6 +737,16 @@ export class IndexerClient {
 						signer: pad("0x"),
 					})
 
+					const { stateId } = parseStateMachineId(this.config.hyperbridge.stateMachineId)
+
+					await waitForChallengePeriod(destChain, {
+						height: BigInt(hyperbridgeFinalized.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.hyperbridge.consensusStateId),
+						},
+					})
+
 					yield {
 						status: RequestStatus.HYPERBRIDGE_FINALIZED,
 						metadata: {
@@ -1114,6 +1126,16 @@ export class IndexerClient {
 						destChain.requestReceiptKey(commitment),
 					])
 
+					const { stateId } = parseStateMachineId(request.dest)
+
+					await waitForChallengePeriod(hyperbridge, {
+						height: BigInt(update.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.dest.consensusStateId),
+						},
+					})
+
 					const { blockHash, transactionHash, blockNumber } = await hyperbridge.submitUnsigned({
 						kind: "TimeoutPostRequest",
 						proof: {
@@ -1213,6 +1235,17 @@ export class IndexerClient {
 							},
 						],
 					})
+
+					const { stateId } = parseStateMachineId(this.config.hyperbridge.stateMachineId)
+
+					await waitForChallengePeriod(sourceChain, {
+						height: BigInt(update.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.hyperbridge.consensusStateId),
+						},
+					})
+
 					yield {
 						status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
 						metadata: {

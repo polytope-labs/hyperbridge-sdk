@@ -7,7 +7,14 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, type IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import type { IChain, IIsmpMessage } from "@/chain"
-import { type HexString, IGetRequest, type IPostRequest, type IMessage, type StateMachineIdParams } from "@/types"
+import {
+	type HexString,
+	IGetRequest,
+	type IPostRequest,
+	type IMessage,
+	type StateMachineIdParams,
+	type StateMachineHeight,
+} from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -244,6 +251,28 @@ export class SubstrateChain implements IChain {
 		if (!this.api) throw new Error("API not initialized")
 		const latestHeight = await this.api.query.ismp.latestStateMachineHeight(stateMachineId)
 		return BigInt(latestHeight.toString())
+	}
+
+	/**
+	 * Get the state machine update time for a given state machine height.
+	 * @param {StateMachineHeight} stateMachineheight - The state machine height.
+	 * @returns {Promise<bigint>} The statemachine update time in seconds.
+	 */
+	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+		const updateTime = await this.api.query.ismp.stateMachineUpdateTime(stateMachineHeight)
+		return BigInt(updateTime.toString())
+	}
+
+	/**
+	 * Get the challenge period for a given state machine id.
+	 * @param {StateMachineIdParams} stateMachineId - The state machine ID.
+	 * @returns {Promise<bigint>} The challenge period in seconds.
+	 */
+	async challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+		const challengePeriod = await this.api.query.ismp.challengePeriod(stateMachineId)
+		return BigInt(challengePeriod.toString())
 	}
 
 	/**

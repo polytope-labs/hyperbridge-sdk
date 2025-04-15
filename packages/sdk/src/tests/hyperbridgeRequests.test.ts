@@ -27,6 +27,7 @@ import type { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { postRequestCommitment } from "@/utils"
 import { createQueryClient } from "@/query-client"
+import { keccakAsU8a } from "@polkadot/util-crypto"
 
 const query_client = createQueryClient({
 	url: process.env.INDEXER_URL!,
@@ -593,7 +594,15 @@ async function hyperbridgeSetup() {
 	const relayApi = await ApiPromise.create({ provider: relayProvider })
 
 	const wsProvider = new WsProvider(process.env.HYPERBRIDGE_GARGANTUA)
-	const hyperbridge = await ApiPromise.create({ provider: wsProvider })
+	const hyperbridge = await ApiPromise.create({
+		provider: wsProvider,
+		typesBundle: {
+			spec: {
+				gargantua: { hasher: keccakAsU8a },
+				nexus: { hasher: keccakAsU8a },
+			},
+		},
+	})
 
 	// Set up BOB account from keyring
 	const keyring = new Keyring({ type: "sr25519" })
