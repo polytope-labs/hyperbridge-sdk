@@ -1,6 +1,6 @@
 import { FillerStrategy } from "@/strategies/base"
 import { Order, FillerConfig, ExecutionResult, HexString, FillOptions, DispatchPost, RequestKind } from "@/types"
-import { encodePacked, getContract, maxUint256, parseEther, PublicClient, toHex } from "viem"
+import { encodePacked, parseEther, PublicClient, toHex } from "viem"
 import {
 	fetchTokenUsdPriceOnchain,
 	generateRootWithProof,

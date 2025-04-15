@@ -7,7 +7,8 @@ import { generate_root, generate_proof } from "ckb-mmr-wasm/ckb_mmr_wasm"
 import { IPostRequest } from "hyperbridge-sdk"
 import { ScalePostRequest } from "hyperbridge-sdk"
 
-export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000"
+export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
+export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 export function getOrderCommitment(order: Order): string {
 	let orderEncodePacked = encodePacked(

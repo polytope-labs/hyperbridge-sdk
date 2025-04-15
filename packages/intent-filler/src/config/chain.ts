@@ -6,6 +6,8 @@ export enum Chains {
 	GNOSIS_CHIADO = "EVM-10200",
 }
 
+import { Chain, bscTestnet, gnosisChiado } from "viem/chains"
+
 type AddressMap = {
 	[key: string]: {
 		[K in Chains]?: `0x${string}`
@@ -25,6 +27,14 @@ export const chainIds = {
 } as const
 
 export type ChainId = typeof chainIds
+
+/**
+ * Mapping of Viem Chain objects for different chains.
+ */
+export const viemChains: Record<string, Chain> = {
+	"97": bscTestnet,
+	"10200": gnosisChiado,
+}
 
 /**
  * Mapping of assets for different chains.

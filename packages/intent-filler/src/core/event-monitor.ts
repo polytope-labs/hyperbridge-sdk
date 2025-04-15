@@ -1,21 +1,25 @@
 import { EventEmitter } from "events"
 import { ChainConfig, HexString, Order } from "@/types"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { getOrderCommitment } from "@/utils"
-import { PublicClient, decodeEventLog, getAbiItem, parseAbiItem, type Log } from "viem"
-import { viemClientFactory } from "@/config/client"
+import { DUMMY_PRIVATE_KEY, getOrderCommitment } from "@/utils"
+import { PublicClient, decodeEventLog } from "viem"
 import { addresses, chainIds } from "@/config/chain"
+import { ChainClientManager } from "@/services"
 
 export class EventMonitor extends EventEmitter {
 	private clients: Map<number, PublicClient> = new Map()
 	private listening: boolean = false
 	private unwatchFunctions: Map<number, () => void> = new Map()
+	private clientManager: ChainClientManager
 
 	constructor(chainConfigs: ChainConfig[]) {
 		super()
 
+		this.clientManager = new ChainClientManager(DUMMY_PRIVATE_KEY)
+
 		chainConfigs.forEach((config) => {
-			const client = viemClientFactory.getPublicClient(config)
+			const chainName = `EVM-${config.chainId}`
+			const client = this.clientManager.getPublicClient(chainName)
 			this.clients.set(config.chainId, client)
 		})
 	}
