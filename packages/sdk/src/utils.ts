@@ -1,5 +1,5 @@
 import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
-import type { RequestStatusKey, TimeoutStatusKey, RetryConfig } from "@/types"
+import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
 import { encodePacked, keccak256, toHex } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
@@ -8,6 +8,8 @@ export * from "./utils/mmr"
 export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
+export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
+export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
  * Sleeps for the specified number of milliseconds.
@@ -57,6 +59,34 @@ export function postRequestCommitment(post: IPostRequest): HexString {
 			[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
 		),
 	)
+}
+
+export function orderCommitment(order: Order): string {
+	let orderEncodePacked = encodePacked(
+		[
+			"bytes32",
+			"bytes32",
+			"bytes32",
+			"uint256",
+			"uint256",
+			"uint256",
+			"tuple(bytes32 token, uint256 amount, bytes32 beneficiary)[]",
+			"tuple(bytes32 token, uint256 amount)[]",
+			"bytes",
+		],
+		[
+			order.user,
+			toHex(order.sourceChain),
+			toHex(order.destChain),
+			order.deadline,
+			order.nonce,
+			order.fees,
+			order.outputs,
+			order.inputs,
+			order.callData,
+		],
+	)
+	return keccak256(orderEncodePacked)
 }
 
 export const DEFAULT_LOGGER = createConsola({

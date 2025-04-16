@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
-import { ChainConfig, HexString, Order } from "@/types"
+import { ChainConfig, HexString, Order, orderCommitment, DUMMY_PRIVATE_KEY } from "hyperbridge-sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { DUMMY_PRIVATE_KEY, getOrderCommitment } from "@/utils"
 import { PublicClient, decodeEventLog } from "viem"
 import { addresses, chainIds } from "@/config/chain"
 import { ChainClientManager } from "@/services"
@@ -69,16 +68,14 @@ export class EventMonitor extends EventEmitter {
 									transactionHash: log.transactionHash as HexString,
 								}
 
-								const orderId = getOrderCommitment(tempOrder)
+								const orderId = orderCommitment(tempOrder)
 
 								const order: Order = {
 									...tempOrder,
 									id: orderId,
 								}
-								const sourceClient = client
-								const destClient = this.clients.get(chainIds[order.destChain as keyof typeof chainIds])
 
-								this.emit("newOrder", { chainId, order, sourceClient, destClient })
+								this.emit("newOrder", { order })
 							} catch (error) {
 								console.error(`Error parsing event log:`, error)
 							}

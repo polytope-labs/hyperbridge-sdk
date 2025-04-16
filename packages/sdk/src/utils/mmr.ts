@@ -1,3 +1,8 @@
+import { HexString, IPostRequest } from "@/types"
+import { hexToBytes } from "viem"
+import { generate_proof, generate_root } from "./ckb-mmr-wasm/ckb_mmr_wasm"
+import { PostRequest } from "./substrate"
+
 /**
  * Gets peak position for a given height
  */
@@ -173,4 +178,33 @@ export function mmrPositionToKIndex(initialLeaves: bigint[], mmrSize: bigint): A
 export function calculateMMRSize(numberOfLeaves: bigint): bigint {
 	const numberOfPeaks = numberOfLeaves.toString(2).split("1").length - 1
 	return 2n * numberOfLeaves - BigInt(numberOfPeaks)
+}
+
+/**
+ * Generates a Merkle Mountain Range (MMR) root hash and proof for a post request.
+ *
+ * This function takes a post request, encodes it according to the PostRequest format,
+ * and then generates both the MMR root hash and a proof that can be used to verify
+ * the request's inclusion in the MMR.
+ *
+ * @param postRequest - The post request to generate the MMR root and proof for
+ * @returns An object containing:
+ *   - root: The MMR root hash as a hex string
+ *   - proof: An array of hex strings representing the MMR proof
+ */
+export function generateRootWithProof(postRequest: IPostRequest): { root: HexString; proof: HexString[] } {
+	const encodedRequest = PostRequest.enc({
+		...postRequest,
+		source: { tag: "Evm", value: Number.parseInt(postRequest.source.split("-")[1]) },
+		dest: { tag: "Evm", value: Number.parseInt(postRequest.dest.split("-")[1]) },
+		from: Array.from(hexToBytes(postRequest.from)),
+		to: Array.from(hexToBytes(postRequest.to)),
+		body: Array.from(hexToBytes(postRequest.body)),
+	})
+	const root = generate_root(new Uint8Array(encodedRequest)) as HexString
+	const proof = generate_proof(new Uint8Array(encodedRequest)) as HexString[]
+	return {
+		root,
+		proof,
+	}
 }

@@ -1,20 +1,30 @@
 import { chainIds } from "@/config/chain"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
-import { Order, FillerConfig, ChainConfig } from "@/types"
+import { Order, FillerConfig, ChainConfig, DUMMY_PRIVATE_KEY } from "hyperbridge-sdk"
 import pQueue from "p-queue"
-import { ethers } from "ethers"
+import { ChainClientManager, ChainConfigService } from "@/services"
+import { fetchTokenUsdPriceOnchain } from "@/utils"
+import { PublicClient } from "viem"
+
 export class IntentFiller {
 	private monitor: EventMonitor
 	private strategies: FillerStrategy[]
 	private config: FillerConfig
 	private chainQueues: Map<number, pQueue>
 	private globalQueue: pQueue
+	private configService: ChainConfigService
+	private chainClientManager: ChainClientManager
+	private pendingOrders: Map<string, NodeJS.Timeout> = new Map()
+
+	private orderRecheckCount: Map<string, number> = new Map()
 
 	constructor(chainConfigs: ChainConfig[], strategies: FillerStrategy[], config: FillerConfig) {
 		this.monitor = new EventMonitor(chainConfigs)
 		this.strategies = strategies
 		this.config = config
+		this.configService = new ChainConfigService()
+		this.chainClientManager = new ChainClientManager(DUMMY_PRIVATE_KEY)
 
 		this.chainQueues = new Map()
 		chainConfigs.forEach((chainConfig) => {
@@ -39,6 +49,13 @@ export class IntentFiller {
 	public stop(): void {
 		this.monitor.stopListening()
 
+		// Clear all pending order timeouts
+		this.pendingOrders.forEach((timeout) => clearTimeout(timeout))
+		this.pendingOrders.clear()
+
+		// Clear recheck counts
+		this.orderRecheckCount.clear()
+
 		// Wait for all queues to complete
 		const promises = []
 		this.chainQueues.forEach((queue) => {
@@ -51,14 +68,127 @@ export class IntentFiller {
 		})
 	}
 
+	// Operations
+
 	private handleNewOrder(order: Order): void {
 		// Use the global queue for the initial analysis
-		// This can happen in parallel for many orders
+		// This can happen in parallel for PublicClient orders
+		this.globalQueue.add(async () => {
+			try {
+				// Check if the order has enough confirmations
+				const hasEnoughConfirmations = await this.checkConfirmations(order)
+
+				if (!hasEnoughConfirmations) {
+					// If not enough confirmations, add to pending queue with a delay
+					this.addToPendingQueue(order)
+					return
+				}
+
+				// If we have enough confirmations, proceed with strategy evaluation
+				this.evaluateAndExecuteOrder(order)
+			} catch (error) {
+				console.error(`Error processing order ${order.id}:`, error)
+			}
+		})
+	}
+
+	private async checkConfirmations(order: Order): Promise<boolean> {
+		try {
+			const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
+			const orderValue = await this.calculateOrderValue(order, sourceClient)
+			const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
+				chainIds[order.sourceChain as keyof typeof chainIds],
+				orderValue.toString(),
+			)
+
+			const sourceReceipt = await sourceClient.getTransactionReceipt({ hash: order.transactionHash })
+			const sourceConfirmations = await sourceClient.getTransactionConfirmations({
+				transactionReceipt: sourceReceipt,
+			})
+
+			if (sourceConfirmations < requiredConfirmations) {
+				console.debug(
+					`Insufficient confirmations for order ${order.id}, ${sourceConfirmations} confirmations, ${requiredConfirmations} required`,
+				)
+				return false
+			}
+
+			return true
+		} catch (error) {
+			console.error(`Error checking confirmations for order ${order.id}:`, error)
+			return false
+		}
+	}
+
+	private async calculateOrderValue(order: Order, client: PublicClient): Promise<bigint> {
+		let totalUSDValue = BigInt(0)
+
+		for (const input of order.inputs) {
+			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
+				input.token,
+				client,
+				this.configService.getUniswapV2RouterAddress(order.destChain),
+				this.configService.getWethAsset(order.destChain),
+				this.configService.getDaiAsset(order.destChain),
+			)
+
+			totalUSDValue = totalUSDValue + BigInt(input.amount * BigInt(tokenUsdPrice))
+		}
+
+		return totalUSDValue
+	}
+
+	private addToPendingQueue(order: Order): void {
+		if (this.pendingOrders.has(order.id)) {
+			clearTimeout(this.pendingOrders.get(order.id)!)
+			this.pendingOrders.delete(order.id)
+		}
+
+		const currentRecheckCount = this.orderRecheckCount.get(order.id) || 0
+		const maxRechecks = this.config.pendingQueueConfig?.maxRechecks || 10
+
+		// If we've exceeded the maximum number of rechecks, give up
+		if (currentRecheckCount >= maxRechecks) {
+			console.log(`Order ${order.id} has exceeded maximum recheck attempts (${maxRechecks}), giving up`)
+			this.orderRecheckCount.delete(order.id)
+			return
+		}
+
+		this.orderRecheckCount.set(order.id, currentRecheckCount + 1)
+
+		// Get the configured delay or use default
+		const recheckDelayMs = this.config.pendingQueueConfig?.recheckDelayMs || 30000
+
+		// Set a timeout to recheck the order after a delay
+		const timeout = setTimeout(async () => {
+			console.log(
+				`Rechecking order ${order.id} for confirmations (attempt ${currentRecheckCount + 1}/${maxRechecks})`,
+			)
+
+			// Check confirmations again
+			const hasEnoughConfirmations = await this.checkConfirmations(order)
+
+			if (hasEnoughConfirmations) {
+				// If we now have enough confirmations, evaluate, execute and clear the maps
+				this.evaluateAndExecuteOrder(order)
+				this.orderRecheckCount.delete(order.id)
+				this.pendingOrders.delete(order.id)
+			} else {
+				// If still not enough confirmations, add back to pending queue
+				this.addToPendingQueue(order)
+			}
+		}, recheckDelayMs)
+
+		this.pendingOrders.set(order.id, timeout)
+		console.log(`Added order ${order.id} to pending queue for confirmation check`)
+	}
+
+	private evaluateAndExecuteOrder(order: Order): void {
 		this.globalQueue.add(async () => {
 			try {
 				const eligibleStrategies = await Promise.all(
 					this.strategies.map(async (strategy) => {
-						const canFill = await strategy.canFill(order, this.config)
+						const canFill = await strategy.canFill(order)
 						if (!canFill) return null
 
 						const profitability = await strategy.calculateProfitability(order)
@@ -71,7 +201,7 @@ export class IntentFiller {
 					.sort((a, b) => b.profitability - a.profitability)
 
 				if (validStrategies.length === 0) {
-					console.log(`No viable strategy found for order ${order.nonce}`)
+					console.log(`No viable strategy found for order ${order.id}`)
 					return
 				}
 
@@ -87,7 +217,7 @@ export class IntentFiller {
 				chainQueue.add(async () => {
 					const bestStrategy = validStrategies[0].strategy
 					console.log(
-						`Executing order ${order.nonce} with strategy ${bestStrategy.name} on chain ${order.destChain}`,
+						`Executing order ${order.id} with strategy ${bestStrategy.name} on chain ${order.destChain}`,
 					)
 
 					try {
@@ -100,7 +230,7 @@ export class IntentFiller {
 					}
 				})
 			} catch (error) {
-				console.error(`Error processing order ${order.nonce}:`, error)
+				console.error(`Error processing order ${order.id}:`, error)
 			}
 		})
 	}

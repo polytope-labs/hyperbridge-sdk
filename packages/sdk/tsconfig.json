@@ -15,6 +15,6 @@
 		"allowSyntheticDefaultImports": true,
 		"types": ["node", "vitest/globals"]
 	},
-	"include": ["src/**/*", "tests/**/*"],
+	"include": ["src/**/*", "tests/**/*", "src/utils/ckb-mmr-wasm"],
 	"exclude": ["node_modules", "dist"]
 }

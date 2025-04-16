@@ -1,9 +1,8 @@
-import { Order, FillerConfig, ExecutionResult } from "@/types"
-import { PublicClient } from "viem"
+import { Order, FillerConfig, ExecutionResult } from "hyperbridge-sdk"
 export interface FillerStrategy {
 	name: string
 
-	canFill(order: Order, config: FillerConfig): Promise<boolean>
+	canFill(order: Order): Promise<boolean>
 
 	calculateProfitability(order: Order): Promise<number>
 
