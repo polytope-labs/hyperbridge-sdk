@@ -196,13 +196,18 @@ export class SubstrateChain implements IChain {
 		if (!this.api) throw new Error("API not initialized")
 		// remove the call and method selectors
 		const args = hexToBytes(this.encode(message)).slice(2)
-		const tx = this.api.tx.ismp.handleUnsigned(args)
-		return new Promise(async (resolve, reject) => {
-			const unsub = await tx.send(async ({ isFinalized, isError, dispatchError, txHash, status }) => {
-				if (isFinalized) {
+		const api = this.api
+		const tx = api.tx.ismp.handleUnsigned(args)
+
+		return new Promise((resolve, reject) => {
+			let unsub = () => {}
+
+			tx.send(async ({ isInBlock, isFinalized, isError, dispatchError, txHash, status }) => {
+				if (isFinalized || isInBlock) {
 					unsub()
-					const blockHash = status.asFinalized.toHex()
-					const header = await this.api!.rpc.chain.getHeader(blockHash)
+					const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
+					const header = await api.rpc.chain.getHeader(blockHash)
+
 					resolve({
 						transactionHash: txHash.toHex(),
 						blockHash: blockHash,
@@ -214,6 +219,10 @@ export class SubstrateChain implements IChain {
 					reject(dispatchError)
 				}
 			})
+				.then((unsubscribe) => {
+					unsub = unsubscribe
+				})
+				.catch(reject)
 		})
 	}
 
