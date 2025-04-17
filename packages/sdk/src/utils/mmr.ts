@@ -1,6 +1,6 @@
 import { HexString, IPostRequest } from "@/types"
 import { hexToBytes } from "viem"
-import { generate_proof, generate_root } from "./ckb-mmr-wasm/ckb_mmr_wasm"
+import { generate_root_with_proof } from "./ckb-mmr-wasm/ckb_mmr_wasm"
 import { PostRequest } from "./substrate"
 
 /**
@@ -183,16 +183,21 @@ export function calculateMMRSize(numberOfLeaves: bigint): bigint {
 /**
  * Generates a Merkle Mountain Range (MMR) root hash and proof for a post request.
  *
- * This function takes a post request, encodes it according to the PostRequest format,
- * and then generates both the MMR root hash and a proof that can be used to verify
- * the request's inclusion in the MMR.
+ * This function takes a post request and tree size, encodes it according to the PostRequest format,
+ * and generates both the MMR root hash and a proof. The function builds an MMR with `treeSize` leaves,
+ * where most leaves are variations of the encoded request (XORed with their index), except for the
+ * last leaf, which is the unmodified request. The proof is generated for this unmodified leaf.
  *
  * @param postRequest - The post request to generate the MMR root and proof for
+ * @param treeSize - Controls how many leaves will be added to the MMR (exactly `treeSize` leaves)
  * @returns An object containing:
  *   - root: The MMR root hash as a hex string
- *   - proof: An array of hex strings representing the MMR proof
+ *   - proof: An array of hex strings representing the MMR proof for the unmodified request
  */
-export function generateRootWithProof(postRequest: IPostRequest): { root: HexString; proof: HexString[] } {
+export function generateRootWithProof(
+	postRequest: IPostRequest,
+	treeSize: bigint,
+): { root: HexString; proof: HexString[] } {
 	const encodedRequest = PostRequest.enc({
 		...postRequest,
 		source: { tag: "Evm", value: Number.parseInt(postRequest.source.split("-")[1]) },
@@ -201,8 +206,9 @@ export function generateRootWithProof(postRequest: IPostRequest): { root: HexStr
 		to: Array.from(hexToBytes(postRequest.to)),
 		body: Array.from(hexToBytes(postRequest.body)),
 	})
-	const root = generate_root(new Uint8Array(encodedRequest)) as HexString
-	const proof = generate_proof(new Uint8Array(encodedRequest)) as HexString[]
+	const result = JSON.parse(generate_root_with_proof(new Uint8Array(encodedRequest), treeSize))
+	const { root, proof } = result
+
 	return {
 		root,
 		proof,

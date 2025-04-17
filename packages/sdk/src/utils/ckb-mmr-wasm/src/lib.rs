@@ -1,8 +1,15 @@
 use ckb_merkle_mountain_range::{util::MemStore, Merge, Result as CkbResult, MMR};
 use hex;
+use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsError;
+
+#[derive(Serialize, Deserialize)]
+struct MMRResult {
+    root: String,
+    proof: Vec<String>,
+}
 
 #[wasm_bindgen]
 #[derive(Debug)]
@@ -23,10 +30,6 @@ impl Merge for KeccakMerge {
     }
 }
 
-fn is_leaf(pos: u64) -> bool {
-    pos & (pos + 1) == 0
-}
-
 fn bytes_to_hex(bytes: &[u8]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
@@ -41,13 +44,13 @@ fn bytes_to_hex_proof(bytes: &[Vec<u8>]) -> Vec<String> {
 }
 
 #[wasm_bindgen]
-pub fn generate_root(calldata_bytes: &[u8]) -> Result<(String), JsError> {
+pub fn generate_root_with_proof(calldata_bytes: &[u8], tree_size: u64) -> Result<String, JsError> {
     let store = MemStore::<Vec<u8>>::default();
     let mut mmr = MMR::<Vec<u8>, KeccakMerge, &MemStore<Vec<u8>>>::new(0, &store);
     let mut leaf_positions = Vec::new();
 
-    for i in 0..100 {
-        if i == 99 {
+    for i in 0..tree_size {
+        if i == tree_size - 1 {
             let tx = calldata_bytes.to_vec();
             let pos = mmr.push(tx)?;
             leaf_positions.push(pos);
@@ -61,39 +64,17 @@ pub fn generate_root(calldata_bytes: &[u8]) -> Result<(String), JsError> {
     }
 
     let root = mmr.get_root()?;
-
     let root_hex = bytes_to_hex(&root);
 
-    mmr.commit()?;
-
-    Ok(root_hex)
-}
-
-#[wasm_bindgen]
-pub fn generate_proof(calldata_bytes: &[u8]) -> Result<Vec<String>, JsError> {
-    let store = MemStore::<Vec<u8>>::default();
-    let mut mmr = MMR::<Vec<u8>, KeccakMerge, &MemStore<Vec<u8>>>::new(0, &store);
-    let mut leaf_positions = Vec::new();
-
-    for i in 0..100 {
-        if i == 99 {
-            let tx = calldata_bytes.to_vec();
-            let pos = mmr.push(tx)?;
-            leaf_positions.push(pos);
-        } else {
-            let mut tx = calldata_bytes.to_vec();
-            for j in 0..tx.len() {
-                tx[j] ^= i as u8;
-            }
-            mmr.push(tx)?;
-        }
-    }
-
     let proof = mmr.gen_proof(leaf_positions)?;
-
     let proof_hex = bytes_to_hex_proof(proof.proof_items());
 
     mmr.commit()?;
 
-    Ok(proof_hex)
+    let result = MMRResult {
+        root: root_hex,
+        proof: proof_hex,
+    };
+
+    Ok(serde_json::to_string(&result)?)
 }
