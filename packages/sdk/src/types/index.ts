@@ -459,7 +459,7 @@ export interface Order {
 	/**
 	 * The unique identifier for the order
 	 */
-	id: string
+	id?: string
 
 	/**
 	 * The address of the user who is initiating the transfer
@@ -510,7 +510,7 @@ export interface Order {
 	/**
 	 * The transaction hash of the order
 	 */
-	transactionHash: HexString
+	transactionHash?: HexString
 }
 
 /**
@@ -616,7 +616,7 @@ export interface FillerConfig {
 	 * Policy for determining confirmation requirements
 	 */
 	confirmationPolicy: {
-		getConfirmationBlocks: (chainId: number, amount: string) => number
+		getConfirmationBlocks: (chainId: number, amount: bigint) => number
 	}
 
 	/**

@@ -55,34 +55,31 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Calculates the expected profitability of filling this order
-	 * @param order The order to calculate profitability for
-	 * @returns The expected profit in a normalized unit (usually USD value or ETH equivalent)
+	 * Calculates the expected profit of filling this order
+	 * @param order The order to calculate profit for
+	 * @returns The expected profit in DAI (BigInt) which is the order fees minus the total cost
 	 */
-	async calculateProfitability(order: Order): Promise<number> {
+	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
 			const destClient = this.clientManager.getPublicClient(order.destChain)
 
-			const gasEstimateForFill = await this.contractService.estimateGasForFill(order)
+			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
 
 			const ethPriceUsd = await this.contractService.getEthPriceUsd(order, destClient)
 
-			const postGasEstimate = await this.contractService.estimateGasForPost(order)
+			// 2% on top of postGas
+			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
-			const relayerFeeEth = postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100)
+			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
 
-			const protocolFeeEth = await this.contractService.getProtocolFeeEth(order, relayerFeeEth)
+			const gasCostUsd = ((fillGas + relayerFeeEth) * ethPriceUsd) / BigInt(10 ** 18)
 
-			const totalCostUsd =
-				(gasEstimateForFill + relayerFeeEth + protocolFeeEth + postGasEstimate) * BigInt(ethPriceUsd)
+			const totalCostUsd = gasCostUsd + protocolFeeUSD
 
-			// Convert order fees from DAI to USD
-			const orderFeesUsd = order.fees / BigInt(10 ** 18)
-
-			return orderFeesUsd > totalCostUsd ? Number(orderFeesUsd - totalCostUsd) : 0
+			return order.fees > totalCostUsd ? order.fees - totalCostUsd : BigInt(0)
 		} catch (error) {
 			console.error(`Error calculating profitability:`, error)
-			return -1 // Negative profitability signals an error
+			return BigInt(-1) // Negative profitability signals an error
 		}
 	}
 
@@ -96,9 +93,10 @@ export class BasicFiller implements FillerStrategy {
 
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
+
 			const postGasEstimate = await this.contractService.estimateGasForPost(order)
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100),
+				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
 			}
 
 			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)
@@ -107,7 +105,7 @@ export class BasicFiller implements FillerStrategy {
 
 			const { request } = await destClient.simulateContract({
 				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.sourceChain),
+				address: this.configService.getIntentGatewayAddress(order.destChain),
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
@@ -115,6 +113,13 @@ export class BasicFiller implements FillerStrategy {
 			})
 
 			const tx = await walletClient.writeContract(request)
+
+			// Wait for confirmations
+			let confirmations = 0n
+			while (confirmations < 0n) {
+				confirmations = await destClient.getTransactionConfirmations({ hash: tx })
+				await new Promise((resolve) => setTimeout(resolve, 5000))
+			}
 
 			const receipt = await destClient.getTransactionReceipt({ hash: tx })
 

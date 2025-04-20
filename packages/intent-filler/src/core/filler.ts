@@ -8,16 +8,15 @@ import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { PublicClient } from "viem"
 
 export class IntentFiller {
-	private monitor: EventMonitor
+	public monitor: EventMonitor
 	private strategies: FillerStrategy[]
-	private config: FillerConfig
 	private chainQueues: Map<number, pQueue>
 	private globalQueue: pQueue
 	private configService: ChainConfigService
 	private chainClientManager: ChainClientManager
 	private pendingOrders: Map<string, NodeJS.Timeout> = new Map()
-
 	private orderRecheckCount: Map<string, number> = new Map()
+	private config: FillerConfig
 
 	constructor(chainConfigs: ChainConfig[], strategies: FillerStrategy[], config: FillerConfig) {
 		this.monitor = new EventMonitor(chainConfigs)
@@ -29,6 +28,7 @@ export class IntentFiller {
 		this.chainQueues = new Map()
 		chainConfigs.forEach((chainConfig) => {
 			// 1 order per chain at a time due to EVM constraints
+
 			this.chainQueues.set(chainConfig.chainId, new pQueue({ concurrency: 1 }))
 		})
 
@@ -98,13 +98,16 @@ export class IntentFiller {
 			const orderValue = await this.calculateOrderValue(order, sourceClient)
 			const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 				chainIds[order.sourceChain as keyof typeof chainIds],
-				orderValue.toString(),
+				orderValue,
 			)
 
-			const sourceReceipt = await sourceClient.getTransactionReceipt({ hash: order.transactionHash })
+			const sourceReceipt = await sourceClient.getTransactionReceipt({ hash: order.transactionHash! })
 			const sourceConfirmations = await sourceClient.getTransactionConfirmations({
 				transactionReceipt: sourceReceipt,
 			})
+
+			console.log("sourceConfirmations", sourceConfirmations)
+			console.log("requiredConfirmations", requiredConfirmations)
 
 			if (sourceConfirmations < requiredConfirmations) {
 				console.debug(
@@ -124,13 +127,7 @@ export class IntentFiller {
 		let totalUSDValue = BigInt(0)
 
 		for (const input of order.inputs) {
-			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
-				input.token,
-				client,
-				this.configService.getUniswapV2RouterAddress(order.destChain),
-				this.configService.getWethAsset(order.destChain),
-				this.configService.getDaiAsset(order.destChain),
-			)
+			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(input.token)
 
 			totalUSDValue = totalUSDValue + BigInt(input.amount * BigInt(tokenUsdPrice))
 		}
@@ -139,22 +136,22 @@ export class IntentFiller {
 	}
 
 	private addToPendingQueue(order: Order): void {
-		if (this.pendingOrders.has(order.id)) {
-			clearTimeout(this.pendingOrders.get(order.id)!)
-			this.pendingOrders.delete(order.id)
+		if (this.pendingOrders.has(order.id!)) {
+			clearTimeout(this.pendingOrders.get(order.id!)!)
+			this.pendingOrders.delete(order.id!)
 		}
 
-		const currentRecheckCount = this.orderRecheckCount.get(order.id) || 0
+		const currentRecheckCount = this.orderRecheckCount.get(order.id!) || 0
 		const maxRechecks = this.config.pendingQueueConfig?.maxRechecks || 10
 
 		// If we've exceeded the maximum number of rechecks, give up
 		if (currentRecheckCount >= maxRechecks) {
 			console.log(`Order ${order.id} has exceeded maximum recheck attempts (${maxRechecks}), giving up`)
-			this.orderRecheckCount.delete(order.id)
+			this.orderRecheckCount.delete(order.id!)
 			return
 		}
 
-		this.orderRecheckCount.set(order.id, currentRecheckCount + 1)
+		this.orderRecheckCount.set(order.id!, currentRecheckCount + 1)
 
 		// Get the configured delay or use default
 		const recheckDelayMs = this.config.pendingQueueConfig?.recheckDelayMs || 30000
@@ -171,15 +168,15 @@ export class IntentFiller {
 			if (hasEnoughConfirmations) {
 				// If we now have enough confirmations, evaluate, execute and clear the maps
 				this.evaluateAndExecuteOrder(order)
-				this.orderRecheckCount.delete(order.id)
-				this.pendingOrders.delete(order.id)
+				this.orderRecheckCount.delete(order.id!)
+				this.pendingOrders.delete(order.id!)
 			} else {
 				// If still not enough confirmations, add back to pending queue
 				this.addToPendingQueue(order)
 			}
 		}, recheckDelayMs)
 
-		this.pendingOrders.set(order.id, timeout)
+		this.pendingOrders.set(order.id!, timeout)
 		console.log(`Added order ${order.id} to pending queue for confirmation check`)
 	}
 
@@ -198,7 +195,7 @@ export class IntentFiller {
 
 				const validStrategies = eligibleStrategies
 					.filter((s) => s !== null)
-					.sort((a, b) => b.profitability - a.profitability)
+					.sort((a, b) => Number(b.profitability) - Number(a.profitability))
 
 				if (validStrategies.length === 0) {
 					console.log(`No viable strategy found for order ${order.id}`)

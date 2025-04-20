@@ -72,4 +72,11 @@ export class ChainConfigService {
 	getConsensusStateId(chain: string): HexString {
 		return toHex(consensusStateIds[chain as keyof typeof consensusStateIds])
 	}
+
+	/**
+	 * Gets the FeeToken address for a given chain
+	 */
+	getFeeTokenAddress(chain: string): HexString {
+		return addresses.FeeToken[chain as keyof typeof addresses.FeeToken]!
+	}
 }

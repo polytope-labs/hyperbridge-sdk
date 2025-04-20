@@ -1,9 +1,43 @@
 import { EventEmitter } from "events"
 import { ChainConfig, HexString, Order, orderCommitment, DUMMY_PRIVATE_KEY } from "hyperbridge-sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { PublicClient, decodeEventLog } from "viem"
+import { PublicClient, decodeEventLog, Log, Hex } from "viem"
 import { addresses, chainIds } from "@/config/chain"
 import { ChainClientManager } from "@/services"
+
+function hexToString(hex: string): string {
+	const hexWithoutPrefix = hex.startsWith("0x") ? hex.slice(2) : hex
+
+	const bytes = new Uint8Array(hexWithoutPrefix.length / 2)
+	for (let i = 0; i < hexWithoutPrefix.length; i += 2) {
+		bytes[i / 2] = parseInt(hexWithoutPrefix.slice(i, i + 2), 16)
+	}
+
+	return new TextDecoder().decode(bytes)
+}
+
+interface DecodedLog extends Log {
+	eventName: string
+	args: {
+		user: HexString
+		sourceChain: Hex
+		destChain: Hex
+		deadline: bigint
+		nonce: bigint
+		fees: bigint
+		outputs: Array<{
+			token: HexString
+			amount: bigint
+			beneficiary: HexString
+		}>
+		inputs: Array<{
+			token: HexString
+			amount: bigint
+		}>
+		callData: HexString
+	}
+	transactionHash: HexString
+}
 
 export class EventMonitor extends EventEmitter {
 	private clients: Map<number, PublicClient> = new Map()
@@ -37,43 +71,41 @@ export class EventMonitor extends EventEmitter {
 					address: addresses.IntentGateway[`EVM-${chainId}` as keyof typeof addresses.IntentGateway],
 					event: orderPlacedEvent,
 					onLogs: (logs) => {
+						console.log("Received logs:", logs)
 						for (const log of logs) {
 							try {
-								const decodedLog = decodeEventLog({
-									abi: INTENT_GATEWAY_ABI,
-									data: log.data,
-									topics: log.topics,
-								})
-
-								if (decodedLog.eventName !== "OrderPlaced") return
-
+								const decodedLog = log as unknown as DecodedLog
 								const tempOrder: Order = {
 									id: "",
-									user: decodedLog.args.user as HexString,
-									sourceChain: decodedLog.args.sourceChain,
-									destChain: decodedLog.args.destChain,
+									user: decodedLog.args.user,
+									sourceChain: hexToString(decodedLog.args.sourceChain),
+									destChain: hexToString(decodedLog.args.destChain),
 									deadline: decodedLog.args.deadline,
 									nonce: decodedLog.args.nonce,
 									fees: decodedLog.args.fees,
 									outputs: decodedLog.args.outputs.map((output) => ({
-										token: output.token as HexString,
+										token: output.token,
 										amount: output.amount,
-										beneficiary: output.beneficiary as HexString,
+										beneficiary: output.beneficiary,
 									})),
 									inputs: decodedLog.args.inputs.map((input) => ({
-										token: input.token as HexString,
+										token: input.token,
 										amount: input.amount,
 									})),
-									callData: decodedLog.args.callData as HexString,
-									transactionHash: log.transactionHash as HexString,
+									callData: decodedLog.args.callData,
+									transactionHash: decodedLog.transactionHash,
 								}
 
+								console.log("tempOrder", tempOrder)
+
 								const orderId = orderCommitment(tempOrder)
+								console.log("orderId", orderId)
 
 								const order: Order = {
 									...tempOrder,
 									id: orderId,
 								}
+								console.log("order", order)
 
 								this.emit("newOrder", { order })
 							} catch (error) {
@@ -92,6 +124,42 @@ export class EventMonitor extends EventEmitter {
 			}
 		}
 	}
+
+	// public async startListening(): Promise<void> {
+	// 	if (this.listening) return
+	// 	this.listening = true
+
+	// 	const order: Order = {
+	// 		id: "0xc765d750e969aeb2bd5da9cd1045b03c8d9658e45fdbad37d831079160f26d94",
+	// 		user: "0x000000000000000000000000ea4f68301acec0dc9bbe10f15730c59fb79d237e",
+	// 		sourceChain: "EVM-97",
+	// 		destChain: "EVM-10200",
+	// 		deadline: 65337297n,
+	// 		nonce: 0n,
+	// 		fees: 100n,
+	// 		outputs: [
+	// 			{
+	// 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+	// 				amount: 100n,
+	// 				beneficiary: "0x000000000000000000000000ea4f68301acec0dc9bbe10f15730c59fb79d237e",
+	// 			},
+	// 		],
+	// 		inputs: [
+	// 			{
+	// 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+	// 				amount: 100n,
+	// 			},
+	// 		],
+	// 		callData: "0x",
+	// 		transactionHash: "0x063ef5e743b854b4d31b80916047958a5496cc18a485715d03f33c495dab6594",
+	// 	}
+
+	// 	const orderId = orderCommitment(order)
+
+	// 	order.id = orderId
+
+	// 	this.emit("newOrder", { order })
+	// }
 
 	public async stopListening(): Promise<void> {
 		for (const [chainId, unwatch] of this.unwatchFunctions.entries()) {

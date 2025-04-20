@@ -1,6 +1,6 @@
 import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
 import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
-import { encodePacked, keccak256, toHex } from "viem"
+import { encodePacked, keccak256, toHex, encodeAbiParameters } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
 
@@ -62,31 +62,55 @@ export function postRequestCommitment(post: IPostRequest): HexString {
 }
 
 export function orderCommitment(order: Order): string {
-	let orderEncodePacked = encodePacked(
+	const encodedOrder = encodeAbiParameters(
 		[
-			"bytes32",
-			"bytes32",
-			"bytes32",
-			"uint256",
-			"uint256",
-			"uint256",
-			"tuple(bytes32 token, uint256 amount, bytes32 beneficiary)[]",
-			"tuple(bytes32 token, uint256 amount)[]",
-			"bytes",
+			{
+				name: "order",
+				type: "tuple",
+				components: [
+					{ name: "user", type: "bytes32" },
+					{ name: "sourceChain", type: "bytes" },
+					{ name: "destChain", type: "bytes" },
+					{ name: "deadline", type: "uint256" },
+					{ name: "nonce", type: "uint256" },
+					{ name: "fees", type: "uint256" },
+					{
+						name: "outputs",
+						type: "tuple[]",
+						components: [
+							{ name: "token", type: "bytes32" },
+							{ name: "amount", type: "uint256" },
+							{ name: "beneficiary", type: "bytes32" },
+						],
+					},
+					{
+						name: "inputs",
+						type: "tuple[]",
+						components: [
+							{ name: "token", type: "bytes32" },
+							{ name: "amount", type: "uint256" },
+						],
+					},
+					{ name: "callData", type: "bytes" },
+				],
+			},
 		],
 		[
-			order.user,
-			toHex(order.sourceChain),
-			toHex(order.destChain),
-			order.deadline,
-			order.nonce,
-			order.fees,
-			order.outputs,
-			order.inputs,
-			order.callData,
+			{
+				user: order.user,
+				sourceChain: toHex(order.sourceChain),
+				destChain: toHex(order.destChain),
+				deadline: order.deadline,
+				nonce: order.nonce,
+				fees: order.fees,
+				outputs: order.outputs,
+				inputs: order.inputs,
+				callData: order.callData,
+			},
 		],
 	)
-	return keccak256(orderEncodePacked)
+
+	return keccak256(encodedOrder)
 }
 
 export const DEFAULT_LOGGER = createConsola({

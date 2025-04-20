@@ -79,3 +79,5 @@ Thumbs.db
 substrate-ws.json
 chain-ids-by-genesis.ts
 chains-by-ismp-host.ts
+
+packages/intent-filler/src/config/chain.ts

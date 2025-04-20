@@ -1,4 +1,15 @@
-import { getContract, maxUint256, PublicClient, toHex, encodePacked, parseEther } from "viem"
+import {
+	getContract,
+	maxUint256,
+	PublicClient,
+	toHex,
+	encodePacked,
+	parseEther,
+	hexToBytes,
+	bytesToHex,
+	padHex,
+	encodeAbiParameters,
+} from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -20,18 +31,38 @@ import { generateRootWithProof, orderCommitment, getStateCommitmentFieldSlot } f
 import { hexConcat } from "ethers/lib/utils"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
+import { keccakAsU8a } from "@polkadot/util-crypto"
 
 /**
  * Handles contract interactions for tokens and other contracts
  */
 export class ContractInteractionService {
 	private configService: ChainConfigService
+	private api: ApiPromise | null = null
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 	) {
 		this.configService = new ChainConfigService()
+	}
+
+	/**
+	 * Converts a bytes32 token address to bytes20 format
+	 * This removes the extra padded zeros from the address
+	 */
+	private bytes32ToBytes20(bytes32Address: string): HexString {
+		if (bytes32Address === ADDRESS_ZERO) {
+			return ADDRESS_ZERO
+		}
+
+		const bytes = hexToBytes(bytes32Address as HexString)
+		const addressBytes = bytes.slice(12)
+		return bytesToHex(addressBytes) as HexString
+	}
+
+	private bytes20ToBytes32(bytes20Address: string): HexString {
+		return `0x${bytes20Address.slice(2).padStart(64, "0")}` as HexString
 	}
 
 	/**
@@ -50,14 +81,18 @@ export class ContractInteractionService {
 			client,
 		})
 
-		return await tokenContract.read.balanceOf([walletAddress as HexString])
+		const balance = await tokenContract.read.balanceOf([walletAddress as HexString])
+
+		return balance
 	}
 
 	/**
 	 * Gets the decimals for a token
 	 */
 	async getTokenDecimals(tokenAddress: string, chain: string): Promise<number> {
-		if (tokenAddress === ADDRESS_ZERO) {
+		const bytes20Address = this.bytes32ToBytes20(tokenAddress)
+
+		if (bytes20Address === ADDRESS_ZERO) {
 			return 18 // Native token (ETH, MATIC, etc.)
 		}
 
@@ -65,7 +100,7 @@ export class ContractInteractionService {
 
 		try {
 			const decimals = await client.readContract({
-				address: tokenAddress as HexString,
+				address: bytes20Address as HexString,
 				abi: ERC20_ABI,
 				functionName: "decimals",
 			})
@@ -88,7 +123,7 @@ export class ContractInteractionService {
 
 			// Check all token balances
 			for (const output of outputs) {
-				const tokenAddress = output.token
+				const tokenAddress = this.bytes32ToBytes20(output.token)
 				const amount = output.amount
 
 				if (tokenAddress === ADDRESS_ZERO) {
@@ -133,7 +168,7 @@ export class ContractInteractionService {
 	 * Approves ERC20 tokens for the contract if needed
 	 */
 	async approveTokensIfNeeded(order: Order): Promise<void> {
-		const uniqueTokens = new Set<string>()
+		const uniqueTokens: string[] = []
 		const wallet = privateKeyToAccount(this.privateKey)
 		const outputs = order.outputs
 		const destClient = this.clientManager.getPublicClient(order.destChain)
@@ -142,13 +177,17 @@ export class ContractInteractionService {
 
 		// Collect unique ERC20 tokens
 		for (const output of outputs) {
-			if (output.token !== "0x0000000000000000000000000000000000000000") {
-				uniqueTokens.add(output.token)
+			const bytes20Address = this.bytes32ToBytes20(output.token)
+			console.log("bytes20Address", bytes20Address)
+			if (bytes20Address !== ADDRESS_ZERO) {
+				uniqueTokens.push(bytes20Address)
 			}
 		}
 
+		console.log("uniqueTokens", uniqueTokens)
+
 		// Approve each token
-		for (const tokenAddress of uniqueTokens) {
+		for (const tokenAddress of [...uniqueTokens, this.configService.getFeeTokenAddress(order.destChain)]) {
 			const currentAllowance = await destClient.readContract({
 				abi: ERC20_ABI,
 				address: tokenAddress as HexString,
@@ -156,11 +195,13 @@ export class ContractInteractionService {
 				args: [wallet.address, intentGateway],
 			})
 
+			console.log("currentAllowance", currentAllowance)
+
 			// If allowance is too low, approve a very large amount
 			if (currentAllowance < maxUint256) {
 				console.log(`Approving ${tokenAddress} for the contract`)
 
-				const request = await destClient.simulateContract({
+				const { request } = await destClient.simulateContract({
 					abi: ERC20_ABI,
 					address: tokenAddress as HexString,
 					functionName: "approve",
@@ -168,7 +209,7 @@ export class ContractInteractionService {
 					account: wallet,
 				})
 
-				const tx = await walletClient.writeContract(request.request)
+				const tx = await walletClient.writeContract(request)
 				console.log(`Approval confirmed for ${tokenAddress}`)
 			}
 		}
@@ -181,7 +222,8 @@ export class ContractInteractionService {
 		let totalEthValue = 0n
 
 		for (const output of outputs) {
-			if (output.token === "0x0000000000000000000000000000000000000000") {
+			const bytes20Address = this.bytes32ToBytes20(output.token)
+			if (bytes20Address === ADDRESS_ZERO) {
 				// Native token output
 				totalEthValue = totalEthValue + output.amount
 			}
@@ -260,7 +302,8 @@ export class ContractInteractionService {
 	/**
 	 * Estimates gas for filling an order
 	 */
-	async estimateGasForFill(order: Order): Promise<bigint> {
+	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint }> {
+		console.log("Estimating gas for fill")
 		try {
 			const destClient = this.clientManager.getPublicClient(order.destChain)
 			const postGasEstimate = await this.estimateGasForPost(order)
@@ -269,6 +312,9 @@ export class ContractInteractionService {
 			}
 
 			const ethValue = this.calculateRequiredEthValue(order.outputs)
+
+			// Approve tokens if needed before estimating gas for failsafe
+			await this.approveTokensIfNeeded(order)
 
 			const gas = await destClient.estimateContractGas({
 				abi: INTENT_GATEWAY_ABI,
@@ -279,25 +325,20 @@ export class ContractInteractionService {
 				value: ethValue,
 			})
 
-			return gas
+			console.log(`Gas estimate for filling order ${order.id} on ${order.destChain} is ${gas}`)
+			return { fillGas: gas, postGas: postGasEstimate }
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return BigInt(500000)
+			return { fillGas: 500000n, postGas: 100000n }
 		}
 	}
 
 	/**
 	 * Gets the current ETH price in USD
 	 */
-	async getEthPriceUsd(order: Order, destClient: PublicClient): Promise<number> {
-		const ethPriceUsd = await fetchTokenUsdPriceOnchain(
-			this.configService.getWethAsset(order.destChain),
-			destClient,
-			this.configService.getUniswapV2RouterAddress(order.destChain),
-			this.configService.getWethAsset(order.destChain),
-			this.configService.getDaiAsset(order.destChain),
-		)
+	async getEthPriceUsd(order: Order, destClient: PublicClient): Promise<bigint> {
+		const ethPriceUsd = await fetchTokenUsdPriceOnchain(this.configService.getWethAsset(order.destChain))
 
 		return ethPriceUsd
 	}
@@ -305,7 +346,7 @@ export class ContractInteractionService {
 	/**
 	 * Gets the HyperBridge protocol fee in ETH
 	 */
-	async getProtocolFeeEth(order: Order, relayerFee: bigint): Promise<bigint> {
+	async getProtocolFeeUSD(order: Order, relayerFee: bigint): Promise<bigint> {
 		const destClient = this.clientManager.getPublicClient(order.destChain)
 		const intentFillerAddr = privateKeyToAddress(this.privateKey)
 		const requestBody = this.constructRedeemEscrowRequestBody(order)
@@ -322,7 +363,7 @@ export class ContractInteractionService {
 		const protocolFeeEth = await destClient.readContract({
 			abi: INTENT_GATEWAY_ABI,
 			address: this.configService.getIntentGatewayAddress(order.destChain),
-			functionName: "quoteNative",
+			functionName: "quote",
 			args: [dispatchPost as any],
 		})
 
@@ -333,18 +374,42 @@ export class ContractInteractionService {
 	 * Constructs the redeem escrow request body
 	 */
 	constructRedeemEscrowRequestBody(order: Order): HexString {
-		const wallet = privateKeyToAddress(this.privateKey)
+		const wallet = this.bytes20ToBytes32(privateKeyToAddress(this.privateKey))
 		const commitment = orderCommitment(order)
+		const inputs = order.inputs
 
 		// RequestKind.RedeemEscrow is 0 as defined in the contract
 		const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
 
-		const requestBody = encodePacked(
-			["bytes32", "tuple(bytes32 token, uint256 amount)[]", "bytes32"],
-			[commitment as HexString, order.inputs, wallet],
+		const requestBody = {
+			commitment: commitment as HexString,
+			beneficiary: wallet,
+			tokens: inputs,
+		}
+
+		const encodedRequestBody = encodeAbiParameters(
+			[
+				{
+					name: "requestBody",
+					type: "tuple",
+					components: [
+						{ name: "commitment", type: "bytes32" },
+						{ name: "beneficiary", type: "bytes32" },
+						{
+							name: "tokens",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+					],
+				},
+			],
+			[requestBody],
 		)
 
-		return hexConcat([requestKind, requestBody]) as HexString
+		return hexConcat([requestKind, encodedRequestBody]) as HexString
 	}
 
 	/**
@@ -361,15 +426,13 @@ export class ContractInteractionService {
 			from: this.configService.getIntentGatewayAddress(order.destChain),
 			to: this.configService.getIntentGatewayAddress(order.sourceChain),
 		}
-
-		const { root, proof } = generateRootWithProof(postRequest)
+		const { root, proof, index, kIndex } = generateRootWithProof(postRequest, 100n)
 		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(order.destChain)
 		const overlayRootSlot = getStateCommitmentFieldSlot(
 			BigInt(this.configService.getChainId(order.destChain)),
 			latestStateMachineHeight,
 			1, // For overlayRoot
 		)
-
 		const params = {
 			height: {
 				stateMachineId: BigInt(this.configService.getChainId(order.destChain)),
@@ -379,35 +442,38 @@ export class ContractInteractionService {
 			leafCount: 100n,
 		}
 
-		const gas = await sourceClient.estimateContractGas({
-			address: this.configService.getHandlerAddress(order.sourceChain),
-			abi: HandlerV1_ABI,
-			functionName: "handlePostRequests",
-			args: [
-				this.configService.getHostAddress(order.sourceChain),
-				{
-					proof: params,
-					requests: [
-						{
-							request: this.transformPostRequestForContract(postRequest),
-							index: 0n,
-							kIndex: 0n,
-						},
-					],
-				},
-			],
-			stateOverride: [
-				{
-					address: this.configService.getHostAddress(order.sourceChain),
-					stateDiff: [
-						{
-							slot: overlayRootSlot,
-							value: root,
-						},
-					],
-				},
-			],
-		})
+		const gas = 150000n
+
+		// const gas = await sourceClient.estimateContractGas({
+		// 	address: this.configService.getHandlerAddress(order.sourceChain),
+		// 	abi: HandlerV1_ABI,
+		// 	functionName: "handlePostRequests",
+		// 	args: [
+		// 		this.configService.getHostAddress(order.sourceChain),
+		// 		{
+		// 			proof: params,
+		// 			requests: [
+		// 				{
+		// 					request: this.transformPostRequestForContract(postRequest),
+		// 					index,
+		// 					kIndex,
+		// 				},
+		// 			],
+		// 		},
+		// 	],
+		// 	stateOverride: [
+		// 		{
+		// 			address: this.configService.getHostAddress(order.sourceChain),
+		// 			stateDiff: [
+		// 				{
+		// 					slot: overlayRootSlot,
+		// 					value: root,
+		// 				},
+		// 			],
+		// 		},
+		// 	],
+		// })
+		console.log("Gas estimate for post", gas)
 
 		return gas
 	}
@@ -430,14 +496,28 @@ export class ContractInteractionService {
 	 * Gets the host latest state machine height
 	 */
 	async getHostLatestStateMachineHeight(chain: string): Promise<bigint> {
-		const wsProvider = new WsProvider(process.env.HYPERBRIDGE_GARGANTUA!)
-		const api = await ApiPromise.create({ provider: wsProvider })
-		await api.connect()
-		const latestHeight = await api.query.ismp.latestStateMachineHeight({
+		const wsUrl = "" // Cleanup
+		console.log("Connecting to API", wsUrl)
+		if (!this.api) {
+			this.api = await ApiPromise.create({
+				provider: new WsProvider(wsUrl),
+				typesBundle: {
+					spec: {
+						gargantua: {
+							hasher: keccakAsU8a,
+						},
+					},
+				},
+			})
+
+			await this.api.connect()
+		}
+
+		console.log("Connected to API")
+		const latestHeight = await this.api.query.ismp.latestStateMachineHeight({
 			stateId: { Evm: this.configService.getChainId(chain) },
 			consensusStateId: this.configService.getConsensusStateId(chain),
 		})
-		await api.disconnect()
 		return BigInt(latestHeight.toString())
 	}
 }

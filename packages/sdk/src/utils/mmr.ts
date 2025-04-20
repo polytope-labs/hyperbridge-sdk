@@ -197,7 +197,7 @@ export function calculateMMRSize(numberOfLeaves: bigint): bigint {
 export function generateRootWithProof(
 	postRequest: IPostRequest,
 	treeSize: bigint,
-): { root: HexString; proof: HexString[] } {
+): { root: HexString; proof: HexString[]; index: bigint; kIndex: bigint } {
 	const encodedRequest = PostRequest.enc({
 		...postRequest,
 		source: { tag: "Evm", value: Number.parseInt(postRequest.source.split("-")[1]) },
@@ -207,10 +207,16 @@ export function generateRootWithProof(
 		body: Array.from(hexToBytes(postRequest.body)),
 	})
 	const result = JSON.parse(generate_root_with_proof(new Uint8Array(encodedRequest), treeSize))
-	const { root, proof } = result
+	const { root, proof, mmr_size } = result
+
+	const index = treeSize
+
+	const [[, kIndex]] = mmrPositionToKIndex([index], BigInt(mmr_size))
 
 	return {
 		root,
 		proof,
+		index,
+		kIndex,
 	}
 }
