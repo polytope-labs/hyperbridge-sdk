@@ -9,6 +9,8 @@ use wasm_bindgen::JsError;
 struct MMRResult {
     root: String,
     proof: Vec<String>,
+    mmr_size: u64,
+    leaf_positions: Vec<u64>,
 }
 
 #[wasm_bindgen]
@@ -35,12 +37,15 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 }
 
 fn bytes_to_hex_proof(bytes: &[Vec<u8>]) -> Vec<String> {
-    let mut proof_items = Vec::new();
-    for item in bytes {
-        proof_items.push(bytes_to_hex(item));
-    }
+    bytes.iter().map(|item| bytes_to_hex(item)).collect()
+}
 
-    proof_items
+fn hash_leaf(data: &[u8]) -> Vec<u8> {
+    let mut keccak = Keccak::v256();
+    let mut result = [0u8; 32];
+    keccak.update(data);
+    keccak.finalize(&mut result);
+    result.to_vec()
 }
 
 #[wasm_bindgen]
@@ -50,30 +55,35 @@ pub fn generate_root_with_proof(calldata_bytes: &[u8], tree_size: u64) -> Result
     let mut leaf_positions = Vec::new();
 
     for i in 0..tree_size {
-        if i == tree_size - 1 {
-            let tx = calldata_bytes.to_vec();
-            let pos = mmr.push(tx)?;
-            leaf_positions.push(pos);
-        } else {
-            let mut tx = calldata_bytes.to_vec();
+        let mut tx = calldata_bytes.to_vec();
+
+        if i != tree_size - 1 {
             for j in 0..tx.len() {
                 tx[j] ^= i as u8;
             }
-            mmr.push(tx)?;
+        }
+
+        let hashed_leaf = hash_leaf(&tx);
+        let pos = mmr.push(hashed_leaf)?;
+
+        if i == tree_size - 1 {
+            leaf_positions.push(pos);
         }
     }
 
     let root = mmr.get_root()?;
     let root_hex = bytes_to_hex(&root);
 
-    let proof = mmr.gen_proof(leaf_positions)?;
-    let proof_hex = bytes_to_hex_proof(proof.proof_items());
+    let proof = mmr.gen_proof(leaf_positions.clone())?;
 
-    mmr.commit()?;
+    let proof_hex = bytes_to_hex_proof(proof.proof_items());
+    let mmr_size = mmr.mmr_size();
 
     let result = MMRResult {
         root: root_hex,
         proof: proof_hex,
+        mmr_size,
+        leaf_positions,
     };
 
     Ok(serde_json::to_string(&result)?)

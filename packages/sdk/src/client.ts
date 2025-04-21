@@ -343,7 +343,7 @@ export class IndexerClient {
 		})
 
 		const proof = await hyperbridge.queryProof(
-			{ Requests: [postRequestCommitment(request)] },
+			{ Requests: [postRequestCommitment(request).hash] },
 			request.dest,
 			BigInt(hyperbridgeFinality.height),
 		)
@@ -397,7 +397,7 @@ export class IndexerClient {
 			hasher: "Keccak",
 		})
 		const events: RequestStatusWithMetadata[] = []
-		const commitment = postRequestCommitment(request)
+		const commitment = postRequestCommitment(request).hash
 		const reciept = await destChain.queryRequestReceipt(commitment)
 		const destTimestamp = await destChain.timestamp()
 
@@ -710,7 +710,7 @@ export class IndexerClient {
 					})
 
 					const proof = await hyperbridge.queryProof(
-						{ Requests: [postRequestCommitment(request)] },
+						{ Requests: [postRequestCommitment(request).hash] },
 						request.dest,
 						BigInt(hyperbridgeFinalized.height),
 					)
@@ -1034,7 +1034,7 @@ export class IndexerClient {
 				? TimeoutStatus.HYPERBRIDGE_TIMED_OUT
 				: TimeoutStatus.PENDING_TIMEOUT
 
-		const commitment = postRequestCommitment(request)
+		const commitment = postRequestCommitment(request).hash
 		const hyperbridge = (await getChain({
 			...this.config.hyperbridge,
 			hasher: "Keccak",

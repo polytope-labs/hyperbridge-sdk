@@ -426,53 +426,53 @@ export class ContractInteractionService {
 			from: this.configService.getIntentGatewayAddress(order.destChain),
 			to: this.configService.getIntentGatewayAddress(order.sourceChain),
 		}
-		const { root, proof, index, kIndex } = generateRootWithProof(postRequest, 100n)
+		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 100n)
 		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(order.destChain)
 		const overlayRootSlot = getStateCommitmentFieldSlot(
-			BigInt(this.configService.getChainId(order.destChain)),
+			4009n,
 			latestStateMachineHeight,
 			1, // For overlayRoot
 		)
 		const params = {
 			height: {
-				stateMachineId: BigInt(this.configService.getChainId(order.destChain)),
+				stateMachineId: 4009n,
 				height: latestStateMachineHeight,
 			},
 			multiproof: proof,
-			leafCount: 100n,
+			leafCount: treeSize,
 		}
 
-		const gas = 150000n
-
-		// const gas = await sourceClient.estimateContractGas({
-		// 	address: this.configService.getHandlerAddress(order.sourceChain),
-		// 	abi: HandlerV1_ABI,
-		// 	functionName: "handlePostRequests",
-		// 	args: [
-		// 		this.configService.getHostAddress(order.sourceChain),
-		// 		{
-		// 			proof: params,
-		// 			requests: [
-		// 				{
-		// 					request: this.transformPostRequestForContract(postRequest),
-		// 					index,
-		// 					kIndex,
-		// 				},
-		// 			],
-		// 		},
-		// 	],
-		// 	stateOverride: [
-		// 		{
-		// 			address: this.configService.getHostAddress(order.sourceChain),
-		// 			stateDiff: [
-		// 				{
-		// 					slot: overlayRootSlot,
-		// 					value: root,
-		// 				},
-		// 			],
-		// 		},
-		// 	],
-		// })
+		// const gas = 150000n
+		console.log("params", params)
+		const gas = await sourceClient.estimateContractGas({
+			address: this.configService.getHandlerAddress(order.sourceChain),
+			abi: HandlerV1_ABI,
+			functionName: "handlePostRequests",
+			args: [
+				this.configService.getHostAddress(order.sourceChain),
+				{
+					proof: params,
+					requests: [
+						{
+							request: this.transformPostRequestForContract(postRequest),
+							index,
+							kIndex,
+						},
+					],
+				},
+			],
+			stateOverride: [
+				{
+					address: this.configService.getHostAddress(order.sourceChain),
+					stateDiff: [
+						{
+							slot: overlayRootSlot,
+							value: root,
+						},
+					],
+				},
+			],
+		})
 		console.log("Gas estimate for post", gas)
 
 		return gas
@@ -496,7 +496,7 @@ export class ContractInteractionService {
 	 * Gets the host latest state machine height
 	 */
 	async getHostLatestStateMachineHeight(chain: string): Promise<bigint> {
-		const wsUrl = "" // Cleanup
+		const wsUrl = ""
 		console.log("Connecting to API", wsUrl)
 		if (!this.api) {
 			this.api = await ApiPromise.create({
@@ -514,10 +514,7 @@ export class ContractInteractionService {
 		}
 
 		console.log("Connected to API")
-		const latestHeight = await this.api.query.ismp.latestStateMachineHeight({
-			stateId: { Evm: this.configService.getChainId(chain) },
-			consensusStateId: this.configService.getConsensusStateId(chain),
-		})
+		const latestHeight = await this.api.query.system.number()
 		return BigInt(latestHeight.toString())
 	}
 }

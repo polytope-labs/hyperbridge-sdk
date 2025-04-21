@@ -74,22 +74,24 @@ describe("Basic", () => {
 			})
 		})
 
-		const hash = await bscIntentGateway.write.placeOrder([order], {
-			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: bscTestnet,
-			value: 100n,
-		})
+		// const hash = await bscIntentGateway.write.placeOrder([order], {
+		// 	account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+		// 	chain: bscTestnet,
+		// 	value: 100n,
+		// })
 
-		const receipt = await bscPublicClient.waitForTransactionReceipt({
-			hash,
-			confirmations: 1,
-		})
+		// const receipt = await bscPublicClient.waitForTransactionReceipt({
+		// 	hash,
+		// 	confirmations: 1,
+		// })
 
-		console.log("Order placed on BSC:", receipt.transactionHash)
+		// console.log("Order placed on BSC:", receipt.transactionHash)
 
 		console.log("Waiting for event monitor to detect the order...")
 		const detectedOrder = await orderDetectedPromise
 		console.log("Order successfully detected by event monitor:", detectedOrder)
+
+		await new Promise((resolve) => setTimeout(resolve, 1_000_000))
 	}, 1_000_000)
 })
 

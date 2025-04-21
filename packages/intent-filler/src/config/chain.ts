@@ -77,8 +77,8 @@ export const addresses: AddressMap = {
 }
 
 export const rpcUrls = {
-	[Chains.BSC_CHAPEL]: "", // Cleanup
-	[Chains.GNOSIS_CHIADO]: "", // Cleanup
+	[Chains.BSC_CHAPEL]: "",
+	[Chains.GNOSIS_CHIADO]: "",
 }
 
 export const consensusStateIds = {

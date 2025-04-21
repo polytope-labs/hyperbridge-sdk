@@ -1,7 +1,7 @@
 import { HexString, IPostRequest } from "@/types"
 import { hexToBytes } from "viem"
 import { generate_root_with_proof } from "./ckb-mmr-wasm/ckb_mmr_wasm"
-import { PostRequest } from "./substrate"
+import { postRequestCommitment } from "@/utils"
 
 /**
  * Gets peak position for a given height
@@ -197,26 +197,20 @@ export function calculateMMRSize(numberOfLeaves: bigint): bigint {
 export function generateRootWithProof(
 	postRequest: IPostRequest,
 	treeSize: bigint,
-): { root: HexString; proof: HexString[]; index: bigint; kIndex: bigint } {
-	const encodedRequest = PostRequest.enc({
-		...postRequest,
-		source: { tag: "Evm", value: Number.parseInt(postRequest.source.split("-")[1]) },
-		dest: { tag: "Evm", value: Number.parseInt(postRequest.dest.split("-")[1]) },
-		from: Array.from(hexToBytes(postRequest.from)),
-		to: Array.from(hexToBytes(postRequest.to)),
-		body: Array.from(hexToBytes(postRequest.body)),
-	})
-	const result = JSON.parse(generate_root_with_proof(new Uint8Array(encodedRequest), treeSize))
-	const { root, proof, mmr_size } = result
+): { root: HexString; proof: HexString[]; index: bigint; kIndex: bigint; treeSize: bigint; mmrSize: bigint } {
+	const { encodePacked } = postRequestCommitment(postRequest)
 
-	const index = treeSize
+	const result = JSON.parse(generate_root_with_proof(hexToBytes(encodePacked), treeSize))
+	const { root, proof, mmr_size, leaf_positions } = result
 
-	const [[, kIndex]] = mmrPositionToKIndex([index], BigInt(mmr_size))
+	const [[, kIndex]] = mmrPositionToKIndex(leaf_positions, BigInt(mmr_size))
 
 	return {
-		root,
-		proof,
-		index,
+		root: root as HexString,
+		proof: proof as HexString[],
+		index: leaf_positions[0],
 		kIndex,
+		treeSize,
+		mmrSize: mmr_size,
 	}
 }

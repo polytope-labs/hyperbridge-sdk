@@ -194,6 +194,10 @@ export const PostRequest = Struct({
 	 */
 	nonce: u64,
 	/*
+	 * Timestamp which this request expires in seconds.
+	 */
+	timeoutTimestamp: u64,
+	/*
 	 * Module identifier of the sending module
 	 */
 	from: Vector(u8),
@@ -201,10 +205,6 @@ export const PostRequest = Struct({
 	 * Module identifier of the receiving module
 	 */
 	to: Vector(u8),
-	/*
-	 * Timestamp which this request expires in seconds.
-	 */
-	timeoutTimestamp: u64,
 	/*
 	 * Encoded request body
 	 */

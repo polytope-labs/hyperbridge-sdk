@@ -103,37 +103,37 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const { request } = await destClient.simulateContract({
-				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
-				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: ethValue,
-			})
+			// const { request } = await destClient.simulateContract({
+			// 	abi: INTENT_GATEWAY_ABI,
+			// 	address: this.configService.getIntentGatewayAddress(order.destChain),
+			// 	functionName: "fillOrder",
+			// 	args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+			// 	account: privateKeyToAccount(this.privateKey),
+			// 	value: ethValue,
+			// })
 
-			const tx = await walletClient.writeContract(request)
+			// const tx = await walletClient.writeContract(request)
 
-			// Wait for confirmations
-			let confirmations = 0n
-			while (confirmations < 0n) {
-				confirmations = await destClient.getTransactionConfirmations({ hash: tx })
-				await new Promise((resolve) => setTimeout(resolve, 5000))
-			}
+			// // Wait for confirmations
+			// let confirmations = 0n
+			// while (confirmations < 0n) {
+			// 	confirmations = await destClient.getTransactionConfirmations({ hash: tx })
+			// 	await new Promise((resolve) => setTimeout(resolve, 5000))
+			// }
 
-			const receipt = await destClient.getTransactionReceipt({ hash: tx })
+			// const receipt = await destClient.getTransactionReceipt({ hash: tx })
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
 
 			return {
-				success: true,
-				txHash: receipt.transactionHash,
-				gasUsed: receipt.gasUsed.toString(),
-				gasPrice: receipt.effectiveGasPrice.toString(),
-				confirmedAtBlock: Number(receipt.blockNumber),
-				confirmedAt: new Date(),
-				strategyUsed: this.name,
+				success: false,
+				// txHash: receipt.transactionHash,
+				// gasUsed: receipt.gasUsed.toString(),
+				// gasPrice: receipt.effectiveGasPrice.toString(),
+				// confirmedAtBlock: Number(receipt.blockNumber),
+				// confirmedAt: new Date(),
+				// strategyUsed: this.name,
 				processingTimeMs,
 			}
 		} catch (error) {

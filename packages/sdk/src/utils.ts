@@ -50,15 +50,18 @@ export function isValidUTF8(str: string): boolean {
 /**
  * Calculates the commitment hash for a post request.
  * @param post The post request to calculate the commitment hash for.
- * @returns The commitment hash.
+ * @returns The commitment hash and the encode packed data.
  */
-export function postRequestCommitment(post: IPostRequest): HexString {
-	return keccak256(
-		encodePacked(
-			["bytes", "bytes", "uint64", "uint64", "bytes", "bytes", "bytes"],
-			[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
-		),
+export function postRequestCommitment(post: IPostRequest): { hash: HexString; encodePacked: HexString } {
+	const data = encodePacked(
+		["bytes", "bytes", "uint64", "uint64", "bytes", "bytes", "bytes"],
+		[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
 	)
+
+	return {
+		hash: keccak256(data),
+		encodePacked: data,
+	}
 }
 
 export function orderCommitment(order: Order): string {
