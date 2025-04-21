@@ -82,6 +82,6 @@ export const rpcUrls = {
 }
 
 export const consensusStateIds = {
-	[Chains.BSC_CHAPEL]: "BSC0",
+	[Chains.BSC_CHAPEL]: "",
 	[Chains.GNOSIS_CHIADO]: "GNO0",
 }

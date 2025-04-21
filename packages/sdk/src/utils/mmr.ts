@@ -1,6 +1,6 @@
 import { HexString, IPostRequest } from "@/types"
 import { hexToBytes } from "viem"
-import { generate_root_with_proof } from "./ckb-mmr-wasm/ckb_mmr_wasm"
+import { generate_root_with_proof, verify_proof } from "./ckb-mmr-wasm/ckb_mmr_wasm"
 import { postRequestCommitment } from "@/utils"
 
 /**
