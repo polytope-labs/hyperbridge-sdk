@@ -34,7 +34,7 @@ export class SubstrateChain implements IChain {
 	 * api: The Polkadot API instance for the Substrate chain.
 	 */
 	api?: ApiPromise
-	constructor(private readonly params: SubstrateChainParams) {}
+	constructor(private readonly params: SubstrateChainParams) { }
 
 	/*
 	 * connect: Connects to the Substrate chain using the provided WebSocket URL.
@@ -44,15 +44,15 @@ export class SubstrateChain implements IChain {
 		const typesBundle =
 			this.params.hasher === "Keccak"
 				? {
-						spec: {
-							nexus: {
-								hasher: keccakAsU8a,
-							},
-							gargantua: {
-								hasher: keccakAsU8a,
-							},
+					spec: {
+						nexus: {
+							hasher: keccakAsU8a,
 						},
-					}
+						gargantua: {
+							hasher: keccakAsU8a,
+						},
+					},
+				}
 				: {}
 		this.api = await ApiPromise.create({
 			provider: wsProvider,
@@ -192,26 +192,29 @@ export class SubstrateChain implements IChain {
 	 */
 	async submitUnsigned(
 		message: IIsmpMessage,
-	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number }> {
+	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number; timestamp: number }> {
 		if (!this.api) throw new Error("API not initialized")
+		const { api } = this
 		// remove the call and method selectors
 		const args = hexToBytes(this.encode(message)).slice(2)
-		const api = this.api
 		const tx = api.tx.ismp.handleUnsigned(args)
 
 		return new Promise((resolve, reject) => {
-			let unsub = () => {}
+			let unsub = () => { }
 
 			tx.send(async ({ isInBlock, isFinalized, isError, dispatchError, txHash, status }) => {
 				if (isFinalized || isInBlock) {
 					unsub()
 					const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
 					const header = await api.rpc.chain.getHeader(blockHash)
-
+					// Get a decorated api instance at a specific block
+					const apiAt = await api.at(blockHash)
+					const timestamp = await apiAt.query.timestamp.now()
 					resolve({
 						transactionHash: txHash.toHex(),
 						blockHash: blockHash,
 						blockNumber: header.number.toNumber(),
+						timestamp: Number(timestamp.toJSON()) / 1000,
 					})
 				} else if (isError) {
 					unsub()
