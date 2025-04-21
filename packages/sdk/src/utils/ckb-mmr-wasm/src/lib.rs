@@ -13,6 +13,7 @@ pub struct MMRResult {
     pub proof: Vec<String>,
     pub mmr_size: u64,
     pub leaf_positions: Vec<u64>,
+    pub keccak_hash_calldata: String,
 }
 
 #[wasm_bindgen]
@@ -86,6 +87,7 @@ pub fn generate_root_with_proof(calldata_bytes: &[u8], tree_size: u64) -> Result
         proof: proof_hex,
         mmr_size,
         leaf_positions,
+        keccak_hash_calldata: bytes_to_hex(&hash_leaf(calldata_bytes)),
     })?)
 }
 

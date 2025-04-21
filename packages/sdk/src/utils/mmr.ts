@@ -198,10 +198,16 @@ export function generateRootWithProof(
 	postRequest: IPostRequest,
 	treeSize: bigint,
 ): { root: HexString; proof: HexString[]; index: bigint; kIndex: bigint; treeSize: bigint; mmrSize: bigint } {
-	const { encodePacked } = postRequestCommitment(postRequest)
+	const { hash, encodePacked } = postRequestCommitment(postRequest)
 
 	const result = JSON.parse(generate_root_with_proof(hexToBytes(encodePacked), treeSize))
-	const { root, proof, mmr_size, leaf_positions } = result
+	const { root, proof, mmr_size, leaf_positions, keccak_hash_calldata } = result
+
+	if (keccak_hash_calldata !== hash) {
+		console.log("keccak_hash", keccak_hash_calldata)
+		console.log("hash", hash)
+		throw new Error("Abi keccak hash mismatch")
+	}
 
 	const [[, kIndex]] = mmrPositionToKIndex(leaf_positions, BigInt(mmr_size))
 

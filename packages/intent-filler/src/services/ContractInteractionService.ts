@@ -442,8 +442,6 @@ export class ContractInteractionService {
 			leafCount: treeSize,
 		}
 
-		// const gas = 150000n
-		console.log("params", params)
 		const gas = await sourceClient.estimateContractGas({
 			address: this.configService.getHandlerAddress(order.sourceChain),
 			abi: HandlerV1_ABI,
