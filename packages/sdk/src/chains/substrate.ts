@@ -34,7 +34,7 @@ export class SubstrateChain implements IChain {
 	 * api: The Polkadot API instance for the Substrate chain.
 	 */
 	api?: ApiPromise
-	constructor(private readonly params: SubstrateChainParams) { }
+	constructor(private readonly params: SubstrateChainParams) {}
 
 	/*
 	 * connect: Connects to the Substrate chain using the provided WebSocket URL.
@@ -44,15 +44,15 @@ export class SubstrateChain implements IChain {
 		const typesBundle =
 			this.params.hasher === "Keccak"
 				? {
-					spec: {
-						nexus: {
-							hasher: keccakAsU8a,
+						spec: {
+							nexus: {
+								hasher: keccakAsU8a,
+							},
+							gargantua: {
+								hasher: keccakAsU8a,
+							},
 						},
-						gargantua: {
-							hasher: keccakAsU8a,
-						},
-					},
-				}
+					}
 				: {}
 		this.api = await ApiPromise.create({
 			provider: wsProvider,
@@ -200,7 +200,7 @@ export class SubstrateChain implements IChain {
 		const tx = api.tx.ismp.handleUnsigned(args)
 
 		return new Promise((resolve, reject) => {
-			let unsub = () => { }
+			let unsub = () => {}
 
 			tx.send(async ({ isInBlock, isFinalized, isError, dispatchError, txHash, status }) => {
 				if (isFinalized || isInBlock) {
