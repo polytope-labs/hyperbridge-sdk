@@ -4,6 +4,7 @@
 export enum Chains {
 	BSC_CHAPEL = "EVM-97",
 	GNOSIS_CHIADO = "EVM-10200",
+	HYPERBRIDGE_GARGANTUA = "KUSAMA-4009",
 }
 
 import { Chain, bscTestnet, gnosisChiado } from "viem/chains"
@@ -24,6 +25,7 @@ type RpcMap = {
 export const chainIds = {
 	[Chains.BSC_CHAPEL]: 97,
 	[Chains.GNOSIS_CHIADO]: 10200,
+	[Chains.HYPERBRIDGE_GARGANTUA]: 4009,
 } as const
 
 export type ChainId = typeof chainIds
@@ -36,12 +38,17 @@ export const viemChains: Record<string, Chain> = {
 	"10200": gnosisChiado,
 }
 
+export const WrappedNativeDecimals = {
+	[Chains.BSC_CHAPEL]: 18,
+	[Chains.GNOSIS_CHIADO]: 18,
+}
+
 /**
  * Mapping of assets for different chains.
  */
 export const assets = {
 	[Chains.BSC_CHAPEL]: {
-		WETH: "0x0000000000000000000000000000000000000000",
+		WETH: "0xb8c77482e45f1f44de1745f52c74426c631bdd52",
 		DAI: "0x0000000000000000000000000000000000000000",
 	},
 	[Chains.GNOSIS_CHIADO]: {
@@ -77,11 +84,13 @@ export const addresses: AddressMap = {
 }
 
 export const rpcUrls = {
-	[Chains.BSC_CHAPEL]: "",
-	[Chains.GNOSIS_CHIADO]: "",
+	[Chains.BSC_CHAPEL]: process.env.BSC_CHAPEL || "",
+	[Chains.GNOSIS_CHIADO]: process.env.GNOSIS_CHIADO || "",
+	[Chains.HYPERBRIDGE_GARGANTUA]: process.env.HYPERBRIDGE_GARGANTUA || "",
 }
 
 export const consensusStateIds = {
-	[Chains.BSC_CHAPEL]: "",
+	[Chains.BSC_CHAPEL]: "BSC0",
 	[Chains.GNOSIS_CHIADO]: "GNO0",
+	[Chains.HYPERBRIDGE_GARGANTUA]: "PAS0",
 }

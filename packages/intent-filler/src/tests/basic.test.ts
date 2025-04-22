@@ -4,7 +4,7 @@ import { BasicFiller } from "@/strategies/basic"
 import { ChainConfig, DUMMY_PRIVATE_KEY, FillerConfig, HexString, Order, PaymentInfo, TokenInfo } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
-import { getContract, maxUint256, PublicClient, WalletClient } from "viem"
+import { encodePacked, getContract, keccak256, maxUint256, PublicClient, WalletClient } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { privateKeyToAccount } from "viem/accounts"
 import { bscTestnet } from "viem/chains"
@@ -21,7 +21,7 @@ describe("Basic", () => {
 		intentFiller.start()
 	})
 
-	it("Should listen for orders", async () => {
+	it("Should listen, place order, fill order, and check if filled at the source chain", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -30,7 +30,8 @@ describe("Basic", () => {
 			bscIsmpHost,
 			gnosisChiadoIsmpHost,
 			feeTokenBscAddress,
-			feeTokenGnosisChiadoAddress,
+
+			gnosisChiadoPublicClient,
 		} = await setUp()
 		const inputs: TokenInfo[] = [
 			{
@@ -74,24 +75,61 @@ describe("Basic", () => {
 			})
 		})
 
-		// const hash = await bscIntentGateway.write.placeOrder([order], {
-		// 	account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-		// 	chain: bscTestnet,
-		// 	value: 100n,
-		// })
+		const hash = await bscIntentGateway.write.placeOrder([order], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+			value: 100n,
+		})
 
-		// const receipt = await bscPublicClient.waitForTransactionReceipt({
-		// 	hash,
-		// 	confirmations: 1,
-		// })
+		const receipt = await bscPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
 
-		// console.log("Order placed on BSC:", receipt.transactionHash)
+		console.log("Order placed on BSC:", receipt.transactionHash)
 
 		console.log("Waiting for event monitor to detect the order...")
 		const detectedOrder = await orderDetectedPromise
 		console.log("Order successfully detected by event monitor:", detectedOrder)
 
-		await new Promise((resolve) => setTimeout(resolve, 1_000_000))
+		const orderFilledPromise = new Promise<string>((resolve) => {
+			const eventMonitor = intentFiller.monitor
+			if (!eventMonitor) {
+				console.error("Event monitor not found on intentFiller")
+				resolve("")
+				return
+			}
+
+			eventMonitor.on("orderFilled", (data: { orderId: string }) => {
+				console.log("Order filled by event monitor:", data.orderId)
+				resolve(data.orderId)
+			})
+		})
+
+		const orderFilledId = await orderFilledPromise
+		console.log("Order filled:", orderFilledId)
+
+		let isFilled = await checkIfOrderFilled(
+			orderFilledId as HexString,
+			gnosisChiadoPublicClient,
+			gnosisChiadoIntentGateway.address,
+		)
+
+		expect(isFilled).toBe(true)
+
+		console.log("Checking if order is filled at the source chain...")
+		await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
+
+		isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
+		let maxAttempts = 20
+		while (!isFilled && maxAttempts > 0) {
+			console.log("Order not filled at the source chain, retrying storage check in 30 seconds...")
+			await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
+			isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
+			maxAttempts--
+		}
+
+		expect(isFilled).toBe(true)
 	}, 1_000_000)
 })
 
@@ -204,5 +242,28 @@ async function approveTokens(
 		})
 
 		console.log("Approved tokens for test:", tx)
+	}
+}
+
+async function checkIfOrderFilled(
+	commitment: HexString,
+	client: PublicClient,
+	intentGatewayAddress: HexString,
+): Promise<boolean> {
+	try {
+		const mappingSlot = 5n
+
+		const slot = keccak256(encodePacked(["bytes32", "uint256"], [commitment, mappingSlot]))
+
+		const filledStatus = await client.getStorageAt({
+			address: intentGatewayAddress,
+			slot: slot,
+		})
+
+		console.log("Filled status:", filledStatus)
+		return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
+	} catch (error) {
+		console.error(`Error checking if order filled:`, error)
+		return false
 	}
 }

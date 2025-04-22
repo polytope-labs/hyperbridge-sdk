@@ -1,6 +1,6 @@
 import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
 import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
-import { encodePacked, keccak256, toHex, encodeAbiParameters } from "viem"
+import { encodePacked, keccak256, toHex, encodeAbiParameters, hexToBytes, bytesToHex, Hex, Log } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
 
@@ -64,7 +64,7 @@ export function postRequestCommitment(post: IPostRequest): { hash: HexString; en
 	}
 }
 
-export function orderCommitment(order: Order): string {
+export function orderCommitment(order: Order): HexString {
 	const encodedOrder = encodeAbiParameters(
 		[
 			{
@@ -114,6 +114,35 @@ export function orderCommitment(order: Order): string {
 	)
 
 	return keccak256(encodedOrder)
+}
+
+/**
+ * Converts a bytes32 token address to bytes20 format
+ * This removes the extra padded zeros from the address
+ */
+export function bytes32ToBytes20(bytes32Address: string): HexString {
+	if (bytes32Address === ADDRESS_ZERO) {
+		return ADDRESS_ZERO
+	}
+
+	const bytes = hexToBytes(bytes32Address as HexString)
+	const addressBytes = bytes.slice(12)
+	return bytesToHex(addressBytes) as HexString
+}
+
+export function bytes20ToBytes32(bytes20Address: string): HexString {
+	return `0x${bytes20Address.slice(2).padStart(64, "0")}` as HexString
+}
+
+export function hexToString(hex: string): string {
+	const hexWithoutPrefix = hex.startsWith("0x") ? hex.slice(2) : hex
+
+	const bytes = new Uint8Array(hexWithoutPrefix.length / 2)
+	for (let i = 0; i < hexWithoutPrefix.length; i += 2) {
+		bytes[i / 2] = parseInt(hexWithoutPrefix.slice(i, i + 2), 16)
+	}
+
+	return new TextDecoder().decode(bytes)
 }
 
 export const DEFAULT_LOGGER = createConsola({

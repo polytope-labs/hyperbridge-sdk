@@ -1,6 +1,6 @@
 import type { ConsolaInstance } from "consola"
 import type { GraphQLClient } from "graphql-request"
-import type { Hex } from "viem"
+import type { Hex, Log } from "viem"
 
 export type HexString = `0x${string}`
 
@@ -511,6 +511,29 @@ export interface Order {
 	 * The transaction hash of the order
 	 */
 	transactionHash?: HexString
+}
+
+export interface DecodedOrderPlacedLog extends Log {
+	eventName: string
+	args: {
+		user: HexString
+		sourceChain: Hex
+		destChain: Hex
+		deadline: bigint
+		nonce: bigint
+		fees: bigint
+		outputs: Array<{
+			token: HexString
+			amount: bigint
+			beneficiary: HexString
+		}>
+		inputs: Array<{
+			token: HexString
+			amount: bigint
+		}>
+		callData: HexString
+	}
+	transactionHash: HexString
 }
 
 /**

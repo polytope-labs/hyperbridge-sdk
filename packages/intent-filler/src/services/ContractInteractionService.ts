@@ -1,15 +1,4 @@
-import {
-	getContract,
-	maxUint256,
-	PublicClient,
-	toHex,
-	encodePacked,
-	parseEther,
-	hexToBytes,
-	bytesToHex,
-	padHex,
-	encodeAbiParameters,
-} from "viem"
+import { getContract, maxUint256, PublicClient, toHex, encodePacked, encodeAbiParameters, keccak256 } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -20,6 +9,8 @@ import {
 	DispatchPost,
 	RequestKind,
 	IPostRequest,
+	bytes20ToBytes32,
+	bytes32ToBytes20,
 } from "hyperbridge-sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -48,24 +39,6 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Converts a bytes32 token address to bytes20 format
-	 * This removes the extra padded zeros from the address
-	 */
-	private bytes32ToBytes20(bytes32Address: string): HexString {
-		if (bytes32Address === ADDRESS_ZERO) {
-			return ADDRESS_ZERO
-		}
-
-		const bytes = hexToBytes(bytes32Address as HexString)
-		const addressBytes = bytes.slice(12)
-		return bytesToHex(addressBytes) as HexString
-	}
-
-	private bytes20ToBytes32(bytes20Address: string): HexString {
-		return `0x${bytes20Address.slice(2).padStart(64, "0")}` as HexString
-	}
-
-	/**
 	 * Gets the balance of a token for a wallet
 	 */
 	async getTokenBalance(tokenAddress: string, walletAddress: string, chain: string): Promise<bigint> {
@@ -90,7 +63,7 @@ export class ContractInteractionService {
 	 * Gets the decimals for a token
 	 */
 	async getTokenDecimals(tokenAddress: string, chain: string): Promise<number> {
-		const bytes20Address = this.bytes32ToBytes20(tokenAddress)
+		const bytes20Address = bytes32ToBytes20(tokenAddress)
 
 		if (bytes20Address === ADDRESS_ZERO) {
 			return 18 // Native token (ETH, MATIC, etc.)
@@ -123,7 +96,7 @@ export class ContractInteractionService {
 
 			// Check all token balances
 			for (const output of outputs) {
-				const tokenAddress = this.bytes32ToBytes20(output.token)
+				const tokenAddress = bytes32ToBytes20(output.token)
 				const amount = output.amount
 
 				if (tokenAddress === ADDRESS_ZERO) {
@@ -147,7 +120,7 @@ export class ContractInteractionService {
 				const nativeBalance = await destClient.getBalance({ address: fillerWalletAddress })
 
 				// Add some buffer for gas
-				const withGasBuffer = totalNativeTokenNeeded + BigInt(0.001 * 10 ** 18) // 0.001 ETH buffer for gas
+				const withGasBuffer = totalNativeTokenNeeded + 600000n // 600k gas buffer
 
 				if (BigInt(nativeBalance.toString()) < withGasBuffer) {
 					console.debug(
@@ -177,14 +150,11 @@ export class ContractInteractionService {
 
 		// Collect unique ERC20 tokens
 		for (const output of outputs) {
-			const bytes20Address = this.bytes32ToBytes20(output.token)
-			console.log("bytes20Address", bytes20Address)
+			const bytes20Address = bytes32ToBytes20(output.token)
 			if (bytes20Address !== ADDRESS_ZERO) {
 				uniqueTokens.push(bytes20Address)
 			}
 		}
-
-		console.log("uniqueTokens", uniqueTokens)
 
 		// Approve each token
 		for (const tokenAddress of [...uniqueTokens, this.configService.getFeeTokenAddress(order.destChain)]) {
@@ -194,8 +164,6 @@ export class ContractInteractionService {
 				functionName: "allowance",
 				args: [wallet.address, intentGateway],
 			})
-
-			console.log("currentAllowance", currentAllowance)
 
 			// If allowance is too low, approve a very large amount
 			if (currentAllowance < maxUint256) {
@@ -222,7 +190,7 @@ export class ContractInteractionService {
 		let totalEthValue = 0n
 
 		for (const output of outputs) {
-			const bytes20Address = this.bytes32ToBytes20(output.token)
+			const bytes20Address = bytes32ToBytes20(output.token)
 			if (bytes20Address === ADDRESS_ZERO) {
 				// Native token output
 				totalEthValue = totalEthValue + output.amount
@@ -280,12 +248,9 @@ export class ContractInteractionService {
 			const sourceClient = this.clientManager.getPublicClient(order.sourceChain)
 			const intentGatewayAddress = this.configService.getIntentGatewayAddress(order.sourceChain)
 
-			const filledSlot = await sourceClient.readContract({
-				abi: INTENT_GATEWAY_ABI,
-				address: intentGatewayAddress,
-				functionName: "calculateCommitmentSlotHash",
-				args: [commitment as HexString],
-			})
+			const mappingSlot = 5n
+
+			const filledSlot = keccak256(encodePacked(["bytes32", "uint256"], [commitment, mappingSlot]))
 
 			const filledStatus = await sourceClient.getStorageAt({
 				address: intentGatewayAddress,
@@ -303,7 +268,6 @@ export class ContractInteractionService {
 	 * Estimates gas for filling an order
 	 */
 	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint }> {
-		console.log("Estimating gas for fill")
 		try {
 			const destClient = this.clientManager.getPublicClient(order.destChain)
 			const postGasEstimate = await this.estimateGasForPost(order)
@@ -330,21 +294,22 @@ export class ContractInteractionService {
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return { fillGas: 500000n, postGas: 100000n }
+			return { fillGas: 3000000n, postGas: 270000n }
 		}
 	}
 
 	/**
-	 * Gets the current ETH price in USD
+	 * Gets the current Native token price in USD
 	 */
-	async getEthPriceUsd(order: Order, destClient: PublicClient): Promise<bigint> {
-		const ethPriceUsd = await fetchTokenUsdPriceOnchain(this.configService.getWethAsset(order.destChain))
+	async getNativeTokenPriceUsd(order: Order): Promise<bigint> {
+		const { asset, decimals } = this.configService.getWrappedNativeAssetWithDecimals(order.destChain)
+		const ethPriceUsd = await fetchTokenUsdPriceOnchain(asset, decimals)
 
 		return ethPriceUsd
 	}
 
 	/**
-	 * Gets the HyperBridge protocol fee in ETH
+	 * Gets the HyperBridge protocol fee in USD (DAI)
 	 */
 	async getProtocolFeeUSD(order: Order, relayerFee: bigint): Promise<bigint> {
 		const destClient = this.clientManager.getPublicClient(order.destChain)
@@ -374,7 +339,7 @@ export class ContractInteractionService {
 	 * Constructs the redeem escrow request body
 	 */
 	constructRedeemEscrowRequestBody(order: Order): HexString {
-		const wallet = this.bytes20ToBytes32(privateKeyToAddress(this.privateKey))
+		const wallet = bytes20ToBytes32(privateKeyToAddress(this.privateKey))
 		const commitment = orderCommitment(order)
 		const inputs = order.inputs
 
@@ -426,16 +391,16 @@ export class ContractInteractionService {
 			from: this.configService.getIntentGatewayAddress(order.destChain),
 			to: this.configService.getIntentGatewayAddress(order.sourceChain),
 		}
-		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 100n)
+		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 2n ** 10n)
 		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(order.destChain)
 		const overlayRootSlot = getStateCommitmentFieldSlot(
-			4009n,
+			BigInt(this.configService.getHyperbridgeChainId()),
 			latestStateMachineHeight,
 			1, // For overlayRoot
 		)
 		const params = {
 			height: {
-				stateMachineId: 4009n,
+				stateMachineId: BigInt(this.configService.getHyperbridgeChainId()),
 				height: latestStateMachineHeight,
 			},
 			multiproof: proof,
@@ -471,7 +436,8 @@ export class ContractInteractionService {
 				},
 			],
 		})
-		console.log("Gas estimate for post", gas)
+
+		console.log(`Gas estimate for post ${order.id} on ${order.sourceChain} is ${gas}`)
 
 		return gas
 	}
@@ -494,11 +460,9 @@ export class ContractInteractionService {
 	 * Gets the host latest state machine height
 	 */
 	async getHostLatestStateMachineHeight(chain: string): Promise<bigint> {
-		const wsUrl = ""
-		console.log("Connecting to API", wsUrl)
 		if (!this.api) {
 			this.api = await ApiPromise.create({
-				provider: new WsProvider(wsUrl),
+				provider: new WsProvider(process.env.HYPERBRIDGE_GARGANTUA),
 				typesBundle: {
 					spec: {
 						gargantua: {
@@ -507,11 +471,11 @@ export class ContractInteractionService {
 					},
 				},
 			})
-
-			await this.api.connect()
+			if (!(await this.api.isConnected)) {
+				await this.api.connect()
+			}
 		}
 
-		console.log("Connected to API")
 		const latestHeight = await this.api.query.system.number()
 		return BigInt(latestHeight.toString())
 	}

@@ -1,6 +1,15 @@
 export { IndexerClient } from "@/client"
 export { createQueryClient, queryGetRequest, queryPostRequest } from "@/query-client"
-export { postRequestCommitment, orderCommitment, DUMMY_PRIVATE_KEY, ADDRESS_ZERO, generateRootWithProof } from "@/utils"
+export {
+	postRequestCommitment,
+	orderCommitment,
+	DUMMY_PRIVATE_KEY,
+	ADDRESS_ZERO,
+	generateRootWithProof,
+	bytes32ToBytes20,
+	bytes20ToBytes32,
+	hexToString,
+} from "@/utils"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"
 export * from "@/chain"

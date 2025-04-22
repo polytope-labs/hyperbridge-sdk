@@ -1,9 +1,9 @@
 import { chainIds } from "@/config/chain"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
-import { Order, FillerConfig, ChainConfig, DUMMY_PRIVATE_KEY } from "hyperbridge-sdk"
+import { Order, FillerConfig, ChainConfig, DUMMY_PRIVATE_KEY, ADDRESS_ZERO, bytes20ToBytes32 } from "hyperbridge-sdk"
 import pQueue from "p-queue"
-import { ChainClientManager, ChainConfigService } from "@/services"
+import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { PublicClient } from "viem"
 
@@ -14,6 +14,7 @@ export class IntentFiller {
 	private globalQueue: pQueue
 	private configService: ChainConfigService
 	private chainClientManager: ChainClientManager
+	private contractService: ContractInteractionService
 	private pendingOrders: Map<string, NodeJS.Timeout> = new Map()
 	private orderRecheckCount: Map<string, number> = new Map()
 	private config: FillerConfig
@@ -24,7 +25,7 @@ export class IntentFiller {
 		this.config = config
 		this.configService = new ChainConfigService()
 		this.chainClientManager = new ChainClientManager(DUMMY_PRIVATE_KEY)
-
+		this.contractService = new ContractInteractionService(this.chainClientManager, DUMMY_PRIVATE_KEY)
 		this.chainQueues = new Map()
 		chainConfigs.forEach((chainConfig) => {
 			// 1 order per chain at a time due to EVM constraints
@@ -127,7 +128,13 @@ export class IntentFiller {
 		let totalUSDValue = BigInt(0)
 
 		for (const input of order.inputs) {
-			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(input.token)
+			const decimals = await this.contractService.getTokenDecimals(input.token, order.sourceChain)
+			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
+				input.token == bytes20ToBytes32(ADDRESS_ZERO)
+					? this.configService.getWrappedNativeAssetWithDecimals(order.sourceChain).asset
+					: input.token,
+				decimals,
+			)
 
 			totalUSDValue = totalUSDValue + BigInt(input.amount * BigInt(tokenUsdPrice))
 		}
@@ -220,6 +227,9 @@ export class IntentFiller {
 					try {
 						const result = await bestStrategy.executeOrder(order)
 						console.log(`Order execution result:`, result)
+						if (result.success) {
+							this.monitor.emit("orderFilled", { orderId: order.id })
+						}
 						return result
 					} catch (error) {
 						console.error(`Order execution failed:`, error)

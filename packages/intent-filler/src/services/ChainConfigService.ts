@@ -1,6 +1,6 @@
 import { toHex } from "viem"
 import { ChainConfig, HexString } from "hyperbridge-sdk"
-import { addresses, assets, rpcUrls, chainIds, consensusStateIds } from "@/config/chain"
+import { addresses, assets, rpcUrls, chainIds, consensusStateIds, Chains, WrappedNativeDecimals } from "@/config/chain"
 
 /**
  * Centralizes access to chain configuration
@@ -46,10 +46,13 @@ export class ChainConfigService {
 	}
 
 	/**
-	 * Gets the WETH asset for a given chain
+	 * Gets the Native asset for a given chain
 	 */
-	getWethAsset(chain: string): HexString {
-		return assets[chain as keyof typeof assets].WETH as HexString
+	getWrappedNativeAssetWithDecimals(chain: string): { asset: HexString; decimals: number } {
+		return {
+			asset: assets[chain as keyof typeof assets].WETH as HexString,
+			decimals: WrappedNativeDecimals[chain as keyof typeof WrappedNativeDecimals],
+		}
 	}
 
 	/**
@@ -78,5 +81,12 @@ export class ChainConfigService {
 	 */
 	getFeeTokenAddress(chain: string): HexString {
 		return addresses.FeeToken[chain as keyof typeof addresses.FeeToken]!
+	}
+
+	/**
+	 * Gets the Hyperbridge Gargantua chain ID
+	 */
+	getHyperbridgeChainId(): number {
+		return chainIds[Chains.HYPERBRIDGE_GARGANTUA]
 	}
 }

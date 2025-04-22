@@ -61,25 +61,32 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
-			const destClient = this.clientManager.getPublicClient(order.destChain)
-
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
-
-			const ethPriceUsd = await this.contractService.getEthPriceUsd(order, destClient)
+			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
 
 			// 2% on top of postGas
 			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
 			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
 
-			const gasCostUsd = ((fillGas + relayerFeeEth) * ethPriceUsd) / BigInt(10 ** 18)
+			// fillGas and relayerFeeEth are in wei (10^18)
+			// nativeTokenPriceUsd has 18 decimals
+			const totalGasWei = fillGas + relayerFeeEth
 
+			// Converting gas cost from wei to USD using the formula:
+			// gasCostUsd = (gasWei * priceUsd) / 10^18
+			// Result has 18 decimals (matching nativeTokenPriceUsd)
+			const gasCostUsd = (totalGasWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
+
+			// Both gasCostUsd and protocolFeeUSD have 18 decimals
 			const totalCostUsd = gasCostUsd + protocolFeeUSD
 
-			return order.fees > totalCostUsd ? order.fees - totalCostUsd : BigInt(0)
+			// Return profitability if positive, otherwise negative
+			// order.fees also has 18 decimals
+			return order.fees > totalCostUsd ? order.fees - totalCostUsd : BigInt(-1)
 		} catch (error) {
 			console.error(`Error calculating profitability:`, error)
-			return BigInt(-1) // Negative profitability signals an error
+			return BigInt(0)
 		}
 	}
 
@@ -103,37 +110,32 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			// const { request } = await destClient.simulateContract({
-			// 	abi: INTENT_GATEWAY_ABI,
-			// 	address: this.configService.getIntentGatewayAddress(order.destChain),
-			// 	functionName: "fillOrder",
-			// 	args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-			// 	account: privateKeyToAccount(this.privateKey),
-			// 	value: ethValue,
-			// })
+			const { request } = await destClient.simulateContract({
+				abi: INTENT_GATEWAY_ABI,
+				address: this.configService.getIntentGatewayAddress(order.destChain),
+				functionName: "fillOrder",
+				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+				account: privateKeyToAccount(this.privateKey),
+				value: ethValue,
+			})
 
-			// const tx = await walletClient.writeContract(request)
+			const tx = await walletClient.writeContract(request)
 
-			// // Wait for confirmations
-			// let confirmations = 0n
-			// while (confirmations < 0n) {
-			// 	confirmations = await destClient.getTransactionConfirmations({ hash: tx })
-			// 	await new Promise((resolve) => setTimeout(resolve, 5000))
-			// }
-
-			// const receipt = await destClient.getTransactionReceipt({ hash: tx })
+			// Wait for 10 seconds
+			await new Promise((resolve) => setTimeout(resolve, 10000))
+			const receipt = await destClient.getTransactionReceipt({ hash: tx })
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
 
 			return {
-				success: false,
-				// txHash: receipt.transactionHash,
-				// gasUsed: receipt.gasUsed.toString(),
-				// gasPrice: receipt.effectiveGasPrice.toString(),
-				// confirmedAtBlock: Number(receipt.blockNumber),
-				// confirmedAt: new Date(),
-				// strategyUsed: this.name,
+				success: true,
+				txHash: receipt.transactionHash,
+				gasUsed: receipt.gasUsed.toString(),
+				gasPrice: receipt.effectiveGasPrice.toString(),
+				confirmedAtBlock: Number(receipt.blockNumber),
+				confirmedAt: new Date(),
+				strategyUsed: this.name,
 				processingTimeMs,
 			}
 		} catch (error) {

@@ -193,6 +193,10 @@ export function calculateMMRSize(numberOfLeaves: bigint): bigint {
  * @returns An object containing:
  *   - root: The MMR root hash as a hex string
  *   - proof: An array of hex strings representing the MMR proof for the unmodified request
+ *   - index: The index of the unmodified request in the MMR
+ *   - kIndex: The k-index of the unmodified request in the MMR
+ *   - treeSize: The number of leaves in the MMR
+ *   - mmrSize: The size of the MMR in nodes
  */
 export function generateRootWithProof(
 	postRequest: IPostRequest,
@@ -214,7 +218,7 @@ export function generateRootWithProof(
 	return {
 		root: root as HexString,
 		proof: proof as HexString[],
-		index: leaf_positions[0],
+		index: treeSize - 1n,
 		kIndex,
 		treeSize,
 		mmrSize: mmr_size,
