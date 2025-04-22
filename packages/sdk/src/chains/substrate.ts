@@ -7,7 +7,14 @@ import { u8, Vector } from "scale-ts"
 
 import { BasicProof, isEvmChain, isSubstrateChain, type IStateMachine, Message, SubstrateStateProof } from "@/utils"
 import type { IChain, IIsmpMessage } from "@/chain"
-import { type HexString, IGetRequest, type IPostRequest, type IMessage, type StateMachineIdParams } from "@/types"
+import {
+	type HexString,
+	IGetRequest,
+	type IPostRequest,
+	type IMessage,
+	type StateMachineIdParams,
+	type StateMachineHeight,
+} from "@/types"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
@@ -133,7 +140,8 @@ export class SubstrateChain implements IChain {
 		if (!this.api) throw new Error("API not initialized")
 
 		const now = await this.api.query.timestamp.now()
-		return BigInt(now.toJSON() as number)
+
+		return BigInt(now.toJSON() as number) / BigInt(1000)
 	}
 
 	/**
@@ -184,21 +192,29 @@ export class SubstrateChain implements IChain {
 	 */
 	async submitUnsigned(
 		message: IIsmpMessage,
-	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number }> {
+	): Promise<{ transactionHash: string; blockHash: string; blockNumber: number; timestamp: number }> {
 		if (!this.api) throw new Error("API not initialized")
+		const { api } = this
 		// remove the call and method selectors
 		const args = hexToBytes(this.encode(message)).slice(2)
-		const tx = this.api.tx.ismp.handleUnsigned(args)
-		return new Promise(async (resolve, reject) => {
-			const unsub = await tx.send(async ({ isFinalized, isError, dispatchError, txHash, status }) => {
-				if (isFinalized) {
+		const tx = api.tx.ismp.handleUnsigned(args)
+
+		return new Promise((resolve, reject) => {
+			let unsub = () => {}
+
+			tx.send(async ({ isInBlock, isFinalized, isError, dispatchError, txHash, status }) => {
+				if (isFinalized || isInBlock) {
 					unsub()
-					const blockHash = status.asFinalized.toHex()
-					const header = await this.api!.rpc.chain.getHeader(blockHash)
+					const blockHash = isInBlock ? status.asInBlock.toHex() : status.asFinalized.toHex()
+					const header = await api.rpc.chain.getHeader(blockHash)
+					// Get a decorated api instance at a specific block
+					const apiAt = await api.at(blockHash)
+					const timestamp = await apiAt.query.timestamp.now()
 					resolve({
 						transactionHash: txHash.toHex(),
 						blockHash: blockHash,
 						blockNumber: header.number.toNumber(),
+						timestamp: Number(timestamp.toJSON()) / 1000,
 					})
 				} else if (isError) {
 					unsub()
@@ -206,6 +222,10 @@ export class SubstrateChain implements IChain {
 					reject(dispatchError)
 				}
 			})
+				.then((unsubscribe) => {
+					unsub = unsubscribe
+				})
+				.catch(reject)
 		})
 	}
 
@@ -243,6 +263,28 @@ export class SubstrateChain implements IChain {
 		if (!this.api) throw new Error("API not initialized")
 		const latestHeight = await this.api.query.ismp.latestStateMachineHeight(stateMachineId)
 		return BigInt(latestHeight.toString())
+	}
+
+	/**
+	 * Get the state machine update time for a given state machine height.
+	 * @param {StateMachineHeight} stateMachineheight - The state machine height.
+	 * @returns {Promise<bigint>} The statemachine update time in seconds.
+	 */
+	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+		const updateTime = await this.api.query.ismp.stateMachineUpdateTime(stateMachineHeight)
+		return BigInt(updateTime.toString())
+	}
+
+	/**
+	 * Get the challenge period for a given state machine id.
+	 * @param {StateMachineIdParams} stateMachineId - The state machine ID.
+	 * @returns {Promise<bigint>} The challenge period in seconds.
+	 */
+	async challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
+		if (!this.api) throw new Error("API not initialized")
+		const challengePeriod = await this.api.query.ismp.challengePeriod(stateMachineId)
+		return BigInt(challengePeriod.toString())
 	}
 
 	/**

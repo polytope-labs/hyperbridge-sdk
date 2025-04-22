@@ -1,6 +1,6 @@
 import { type ConsolaInstance, createConsola, LogLevels } from "consola"
 import { maxBy } from "lodash-es"
-import { pad } from "viem"
+import { pad, toHex } from "viem"
 
 // @ts-ignore
 import mergeRace from "@async-generator/merge-race"
@@ -20,17 +20,16 @@ import {
 	type AssetTeleported,
 	type AssetTeleportedResponse,
 	type GetRequestWithStatus,
-	type GetRequestResponse,
 	type GetResponseByRequestIdResponse,
 	type ResponseCommitmentWithValues,
 	type RequestStatusKey,
 	type TimeoutStatusKey,
+	type PostRequestStatus,
 } from "@/types"
 import {
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 	ASSET_TELEPORTED_BY_PARAMS,
-	GET_REQUEST_STATUS,
 	GET_RESPONSE_BY_REQUEST_ID,
 } from "@/queries"
 import {
@@ -38,10 +37,11 @@ import {
 	DEFAULT_POLL_INTERVAL,
 	REQUEST_STATUS_WEIGHTS,
 	TIMEOUT_STATUS_WEIGHTS,
-	getRequestCommitment,
+	parseStateMachineId,
 	postRequestCommitment,
 	retryPromise,
 	sleep,
+	waitForChallengePeriod,
 } from "@/utils"
 import { getChain, type IChain, type SubstrateChain } from "@/chain"
 import { _queryGetRequestInternal, _queryRequestInternal } from "./query-client"
@@ -173,8 +173,13 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
+		if (first_node && first_node.createdAt) {
+			//@ts-ignore
+			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
+		}
 		logger.trace("Response >", first_node)
 
+		//@ts-ignore
 		return first_node
 	}
 
@@ -207,9 +212,14 @@ export class IndexerClient {
 			{ logger, logMessage: message },
 		)
 
-		const first_node = response?.stateMachineUpdateEvents?.nodes?.[0]
+		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
+		if (first_node && first_node.createdAt) {
+			//@ts-ignore
+			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
+		}
 		logger.trace("Response >", first_node)
 
+		//@ts-ignore
 		return first_node
 	}
 
@@ -219,7 +229,7 @@ export class IndexerClient {
 	 * @param commitment_hash - Can be commitment
 	 * @returns Latest status and block metadata of the request
 	 */
-	private async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
+	async queryPostRequest(commitment_hash: string): Promise<PostRequestWithStatus | undefined> {
 		return _queryRequestInternal({
 			commitmentHash: commitment_hash,
 			queryClient: this.client,
@@ -313,6 +323,7 @@ export class IndexerClient {
 					blockHash: sourceFinality.blockHash,
 					blockNumber: sourceFinality.height,
 					transactionHash: sourceFinality.transactionHash,
+					timestamp: sourceFinality.timestamp,
 				},
 			})
 
@@ -366,6 +377,7 @@ export class IndexerClient {
 				blockHash: hyperbridgeFinality.blockHash,
 				blockNumber: hyperbridgeFinality.height,
 				transactionHash: hyperbridgeFinality.transactionHash,
+				timestamp: hyperbridgeFinality.timestamp,
 				calldata,
 			},
 		})
@@ -449,6 +461,7 @@ export class IndexerClient {
 					blockHash: destFinalized.blockHash,
 					blockNumber: destFinalized.blockNumber,
 					transactionHash: destFinalized.transactionHash,
+					timestamp: destFinalized.timestamp,
 				},
 			})
 
@@ -500,6 +513,7 @@ export class IndexerClient {
 				blockHash: hyperbridgeFinalized.blockHash,
 				blockNumber: hyperbridgeFinalized.blockNumber,
 				transactionHash: hyperbridgeFinalized.transactionHash,
+				timestamp: hyperbridgeFinalized.timestamp,
 				calldata,
 			},
 		})
@@ -567,11 +581,11 @@ export class IndexerClient {
 		}
 
 		logger.trace("`Request` found")
-
 		const chain = await getChain(this.config.dest)
 		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
 		const statusStream = this.postRequestStatusStreamInternal(hash)
 
+		logger.trace("Listening for events")
 		const combined = mergeRace(timeoutStream, statusStream)
 
 		logger.trace("Listening for events")
@@ -594,17 +608,24 @@ export class IndexerClient {
 	 * @param request - Request to timeout
 	 */
 	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
+		const logger = this.logger.withTag("[timeoutStream()]")
+
 		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
+
 			while (timestamp < timeoutTimestamp) {
+				logger.trace("Comparing timeout timestamps", { control: timeoutTimestamp, latest: timestamp })
+
 				const diff = BigInt(timeoutTimestamp) - BigInt(timestamp)
 				await this.sleep_for(Number(diff))
 				timestamp = await chain.timestamp()
 			}
+
 			yield {
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
 			}
+
 			return
 		}
 	}
@@ -658,6 +679,7 @@ export class IndexerClient {
 							blockHash: sourceUpdate.blockHash,
 							blockNumber: sourceUpdate.height,
 							transactionHash: sourceUpdate.transactionHash,
+							timestamp: sourceUpdate.timestamp,
 						},
 					}
 
@@ -684,6 +706,8 @@ export class IndexerClient {
 							blockHash: request.statuses[1].metadata.blockHash,
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
+							// @ts-ignore
+							timestamp: request.statuses[1].metadata.timestamp,
 						},
 					}
 					break
@@ -727,12 +751,23 @@ export class IndexerClient {
 						signer: pad("0x"),
 					})
 
+					const { stateId } = parseStateMachineId(this.config.hyperbridge.stateMachineId)
+
+					await waitForChallengePeriod(destChain, {
+						height: BigInt(hyperbridgeFinalized.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.hyperbridge.consensusStateId),
+						},
+					})
+
 					yield {
 						status: RequestStatus.HYPERBRIDGE_FINALIZED,
 						metadata: {
 							blockHash: hyperbridgeFinalized.blockHash,
 							blockNumber: hyperbridgeFinalized.height,
 							transactionHash: hyperbridgeFinalized.transactionHash,
+							timestamp: hyperbridgeFinalized.timestamp,
 							calldata,
 						},
 					}
@@ -758,6 +793,8 @@ export class IndexerClient {
 							blockHash: request.statuses[index].metadata.blockHash,
 							blockNumber: request.statuses[index].metadata.blockNumber,
 							transactionHash: request.statuses[index].metadata.transactionHash,
+							// @ts-ignore
+							timestamp: request.statuses[index].metadata.timestamp,
 						},
 					}
 					status = RequestStatus.DESTINATION
@@ -870,6 +907,7 @@ export class IndexerClient {
 							blockHash: sourceUpdate.blockHash,
 							blockNumber: sourceUpdate.height,
 							transactionHash: sourceUpdate.transactionHash,
+							timestamp: sourceUpdate.timestamp,
 						},
 					}
 					status = RequestStatus.SOURCE_FINALIZED
@@ -895,6 +933,8 @@ export class IndexerClient {
 							blockHash: request.statuses[1].metadata.blockHash,
 							blockNumber: request.statuses[1].metadata.blockNumber,
 							transactionHash: request.statuses[1].metadata.transactionHash,
+							// @ts-ignore
+							timestamp: request.statuses[1].metadata.timestamp,
 						},
 					}
 					break
@@ -957,6 +997,7 @@ export class IndexerClient {
 							blockHash: hyperbridgeFinalized.blockHash,
 							blockNumber: hyperbridgeFinalized.height,
 							transactionHash: hyperbridgeFinalized.transactionHash,
+							timestamp: hyperbridgeFinalized.timestamp,
 							calldata,
 						},
 					}
@@ -985,6 +1026,8 @@ export class IndexerClient {
 							blockHash: request.statuses[2].metadata.blockHash,
 							blockNumber: request.statuses[2].metadata.blockNumber,
 							transactionHash: request.statuses[2].metadata.transactionHash,
+							//@ts-ignore
+							timestamp: request.statuses[2].metadata.timestamp,
 						},
 					}
 					status = RequestStatus.DESTINATION
@@ -1081,6 +1124,7 @@ export class IndexerClient {
 							blockHash: update.blockHash,
 							blockNumber: update.height,
 							transactionHash: update.transactionHash,
+							timestamp: update.timestamp,
 						},
 					}
 					status = TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT
@@ -1106,7 +1150,17 @@ export class IndexerClient {
 						destChain.requestReceiptKey(commitment),
 					])
 
-					const { blockHash, transactionHash, blockNumber } = await hyperbridge.submitUnsigned({
+					const { stateId } = parseStateMachineId(request.dest)
+
+					await waitForChallengePeriod(hyperbridge, {
+						height: BigInt(update.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.dest.consensusStateId),
+						},
+					})
+
+					const { blockHash, transactionHash, blockNumber, timestamp } = await hyperbridge.submitUnsigned({
 						kind: "TimeoutPostRequest",
 						proof: {
 							proof,
@@ -1138,6 +1192,7 @@ export class IndexerClient {
 							blockHash,
 							transactionHash,
 							blockNumber,
+							timestamp,
 						},
 					}
 					break
@@ -1205,12 +1260,24 @@ export class IndexerClient {
 							},
 						],
 					})
+
+					const { stateId } = parseStateMachineId(this.config.hyperbridge.stateMachineId)
+
+					await waitForChallengePeriod(sourceChain, {
+						height: BigInt(update.height),
+						id: {
+							stateId,
+							consensusStateId: toHex(this.config.hyperbridge.consensusStateId),
+						},
+					})
+
 					yield {
 						status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
 						metadata: {
 							transactionHash: update.transactionHash,
 							blockNumber: update.blockNumber,
 							blockHash: update.blockHash,
+							timestamp: update.timestamp,
 							calldata,
 						},
 					}
@@ -1218,7 +1285,28 @@ export class IndexerClient {
 					break
 				}
 
-				case TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT:
+				case TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT: {
+					// wait for the request to be timed out on the source
+					let req = await this.queryPostRequest(hash)
+					let delivered = req?.statuses.find((s) => s.status === RequestStatus.TIMED_OUT)
+					while (!req || !delivered) {
+						await this.sleep_for_interval()
+						req = await this.queryPostRequest(hash)
+						delivered = req?.statuses.find((s) => s.status === RequestStatus.TIMED_OUT)
+					}
+					yield {
+						status: TimeoutStatus.TIMED_OUT,
+						metadata: {
+							transactionHash: delivered.metadata.transactionHash,
+							blockNumber: delivered.metadata.blockNumber,
+							blockHash: delivered.metadata.blockHash,
+							timestamp: delivered.metadata.timestamp,
+						},
+					}
+					status = TimeoutStatus.TIMED_OUT
+					break
+				}
+
 				case TimeoutStatus.TIMED_OUT:
 					return
 			}
