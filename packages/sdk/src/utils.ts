@@ -1,6 +1,3 @@
-import { type HexString, type IGetRequest, type IPostRequest, RequestStatus, TimeoutStatus } from "@/types"
-import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
-import { encodePacked, keccak256, toHex, encodeAbiParameters, hexToBytes, bytesToHex, Hex, Log } from "viem"
 import {
 	type HexString,
 	type IGetRequest,
@@ -9,8 +6,8 @@ import {
 	TimeoutStatus,
 	type StateMachineHeight,
 } from "@/types"
-import type { RequestStatusKey, TimeoutStatusKey, RetryConfig } from "@/types"
-import { encodePacked, keccak256, toHex } from "viem"
+import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
+import { encodePacked, keccak256, toHex, encodeAbiParameters, hexToBytes, bytesToHex } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
 import type { IChain } from "./chain"
