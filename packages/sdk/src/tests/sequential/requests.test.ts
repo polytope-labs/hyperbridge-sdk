@@ -105,8 +105,8 @@ describe.sequential("Get and Post Requests", () => {
 
 			const commitment = postRequestCommitment(request)
 
-			console.log("Post Request Commitment:", commitment)
-			const statusStream = indexer.postRequestStatusStream(commitment)
+			console.log("Post Request Commitment:", commitment.hash)
+			const statusStream = indexer.postRequestStatusStream(commitment.hash)
 
 			for await (const status of statusStream) {
 				console.log(JSON.stringify(status, null, 4))
@@ -118,7 +118,7 @@ describe.sequential("Get and Post Requests", () => {
 
 			console.log("Starting timeout stream")
 
-			for await (const timeout of indexer.postRequestTimeoutStream(commitment)) {
+			for await (const timeout of indexer.postRequestTimeoutStream(commitment.hash)) {
 				console.log(JSON.stringify(timeout, null, 4))
 				switch (timeout.status) {
 					case TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT:
@@ -162,7 +162,7 @@ describe.sequential("Get and Post Requests", () => {
 				}
 			}
 
-			const req = await indexer.queryRequestWithStatus(commitment)
+			const req = await indexer.queryRequestWithStatus(commitment.hash)
 			console.log("Full status", JSON.stringify(req, null, 4))
 
 			const hyperbridgeFinalizedStatus = req?.statuses.find(
@@ -244,7 +244,7 @@ describe.sequential("Get and Post Requests", () => {
 			console.log("PostRequestEvent", { request })
 			const commitment = postRequestCommitment(request)
 
-			for await (const status of indexer.postRequestStatusStream(commitment)) {
+			for await (const status of indexer.postRequestStatusStream(commitment.hash)) {
 				console.log(JSON.stringify(status, null, 4))
 				switch (status.status) {
 					case RequestStatus.SOURCE_FINALIZED: {
@@ -293,7 +293,7 @@ describe.sequential("Get and Post Requests", () => {
 				}
 			}
 
-			const req = await indexer.queryRequestWithStatus(commitment)
+			const req = await indexer.queryRequestWithStatus(commitment.hash)
 			console.log(JSON.stringify(req, null, 4))
 			expect(req?.statuses.length).toBe(5)
 		}, 1_000_000)
