@@ -14,6 +14,8 @@ import {
 	createQueryClient,
 	postRequestCommitment,
 	TimeoutStatus,
+	orderCommitment,
+	DispatchGet,
 } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -21,6 +23,7 @@ import {
 	decodeFunctionData,
 	encodePacked,
 	getContract,
+	hexToString,
 	keccak256,
 	maxUint256,
 	parseEventLogs,
@@ -34,6 +37,7 @@ import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
+import { hexConcat } from "ethers/lib/utils"
 describe("Basic", () => {
 	let intentFiller: IntentFiller
 	let indexer: IndexerClient
@@ -67,7 +71,6 @@ describe("Basic", () => {
 
 		const { intentFiller: intentFillerInstance } = await setUp()
 		intentFiller = intentFillerInstance
-		intentFiller.start()
 	})
 
 	it("Should listen, place order, fill order, and check if filled at the source chain", async () => {
@@ -82,6 +85,9 @@ describe("Basic", () => {
 
 			gnosisChiadoPublicClient,
 		} = await setUp()
+
+		intentFiller.start()
+
 		const inputs: TokenInfo[] = [
 			{
 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -196,9 +202,6 @@ describe("Basic", () => {
 			feeTokenGnosisChiadoAddress,
 			gnosisChiadoIntentGateway,
 		} = await setUp()
-
-		// Stop the intent filler for this test, to make sure it doesn't make a post request as we do it manually
-		intentFiller.stop()
 
 		const inputs: TokenInfo[] = [
 			{
@@ -354,6 +357,121 @@ describe("Basic", () => {
 		)
 		expect(hyperbridgeFinalizedStatus).toBeDefined()
 		expect(hyperbridgeFinalizedStatus?.metadata.calldata).toBeDefined()
+	}, 1200_000)
+
+	it.only("Should timeout if order deadline is reached", async () => {
+		const {
+			bscIntentGateway,
+			bscWalletClient,
+			bscPublicClient,
+			bscIsmpHost,
+			gnosisChiadoIsmpHost,
+			feeTokenBscAddress,
+			contractInteractionService,
+			gnosisChiadoIntentGateway,
+		} = await setUp()
+
+		const inputs: TokenInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+			},
+		]
+		const outputs: PaymentInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await bscIsmpHost.read.host(),
+			destChain: await gnosisChiadoIsmpHost.read.host(),
+			deadline: 0n, // Expired deadline
+			nonce: 0n,
+			fees: 1000000n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
+
+		let hash = await bscIntentGateway.write.placeOrder([order], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+			value: 100n,
+		})
+
+		let receipt = await bscPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		console.log("Order placed on BSC:", receipt.transactionHash)
+
+		let orderEvent = parseEventLogs({ abi: INTENT_GATEWAY_ABI, logs: receipt.logs })[0]
+
+		if (orderEvent.eventName !== "OrderPlaced") {
+			throw new Error("Unexpected Event type")
+		}
+
+		let orderArgs = orderEvent.args as unknown as Order
+		orderArgs.sourceChain = hexToString(orderArgs.sourceChain as HexString)
+		orderArgs.destChain = hexToString(orderArgs.destChain as HexString)
+		orderArgs.id = orderCommitment(orderArgs)
+
+		console.log("Order Args:", orderArgs)
+
+		// Manually fill the GetRequest as we do in the cancelOrder function
+
+		let context = "0x".concat(
+			contractInteractionService.constructRedeemEscrowRequestBody(orderArgs, orderArgs.user).slice(4),
+		) as HexString
+
+		console.log("Context:", context)
+
+		let keys: HexString[] = []
+
+		let commitmentslotHash = keccak256(encodePacked(["bytes32", "uint256"], [orderArgs.id as HexString, 5n]))
+		const key = hexConcat([gnosisChiadoIntentGateway.address, commitmentslotHash]) as HexString
+
+		keys.push(key)
+
+		console.log("Keys:", keys)
+
+		const latestHeight = await contractInteractionService.getHostLatestStateMachineHeight(
+			hexToString(order.destChain),
+		)
+
+		console.log(`Latest height for ${order.destChain} chain:`, latestHeight)
+
+		const dispatchGet: DispatchGet = {
+			dest: order.destChain,
+			keys: keys,
+			timeout: 0n,
+			height: latestHeight,
+			fee: 1000000n,
+			context: context,
+		}
+
+		console.log("DispatchGet:", dispatchGet)
+
+		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
+
+		hash = await bscIsmpHost.write.dispatch([dispatchGet], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		receipt = await bscPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		console.log("Get request dispatched on BSC:", receipt.transactionHash)
 	}, 1200_000)
 })
 

@@ -824,6 +824,38 @@ export interface DispatchPost {
 	payer: HexString
 }
 
+export interface DispatchGet {
+	/**
+	 * Bytes representation of the destination state machine
+	 */
+	dest: HexString
+
+	/**
+	 * Height at which to read the state machine
+	 */
+	height: bigint
+
+	/**
+	 * Raw storage keys to fetch values from the counterparty
+	 */
+	keys: HexString[]
+
+	/**
+	 * Timeout for this request in seconds
+	 */
+	timeout: bigint
+
+	/**
+	 * The amount put up to be paid to the relayer
+	 */
+	fee: bigint
+
+	/**
+	 * Context for the request
+	 */
+	context: HexString
+}
+
 export interface StateMachineHeight {
 	id: {
 		stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number }

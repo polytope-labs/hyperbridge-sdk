@@ -338,9 +338,9 @@ export class ContractInteractionService {
 	/**
 	 * Constructs the redeem escrow request body
 	 */
-	constructRedeemEscrowRequestBody(order: Order): HexString {
+	constructRedeemEscrowRequestBody(order: Order, beneficiary?: HexString): HexString {
 		const wallet = bytes20ToBytes32(privateKeyToAddress(this.privateKey))
-		const commitment = orderCommitment(order)
+		const commitment = order.id as HexString
 		const inputs = order.inputs
 
 		// RequestKind.RedeemEscrow is 0 as defined in the contract
@@ -348,7 +348,7 @@ export class ContractInteractionService {
 
 		const requestBody = {
 			commitment: commitment as HexString,
-			beneficiary: wallet,
+			beneficiary: beneficiary ?? wallet,
 			tokens: inputs,
 		}
 
@@ -392,7 +392,7 @@ export class ContractInteractionService {
 			to: this.configService.getIntentGatewayAddress(order.sourceChain),
 		}
 		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 2n ** 10n)
-		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight(order.destChain)
+		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight()
 		const overlayRootSlot = getStateCommitmentFieldSlot(
 			BigInt(this.configService.getHyperbridgeChainId()),
 			latestStateMachineHeight,
@@ -459,7 +459,7 @@ export class ContractInteractionService {
 	/**
 	 * Gets the host latest state machine height
 	 */
-	async getHostLatestStateMachineHeight(chain: string): Promise<bigint> {
+	async getHostLatestStateMachineHeight(chain?: string): Promise<bigint> {
 		if (!this.api) {
 			this.api = await ApiPromise.create({
 				provider: new WsProvider(process.env.HYPERBRIDGE_GARGANTUA),
@@ -475,8 +475,21 @@ export class ContractInteractionService {
 				await this.api.connect()
 			}
 		}
+		let latestHeight: any
 
-		const latestHeight = await this.api.query.system.number()
+		if (chain) {
+			latestHeight = await this.api.query.ismp.latestStateMachineHeight({
+				stateId: {
+					Evm: this.configService.getChainId(chain),
+				},
+				consensusStateId: this.configService.getConsensusStateId(chain),
+			})
+
+			return BigInt(latestHeight.toString())
+		}
+
+		latestHeight = await this.api.query.system.number()
+
 		return BigInt(latestHeight.toString())
 	}
 }
