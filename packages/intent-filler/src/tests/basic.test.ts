@@ -14,8 +14,10 @@ import {
 	createQueryClient,
 	postRequestCommitment,
 	TimeoutStatus,
-	orderCommitment,
 	DispatchGet,
+	getRequestCommitment,
+	RequestStatus,
+	orderCommitment,
 } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -187,7 +189,7 @@ describe("Basic", () => {
 		expect(isFilled).toBe(true)
 	}, 1_000_000)
 
-	it("Should timeout if the post request after filling the order takes too long", async () => {
+	it("Should timeout if order deadline is reached", async () => {
 		const {
 			bscIntentGateway,
 			bscWalletClient,
@@ -196,179 +198,8 @@ describe("Basic", () => {
 			gnosisChiadoIsmpHost,
 			feeTokenBscAddress,
 			contractInteractionService,
-			gnosisChiadoPublicClient,
+			gnosisChiadoIntentGateway,
 			bscHandler,
-			gnosisChiadoWalletClient,
-			feeTokenGnosisChiadoAddress,
-			gnosisChiadoIntentGateway,
-		} = await setUp()
-
-		const inputs: TokenInfo[] = [
-			{
-				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-				amount: 100n,
-			},
-		]
-		const outputs: PaymentInfo[] = [
-			{
-				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-				amount: 100n,
-				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
-			},
-		]
-
-		const order = {
-			user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
-			sourceChain: await gnosisChiadoIsmpHost.read.host(),
-			destChain: await bscIsmpHost.read.host(),
-			deadline: 50652661000n,
-			nonce: 0n,
-			fees: 1000000n,
-			outputs,
-			inputs,
-			callData: "0x" as HexString,
-		}
-
-		await approveTokens(
-			gnosisChiadoWalletClient,
-			gnosisChiadoPublicClient,
-			feeTokenGnosisChiadoAddress,
-			gnosisChiadoIntentGateway.address,
-		)
-
-		let hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
-			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: gnosisChiado,
-			value: 100n,
-		})
-
-		let receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
-			hash,
-			confirmations: 1,
-		})
-
-		console.log("Order placed on Gnosis chain:", receipt.transactionHash)
-
-		// Once the order is placed, we must mimic the fill order on the destination chain by sending a post request
-		// from the destination chain to the source chain with the constructed RequestBody
-
-		const requestBody = contractInteractionService.constructRedeemEscrowRequestBody(order)
-		console.log("Request body:", requestBody)
-
-		const dipatchPost: DispatchPost = {
-			dest: order.sourceChain,
-			to: gnosisChiadoIntentGateway.address,
-			body: requestBody,
-			timeout: 2n,
-			fee: 1000000n,
-			payer: privateKeyToAddress(process.env.PRIVATE_KEY as HexString),
-		}
-
-		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIsmpHost.address)
-
-		hash = await bscIsmpHost.write.dispatch([dipatchPost], {
-			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: bscTestnet,
-		})
-
-		receipt = await bscPublicClient.waitForTransactionReceipt({
-			hash,
-			confirmations: 1,
-		})
-
-		console.log("Post request dispatched on destination chain:", receipt.transactionHash)
-
-		const event = parseEventLogs({ abi: EVM_HOST, logs: receipt.logs })[0]
-
-		if (event.eventName !== "PostRequestEvent") {
-			throw new Error("Unexpected Event type")
-		}
-
-		const request = event.args
-
-		console.log("PostRequestEvent", { request })
-
-		const commitment = postRequestCommitment(request)
-
-		console.log("Post Request Commitment:", commitment.hash)
-
-		const statusStream = indexer.postRequestStatusStream(commitment.hash)
-
-		for await (const status of statusStream) {
-			console.log(JSON.stringify(status, null, 4))
-
-			if (status.status === TimeoutStatus.PENDING_TIMEOUT) {
-				console.log("Request is now timed out", request.timeoutTimestamp)
-			}
-		}
-
-		for await (const timeout of indexer.postRequestTimeoutStream(commitment.hash)) {
-			console.log(JSON.stringify(timeout, null, 4))
-			switch (timeout.status) {
-				case TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT:
-					console.log(
-						`Status ${timeout.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${timeout.metadata?.transactionHash}`,
-					)
-					break
-				case TimeoutStatus.HYPERBRIDGE_TIMED_OUT:
-					console.log(
-						`Status ${timeout.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${timeout.metadata?.transactionHash}`,
-					)
-					break
-				case TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT: {
-					console.log(
-						`Status ${timeout.status}, Transaction: https://testnet.bscscan.com/tx/${timeout.metadata?.transactionHash}`,
-					)
-					const { args, functionName } = decodeFunctionData({
-						abi: HandlerV1_ABI,
-						data: timeout.metadata!.calldata! as any,
-					})
-
-					expect(functionName).toBe("handlePostRequestTimeouts")
-
-					try {
-						const hash = await bscHandler.write.handlePostRequestTimeouts(args as any, {
-							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-							chain: bscTestnet,
-						})
-						await bscPublicClient.waitForTransactionReceipt({
-							hash,
-							confirmations: 1,
-						})
-
-						console.log(`Transaction timeout submitted: https://testnet.bscscan.com/tx/${hash}`)
-					} catch (e) {
-						console.error("Error self-relaying: ", e)
-					}
-
-					break
-				}
-				default:
-					console.log("Unknown timeout status")
-					break
-			}
-		}
-
-		const req = await indexer.queryRequestWithStatus(commitment.hash)
-		console.log("Full status", JSON.stringify(req, null, 4))
-
-		const hyperbridgeFinalizedStatus = req?.statuses.find(
-			(status) => status.status === TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
-		)
-		expect(hyperbridgeFinalizedStatus).toBeDefined()
-		expect(hyperbridgeFinalizedStatus?.metadata.calldata).toBeDefined()
-	}, 1200_000)
-
-	it.only("Should timeout if order deadline is reached", async () => {
-		const {
-			bscIntentGateway,
-			bscWalletClient,
-			bscPublicClient,
-			bscIsmpHost,
-			gnosisChiadoIsmpHost,
-			feeTokenBscAddress,
-			contractInteractionService,
-			gnosisChiadoIntentGateway,
 		} = await setUp()
 
 		const inputs: TokenInfo[] = [
@@ -412,56 +243,18 @@ describe("Basic", () => {
 
 		console.log("Order placed on BSC:", receipt.transactionHash)
 
-		let orderEvent = parseEventLogs({ abi: INTENT_GATEWAY_ABI, logs: receipt.logs })[0]
+		// Now cancel the order
 
-		if (orderEvent.eventName !== "OrderPlaced") {
-			throw new Error("Unexpected Event type")
-		}
-
-		let orderArgs = orderEvent.args as unknown as Order
-		orderArgs.sourceChain = hexToString(orderArgs.sourceChain as HexString)
-		orderArgs.destChain = hexToString(orderArgs.destChain as HexString)
-		orderArgs.id = orderCommitment(orderArgs)
-
-		console.log("Order Args:", orderArgs)
-
-		// Manually fill the GetRequest as we do in the cancelOrder function
-
-		let context = "0x".concat(
-			contractInteractionService.constructRedeemEscrowRequestBody(orderArgs, orderArgs.user).slice(4),
-		) as HexString
-
-		console.log("Context:", context)
-
-		let keys: HexString[] = []
-
-		let commitmentslotHash = keccak256(encodePacked(["bytes32", "uint256"], [orderArgs.id as HexString, 5n]))
-		const key = hexConcat([gnosisChiadoIntentGateway.address, commitmentslotHash]) as HexString
-
-		keys.push(key)
-
-		console.log("Keys:", keys)
-
-		const latestHeight = await contractInteractionService.getHostLatestStateMachineHeight(
+		const latestHeightDestChain = await contractInteractionService.getHostLatestStateMachineHeight(
 			hexToString(order.destChain),
 		)
 
-		console.log(`Latest height for ${order.destChain} chain:`, latestHeight)
-
-		const dispatchGet: DispatchGet = {
-			dest: order.destChain,
-			keys: keys,
-			timeout: 0n,
-			height: latestHeight,
-			fee: 1000000n,
-			context: context,
+		const cancelOptions = {
+			relayerFee: 1000000n,
+			height: latestHeightDestChain,
 		}
 
-		console.log("DispatchGet:", dispatchGet)
-
-		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
-
-		hash = await bscIsmpHost.write.dispatch([dispatchGet], {
+		hash = await bscIntentGateway.write.cancelOrder([order, cancelOptions], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
 		})
@@ -471,7 +264,86 @@ describe("Basic", () => {
 			confirmations: 1,
 		})
 
-		console.log("Get request dispatched on BSC:", receipt.transactionHash)
+		console.log("Order cancelled on BSC:", receipt.transactionHash)
+
+		// parse EvmHost GetRequestEvent emitted in the transcation logs
+		const event = parseEventLogs({ abi: EVM_HOST, logs: receipt.logs })[0]
+
+		if (event.eventName !== "GetRequestEvent") {
+			throw new Error("Unexpected Event type")
+		}
+
+		const request = event.args
+		console.log("GetRequestEvent", { request })
+		const commitment = getRequestCommitment({ ...request, keys: [...request.keys] })
+		console.log("Get Request Commitment: ", commitment)
+
+		for await (const status of indexer.getRequestStatusStream(commitment)) {
+			switch (status.status) {
+				case RequestStatus.SOURCE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
+					)
+					const { args, functionName } = decodeFunctionData({
+						abi: HandlerV1_ABI,
+						data: status.metadata.calldata,
+					})
+
+					expect(functionName).toBe("handleGetResponses")
+
+					try {
+						const hash = await bscHandler.write.handleGetResponses(args as any, {
+							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+							chain: bscTestnet,
+						})
+						await bscPublicClient.waitForTransactionReceipt({
+							hash,
+							confirmations: 1,
+						})
+
+						console.log(`Transaction submitted: https://testnet.bscscan.com/tx/${hash}`)
+
+						// Check for the EscrowRefunded event
+						const escrowRefundedEvent = parseEventLogs({ abi: INTENT_GATEWAY_ABI, logs: receipt.logs })[0]
+						if (escrowRefundedEvent.eventName !== "EscrowRefunded") {
+							throw new Error("Unexpected Event type")
+						}
+
+						expect(escrowRefundedEvent.args.commitment).toBe(
+							orderCommitment({
+								...order,
+								sourceChain: hexToString(order.sourceChain),
+								destChain: hexToString(order.destChain),
+							}),
+						)
+					} catch (e) {
+						console.error("Error self-relaying: ", e)
+					}
+
+					break
+				}
+				case RequestStatus.DESTINATION: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+			}
+		}
+
+		//
 	}, 1200_000)
 })
 
@@ -623,5 +495,3 @@ async function checkIfOrderFilled(
 		return false
 	}
 }
-
-function createOrder() {}

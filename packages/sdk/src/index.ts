@@ -2,6 +2,7 @@ export { IndexerClient } from "@/client"
 export { createQueryClient, queryGetRequest, queryPostRequest } from "@/query-client"
 export {
 	postRequestCommitment,
+	getRequestCommitment,
 	orderCommitment,
 	DUMMY_PRIVATE_KEY,
 	ADDRESS_ZERO,

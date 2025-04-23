@@ -374,6 +374,8 @@ export class ContractInteractionService {
 			[requestBody],
 		)
 
+		console.log("Encoded request body:", encodedRequestBody)
+
 		return hexConcat([requestKind, encodedRequestBody]) as HexString
 	}
 
@@ -395,7 +397,7 @@ export class ContractInteractionService {
 		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight()
 		const overlayRootSlot = getStateCommitmentFieldSlot(
 			BigInt(this.configService.getHyperbridgeChainId()),
-			latestStateMachineHeight,
+			latestStateMachineHeight, // Hyperbridge chain height
 			1, // For overlayRoot
 		)
 		const params = {
