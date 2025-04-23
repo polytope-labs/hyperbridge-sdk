@@ -181,7 +181,7 @@ describe("Basic", () => {
 		expect(isFilled).toBe(true)
 	}, 1_000_000)
 
-	it.only("Should timeout if the post request takes too long", async () => {
+	it("Should timeout if the post request after filling the order takes too long", async () => {
 		const {
 			bscIntentGateway,
 			bscWalletClient,
@@ -194,6 +194,7 @@ describe("Basic", () => {
 			bscHandler,
 			gnosisChiadoWalletClient,
 			feeTokenGnosisChiadoAddress,
+			gnosisChiadoIntentGateway,
 		} = await setUp()
 
 		// Stop the intent filler for this test, to make sure it doesn't make a post request as we do it manually
@@ -215,9 +216,9 @@ describe("Basic", () => {
 
 		const order = {
 			user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
-			sourceChain: await bscIsmpHost.read.host(),
-			destChain: await gnosisChiadoIsmpHost.read.host(),
-			deadline: 65337297n,
+			sourceChain: await gnosisChiadoIsmpHost.read.host(),
+			destChain: await bscIsmpHost.read.host(),
+			deadline: 50652661000n,
 			nonce: 0n,
 			fees: 1000000n,
 			outputs,
@@ -225,20 +226,25 @@ describe("Basic", () => {
 			callData: "0x" as HexString,
 		}
 
-		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
+		await approveTokens(
+			gnosisChiadoWalletClient,
+			gnosisChiadoPublicClient,
+			feeTokenGnosisChiadoAddress,
+			gnosisChiadoIntentGateway.address,
+		)
 
-		let hash = await bscIntentGateway.write.placeOrder([order], {
+		let hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: bscTestnet,
+			chain: gnosisChiado,
 			value: 100n,
 		})
 
-		let receipt = await bscPublicClient.waitForTransactionReceipt({
+		let receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
 			hash,
 			confirmations: 1,
 		})
 
-		console.log("Order placed on BSC:", receipt.transactionHash)
+		console.log("Order placed on Gnosis chain:", receipt.transactionHash)
 
 		// Once the order is placed, we must mimic the fill order on the destination chain by sending a post request
 		// from the destination chain to the source chain with the constructed RequestBody
@@ -248,26 +254,21 @@ describe("Basic", () => {
 
 		const dipatchPost: DispatchPost = {
 			dest: order.sourceChain,
-			to: bscIntentGateway.address,
+			to: gnosisChiadoIntentGateway.address,
 			body: requestBody,
 			timeout: 2n,
 			fee: 1000000n,
 			payer: privateKeyToAddress(process.env.PRIVATE_KEY as HexString),
 		}
 
-		await approveTokens(
-			gnosisChiadoWalletClient,
-			gnosisChiadoPublicClient,
-			feeTokenGnosisChiadoAddress,
-			gnosisChiadoIsmpHost.address,
-		)
+		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIsmpHost.address)
 
-		hash = await gnosisChiadoIsmpHost.write.dispatch([dipatchPost], {
+		hash = await bscIsmpHost.write.dispatch([dipatchPost], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: gnosisChiado,
+			chain: bscTestnet,
 		})
 
-		receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
+		receipt = await bscPublicClient.waitForTransactionReceipt({
 			hash,
 			confirmations: 1,
 		})
