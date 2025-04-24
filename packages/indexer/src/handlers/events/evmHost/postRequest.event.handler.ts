@@ -53,7 +53,8 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 		})}`,
 	)
 
-	const blockTimestamp = normalizeTimestamp(block.timestamp)
+	const normalizedTimestamp = normalizeTimestamp(block.timestamp)
+	const blockTimestamp = block.timestamp
 
 	// Create the request entity
 	await RequestService.createOrUpdate({
@@ -72,7 +73,7 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 		blockHash: block.hash,
 		transactionHash,
 		blockTimestamp,
-		createdAt: new Date(Number(blockTimestamp)),
+		createdAt: new Date(Number(normalizedTimestamp)),
 	})
 
 	// Always create a new status metadata entry
@@ -85,7 +86,7 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 		blockNumber: blockNumber.toString(),
 		blockHash: block.hash,
 		transactionHash,
-		createdAt: new Date(Number(blockTimestamp)),
+		createdAt: new Date(Number(normalizedTimestamp)),
 	})
 
 	await requestStatusMetadata.save()

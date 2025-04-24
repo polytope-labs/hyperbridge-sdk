@@ -57,7 +57,8 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		})}`,
 	)
 
-	const blockTimestamp = normalizeTimestamp(timestamp)
+	const normalizedTimestamp = normalizeTimestamp(timestamp)
+	const blockTimestamp = block.timestamp
 
 	await GetRequestService.createOrUpdate({
 		id: get_request_commitment,
@@ -87,7 +88,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		blockNumber: blockNumber.toString(),
 		blockHash: hash,
 		transactionHash,
-		createdAt: new Date(Number(blockTimestamp)),
+		createdAt: new Date(Number(normalizedTimestamp)),
 	})
 
 	await getRequestStatusMetadata.save()
