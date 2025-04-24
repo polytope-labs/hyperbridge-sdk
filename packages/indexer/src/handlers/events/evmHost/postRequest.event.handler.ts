@@ -66,7 +66,7 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 		nonce: BigInt(nonce.toString()),
 		source,
 		status: Status.SOURCE,
-		timeoutTimestamp: normalizeTimestamp(BigInt(timeoutTimestamp.toString())),
+		timeoutTimestamp: BigInt(timeoutTimestamp.toString()),
 		to,
 		blockNumber: blockNumber.toString(),
 		blockHash: block.hash,
