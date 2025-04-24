@@ -20,7 +20,6 @@ export interface IGetRequestArgs {
 	status?: Status
 	chain?: string
 	commitment?: string
-	createdAt?: Date
 }
 
 export interface IUpdateGetRequestStatusArgs {
