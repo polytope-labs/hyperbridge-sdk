@@ -43,15 +43,15 @@ export async function waitForChallengePeriod(chain: IChain, stateMachineHeight: 
 
 	// Get the state machine update time
 	const updateTime = await chain.stateMachineUpdateTime(stateMachineHeight)
+	// Check current timestamp
+	let currentTimestamp = await chain.timestamp()
+	// Calculate time passed since update
+	let timeElapsed = currentTimestamp - updateTime
+
+	if (timeElapsed > challengePeriod) return
 
 	// First sleep for the whole challenge period
 	await sleep(Number(challengePeriod) * 1000)
-
-	// Check current timestamp
-	let currentTimestamp = await chain.timestamp()
-
-	// Calculate time passed since update
-	let timeElapsed = currentTimestamp - updateTime
 
 	// Keep sleeping until challenge period has fully elapsed
 	while (timeElapsed <= challengePeriod) {
@@ -160,14 +160,14 @@ export function isValidUTF8(str: string): boolean {
  * @param post The post request to calculate the commitment hash for.
  * @returns The commitment hash and the encode packed data.
  */
-export function postRequestCommitment(post: IPostRequest): { hash: HexString; encodePacked: HexString } {
+export function postRequestCommitment(post: IPostRequest): { commitment: HexString; encodePacked: HexString } {
 	const data = encodePacked(
 		["bytes", "bytes", "uint64", "uint64", "bytes", "bytes", "bytes"],
 		[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
 	)
 
 	return {
-		hash: keccak256(data),
+		commitment: keccak256(data),
 		encodePacked: data,
 	}
 }

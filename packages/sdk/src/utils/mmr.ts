@@ -202,7 +202,7 @@ export function generateRootWithProof(
 	postRequest: IPostRequest,
 	treeSize: bigint,
 ): { root: HexString; proof: HexString[]; index: bigint; kIndex: bigint; treeSize: bigint; mmrSize: bigint } {
-	const { hash, encodePacked } = postRequestCommitment(postRequest)
+	const { commitment: hash, encodePacked } = postRequestCommitment(postRequest)
 
 	const result = JSON.parse(generate_root_with_proof(hexToBytes(encodePacked), treeSize))
 	const { root, proof, mmr_size, leaf_positions, keccak_hash_calldata } = result

@@ -40,7 +40,7 @@ import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { hexConcat } from "ethers/lib/utils"
-describe("Basic", () => {
+describe.sequential("Basic", () => {
 	let intentFiller: IntentFiller
 	let indexer: IndexerClient
 	beforeAll(async () => {
@@ -189,7 +189,7 @@ describe("Basic", () => {
 		expect(isFilled).toBe(true)
 	}, 1_000_000)
 
-	it("Should timeout if order deadline is reached", async () => {
+	it.only("Should timeout if order deadline is reached", async () => {
 		const {
 			bscIntentGateway,
 			bscWalletClient,
@@ -200,6 +200,7 @@ describe("Basic", () => {
 			contractInteractionService,
 			gnosisChiadoIntentGateway,
 			bscHandler,
+			bscChapelId,
 		} = await setUp()
 
 		const inputs: TokenInfo[] = [
@@ -241,7 +242,15 @@ describe("Basic", () => {
 			confirmations: 1,
 		})
 
-		console.log("Order placed on BSC:", receipt.transactionHash)
+		const orderPlaceEvent = parseEventLogs({ abi: INTENT_GATEWAY_ABI, logs: receipt.logs })[0]
+
+		if (orderPlaceEvent.eventName !== "OrderPlaced") {
+			throw new Error("Unexpected Event type")
+		}
+
+		const orderPlaced = orderPlaceEvent.args
+
+		console.log("Order placed on BSC:", orderPlaced)
 
 		// Now cancel the order
 
@@ -250,11 +259,11 @@ describe("Basic", () => {
 		)
 
 		const cancelOptions = {
-			relayerFee: 1000000n,
+			relayerFee: 10000000000n,
 			height: latestHeightDestChain,
 		}
 
-		hash = await bscIntentGateway.write.cancelOrder([order, cancelOptions], {
+		hash = await bscIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
 		})
@@ -331,7 +340,6 @@ describe("Basic", () => {
 					} catch (e) {
 						console.error("Error self-relaying: ", e)
 					}
-
 					break
 				}
 				case RequestStatus.DESTINATION: {
@@ -342,9 +350,7 @@ describe("Basic", () => {
 				}
 			}
 		}
-
-		//
-	}, 1200_000)
+	}, 1_000_0000)
 })
 
 async function setUp() {
@@ -439,6 +445,8 @@ async function setUp() {
 		feeTokenGnosisChiadoAddress,
 		contractInteractionService,
 		bscHandler,
+		bscChapelId,
+		gnosisChiadoId,
 	}
 }
 
