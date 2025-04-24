@@ -19,6 +19,7 @@ export interface ICreateRequestArgs {
 	blockHash: string
 	transactionHash: string
 	blockTimestamp: bigint
+	createdAt: Date
 }
 
 export interface IUpdateRequestStatusArgs {
@@ -160,6 +161,7 @@ export class RequestService {
 				blockTimestamp: 0n,
 				status,
 				transactionHash: "",
+				createdAt: new Date(Number(blockTimestamp)),
 			})
 
 			logger.info(

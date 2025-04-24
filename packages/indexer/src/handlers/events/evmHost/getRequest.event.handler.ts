@@ -3,6 +3,7 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { GetRequestService } from "@/services/getRequest.service"
 import { GetRequestStatusMetadata, Status } from "@/configs/src/types"
+import { normalizeTimestamp } from "@/utils/date.helpers"
 
 /**
  * Handles the GetRequest event from Evm Hosts
@@ -56,6 +57,8 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		})}`,
 	)
 
+	const blockTimestamp = normalizeTimestamp(timestamp)
+
 	await GetRequestService.createOrUpdate({
 		id: get_request_commitment,
 		source,
@@ -70,9 +73,10 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		transactionHash,
 		blockNumber: blockNumber.toString(),
 		blockHash: hash,
-		blockTimestamp: timestamp,
+		blockTimestamp,
 		status: Status.SOURCE,
 		chain,
+		createdAt: new Date(Number(blockTimestamp)),
 	})
 
 	const getRequestStatusMetadata = GetRequestStatusMetadata.create({
@@ -80,11 +84,11 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		requestId: get_request_commitment,
 		status: Status.SOURCE,
 		chain,
-		timestamp: timestamp,
+		timestamp: blockTimestamp,
 		blockNumber: blockNumber.toString(),
 		blockHash: hash,
 		transactionHash,
-		createdAt: new Date(Number(timestamp)),
+		createdAt: new Date(Number(blockTimestamp)),
 	})
 
 	await getRequestStatusMetadata.save()
