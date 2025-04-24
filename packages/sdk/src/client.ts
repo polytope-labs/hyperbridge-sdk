@@ -851,9 +851,10 @@ export class IndexerClient {
 		}
 
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
+		const timeoutStream =
+			request.timeoutTimestamp > 0 ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
 		const statusStream = this.getRequestStatusStreamInternal(hash)
-		const combined = mergeRace(timeoutStream, statusStream)
+		const combined = timeoutStream ? mergeRace(timeoutStream, statusStream) : statusStream
 
 		let item = await combined.next()
 		while (!item.done) {

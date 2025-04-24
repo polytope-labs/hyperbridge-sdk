@@ -3,8 +3,6 @@ import { ChainClientManager, ChainConfigService, ContractInteractionService } fr
 import { BasicFiller } from "@/strategies/basic"
 import {
 	ChainConfig,
-	DispatchPost,
-	DUMMY_PRIVATE_KEY,
 	FillerConfig,
 	HexString,
 	Order,
@@ -12,9 +10,6 @@ import {
 	TokenInfo,
 	IndexerClient,
 	createQueryClient,
-	postRequestCommitment,
-	TimeoutStatus,
-	DispatchGet,
 	getRequestCommitment,
 	RequestStatus,
 	orderCommitment,
@@ -189,7 +184,7 @@ describe.sequential("Basic", () => {
 		expect(isFilled).toBe(true)
 	}, 1_000_000)
 
-	it.only("Should timeout if order deadline is reached", async () => {
+	it("Should timeout if order deadline is reached", async () => {
 		const {
 			bscIntentGateway,
 			bscWalletClient,
@@ -317,7 +312,7 @@ describe.sequential("Basic", () => {
 							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 							chain: bscTestnet,
 						})
-						await bscPublicClient.waitForTransactionReceipt({
+						receipt = await bscPublicClient.waitForTransactionReceipt({
 							hash,
 							confirmations: 1,
 						})
@@ -332,9 +327,11 @@ describe.sequential("Basic", () => {
 
 						expect(escrowRefundedEvent.args.commitment).toBe(
 							orderCommitment({
-								...order,
-								sourceChain: hexToString(order.sourceChain),
-								destChain: hexToString(order.destChain),
+								...orderPlaced,
+								sourceChain: hexToString(orderPlaced.sourceChain),
+								destChain: hexToString(orderPlaced.destChain),
+								outputs: orderPlaced.outputs as PaymentInfo[],
+								inputs: orderPlaced.inputs as TokenInfo[],
 							}),
 						)
 					} catch (e) {
