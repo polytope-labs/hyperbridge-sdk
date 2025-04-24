@@ -76,7 +76,6 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		blockTimestamp,
 		status: Status.SOURCE,
 		chain,
-		createdAt: new Date(Number(blockTimestamp)),
 	})
 
 	const getRequestStatusMetadata = GetRequestStatusMetadata.create({
