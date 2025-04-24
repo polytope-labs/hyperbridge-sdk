@@ -202,13 +202,13 @@ export const PostRequest = Struct({
 	 */
 	to: Vector(u8),
 	/*
-	 * Encoded request body
-	 */
-	body: Vector(u8),
-	/*
 	 * Timestamp which this request expires in seconds.
 	 */
 	timeoutTimestamp: u64,
+	/*
+	 * Encoded request body
+	 */
+	body: Vector(u8),
 })
 
 export const PostResponse = Struct({
