@@ -170,12 +170,13 @@ describe.sequential("Basic", () => {
 		expect(isFilled).toBe(true)
 
 		console.log("Checking if order is filled at the source chain...")
-		await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
+		await new Promise((resolve) => setTimeout(resolve, 60 * 1000))
 
 		isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
 		let maxAttempts = 20
 		while (!isFilled && maxAttempts > 0) {
 			console.log("Order not filled at the source chain, retrying storage check in 30 seconds...")
+			console.log("Max storage checks left:", maxAttempts)
 			await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
 			isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
 			maxAttempts--
@@ -197,6 +198,9 @@ describe.sequential("Basic", () => {
 			bscHandler,
 			bscChapelId,
 		} = await setUp()
+
+		// Stop the filler as we do not need to fill this order.
+		intentFiller.stop()
 
 		const inputs: TokenInfo[] = [
 			{
@@ -341,7 +345,7 @@ describe.sequential("Basic", () => {
 				}
 				case RequestStatus.DESTINATION: {
 					console.log(
-						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+						`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
 					)
 					break
 				}

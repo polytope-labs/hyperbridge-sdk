@@ -383,7 +383,7 @@ describe.sequential("Get and Post Requests", () => {
 					}
 					case RequestStatus.DESTINATION: {
 						console.log(
-							`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+							`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
 						)
 						break
 					}
