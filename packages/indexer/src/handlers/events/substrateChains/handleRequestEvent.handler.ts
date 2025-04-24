@@ -28,13 +28,8 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 		})}`,
 	)
 
-	if (!isSubstrateChain(sourceId)) {
+	if (!isSubstrateChain(sourceId) || (!isHyperbridge(sourceId) && !isHyperbridge(hostId))) {
 		logger.error(`Skipping hyperbridge aggregated request`)
-		return
-	}
-
-	if (!isHyperbridge(sourceId) && !isHyperbridge(hostId)) {
-		logger.error(`Skipping request: Source ${sourceId} and Host ${hostId} are not Hyperbridge`)
 		return
 	}
 
