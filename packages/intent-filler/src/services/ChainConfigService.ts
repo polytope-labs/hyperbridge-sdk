@@ -1,18 +1,32 @@
 import { toHex } from "viem"
 import { ChainConfig, HexString } from "hyperbridge-sdk"
-import { addresses, assets, rpcUrls, chainIds, consensusStateIds, Chains, WrappedNativeDecimals } from "@/config/chain"
+import {
+	addresses,
+	assets,
+	chainIds,
+	consensusStateIds,
+	Chains,
+	WrappedNativeDecimals,
+	createRpcUrls,
+} from "@/config/chain"
 
 /**
  * Centralizes access to chain configuration
  */
 export class ChainConfigService {
+	private rpcUrls: Record<Chains, string>
+
+	constructor(env: NodeJS.ProcessEnv = process.env) {
+		this.rpcUrls = createRpcUrls(env)
+	}
+
 	/**
 	 * Gets the chain configuration for a given chain
 	 */
 	getChainConfig(chain: string): ChainConfig {
 		return {
 			chainId: chainIds[chain as keyof typeof chainIds],
-			rpcUrl: rpcUrls[chain as keyof typeof chainIds],
+			rpcUrl: this.rpcUrls[chain as Chains],
 			intentGatewayAddress: addresses.IntentGateway[chain as keyof typeof chainIds]!,
 		}
 	}
@@ -88,5 +102,12 @@ export class ChainConfigService {
 	 */
 	getHyperbridgeChainId(): number {
 		return chainIds[Chains.HYPERBRIDGE_GARGANTUA]
+	}
+
+	/**
+	 * Gets the RPC URL for a given chain
+	 */
+	getRpcUrl(chain: string): string {
+		return this.rpcUrls[chain as Chains]
 	}
 }

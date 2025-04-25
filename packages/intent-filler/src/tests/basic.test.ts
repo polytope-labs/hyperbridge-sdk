@@ -35,6 +35,7 @@ import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { hexConcat } from "ethers/lib/utils"
+import { Chains } from "@/config/chain"
 describe.sequential("Basic", () => {
 	let intentFiller: IntentFiller
 	let indexer: IndexerClient
@@ -183,6 +184,8 @@ describe.sequential("Basic", () => {
 		}
 
 		expect(isFilled).toBe(true)
+
+		intentFiller.stop()
 	}, 1_000_000)
 
 	it("Should timeout if order deadline is reached", async () => {
@@ -198,9 +201,6 @@ describe.sequential("Basic", () => {
 			bscHandler,
 			bscChapelId,
 		} = await setUp()
-
-		// Stop the filler as we do not need to fill this order.
-		intentFiller.stop()
 
 		const inputs: TokenInfo[] = [
 			{
@@ -448,6 +448,7 @@ async function setUp() {
 		bscHandler,
 		bscChapelId,
 		gnosisChiadoId,
+		chainConfigService,
 	}
 }
 

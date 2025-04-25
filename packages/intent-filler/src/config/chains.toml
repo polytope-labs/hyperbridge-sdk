@@ -1,0 +1,44 @@
+[chains.bsc-chapel]
+type = "evm"
+chainId = 97
+stateMachineId = "EVM-97"
+wrappedNativeDecimals = 18
+rpcUrl = "BSC_CHAPEL"
+consensusStateId = "BSC0"
+
+[chains.bsc-chapel.assets]
+WETH = "0xb8c77482e45f1f44de1745f52c74426c631bdd52"
+DAI = "0x0000000000000000000000000000000000000000"
+
+[chains.bsc-chapel.addresses]
+UniswapV2Router = "0x0000000000000000000000000000000000000000"
+Handler = "0x4638945E120846366cB7Abc08DB9c0766E3a663F"
+IntentGateway = "0xb6C27F4beF379d0b5e2fe3Bb36c248D6B71f91A6"
+Host = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7"
+FeeToken = "0xA801da100bF16D07F668F4A49E1f71fc54D05177"
+
+[chains.gnosis-chiado]
+type = "evm"
+chainId = 10200
+stateMachineId = "EVM-10200"
+wrappedNativeDecimals = 18
+rpcUrl = "GNOSIS_CHIADO"
+consensusStateId = "GNO0"
+
+[chains.gnosis-chiado.assets]
+WETH = "0x0000000000000000000000000000000000000000"
+DAI = "0x0000000000000000000000000000000000000000"
+
+[chains.gnosis-chiado.addresses]
+UniswapV2Router = "0x0000000000000000000000000000000000000000"
+Handler = "0x4638945E120846366cB7Abc08DB9c0766E3a663F"
+IntentGateway = "0xb6C27F4beF379d0b5e2fe3Bb36c248D6B71f91A6"
+Host = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb"
+FeeToken = "0xA801da100bF16D07F668F4A49E1f71fc54D05177"
+
+[chains.hyperbridge-gargantua]
+type = "substrate"
+chainId = 4009
+stateMachineId = "KUSAMA-4009"
+rpcUrl = "HYPERBRIDGE_GARGANTUA"
+consensusStateId = "PAS0" 

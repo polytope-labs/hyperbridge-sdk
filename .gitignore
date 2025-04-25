@@ -20,6 +20,7 @@ packages/indexer/docker/testnet/
 packages/indexer/docker/mainnet/
 .claude/
 
+packages/intent-filler/src/config/chain.ts
 # Compiled Java class files
 *.class
 

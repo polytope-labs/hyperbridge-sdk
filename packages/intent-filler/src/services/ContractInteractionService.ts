@@ -23,7 +23,7 @@ import { hexConcat } from "ethers/lib/utils"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
-
+import { Chains } from "@/config/chain"
 /**
  * Handles contract interactions for tokens and other contracts
  */
@@ -374,8 +374,6 @@ export class ContractInteractionService {
 			[requestBody],
 		)
 
-		console.log("Encoded request body:", encodedRequestBody)
-
 		return hexConcat([requestKind, encodedRequestBody]) as HexString
 	}
 
@@ -464,7 +462,7 @@ export class ContractInteractionService {
 	async getHostLatestStateMachineHeight(chain?: string): Promise<bigint> {
 		if (!this.api) {
 			this.api = await ApiPromise.create({
-				provider: new WsProvider(process.env.HYPERBRIDGE_GARGANTUA),
+				provider: new WsProvider(this.configService.getRpcUrl(Chains.HYPERBRIDGE_GARGANTUA)),
 				typesBundle: {
 					spec: {
 						gargantua: {
