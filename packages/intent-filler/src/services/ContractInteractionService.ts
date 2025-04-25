@@ -11,6 +11,7 @@ import {
 	IPostRequest,
 	bytes20ToBytes32,
 	bytes32ToBytes20,
+	HostParams,
 } from "hyperbridge-sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -157,7 +158,7 @@ export class ContractInteractionService {
 		}
 
 		// Approve each token
-		for (const tokenAddress of [...uniqueTokens, this.configService.getFeeTokenAddress(order.destChain)]) {
+		for (const tokenAddress of [...uniqueTokens, (await this.getHostParams(order.destChain)).feeToken]) {
 			const currentAllowance = await destClient.readContract({
 				abi: ERC20_ABI,
 				address: tokenAddress as HexString,
@@ -408,7 +409,7 @@ export class ContractInteractionService {
 		}
 
 		const gas = await sourceClient.estimateContractGas({
-			address: this.configService.getHandlerAddress(order.sourceChain),
+			address: (await this.getHostParams(order.sourceChain)).handler,
 			abi: HandlerV1_ABI,
 			functionName: "handlePostRequests",
 			args: [
@@ -491,5 +492,18 @@ export class ContractInteractionService {
 		latestHeight = await this.api.query.system.number()
 
 		return BigInt(latestHeight.toString())
+	}
+
+	/**
+	 * Gets the host params for a given chain
+	 */
+	async getHostParams(chain: string): Promise<HostParams> {
+		const client = this.clientManager.getPublicClient(chain)
+		const hostParams = await client.readContract({
+			abi: EVM_HOST,
+			address: this.configService.getHostAddress(chain),
+			functionName: "hostParams",
+		})
+		return hostParams
 	}
 }

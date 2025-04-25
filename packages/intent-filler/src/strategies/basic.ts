@@ -121,12 +121,10 @@ export class BasicFiller implements FillerStrategy {
 
 			const tx = await walletClient.writeContract(request)
 
-			// Wait for 10 seconds
-			await new Promise((resolve) => setTimeout(resolve, 10000))
-			const receipt = await destClient.getTransactionReceipt({ hash: tx })
-
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
+
+			const receipt = await destClient.waitForTransactionReceipt({ hash: tx })
 
 			return {
 				success: true,

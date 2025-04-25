@@ -16,7 +16,10 @@ const chainsEnum = Object.keys(config.chains)
 	.join(",\n")
 
 const chainIds = Object.entries(config.chains)
-	.map(([chain, data]) => `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: ${data.chainId}`)
+	.map(([chain, data]) => {
+		const chainId = parseInt(data.stateMachineId.split("-")[1])
+		return `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: ${chainId}`
+	})
 	.join(",\n")
 
 const chainNameMap = {
@@ -28,7 +31,8 @@ const viemChains = Object.entries(config.chains)
 	.filter(([_, data]) => data.type === "evm")
 	.map(([chain, data]) => {
 		const chainType = chain.split("-")[0]
-		return `\t"${data.chainId}": ${chainNameMap[chainType]}`
+		const chainId = parseInt(data.stateMachineId.split("-")[1])
+		return `\t"${chainId}": ${chainNameMap[chainType]}`
 	})
 	.join(",\n")
 
@@ -70,7 +74,13 @@ const addresses = Object.entries(addressesByContract)
 	.join(",\n")
 
 const rpcUrls = Object.entries(config.chains)
-	.map(([chain, data]) => `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: env.${data.rpcUrl} || ""`)
+	.map(([chain, data]) => {
+		const chainEnum = `Chains.${chain.toUpperCase().replace(/-/g, "_")}`
+		if (typeof data.rpcUrl === "object") {
+			return `\t[${chainEnum}]: env.${data.rpcUrl.env} || "${data.rpcUrl.url}"`
+		}
+		return `\t[${chainEnum}]: env.${data.rpcUrl} || ""`
+	})
 	.join(",\n")
 
 const consensusStateIds = Object.entries(config.chains)

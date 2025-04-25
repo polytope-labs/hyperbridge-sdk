@@ -863,3 +863,69 @@ export interface StateMachineHeight {
 	}
 	height: bigint
 }
+
+/**
+ * The EvmHost protocol parameters
+ */
+export interface HostParams {
+	/**
+	 * The default timeout in seconds for messages. If messages are dispatched
+	 * with a timeout value lower than this this value will be used instead
+	 */
+	defaultTimeout: bigint
+	/**
+	 * The default per byte fee
+	 */
+	perByteFee: bigint
+	/**
+	 * The cost for applications to access the hyperbridge state commitment.
+	 * They might do so because the hyperbridge state contains the verified state commitments
+	 * for all chains and they want to directly read the state of these chains state bypassing
+	 * the ISMP protocol entirely.
+	 */
+	stateCommitmentFee: bigint
+	/**
+	 * The fee token contract address. This will typically be DAI.
+	 * but we allow it to be configurable to prevent future regrets.
+	 */
+	feeToken: HexString
+	/**
+	 * The admin account, this only has the rights to freeze, or unfreeze the bridge
+	 */
+	admin: HexString
+	/**
+	 * Ismp message handler contract. This performs all verification logic
+	 * needed to validate cross-chain messages before they are dispatched to local modules
+	 */
+	handler: HexString
+	/**
+	 * The authorized host manager contract, is itself an `IIsmpModule`
+	 * which receives governance requests from the Hyperbridge chain to either
+	 * withdraw revenue from the host or update its protocol parameters
+	 */
+	hostManager: HexString
+	/**
+	 * The local UniswapV2Router02 contract, used for swapping the native token to the feeToken.
+	 */
+	uniswapV2: HexString
+	/**
+	 * The unstaking period of Polkadot's validators. In order to prevent long-range attacks
+	 */
+	unStakingPeriod: bigint
+	/**
+	 * Minimum challenge period for state commitments in seconds
+	 */
+	challengePeriod: bigint
+	/**
+	 * The consensus client contract which handles consensus proof verification
+	 */
+	consensusClient: HexString
+	/**
+	 * State machines whose state commitments are accepted
+	 */
+	readonly stateMachines: readonly bigint[]
+	/**
+	 * The state machine identifier for hyperbridge
+	 */
+	hyperbridge: HexString
+}

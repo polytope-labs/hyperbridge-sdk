@@ -34,8 +34,6 @@ import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
-import { hexConcat } from "ethers/lib/utils"
-import { Chains } from "@/config/chain"
 describe.sequential("Basic", () => {
 	let intentFiller: IntentFiller
 	let indexer: IndexerClient
@@ -394,8 +392,8 @@ async function setUp() {
 	const bscPublicClient = chainClientManager.getPublicClient(bscChapelId)
 	const gnosisChiadoPublicClient = chainClientManager.getPublicClient(gnosisChiadoId)
 	const intentGatewayAddress = chainConfigService.getChainConfig(bscChapelId).intentGatewayAddress
-	const feeTokenBscAddress = chainConfigService.getFeeTokenAddress(bscChapelId)
-	const feeTokenGnosisChiadoAddress = chainConfigService.getFeeTokenAddress(bscChapelId)
+	const feeTokenBscAddress = (await contractInteractionService.getHostParams(bscChapelId)).feeToken
+	const feeTokenGnosisChiadoAddress = (await contractInteractionService.getHostParams(gnosisChiadoId)).feeToken
 	const bscIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
 	const gnosisChiadoIsmpHostAddress = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb" as HexString
 	const bscHandlerAddress = "0x4638945E120846366cB7Abc08DB9c0766E3a663F" as HexString
