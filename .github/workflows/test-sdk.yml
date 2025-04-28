@@ -11,14 +11,14 @@ on:
         paths:
             - "packages/sdk/**"
             - "packages/indexer/**"
-            - "packages/intent-filler/**"
+            - "packages/filler/**"
             - ".github/workflows/test-sdk.yml"
     pull_request:
         branches: [main]
         paths:
             - "packages/sdk/**"
             - "packages/indexer/**"
-            - "packages/intent-filler/**"
+            - "packages/filler/**"
             - ".github/workflows/test-sdk.yml"
     workflow_dispatch:
 
@@ -105,7 +105,7 @@ jobs:
               run: pnpm --filter="hyperbridge-sdk" test
 
             - name: Run Intent Filler tests
-              run: pnpm --filter="intent-filler" test
+              run: pnpm --filter="filler" test
 
             - name: Clean up
               if: always()

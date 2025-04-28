@@ -1,7 +1,7 @@
 {
-	"name": "@hyperbridge/intent-filler",
+	"name": "@hyperbridge/filler",
 	"version": "0.1.0",
-	"description": "Intent filler package for HyperBridge",
+	"description": "Intent filler package for hyperbridge",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
