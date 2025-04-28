@@ -44,7 +44,6 @@ export class EventMonitor extends EventEmitter {
 					address: addresses.IntentGateway[`EVM-${chainId}` as keyof typeof addresses.IntentGateway],
 					event: orderPlacedEvent,
 					onLogs: (logs) => {
-						console.log("Received logs:", logs)
 						for (const log of logs) {
 							try {
 								const decodedLog = log as unknown as DecodedOrderPlacedLog

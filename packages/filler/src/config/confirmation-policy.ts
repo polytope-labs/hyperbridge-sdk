@@ -1,19 +1,35 @@
 export class ConfirmationPolicy {
-	// Maps chainId -> amount threshold -> confirmation blocks
-	private policies: Map<number, Map<bigint, number>>
+	// Maps chainId -> policy configuration
+	private policies: Map<
+		number,
+		{
+			minAmount: bigint
+			maxAmount: bigint
+			minConfirmations: number
+			maxConfirmations: number
+		}
+	>
 
-	constructor(policyConfig: Record<string, Record<string, number>>) {
+	constructor(
+		policyConfig: Record<
+			string,
+			{
+				minAmount: string
+				maxAmount: string
+				minConfirmations: number
+				maxConfirmations: number
+			}
+		>,
+	) {
 		this.policies = new Map()
 
-		// Convert the config to maps for efficient lookup
-		Object.entries(policyConfig).forEach(([chainId, thresholds]) => {
-			const thresholdMap = new Map()
-
-			Object.entries(thresholds).forEach(([amount, blocks]) => {
-				thresholdMap.set(BigInt(amount), blocks)
+		Object.entries(policyConfig).forEach(([chainId, config]) => {
+			this.policies.set(Number(chainId), {
+				minAmount: BigInt(config.minAmount),
+				maxAmount: BigInt(config.maxAmount),
+				minConfirmations: config.minConfirmations,
+				maxConfirmations: config.maxConfirmations,
 			})
-
-			this.policies.set(Number(chainId), thresholdMap)
 		})
 	}
 
@@ -21,16 +37,21 @@ export class ConfirmationPolicy {
 		const chainPolicy = this.policies.get(chainId)
 		if (!chainPolicy) return this.getDefaultConfirmations(chainId)
 
-		// Find the highest threshold that is less than or equal to the amount
-		let confirmations = 1 // Default
-
-		for (const [threshold, blocks] of chainPolicy.entries()) {
-			if (amount <= threshold && blocks > confirmations) {
-				confirmations = blocks
-			}
+		if (amount <= chainPolicy.minAmount) {
+			return chainPolicy.minConfirmations
 		}
 
-		return confirmations
+		if (amount >= chainPolicy.maxAmount) {
+			return chainPolicy.maxConfirmations
+		}
+
+		const amountRange = chainPolicy.maxAmount - chainPolicy.minAmount
+		const confirmationRange = BigInt(chainPolicy.maxConfirmations - chainPolicy.minConfirmations)
+		const amountPosition = amount - chainPolicy.minAmount
+
+		const confirmationPosition = (amountPosition * confirmationRange) / amountRange
+
+		return chainPolicy.minConfirmations + Number(confirmationPosition)
 	}
 
 	private getDefaultConfirmations(chainId: number): number {

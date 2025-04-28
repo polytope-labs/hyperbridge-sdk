@@ -68,16 +68,27 @@ export class IntentFiller {
 			try {
 				const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
 				const orderValue = await this.calculateOrderValue(order, sourceClient)
+				let currentConfirmations = await sourceClient.getTransactionConfirmations({
+					hash: order.transactionHash!,
+				})
 				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 					chainIds[order.sourceChain as keyof typeof chainIds],
 					orderValue,
 				)
+				console.log(
+					`For order ${order.id}, required confirmations: ${requiredConfirmations}, 
+					current confirmations: ${currentConfirmations}`,
+				)
 
-				// Wait for the required number of confirmations
-				await sourceClient.waitForTransactionReceipt({
-					hash: order.transactionHash!,
-					confirmations: requiredConfirmations,
-				})
+				while (currentConfirmations < requiredConfirmations) {
+					await new Promise((resolve) => setTimeout(resolve, 300)) // Wait 300ms
+					currentConfirmations = await sourceClient.getTransactionConfirmations({
+						hash: order.transactionHash!,
+					})
+					console.log(`Order ${order.id} current confirmations: ${currentConfirmations}`)
+				}
+
+				console.log(`Order ${order.id} confirmed on source chain: ${currentConfirmations}`)
 
 				this.evaluateAndExecuteOrder(order)
 			} catch (error) {

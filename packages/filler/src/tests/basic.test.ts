@@ -28,8 +28,8 @@ import {
 	WalletClient,
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
-import { bscTestnet, gnosisChiado } from "viem/chains"
+import { privateKeyToAccount } from "viem/accounts"
+import { bscTestnet } from "viem/chains"
 import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
@@ -121,7 +121,6 @@ describe.sequential("Basic", () => {
 			}
 
 			eventMonitor.on("newOrder", (data: { order: Order }) => {
-				console.log("Order detected by event monitor:", data.order.id)
 				resolve(data.order)
 			})
 		})
@@ -364,8 +363,18 @@ async function setUp() {
 	let strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
 
 	const confirmationPolicy = new ConfirmationPolicy({
-		"97": { "1000000000000000000": 1 },
-		"10200": { "1000000000000000000": 1 },
+		"97": {
+			minAmount: "1000000000000000000", // 1 token
+			maxAmount: "1000000000000000000000", // 1000 tokens
+			minConfirmations: 1,
+			maxConfirmations: 5,
+		},
+		"10200": {
+			minAmount: "1000000000000000000", // 1 token
+			maxAmount: "1000000000000000000000", // 1000 tokens
+			minConfirmations: 1,
+			maxConfirmations: 5,
+		},
 	})
 
 	const fillerConfig: FillerConfig = {
