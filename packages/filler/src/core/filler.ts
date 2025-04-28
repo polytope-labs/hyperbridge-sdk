@@ -15,8 +15,6 @@ export class IntentFiller {
 	private configService: ChainConfigService
 	private chainClientManager: ChainClientManager
 	private contractService: ContractInteractionService
-	private pendingOrders: Map<string, NodeJS.Timeout> = new Map()
-	private orderRecheckCount: Map<string, number> = new Map()
 	private config: FillerConfig
 
 	constructor(chainConfigs: ChainConfig[], strategies: FillerStrategy[], config: FillerConfig) {
@@ -29,7 +27,6 @@ export class IntentFiller {
 		this.chainQueues = new Map()
 		chainConfigs.forEach((chainConfig) => {
 			// 1 order per chain at a time due to EVM constraints
-
 			this.chainQueues.set(chainConfig.chainId, new pQueue({ concurrency: 1 }))
 		})
 
@@ -50,13 +47,6 @@ export class IntentFiller {
 	public stop(): void {
 		this.monitor.stopListening()
 
-		// Clear all pending order timeouts
-		this.pendingOrders.forEach((timeout) => clearTimeout(timeout))
-		this.pendingOrders.clear()
-
-		// Clear recheck counts
-		this.orderRecheckCount.clear()
-
 		// Wait for all queues to complete
 		const promises = []
 		this.chainQueues.forEach((queue) => {
@@ -76,52 +66,24 @@ export class IntentFiller {
 		// This can happen in parallel for PublicClient orders
 		this.globalQueue.add(async () => {
 			try {
-				// Check if the order has enough confirmations
-				const hasEnoughConfirmations = await this.checkConfirmations(order)
+				const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
+				const orderValue = await this.calculateOrderValue(order, sourceClient)
+				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
+					chainIds[order.sourceChain as keyof typeof chainIds],
+					orderValue,
+				)
 
-				if (!hasEnoughConfirmations) {
-					// If not enough confirmations, add to pending queue with a delay
-					this.addToPendingQueue(order)
-					return
-				}
+				// Wait for the required number of confirmations
+				await sourceClient.waitForTransactionReceipt({
+					hash: order.transactionHash!,
+					confirmations: requiredConfirmations,
+				})
 
-				// If we have enough confirmations, proceed with strategy evaluation
 				this.evaluateAndExecuteOrder(order)
 			} catch (error) {
 				console.error(`Error processing order ${order.id}:`, error)
 			}
 		})
-	}
-
-	private async checkConfirmations(order: Order): Promise<boolean> {
-		try {
-			const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
-			const orderValue = await this.calculateOrderValue(order, sourceClient)
-			const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
-				chainIds[order.sourceChain as keyof typeof chainIds],
-				orderValue,
-			)
-
-			const sourceReceipt = await sourceClient.getTransactionReceipt({ hash: order.transactionHash! })
-			const sourceConfirmations = await sourceClient.getTransactionConfirmations({
-				transactionReceipt: sourceReceipt,
-			})
-
-			console.log("sourceConfirmations", sourceConfirmations)
-			console.log("requiredConfirmations", requiredConfirmations)
-
-			if (sourceConfirmations < requiredConfirmations) {
-				console.debug(
-					`Insufficient confirmations for order ${order.id}, ${sourceConfirmations} confirmations, ${requiredConfirmations} required`,
-				)
-				return false
-			}
-
-			return true
-		} catch (error) {
-			console.error(`Error checking confirmations for order ${order.id}:`, error)
-			return false
-		}
 	}
 
 	private async calculateOrderValue(order: Order, client: PublicClient): Promise<bigint> {
@@ -140,51 +102,6 @@ export class IntentFiller {
 		}
 
 		return totalUSDValue
-	}
-
-	private addToPendingQueue(order: Order): void {
-		if (this.pendingOrders.has(order.id!)) {
-			clearTimeout(this.pendingOrders.get(order.id!)!)
-			this.pendingOrders.delete(order.id!)
-		}
-
-		const currentRecheckCount = this.orderRecheckCount.get(order.id!) || 0
-		const maxRechecks = this.config.pendingQueueConfig?.maxRechecks || 10
-
-		// If we've exceeded the maximum number of rechecks, give up
-		if (currentRecheckCount >= maxRechecks) {
-			console.log(`Order ${order.id} has exceeded maximum recheck attempts (${maxRechecks}), giving up`)
-			this.orderRecheckCount.delete(order.id!)
-			return
-		}
-
-		this.orderRecheckCount.set(order.id!, currentRecheckCount + 1)
-
-		// Get the configured delay or use default
-		const recheckDelayMs = this.config.pendingQueueConfig?.recheckDelayMs || 30000
-
-		// Set a timeout to recheck the order after a delay
-		const timeout = setTimeout(async () => {
-			console.log(
-				`Rechecking order ${order.id} for confirmations (attempt ${currentRecheckCount + 1}/${maxRechecks})`,
-			)
-
-			// Check confirmations again
-			const hasEnoughConfirmations = await this.checkConfirmations(order)
-
-			if (hasEnoughConfirmations) {
-				// If we now have enough confirmations, evaluate, execute and clear the maps
-				this.evaluateAndExecuteOrder(order)
-				this.orderRecheckCount.delete(order.id!)
-				this.pendingOrders.delete(order.id!)
-			} else {
-				// If still not enough confirmations, add back to pending queue
-				this.addToPendingQueue(order)
-			}
-		}, recheckDelayMs)
-
-		this.pendingOrders.set(order.id!, timeout)
-		console.log(`Added order ${order.id} to pending queue for confirmation check`)
 	}
 
 	private evaluateAndExecuteOrder(order: Order): void {
