@@ -1,4 +1,4 @@
-import { getContract, maxUint256, PublicClient, toHex, encodePacked, encodeAbiParameters, keccak256 } from "viem"
+import { getContract, maxUint256, toHex, encodePacked, keccak256 } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -7,20 +7,17 @@ import {
 	HexString,
 	FillOptions,
 	DispatchPost,
-	RequestKind,
-	IPostRequest,
-	bytes20ToBytes32,
 	bytes32ToBytes20,
 	HostParams,
+	estimateGasForPost,
+	constructRedeemEscrowRequestBody,
 } from "hyperbridge-sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
 import { ChainConfigService } from "./ChainConfigService"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { EVM_HOST } from "@/config/abis/EvmHost"
-import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
-import { generateRootWithProof, orderCommitment, getStateCommitmentFieldSlot } from "hyperbridge-sdk"
-import { hexConcat } from "ethers/lib/utils"
+import { orderCommitment } from "hyperbridge-sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
@@ -226,21 +223,6 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Transforms the post request object to match the contract's expected format
-	 */
-	transformPostRequestForContract(postRequest: IPostRequest) {
-		return {
-			source: toHex(postRequest.source),
-			dest: toHex(postRequest.dest),
-			nonce: postRequest.nonce,
-			from: postRequest.from,
-			to: postRequest.to,
-			timeoutTimestamp: postRequest.timeoutTimestamp,
-			body: postRequest.body,
-		}
-	}
-
-	/**
 	 * Checks if an order is already filled by querying contract storage
 	 */
 	async checkIfOrderFilled(order: Order): Promise<boolean> {
@@ -270,8 +252,18 @@ export class ContractInteractionService {
 	 */
 	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint }> {
 		try {
-			const destClient = this.clientManager.getPublicClient(order.destChain)
-			const postGasEstimate = await this.estimateGasForPost(order)
+			const { sourceClient, destClient } = this.clientManager.getClientsForOrder(order)
+			const postGasEstimate = await estimateGasForPost({
+				order: order,
+				sourceClient: sourceClient as any,
+				hostNonce: await this.getHostNonce(order.sourceChain),
+				hostLatestStateMachineHeight: await this.getHostLatestStateMachineHeight(),
+				from: this.configService.getIntentGatewayAddress(order.sourceChain),
+				to: this.configService.getIntentGatewayAddress(order.destChain),
+				walletAddress: privateKeyToAddress(this.privateKey),
+				handler: (await this.getHostParams(order.sourceChain)).handler,
+				hostAddress: this.configService.getHostAddress(order.sourceChain),
+			})
 			const fillOptions: FillOptions = {
 				relayerFee: postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100),
 			}
@@ -315,7 +307,7 @@ export class ContractInteractionService {
 	async getProtocolFeeUSD(order: Order, relayerFee: bigint): Promise<bigint> {
 		const destClient = this.clientManager.getPublicClient(order.destChain)
 		const intentFillerAddr = privateKeyToAddress(this.privateKey)
-		const requestBody = this.constructRedeemEscrowRequestBody(order)
+		const requestBody = constructRedeemEscrowRequestBody(order, intentFillerAddr)
 
 		const dispatchPost: DispatchPost = {
 			dest: toHex(order.sourceChain),
@@ -334,113 +326,6 @@ export class ContractInteractionService {
 		})
 
 		return protocolFeeEth
-	}
-
-	/**
-	 * Constructs the redeem escrow request body
-	 */
-	constructRedeemEscrowRequestBody(order: Order, beneficiary?: HexString): HexString {
-		const wallet = bytes20ToBytes32(privateKeyToAddress(this.privateKey))
-		const commitment = order.id as HexString
-		const inputs = order.inputs
-
-		// RequestKind.RedeemEscrow is 0 as defined in the contract
-		const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
-
-		const requestBody = {
-			commitment: commitment as HexString,
-			beneficiary: beneficiary ?? wallet,
-			tokens: inputs,
-		}
-
-		const encodedRequestBody = encodeAbiParameters(
-			[
-				{
-					name: "requestBody",
-					type: "tuple",
-					components: [
-						{ name: "commitment", type: "bytes32" },
-						{ name: "beneficiary", type: "bytes32" },
-						{
-							name: "tokens",
-							type: "tuple[]",
-							components: [
-								{ name: "token", type: "bytes32" },
-								{ name: "amount", type: "uint256" },
-							],
-						},
-					],
-				},
-			],
-			[requestBody],
-		)
-
-		return hexConcat([requestKind, encodedRequestBody]) as HexString
-	}
-
-	/**
-	 * Estimates gas for handling POST requests in the source chain
-	 */
-	async estimateGasForPost(order: Order): Promise<bigint> {
-		const { sourceClient, destClient } = this.clientManager.getClientsForOrder(order)
-		const postRequest: IPostRequest = {
-			source: order.destChain,
-			dest: order.sourceChain,
-			body: this.constructRedeemEscrowRequestBody(order),
-			timeoutTimestamp: 0n,
-			nonce: await this.getHostNonce(order.destChain),
-			from: this.configService.getIntentGatewayAddress(order.destChain),
-			to: this.configService.getIntentGatewayAddress(order.sourceChain),
-		}
-		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 2n ** 10n)
-		const latestStateMachineHeight = await this.getHostLatestStateMachineHeight()
-		const overlayRootSlot = getStateCommitmentFieldSlot(
-			BigInt(this.configService.getHyperbridgeChainId()),
-			latestStateMachineHeight, // Hyperbridge chain height
-			1, // For overlayRoot
-		)
-		const params = {
-			height: {
-				stateMachineId: BigInt(this.configService.getHyperbridgeChainId()),
-				height: latestStateMachineHeight,
-			},
-			multiproof: proof,
-			leafCount: treeSize,
-		}
-
-		const gas = await sourceClient.estimateContractGas({
-			address: (await this.getHostParams(order.sourceChain)).handler,
-			abi: HandlerV1_ABI,
-			functionName: "handlePostRequests",
-			args: [
-				this.configService.getHostAddress(order.sourceChain),
-				{
-					proof: params,
-					requests: [
-						{
-							request: this.transformPostRequestForContract(postRequest),
-							index,
-							kIndex,
-						},
-					],
-				},
-			],
-			stateOverride: [
-				{
-					address: this.configService.getHostAddress(order.sourceChain),
-					stateDiff: [
-						{
-							slot: overlayRootSlot,
-							value: root,
-						},
-					],
-				},
-			],
-		})
-
-		console.log(`Gas estimate for post ${order.id} on ${order.sourceChain} is ${gas}`)
-
-		return gas
 	}
 
 	/**

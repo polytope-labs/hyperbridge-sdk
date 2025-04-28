@@ -5,12 +5,24 @@ import {
 	RequestStatus,
 	TimeoutStatus,
 	type StateMachineHeight,
+	RequestKind,
 } from "@/types"
 import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
-import { encodePacked, keccak256, toHex, encodeAbiParameters, hexToBytes, bytesToHex } from "viem"
+import {
+	encodePacked,
+	keccak256,
+	toHex,
+	encodeAbiParameters,
+	hexToBytes,
+	bytesToHex,
+	PublicClient,
+	concatHex,
+} from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
-import type { IChain } from "./chain"
+import { getStateCommitmentFieldSlot, type IChain } from "./chain"
+import { generateRootWithProof } from "./utils"
+import handler from "./abis/handler"
 
 export * from "./utils/mmr"
 export * from "./utils/substrate"
@@ -351,4 +363,140 @@ export const COMBINED_STATUS_WEIGHTS: Record<RequestStatusKey | TimeoutStatusKey
 	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 7,
 	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
 	[TimeoutStatus.TIMED_OUT]: 9,
+}
+
+/**
+ * Estimates the gas required for a post request transaction on the source chain.
+ * This function constructs a post request, generates mock proofs, and estimates
+ * the gas cost for executing the transaction on the source chain.
+ */
+export async function estimateGasForPost(params: {
+	order: Order
+	sourceClient: PublicClient
+	hostNonce: bigint
+	hostLatestStateMachineHeight: bigint
+	from: HexString
+	to: HexString
+	handler: HexString
+	hostAddress: HexString
+	walletAddress: HexString
+}): Promise<bigint> {
+	const postRequest: IPostRequest = {
+		source: params.order.destChain,
+		dest: params.order.sourceChain,
+		body: constructRedeemEscrowRequestBody(params.order, params.walletAddress),
+		timeoutTimestamp: 0n,
+		nonce: params.hostNonce,
+		from: params.from,
+		to: params.to,
+	}
+	const { root, proof, index, kIndex, treeSize } = generateRootWithProof(postRequest, 2n ** 10n)
+	const latestStateMachineHeight = params.hostLatestStateMachineHeight
+	const overlayRootSlot = getStateCommitmentFieldSlot(
+		BigInt(4009n), // Hyperbridge chain id
+		latestStateMachineHeight, // Hyperbridge chain height
+		1, // For overlayRoot
+	)
+	const postParams = {
+		height: {
+			stateMachineId: BigInt(4009n),
+			height: latestStateMachineHeight,
+		},
+		multiproof: proof,
+		leafCount: treeSize,
+	}
+
+	const gas = await params.sourceClient.estimateContractGas({
+		address: params.handler,
+		abi: handler.ABI,
+		functionName: "handlePostRequests",
+		args: [
+			params.hostAddress,
+			{
+				proof: postParams,
+				requests: [
+					{
+						request: transformPostRequestForContract(postRequest),
+						index,
+						kIndex,
+					},
+				],
+			},
+		],
+		stateOverride: [
+			{
+				address: params.hostAddress,
+				stateDiff: [
+					{
+						slot: overlayRootSlot,
+						value: root,
+					},
+				],
+			},
+		],
+	})
+
+	console.log(`Gas estimate for post ${params.order.id} on ${params.order.sourceChain} is ${gas}`)
+
+	return gas
+}
+
+/**
+ * Constructs the request body for a redeem escrow operation.
+ * This function encodes the order commitment, beneficiary address, and token inputs
+ * to match the format expected by the IntentGateway contract.
+ */
+export function constructRedeemEscrowRequestBody(order: Order, beneficiary: HexString): HexString {
+	const commitment = order.id as HexString
+	const inputs = order.inputs
+
+	// RequestKind.RedeemEscrow is 0 as defined in the contract
+	const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
+
+	const requestBody = {
+		commitment: commitment as HexString,
+		beneficiary: bytes20ToBytes32(beneficiary),
+		tokens: inputs,
+	}
+
+	const encodedRequestBody = encodeAbiParameters(
+		[
+			{
+				name: "requestBody",
+				type: "tuple",
+				components: [
+					{ name: "commitment", type: "bytes32" },
+					{ name: "beneficiary", type: "bytes32" },
+					{
+						name: "tokens",
+						type: "tuple[]",
+						components: [
+							{ name: "token", type: "bytes32" },
+							{ name: "amount", type: "uint256" },
+						],
+					},
+				],
+			},
+		],
+		[requestBody],
+	)
+
+	return concatHex([requestKind, encodedRequestBody]) as HexString
+}
+
+/**
+ * Transforms a post request into the format expected by the contract.
+ * This function converts the source and destination addresses to hex format
+ * while preserving other request properties.
+ */
+export function transformPostRequestForContract(postRequest: IPostRequest) {
+	return {
+		source: toHex(postRequest.source),
+		dest: toHex(postRequest.dest),
+		nonce: postRequest.nonce,
+		from: postRequest.from,
+		to: postRequest.to,
+		timeoutTimestamp: postRequest.timeoutTimestamp,
+		body: postRequest.body,
+	}
 }

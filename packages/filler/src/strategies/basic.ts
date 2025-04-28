@@ -1,7 +1,7 @@
 import { FillerStrategy } from "@/strategies/base"
-import { Order, FillerConfig, ExecutionResult, HexString, FillOptions } from "hyperbridge-sdk"
+import { Order, ExecutionResult, HexString, FillOptions, estimateGasForPost } from "hyperbridge-sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { privateKeyToAccount } from "viem/accounts"
+import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
 
 export class BasicFiller implements FillerStrategy {
@@ -101,7 +101,17 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 
-			const postGasEstimate = await this.contractService.estimateGasForPost(order)
+			const postGasEstimate = await estimateGasForPost({
+				order: order,
+				sourceClient: this.clientManager.getPublicClient(order.sourceChain) as any,
+				hostNonce: await this.contractService.getHostNonce(order.sourceChain),
+				hostLatestStateMachineHeight: await this.contractService.getHostLatestStateMachineHeight(),
+				from: this.configService.getIntentGatewayAddress(order.sourceChain),
+				to: this.configService.getIntentGatewayAddress(order.destChain),
+				handler: (await this.contractService.getHostParams(order.sourceChain)).handler,
+				hostAddress: this.configService.getHostAddress(order.sourceChain),
+				walletAddress: privateKeyToAddress(this.privateKey),
+			})
 			const fillOptions: FillOptions = {
 				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
 			}
