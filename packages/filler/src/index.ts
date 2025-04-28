@@ -1,8 +1,3 @@
-import dotenv from "dotenv"
-import * as path from "node:path"
-const envPath = path.resolve(process.cwd(), "../../.env.local")
-dotenv.config({ path: envPath })
-
 export const version = "0.1.0"
 
 export { IntentFiller } from "./core/filler"

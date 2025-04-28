@@ -108,7 +108,6 @@ export class BasicFiller implements FillerStrategy {
 				hostLatestStateMachineHeight: await this.contractService.getHostLatestStateMachineHeight(),
 				from: this.configService.getIntentGatewayAddress(order.sourceChain),
 				to: this.configService.getIntentGatewayAddress(order.destChain),
-				handler: (await this.contractService.getHostParams(order.sourceChain)).handler,
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 				walletAddress: privateKeyToAddress(this.privateKey),
 			})

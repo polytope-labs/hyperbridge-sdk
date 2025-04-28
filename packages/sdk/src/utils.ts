@@ -23,6 +23,7 @@ import { _queryRequestInternal } from "./query-client"
 import { getStateCommitmentFieldSlot, type IChain } from "./chain"
 import { generateRootWithProof } from "./utils"
 import handler from "./abis/handler"
+import evmHost from "./abis/evmHost"
 
 export * from "./utils/mmr"
 export * from "./utils/substrate"
@@ -377,10 +378,15 @@ export async function estimateGasForPost(params: {
 	hostLatestStateMachineHeight: bigint
 	from: HexString
 	to: HexString
-	handler: HexString
 	hostAddress: HexString
 	walletAddress: HexString
 }): Promise<bigint> {
+	const hostParams = await params.sourceClient.readContract({
+		address: params.hostAddress,
+		abi: evmHost.ABI,
+		functionName: "hostParams",
+	})
+
 	const postRequest: IPostRequest = {
 		source: params.order.destChain,
 		dest: params.order.sourceChain,
@@ -407,7 +413,7 @@ export async function estimateGasForPost(params: {
 	}
 
 	const gas = await params.sourceClient.estimateContractGas({
-		address: params.handler,
+		address: hostParams.handler,
 		abi: handler.ABI,
 		functionName: "handlePostRequests",
 		args: [

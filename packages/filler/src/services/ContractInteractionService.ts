@@ -261,7 +261,6 @@ export class ContractInteractionService {
 				from: this.configService.getIntentGatewayAddress(order.sourceChain),
 				to: this.configService.getIntentGatewayAddress(order.destChain),
 				walletAddress: privateKeyToAddress(this.privateKey),
-				handler: (await this.getHostParams(order.sourceChain)).handler,
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 			const fillOptions: FillOptions = {
