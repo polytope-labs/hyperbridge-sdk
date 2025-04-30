@@ -122,7 +122,7 @@ export async function getSubstrateBlockTimestamp(
 
 	const { timestamp } = StateCommitment.dec(hexToBytes(storage.result))
 
-	return timestamp
+	return timestamp / 1000n
 }
 
 /**

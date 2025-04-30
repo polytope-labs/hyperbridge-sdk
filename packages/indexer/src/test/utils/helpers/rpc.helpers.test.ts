@@ -50,8 +50,8 @@ describe("Get Substrate Block Timestamp", () => {
 
 		expect(mockFetch).toHaveBeenCalledTimes(1)
 		expect(StateCommitment.dec).toHaveBeenCalledWith(hexToBytes(mockResponseResult))
-		expect(timestamp).toBe(1670431584000n)
-		expect(new Date(Number(timestamp)).toISOString()).toBe("2022-12-07T16:46:24.000Z")
+		expect(timestamp).toBe(1670431584n)
+		expect(new Date(Number(timestamp * 1000n)).toISOString()).toBe("2022-12-07T16:46:24.000Z")
 	})
 
 	test("should handle API errors gracefully", async () => {
@@ -178,6 +178,6 @@ describe("Get Block Timestamp", () => {
 		const timestamp = await getBlockTimestamp(blockHash, chain, storageKey)
 
 		expect(mockFetch).toHaveBeenCalledTimes(1)
-		expect(timestamp).toBe(1670431584000n)
+		expect(timestamp).toBe(1670431584n)
 	})
 })
