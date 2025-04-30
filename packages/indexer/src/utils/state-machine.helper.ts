@@ -81,6 +81,17 @@ export async function fetchStateCommitmentsSubstrate(params: {
 }): Promise<StateCommitment | null> {
 	const { api, stateMachineId, consensusStateId, height } = params
 
+	const storageKey = constructStorageKey(stateMachineId, consensusStateId, height)
+	const storageValue = await api.rpc.state.getStorage<PolkadotOption<Codec>>(storageKey)
+
+	if (storageValue.isSome) {
+		return StateCommitment.dec(hexToBytes(storageValue.value.toHex()))
+	}
+
+	return null
+}
+
+export function constructStorageKey(stateMachineId: string, consensusStateId: string, height: bigint) {
 	const state_machine_height: StateMachineHeight = {
 		id: {
 			state_id: getStateId(stateMachineId),
@@ -102,13 +113,7 @@ export async function fetchStateCommitmentsSubstrate(params: {
 	const full_key = new Uint8Array([...palletPrefix, ...storagePrefix, ...key, ...encodedStateMachineHeight])
 	const hexKey = bytesToHex(full_key)
 
-	const storageValue = await api.rpc.state.getStorage<PolkadotOption<Codec>>(hexKey)
-
-	if (storageValue.isSome) {
-		return StateCommitment.dec(hexToBytes(storageValue.value.toHex()))
-	}
-
-	return null
+	return hexKey
 }
 
 export async function fetchStateCommitmentsEVM(params: {
