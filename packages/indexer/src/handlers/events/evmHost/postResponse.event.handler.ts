@@ -4,6 +4,7 @@ import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { ResponseService } from "@/services/response.service"
 import { RequestService } from "@/services/request.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 /**
  * Handles the PostResponse event from Evm Hosts
@@ -16,10 +17,11 @@ export async function handlePostResponseEvent(event: PostResponseEventLog): Prom
 	)
 	if (!event.args) return
 
-	const { transaction, blockNumber, transactionHash, args, block } = event
+	const { transaction, blockNumber, transactionHash, args, block, blockHash } = event
 	let { body, dest, fee, from, nonce, source, timeoutTimestamp, to, response, responseTimeoutTimestamp } = args
 
 	const chain: string = getHostStateMachine(chainId)
+	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
 
 	await HyperBridgeService.handlePostRequestOrResponseEvent(chain, event)
 
@@ -86,6 +88,6 @@ export async function handlePostResponseEvent(event: PostResponseEventLog): Prom
 		blockNumber: blockNumber.toString(),
 		blockHash: block.hash,
 		transactionHash,
-		blockTimestamp: block.timestamp,
+		blockTimestamp,
 	})
 }

@@ -2,6 +2,7 @@ import { Status } from "@/configs/src/types"
 import { PostResponseTimeoutHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { ResponseService } from "@/services/response.service"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 /**
@@ -20,6 +21,7 @@ export async function handlePostResponseTimeoutHandledEvent(event: PostResponseT
 	)
 
 	const chain: string = getHostStateMachine(chainId)
+	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
 
 	try {
 		await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
@@ -29,7 +31,7 @@ export async function handlePostResponseTimeoutHandledEvent(event: PostResponseT
 			chain,
 			blockNumber: blockNumber.toString(),
 			blockHash: block.hash,
-			blockTimestamp: block.timestamp,
+			blockTimestamp,
 			status: Status.TIMED_OUT,
 			transactionHash,
 		})

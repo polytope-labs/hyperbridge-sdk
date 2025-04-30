@@ -1,6 +1,7 @@
 import { StateMachineUpdatedLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { StateMachineService } from "@/services/stateMachine.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 /**
  * Handle the StateMachineUpdated event
@@ -19,6 +20,7 @@ export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedL
 	)
 
 	const chain: string = getHostStateMachine(chainId)
+	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	// Determine if we're on testnet or mainnet based on stateMachineId
 	const isTestnet = stateMachineId.includes("KUSAMA")
@@ -34,7 +36,7 @@ export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedL
 			transactionIndex,
 			blockHash,
 			blockNumber,
-			timestamp: Number(block.timestamp),
+			timestamp: Number(timestamp),
 			stateMachineId: stateMachineId,
 			height: height.toNumber(),
 			consensusStateId,

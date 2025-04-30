@@ -3,6 +3,7 @@ import { Status } from "@/configs/src/types"
 import { PostRequestHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { RequestService } from "@/services/request.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 /**
  * Handles the PostRequestHandled event from Hyperbridge
@@ -21,6 +22,7 @@ export async function handlePostRequestHandledEvent(event: PostRequestHandledLog
 	)
 
 	const chain = getHostStateMachine(chainId)
+	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
 
 	try {
 		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, chain)
@@ -30,7 +32,7 @@ export async function handlePostRequestHandledEvent(event: PostRequestHandledLog
 			chain,
 			blockNumber: blockNumber.toString(),
 			blockHash: block.hash,
-			blockTimestamp: block.timestamp,
+			blockTimestamp,
 			status: Status.DESTINATION,
 			transactionHash,
 		})

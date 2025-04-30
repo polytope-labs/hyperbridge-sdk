@@ -4,6 +4,7 @@ import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { GetRequestService } from "@/services/getRequest.service"
 import { GetRequestStatusMetadata, Status } from "@/configs/src/types"
 import { normalizeTimestamp } from "@/utils/date.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 /**
  * Handles the GetRequest event from Evm Hosts
@@ -16,12 +17,13 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	)
 	if (!event.args) return
 
-	const { blockNumber, transactionHash, args, block } = event
+	const { blockNumber, transactionHash, args, block, blockHash } = event
 	let { source, dest, from, nonce, height, context, timeoutTimestamp, fee } = args
-	let { hash, timestamp } = block
+	let { hash } = block
 	let keys = args[3]
 
 	const chain: string = getHostStateMachine(chainId)
+	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	// Update HyperBridge stats
 	await HyperBridgeService.incrementNumberOfSentMessages(chain)
@@ -60,7 +62,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	const normalizedTimestamp = normalizeTimestamp(timestamp)
 	const blockTimestamp = block.timestamp
 
-	await GetRequestService.createOrUpdate({
+	const getRequest = await GetRequestService.createOrUpdate({
 		id: get_request_commitment,
 		source,
 		dest,

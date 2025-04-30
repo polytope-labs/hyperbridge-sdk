@@ -6,6 +6,8 @@ import {
 	StateMachineError,
 	SubstrateEventValidator,
 } from "@/utils/substrate.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { constructStorageKey } from "@/utils/state-machine.helper"
 
 /**
  * Extract consensusStateId from event data
@@ -104,7 +106,6 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 
 		const { method, data } = event.event
 
-		const timestamp = Math.floor(event.block.timestamp!.getTime() / 1000)
 		const height = Number(data[1].toString())
 		const blockNumber = event.block.block.header.number.toNumber()
 		const blockHash = event.block.block.header.hash.toString()
@@ -116,6 +117,9 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 			return
 		}
 
+		const storageKey = constructStorageKey(stateMachineId, consensusStateId, BigInt(height.toString()))
+		const timestamp = await getBlockTimestamp(blockHash, host, storageKey)
+
 		switch (method) {
 			case "StateMachineUpdated":
 				await StateMachineService.createSubstrateStateMachineUpdatedEvent(
@@ -124,7 +128,7 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 						blockNumber,
 						transactionHash,
 						transactionIndex,
-						timestamp,
+						timestamp: Number(timestamp),
 						stateMachineId,
 						height,
 						consensusStateId,
