@@ -117,8 +117,7 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 			return
 		}
 
-		const storageKey = constructStorageKey(stateMachineId, consensusStateId, BigInt(height.toString()))
-		const timestamp = await getBlockTimestamp(blockHash, host, storageKey)
+		const timestamp = await getBlockTimestamp(blockHash, host)
 
 		switch (method) {
 			case "StateMachineUpdated":
