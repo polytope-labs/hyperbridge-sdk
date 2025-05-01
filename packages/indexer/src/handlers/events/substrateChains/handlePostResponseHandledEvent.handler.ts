@@ -3,6 +3,7 @@ import { ResponseService } from "@/services/response.service"
 import { Status } from "@/configs/src/types"
 import { getHostStateMachine, isHyperbridge } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 type EventData = {
 	commitment: string
@@ -37,6 +38,7 @@ export async function handleSubstratePostResponseHandledEvent(event: SubstrateEv
 	)
 
 	const host = getHostStateMachine(chainId)
+	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
 
 	let status: Status
 
@@ -56,7 +58,7 @@ export async function handleSubstratePostResponseHandledEvent(event: SubstrateEv
 			chain: host,
 			blockNumber: blockNumber,
 			blockHash: blockHash,
-			blockTimestamp: timestamp,
+			blockTimestamp,
 			status,
 			transactionHash: extrinsic?.extrinsic.hash || "",
 		})}`,
@@ -66,7 +68,7 @@ export async function handleSubstratePostResponseHandledEvent(event: SubstrateEv
 		chain: host,
 		blockNumber: blockNumber.toString(),
 		blockHash: blockHash.toString(),
-		blockTimestamp: timestamp ? BigInt(Date.parse(timestamp.toString())) : BigInt(0),
+		blockTimestamp,
 		status,
 		transactionHash: extrinsic?.extrinsic.hash.toString() || "",
 	})

@@ -3,6 +3,7 @@ import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { AssetTeleportedService } from "@/services/assetTeleported.service"
 import { decodeAddress } from "@polkadot/util-crypto"
 import { u8aToHex } from "@polkadot/util"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw XcmGateway.AssetTeleported Event on ${getHostStateMachine(chainId)}`)
@@ -39,6 +40,8 @@ export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent)
 	const destId = formatChain(dest.toString())
 	const host = getHostStateMachine(chainId)
 
+	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
+
 	await AssetTeleportedService.createOrUpdate({
 		from: fromHex,
 		to: to.toString(),
@@ -48,6 +51,6 @@ export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent)
 		chain: host,
 		blockNumber: event.block.block.header.number.toString(),
 		blockHash: event.block.block.header.hash.toString(),
-		blockTimestamp: BigInt(event.block?.timestamp!.getTime()),
+		blockTimestamp,
 	})
 }

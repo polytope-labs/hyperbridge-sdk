@@ -2,10 +2,10 @@ import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
 import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
-import { replaceWebsocketWithHttp } from "./handleRequestEvent.handler"
 import { Get } from "@/utils/substrate.helpers"
 import { GetResponseService } from "@/services/getResponse.service"
 import { Status } from "@/configs/src/types"
+import { getBlockTimestamp, replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 
 export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promise<void> {
 	const host = getHostStateMachine(chainId)
@@ -17,6 +17,8 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 
 	const sourceId = formatChain(source_chain.toString())
 	const destId = formatChain(dest_chain.toString())
+
+	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
 
 	logger.info(
 		`Handling ISMP Response Event: ${JSON.stringify({
@@ -66,7 +68,7 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 			blockNumber: event.block.block.header.number.toString(),
 			blockHash: event.block.block.header.hash.toString(),
 			transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",
-			blockTimestamp: BigInt(event.block.timestamp!.getTime()),
+			blockTimestamp,
 		})
 	}
 }

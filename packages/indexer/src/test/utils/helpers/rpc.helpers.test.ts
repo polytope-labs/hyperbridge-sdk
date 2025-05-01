@@ -1,5 +1,10 @@
-import { SUBSTRATE_RPC_URL } from "@/constants"
-import { getBlockTimestamp, getEvmBlockTimestamp, getSubstrateBlockTimestamp } from "@/utils/rpc.helpers"
+import { EVM_RPC_URL, SUBSTRATE_RPC_URL } from "@/constants"
+import {
+	getBlockTimestamp,
+	getEvmBlockTimestamp,
+	getSubstrateBlockTimestamp,
+	replaceWebsocketWithHttp,
+} from "@/utils/rpc.helpers"
 
 describe("Get Substrate Block Timestamp", () => {
 	const chain = "KUSAMA-4009"
@@ -56,5 +61,19 @@ describe("Get Block Timestamp", () => {
 
 	test("should use pick the appropriate function based on the chain and fetch the timestamp", async () => {
 		expect(await getBlockTimestamp(blockHash, chain)).toBe(1746034698000n)
+	})
+})
+
+describe("replaceWebsocketWithHttp", () => {
+	test("should replace the websocket URL with an HTTP URL or throw an error", async () => {
+		expect(replaceWebsocketWithHttp(SUBSTRATE_RPC_URL["KUSAMA-4009"])).toBe(
+			"https://hyperbridge-paseo-rpc.blockops.network",
+		)
+		expect(() => replaceWebsocketWithHttp(SUBSTRATE_RPC_URL["UNKNOWN"])).toThrow()
+		expect(replaceWebsocketWithHttp(EVM_RPC_URL["EVM-97"])).toBe(
+			"https://wandering-delicate-silence.bsc-testnet.quiknode.pro/74d3977082e2021a0e005e12dbdcbb6732ed74ee",
+		)
+		expect(replaceWebsocketWithHttp("https://")).toBe("https://")
+		expect(replaceWebsocketWithHttp("ws://")).toBe("http://")
 	})
 })
