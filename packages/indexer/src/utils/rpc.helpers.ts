@@ -1,6 +1,8 @@
 import fetch from "node-fetch"
 import { Struct, u64 } from "scale-ts"
 import { hexToBytes } from "viem"
+import { Option as PolkadotOption } from "@polkadot/types"
+import { Codec } from "@polkadot/types/types"
 
 import { EVM_RPC_URL } from "@/constants"
 
@@ -92,13 +94,13 @@ export async function getSubstrateBlockTimestamp(blockHash: string): Promise<big
 	const STORAGE_KEY = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb"
 
 	try {
-		const storage = await api.rpc.state.getStorage(STORAGE_KEY, blockHash)
+		const storageValue = await api.rpc.state.getStorage<PolkadotOption<Codec>>(STORAGE_KEY, blockHash)
 
-		if (!storage) {
-			throw new Error(`Unexpected response: No storage found in response ${JSON.stringify(storage)}`)
+		if (!storageValue.isSome) {
+			throw new Error(`Unexpected response: No storage found in response ${JSON.stringify(storageValue)}`)
 		}
 
-		const { timestamp } = Struct({ timestamp: u64 }).dec(hexToBytes(String(storage) as `0x${string}`))
+		const { timestamp } = Struct({ timestamp: u64 }).dec(hexToBytes(storageValue.value.toHex()))
 
 		return timestamp
 	} catch (err) {
