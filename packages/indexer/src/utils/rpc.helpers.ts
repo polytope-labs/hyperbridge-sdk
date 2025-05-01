@@ -1,19 +1,16 @@
 import fetch from "node-fetch"
+import { Struct, u64 } from "scale-ts"
 import { hexToBytes } from "viem"
-import { ApiPromise, WsProvider } from "@polkadot/api"
-import { hexToU8a } from "@polkadot/util"
 
 import { EVM_RPC_URL, SUBSTRATE_RPC_URL } from "@/constants"
 import { replaceWebsocketWithHttp } from "@/handlers/events/substrateChains/handleRequestEvent.handler"
-
-import { StateCommitment } from "./state-machine.helper"
 
 /**
  * Get Block Timestamp is a function that retrieves the timestamp of a block given its hash and chain.
  * @param blockHash
  */
 export async function getBlockTimestamp(blockhash: string, chain: string, storageKey = "0x00") {
-	if (/evm/gi.test(chain)) {
+	if (chain.startsWith("EVM")) {
 		return getEvmBlockTimestamp(blockhash, chain)
 	}
 
@@ -27,7 +24,6 @@ interface ETHGetBlockByHashResponse {
 		message: string
 	}
 	result: {
-		milliTimestamp: bigint
 		timestamp: bigint
 		hash: `0x${string}`
 	}
@@ -38,10 +34,10 @@ interface ETHGetBlockByHashResponse {
  * @param blockHash The hash of the block
  * @param chain The chain identifier
  * @returns The timestamp as a bigint
- * @throws Error if the RPC call fails or returns an invalid response
+ * @throws Error if the RPC call fails or returns an unexpected response
  */
 export async function getEvmBlockTimestamp(blockHash: string, chain: string): Promise<bigint> {
-	const rpcUrl = replaceWebsocketWithHttp(EVM_RPC_URL[chain])
+	const rpcUrl = replaceWebsocketWithHttp(EVM_RPC_URL[chain] || "")
 	if (!rpcUrl) {
 		throw new Error(`No RPC URL found for chain: ${chain}`)
 	}
@@ -66,7 +62,7 @@ export async function getEvmBlockTimestamp(blockHash: string, chain: string): Pr
 
 	// Validate the response contains a result with a timestamp
 	if (!block.result || block.result.timestamp === undefined) {
-		throw new Error(`Invalid response: No timestamp found in response ${JSON.stringify(block)}`)
+		throw new Error(`Unexpected response: No timestamp found in response ${JSON.stringify(block)}`)
 	}
 
 	return BigInt(block.result.timestamp)
@@ -87,14 +83,14 @@ interface StateGetStorageResponse {
  * @param blockHash The hash of the block
  * @param chain The chain identifier
  * @returns The timestamp as a bigint
- * @throws Error if the RPC call fails or returns an invalid response
+ * @throws Error if the RPC call fails or returns an unexpected response
  */
 export async function getSubstrateBlockTimestamp(
 	storageKey: string,
 	blockHash: string,
 	chain: string,
 ): Promise<bigint> {
-	const rpcUrl = replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[chain])
+	const rpcUrl = replaceWebsocketWithHttp(SUBSTRATE_RPC_URL[chain] || "")
 	if (!rpcUrl) {
 		throw new Error(`No RPC URL found for chain: ${chain}`)
 	}
@@ -117,35 +113,10 @@ export async function getSubstrateBlockTimestamp(
 	}
 
 	if (!storage.result) {
-		throw new Error(`Invalid response: No result found in response ${JSON.stringify(storage)}`)
+		throw new Error(`Unexpected response: No result found in response ${JSON.stringify(storage)}`)
 	}
 
-	const { timestamp } = StateCommitment.dec(hexToBytes(storage.result))
+	const { timestamp } = Struct({ timestamp: u64 }).dec(hexToBytes(storage.result))
 
-	return timestamp / 1000n
-}
-
-/**
- * Decode Timestamp Extrinsic to timestamp
- * @param timestampExtrinsic
- * @param chain
- * @returns number
- */
-export async function DecodeTimestampExtrinsic(
-	timestampExtrinsic: string,
-	provider: WsProvider,
-): Promise<number | undefined> {
-	const api = await ApiPromise.create({ provider })
-
-	const extrinsic = api.createType("Extrinsic", hexToU8a(timestampExtrinsic))
-	console.log(`Decoded extrinsic: ${JSON.stringify(extrinsic)}`)
-
-	const args = extrinsic.args
-
-	const { method, section } = api.findCall(extrinsic.callIndex)
-	if (section === "timestamp" && method === "set") {
-		return Number(args[0].toHuman()?.toString().replace(/,/g, ""))
-	}
-
-	return undefined
+	return timestamp
 }
