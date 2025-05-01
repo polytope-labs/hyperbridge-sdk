@@ -15,10 +15,6 @@ describe("Get Substrate Block Timestamp", () => {
 		;(globalThis as any).api = await ApiPromise.create({ provider: new WsProvider(SUBSTRATE_RPC_URL[chain]) })
 	})
 
-	afterAll(async () => {
-		await (globalThis as any).api.disconnect()
-	})
-
 	test("should get a valid milliseconds timestamp from a substrate block", async () => {
 		const timestamp = await getSubstrateBlockTimestamp(blockHash)
 
