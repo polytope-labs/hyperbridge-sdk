@@ -27,11 +27,7 @@ export async function handleSubstratePostRequestHandledEvent(event: SubstrateEve
 	const eventData = event.event.data[0] as unknown as EventData
 	const relayer_id = eventData.relayer.toString()
 
-	logger.info(
-		`Handling ISMP PostRequestHandled Event: ${JSON.stringify({
-			data: event.event.data,
-		})}`,
-	)
+	logger.info(`Handling ISMP PostRequestHandled Event Data: ${JSON.stringify({ eventData })}`)
 
 	const host = getHostStateMachine(chainId)
 	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
