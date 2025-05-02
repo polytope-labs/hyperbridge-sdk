@@ -7,7 +7,6 @@ import {
 	SubstrateEventValidator,
 } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
-import { constructStorageKey } from "@/utils/state-machine.helper"
 
 /**
  * Extract consensusStateId from event data
