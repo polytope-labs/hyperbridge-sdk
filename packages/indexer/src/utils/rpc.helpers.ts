@@ -100,9 +100,7 @@ export async function getSubstrateBlockTimestamp(blockHash: string): Promise<big
 			throw new Error(`Unexpected response: No storage found in response ${JSON.stringify(storageValue)}`)
 		}
 
-		const { timestamp } = Struct({ timestamp: u64 }).dec(hexToBytes(storageValue.value.toHex()))
-
-		return timestamp
+		return u64.dec(hexToBytes(storageValue.value.toHex()))
 	} catch (err) {
 		throw new Error(`RPC error: ${(err as Error).message}`)
 	}
