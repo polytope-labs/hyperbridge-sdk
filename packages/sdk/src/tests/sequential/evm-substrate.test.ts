@@ -1,4 +1,4 @@
-import type { HexString } from "@/types"
+import { RequestStatus, TimeoutStatus, type HexString } from "@/types"
 import EVM_HOST from "@/abis/evmHost"
 import PING_MODULE from "@/abis/pingModule"
 import ERC6160 from "@/abis/erc6160"
@@ -7,22 +7,60 @@ import TOKEN_GATEWAY from "@/abis/tokenGateway"
 import Keyring, { decodeAddress } from "@polkadot/keyring"
 import { u8aToHex } from "@polkadot/util"
 import {
+	type Chain,
 	createPublicClient,
 	createWalletClient,
+	decodeFunctionData,
 	getContract,
 	http,
 	keccak256,
+	parseEventLogs,
 	parseUnits,
-	PrivateKeyAccount,
+	type PrivateKeyAccount,
 	toHex,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { bscTestnet } from "viem/chains"
-import { DEFAULT_LOGGER } from "@/utils"
+import { DEFAULT_LOGGER, postRequestCommitment } from "@/utils"
+import { IndexerClient } from "@/client"
+import { createQueryClient } from "@/query-client"
 
-test("BNC token from BSC to Bifrost", async () => {
+const logger = DEFAULT_LOGGER.withTag("evm-substrate")
+
+const Source = {
+	name: "BSC Testnet",
+	chainId: 97,
+	stateMachineId: "EVM-97",
+	networkType: "testnet",
+	rpcUrls: [process.env.BSC_CHAPEL as string],
+	consensus: { layer: "BNB Testnet", stateId: "BSC0" },
+	ismpHost: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+} as const
+
+const Destination = {
+	group: "substrate",
+	name: "Cere Testnet",
+	networkType: "testnet",
+	chainId: "SUBSTRATE-cere",
+	consensus: {
+		layer: "Cere",
+		stateId: "CERE",
+	},
+	rpcUrls: ["wss://archive.testnet.cere.network/ws"],
+	estimatedTransferTime: "10.4 minute",
+}
+
+const Token = {
+	name: "Cere",
+	symbol: "CERE",
+	address: "0xf310641B4B6c032D0c88d72d712C020fCa9805A3",
+	decimals: 18,
+}
+
+test("EVM -> Substrate token transfer", async () => {
 	// get token data
-	const token = TestToken
+	const token = Token
+	const indexer = getIndexer()
 
 	// setup account
 	// setup EVM account
@@ -31,28 +69,84 @@ test("BNC token from BSC to Bifrost", async () => {
 
 	const helper = await createHelpers({
 		account: sender_account,
-		rpc_url: process.env.BSC_CHAPEL,
+		chain: bscTestnet,
+		rpc_url: process.env.BSC_CHAPEL as string,
 	})
 
 	// make transfer
-	const output = await Array.fromAsync(
-		initiateEvmTx({
-			source: BscTestnet,
-			destination: BifrostTestnet,
-			from: sender_account.address,
-			recipient: encodePolkaAddress(recipient_account.address) as HexString,
-			token: token,
-			amount: 0.5,
-			timeout: 0,
-			relayerFee: 0,
-			account: sender_account,
-			helper: helper,
-		}),
-	)
+	const tx_hash = await initiateEvmTx({
+		source: Source,
+		destination: Destination,
+		from: sender_account.address,
+		recipient: encodePolkaAddress(recipient_account.address) as HexString,
+		token: token,
+		amount: 0.02,
+		timeout: 3600,
+		relayerFee: 0,
+		account: sender_account,
+		helper: helper,
+	})
 
-	console.log(output)
-	// initialize indexer client
-	// observe transaction until finish
+	const postRequest = await getCommitment(helper, tx_hash)
+	const commitment = postRequest.commitment
+
+	console.log("Post Request Commitment:", commitment)
+	const statusStream = indexer.postRequestStatusStream(commitment)
+
+	for await (const status of statusStream) {
+		console.log(JSON.stringify(status, null, 4))
+
+		if (status.status === TimeoutStatus.PENDING_TIMEOUT) {
+			console.log("Request is now timed out", postRequest.timeoutTimestamp)
+		}
+	}
+
+	const req = await indexer.queryRequestWithStatus(commitment)
+	console.log("Full status", JSON.stringify(req, null, 4))
+
+	const destinationStatus = req?.statuses.find((status) => status.status === RequestStatus.DESTINATION)
+	expect(destinationStatus).toBeDefined()
+	expect(destinationStatus?.metadata.transactionHash).toBeDefined()
+}, 1_000_000)
+
+const singleton = <T>(fn: () => T) => {
+	const EMPTY = "$EMPTY$"
+
+	let output: T | typeof EMPTY = EMPTY
+
+	return (): T => {
+		if (output !== EMPTY) return output
+		output = fn()
+		return output
+	}
+}
+
+const getIndexer = singleton(() => {
+	const query_client = createQueryClient({
+		url: process.env.INDEXER_URL as string,
+	})
+
+	return new IndexerClient({
+		source: {
+			consensusStateId: Source.consensus.stateId,
+			rpcUrl: Source.rpcUrls[0],
+			stateMachineId: Source.stateMachineId,
+			host: Source.ismpHost,
+		},
+		dest: {
+			hasher: "Blake2",
+			wsUrl: Destination.rpcUrls[0],
+			consensusStateId: Destination.consensus.stateId,
+			stateMachineId: Destination.chainId,
+		},
+		hyperbridge: {
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA as string,
+		},
+		queryClient: query_client,
+		pollInterval: 1000,
+	})
 })
 
 function getSubstrateAccount() {
@@ -68,61 +162,12 @@ function encodePolkaAddress(polkaAddress?: string): string {
 	return polkaAddress ? keyring.encodeAddress(polkaAddress, 0) : ""
 }
 
-const BscTestnet = {
-	name: "BSC Testnet",
-	chainId: 97,
-	stateMachineId: "EVM-97",
-	networkType: "testnet",
-	rpcUrls: ["https://bsc-geth-testnet-rpc.blockops.network"],
-	estimatedTransferTime: "10 minutes",
-	consensus: { layer: "BNB Testnet", stateId: "BSC0" },
-	ismpHost: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
-	transaction: {
-		url: "https://testnet.bscscan.com/tx/[txHash]",
-	},
-}
-
-const BifrostTestnet = {
-	name: "Bifrost Paseo",
-	networkType: "testnet",
-	chainId: "KUSAMA-2030",
-	consensus: {
-		layer: "Paseo",
-		stateId: "PAS0",
-	},
-	rpcUrls: ["wss://bifrost-rpc.paseo.liebi.com/ws"],
-	estimatedTransferTime: "10 minute",
-	transaction: {
-		url: "/[txHash]",
-	},
-}
-
-const TestToken = {
-	name: "Cere",
-	symbol: "CERE",
-	address: "0xf310641B4B6c032D0c88d72d712C020fCa9805A3",
-	decimals: 18,
-}
-
-type BridgeParams = {
-	readonly source: typeof BscTestnet
-	readonly from: HexString
-	readonly destination: typeof BifrostTestnet
-	readonly token: typeof TestToken
-	readonly amount: number
-	readonly timeout: number
-	readonly relayerFee: number
-	readonly recipient: HexString
-	readonly account: PrivateKeyAccount
-	readonly helper: Awaited<ReturnType<typeof createHelpers>>
-}
-
 const readAssetId = (token_symbol: string) => {
 	const encoder = new TextEncoder()
 	return keccak256(encoder.encode(token_symbol))
 }
 
-async function* initiateEvmTx(params: BridgeParams) {
+async function initiateEvmTx(params: BridgeParams) {
 	const { account, helper } = params
 	const to: HexString = u8aToHex(decodeAddress(params.recipient, false))
 
@@ -162,30 +207,20 @@ async function* initiateEvmTx(params: BridgeParams) {
 	})
 
 	// add to store
-	yield {
-		kind: "Ready",
-		transaction_hash: hash,
-		meta: [
-			{
-				type: "resumption_params",
-				network: "evm",
-				transaction_hash: hash,
-			},
-		],
-	}
+	return hash
 }
 
-async function createHelpers(params: { account: PrivateKeyAccount; rpc_url: string }) {
-	const { account, rpc_url: rpc } = params
+async function createHelpers(params: { chain: Chain; account: PrivateKeyAccount; rpc_url: string }) {
+	const { chain, account, rpc_url: rpc } = params
 
 	const walletClient = createWalletClient({
-		chain: bscTestnet,
+		chain: chain,
 		account,
 		transport: http(rpc),
 	})
 
 	const publicClient = createPublicClient({
-		chain: bscTestnet,
+		chain: chain,
 		transport: http(process.env.BSC_CHAPEL),
 	})
 
@@ -225,7 +260,59 @@ async function createHelpers(params: { account: PrivateKeyAccount; rpc_url: stri
 		client: sharedClient,
 	})
 
-	return { publicClient, tokenGateway, walletClient: walletClient, host, ping, handler, feeToken: feeToken }
+	return {
+		chain,
+		publicClient,
+		tokenGateway,
+		walletClient: walletClient,
+		host,
+		ping,
+		handler,
+		feeToken: feeToken,
+	}
 }
 
 const tokenGatewayAddress = process.env.TOKEN_GATEWAY_ADDRESS as HexString
+
+async function getCommitment(helper: THelper, tx_hash: HexString) {
+	// wait for tx receipt to become available
+	await new Promise((resolve) => setTimeout(resolve, 5000))
+
+	const receipt = await helper.publicClient.waitForTransactionReceipt({
+		hash: tx_hash,
+		confirmations: 1,
+	})
+
+	logger.log(`Transaction reciept: ${helper.chain.blockExplorers?.default?.url}/tx/${tx_hash}`)
+	logger.log("Block: ", receipt.blockNumber)
+
+	// parse EvmHost PostRequestEvent emitted in the transcation logs
+	const event = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })[0]
+
+	if (event.eventName !== "PostRequestEvent") {
+		throw new Error("Unexpected Event type")
+	}
+
+	const request = event.args
+
+	console.log("PostRequestEvent", { request })
+
+	const commitment = postRequestCommitment(request).commitment
+
+	return { ...request, commitment }
+}
+
+type THelper = Awaited<ReturnType<typeof createHelpers>>
+
+type BridgeParams = {
+	readonly source: typeof Source
+	readonly from: HexString
+	readonly destination: typeof Destination
+	readonly token: typeof Token
+	readonly amount: number
+	readonly timeout: number
+	readonly relayerFee: number
+	readonly recipient: HexString
+	readonly account: PrivateKeyAccount
+	readonly helper: Awaited<ReturnType<typeof createHelpers>>
+}
