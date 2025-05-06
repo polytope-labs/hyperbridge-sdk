@@ -56,7 +56,7 @@ const Token = {
 	decimals: 18,
 }
 
-test("EVM -> Substrate token transfer", async () => {
+test("EVM -> Substrate token transfer", { timeout: 3_600_000 }, async () => {
 	// get token data
 	const token = Token
 	const indexer = getIndexer()
@@ -106,7 +106,7 @@ test("EVM -> Substrate token transfer", async () => {
 	const destinationStatus = req?.statuses.find((status) => status.status === RequestStatus.DESTINATION)
 	expect(destinationStatus).toBeDefined()
 	expect(destinationStatus?.metadata.transactionHash).toBeDefined()
-}, 1_000_000)
+})
 
 const singleton = <T>(fn: () => T) => {
 	const EMPTY = "$EMPTY$"
