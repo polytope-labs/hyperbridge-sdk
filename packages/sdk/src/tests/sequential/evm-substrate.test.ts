@@ -45,7 +45,7 @@ const Destination = {
 		layer: "Cere",
 		stateId: "CERE",
 	},
-	rpcUrls: [process.env.CERE_TESTNET as string],
+	rpcUrls: [process.env.CERE_LOCAL as string],
 	estimatedTransferTime: "10.4 minute",
 }
 
