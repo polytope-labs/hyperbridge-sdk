@@ -10,7 +10,6 @@ import {
 	type Chain,
 	createPublicClient,
 	createWalletClient,
-	decodeFunctionData,
 	getContract,
 	http,
 	keccak256,
@@ -46,7 +45,7 @@ const Destination = {
 		layer: "Cere",
 		stateId: "CERE",
 	},
-	rpcUrls: ["wss://archive.testnet.cere.network/ws"],
+	rpcUrls: [process.env.CERE_TESTNET as string],
 	estimatedTransferTime: "10.4 minute",
 }
 
