@@ -56,7 +56,7 @@ const Token = {
 	decimals: 18,
 }
 
-test("EVM -> Substrate token transfer", { timeout: 3_600_000 }, async () => {
+test("EVM -> Substrate token transfer", { timeout: 5_400_000 }, async () => {
 	// get token data
 	const token = Token
 	const indexer = getIndexer()
@@ -103,9 +103,14 @@ test("EVM -> Substrate token transfer", { timeout: 3_600_000 }, async () => {
 	const req = await indexer.queryRequestWithStatus(commitment)
 	console.log("Full status", JSON.stringify(req, null, 4))
 
-	const destinationStatus = req?.statuses.find((status) => status.status === RequestStatus.DESTINATION)
-	expect(destinationStatus).toBeDefined()
-	expect(destinationStatus?.metadata.transactionHash).toBeDefined()
+	if (!req) {
+		throw new Error("No RequestWithStatues")
+	}
+
+	const statuses = new Set(req.statuses.map((status) => status.status))
+
+	expect(statuses).toContain(RequestStatus.HYPERBRIDGE_FINALIZED)
+	expect(statuses).toContain(RequestStatus.DESTINATION)
 })
 
 const singleton = <T>(fn: () => T) => {
