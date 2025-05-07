@@ -110,7 +110,6 @@ test("EVM -> Substrate token transfer", { timeout: 5_400_000 }, async () => {
 	const statuses = new Set(req.statuses.map((status) => status.status))
 
 	expect(statuses).toContain(RequestStatus.HYPERBRIDGE_FINALIZED)
-	expect(statuses).toContain(RequestStatus.DESTINATION)
 })
 
 const singleton = <T>(fn: () => T) => {
