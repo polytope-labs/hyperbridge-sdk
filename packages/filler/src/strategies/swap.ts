@@ -12,6 +12,9 @@ import {
 import { FillerStrategy } from "./base"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
+import { get1inchExactOutputQuote } from "@/utils"
+import { encodeFunctionData } from "viem"
+import { erc7821Actions } from "viem/experimental"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -103,9 +106,12 @@ export class BasicFiller implements FillerStrategy {
 
 	async executeOrder(order: Order): Promise<ExecutionResult> {
 		try {
+			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 			const startTime = Date.now()
 
 			const fillerWalletAddress = privateKeyToAddress(this.privateKey)
+
+			const operations: { calls: { to: HexString; data: HexString; value?: bigint }[] }[] = []
 
 			for (const token of order.outputs) {
 				const tokenAddress = bytes32ToBytes20(token.token)
@@ -115,11 +121,46 @@ export class BasicFiller implements FillerStrategy {
 					order.destChain,
 				)
 				if (tokenBalance === BigInt(0)) {
-					// Swap the token
+					const chainId = Number(order.destChain.split("-")[1])
+
+					const swapData = await get1inchExactOutputQuote({
+						chainId,
+						srcToken: this.configService.getDaiAsset(order.destChain),
+						dstToken: tokenAddress,
+						amount: token.amount.toString(),
+						fromAddress: fillerWalletAddress,
+						slippage: 200,
+						isExactOut: true,
+					})
+
+					try {
+						// Simulating individual swaps for early debugging
+						await destClient.simulateCalls({
+							account: fillerWalletAddress,
+							calls: [
+								{
+									to: swapData.tx.to as HexString,
+									data: swapData.tx.data as HexString,
+									value: BigInt(swapData.tx.value || 0),
+								},
+							],
+						})
+
+						operations.push({
+							calls: [
+								{
+									to: swapData.tx.to as HexString,
+									data: swapData.tx.data as HexString,
+									value: BigInt(swapData.tx.value || 0),
+								},
+							],
+						})
+					} catch (simulationError) {
+						console.error("Swap simulation failed:", simulationError)
+						throw new Error("Swap simulation failed")
+					}
 				}
 			}
-
-			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 
 			const postRequest: IPostRequest = {
 				source: order.destChain,
@@ -141,20 +182,41 @@ export class BasicFiller implements FillerStrategy {
 				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
 			}
 
-			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)
-
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const { request } = await destClient.simulateContract({
+			const fillOrderData = encodeFunctionData({
 				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: ethValue,
 			})
 
-			const tx = await walletClient.writeContract(request)
+			operations.push({
+				calls: [
+					{
+						to: this.configService.getIntentGatewayAddress(order.destChain),
+						data: fillOrderData,
+						value: this.contractService.calculateRequiredEthValue(order.outputs),
+					},
+				],
+			})
+
+			try {
+				// Simulating all calls together
+				await destClient.simulateCalls({
+					account: fillerWalletAddress,
+					calls: operations.flatMap((op) => op.calls),
+				})
+			} catch (batchSimulationError) {
+				console.error("Batch simulation failed:", batchSimulationError)
+				throw new Error("Batch simulation failed")
+			}
+
+			const tx = await walletClient.extend(erc7821Actions()).executeBatches({
+				address: fillerWalletAddress,
+				batches: operations,
+				account: privateKeyToAccount(this.privateKey),
+				chain: destClient.chain,
+			})
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
