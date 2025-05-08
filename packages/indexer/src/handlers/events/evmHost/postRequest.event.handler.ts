@@ -5,13 +5,14 @@ import { PostRequestEventLog } from "@/configs/src/types/abi-interfaces/Ethereum
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { normalizeTimestamp } from "@/utils/date.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the PostRequest event from Evm Hosts
  */
 export async function handlePostRequestEvent(event: PostRequestEventLog): Promise<void> {
 	logger.info(
-		`Handling PostRequest Event: ${JSON.stringify({
+		`Handling PostRequest Event: ${stringify({
 			event,
 		})}`,
 	)
@@ -26,7 +27,7 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 	await HyperBridgeService.handlePostRequestOrResponseEvent(chain, event)
 
 	logger.info(
-		`Computing Request Commitment Event: ${JSON.stringify({
+		`Computing Request Commitment Event: ${stringify({
 			dest,
 			fee,
 			from,
@@ -50,7 +51,7 @@ export async function handlePostRequestEvent(event: PostRequestEventLog): Promis
 	)
 
 	logger.info(
-		`Request Commitment: ${JSON.stringify({
+		`Request Commitment: ${stringify({
 			commitment: request_commitment,
 		})}`,
 	)

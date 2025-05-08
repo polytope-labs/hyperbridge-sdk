@@ -4,6 +4,7 @@ import { GetRequestHandledLog } from "@/configs/src/types/abi-interfaces/Ethereu
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { GetRequestService } from "@/services/getRequest.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the GetRequestHandled event from EVMHost
@@ -15,7 +16,7 @@ export async function handleGetRequestHandledEvent(event: GetRequestHandledLog):
 	const { relayer: relayer_id, commitment } = args
 
 	logger.info(
-		`Handling GetRequestHandled Event: ${JSON.stringify({
+		`Handling GetRequestHandled Event: ${stringify({
 			blockNumber,
 			transactionHash,
 		})}`,

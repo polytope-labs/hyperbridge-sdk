@@ -5,13 +5,14 @@ import { GetRequestService } from "@/services/getRequest.service"
 import { GetRequestStatusMetadata, Status } from "@/configs/src/types"
 import { normalizeTimestamp } from "@/utils/date.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the GetRequest event from Evm Hosts
  */
 export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<void> {
 	logger.info(
-		`Handling GetRequest Event: ${JSON.stringify({
+		`Handling GetRequest Event: ${stringify({
 			event,
 		})}`,
 	)
@@ -29,7 +30,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	await HyperBridgeService.incrementNumberOfSentMessages(chain)
 
 	logger.info(
-		`Processing GetRequest Event: ${JSON.stringify({
+		`Processing GetRequest Event: ${stringify({
 			source,
 			dest,
 			from,
@@ -54,7 +55,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	)
 
 	logger.info(
-		`Get Request Commitment: ${JSON.stringify({
+		`Get Request Commitment: ${stringify({
 			commitment: get_request_commitment,
 		})}`,
 	)

@@ -6,6 +6,7 @@ import { Get } from "@/utils/substrate.helpers"
 import { GetResponseService } from "@/services/getResponse.service"
 import { Status } from "@/configs/src/types"
 import { getBlockTimestamp, replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promise<void> {
 	const host = getHostStateMachine(chainId)
@@ -21,7 +22,7 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
 
 	logger.info(
-		`Handling ISMP Response Event: ${JSON.stringify({
+		`Handling ISMP Response Event: ${stringify({
 			sourceId,
 			destId,
 			request_nonce,
@@ -43,11 +44,11 @@ export async function handleSubstrateResponseEvent(event: SubstrateEvent): Promi
 			accept: "application/json",
 			"content-type": "application/json",
 		},
-		body: JSON.stringify(method),
+		body: stringify(method),
 	})
 	const data = await response.json()
 
-	logger.info(`Response from calling ismp_queryResponses: ${JSON.stringify(data)}`)
+	logger.info(`Response from calling ismp_queryResponses: ${stringify(data)}`)
 
 	if (data.result.length === 0) {
 		logger.error(`No responses found for commitment ${commitment.toString()}`)

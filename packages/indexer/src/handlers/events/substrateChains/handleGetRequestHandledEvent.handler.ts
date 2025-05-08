@@ -5,6 +5,7 @@ import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { GetRequest } from "@/configs/src/types/models"
 import { GetRequestService } from "@/services/getRequest.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 type EventData = {
 	commitment: string
@@ -28,7 +29,7 @@ export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEven
 	const relayer_id = eventData.relayer.toString()
 
 	logger.info(
-		`Handling ISMP GetRequestHandled Event: ${JSON.stringify({
+		`Handling ISMP GetRequestHandled Event: ${stringify({
 			data: event.event.data,
 		})}`,
 	)

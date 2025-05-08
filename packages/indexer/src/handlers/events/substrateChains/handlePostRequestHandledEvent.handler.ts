@@ -5,6 +5,7 @@ import { getHostStateMachine, isHyperbridge } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { Request } from "@/configs/src/types/models"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { stringify } from "safe-stable-stringify"
 
 type EventData = {
 	commitment: string
@@ -27,7 +28,7 @@ export async function handleSubstratePostRequestHandledEvent(event: SubstrateEve
 	const eventData = event.event.data[0] as unknown as EventData
 	const relayer_id = eventData.relayer.toString()
 
-	logger.info(`Handling ISMP PostRequestHandled Event Data: ${JSON.stringify({ eventData })}`)
+	logger.info(`Handling ISMP PostRequestHandled Event Data: ${stringify({ eventData })}`)
 
 	const host = getHostStateMachine(chainId)
 	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
@@ -50,7 +51,7 @@ export async function handleSubstratePostRequestHandledEvent(event: SubstrateEve
 	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
 
 	logger.info(
-		`Handling ISMP PostRequestHandled Event: ${JSON.stringify({
+		`Handling ISMP PostRequestHandled Event: ${stringify({
 			commitment: eventData.commitment.toString(),
 			chain: host,
 			blockNumber: blockNumber,

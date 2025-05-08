@@ -23,7 +23,7 @@ export function replaceWebsocketWithHttp(url: string): string {
  * Get Block Timestamp is a function that retrieves the timestamp of a block given its hash and chain.
  * @param blockHash
  */
-export async function getBlockTimestamp(blockhash: string, chain: string) {
+export async function getBlockTimestamp(blockhash: string, chain: string): Promise<bigint> {
 	if (chain.startsWith("EVM")) {
 		return getEvmBlockTimestamp(blockhash, chain)
 	}

@@ -4,6 +4,7 @@ import { GetRequestTimeoutHandledLog } from "@/configs/src/types/abi-interfaces/
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { GetRequestService } from "@/services/getRequest.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the GetRequestTimeoutHandled event from EVMHost
@@ -15,7 +16,7 @@ export async function handleGetRequestTimeoutHandled(event: GetRequestTimeoutHan
 	const { commitment } = args
 
 	logger.info(
-		`Handling GetRequestTimeoutHandled Event: ${JSON.stringify({
+		`Handling GetRequestTimeoutHandled Event: ${stringify({
 			blockNumber,
 			transactionHash,
 		})}`,

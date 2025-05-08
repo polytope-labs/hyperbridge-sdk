@@ -4,6 +4,7 @@ import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { ResponseService } from "@/services/response.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the PostResponseTimeoutHandled event
@@ -14,7 +15,7 @@ export async function handlePostResponseTimeoutHandledEvent(event: PostResponseT
 	const { commitment, dest } = args
 
 	logger.info(
-		`Handling PostResponseTimeoutHandled Event: ${JSON.stringify({
+		`Handling PostResponseTimeoutHandled Event: ${stringify({
 			blockNumber,
 			transactionHash,
 		})}`,
@@ -36,6 +37,6 @@ export async function handlePostResponseTimeoutHandledEvent(event: PostResponseT
 			transactionHash,
 		})
 	} catch (error) {
-		logger.error(`Error updating handling post response timeout: ${JSON.stringify(error)}`)
+		logger.error(`Error updating handling post response timeout: ${stringify(error)}`)
 	}
 }

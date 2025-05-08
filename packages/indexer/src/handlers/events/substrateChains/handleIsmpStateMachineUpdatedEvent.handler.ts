@@ -7,6 +7,7 @@ import {
 	SubstrateEventValidator,
 } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Extract consensusStateId from event data
@@ -91,7 +92,7 @@ export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent):
 		}
 
 		if (!SubstrateEventValidator.validateStateMachineEvent(event)) {
-			logger.error(`Invalid state machine event data: ${JSON.stringify(event.event)}`)
+			logger.error(`Invalid state machine event data: ${stringify(event.event)}`)
 			throw new StateMachineError(
 				"Invalid state machine event data",
 				host,

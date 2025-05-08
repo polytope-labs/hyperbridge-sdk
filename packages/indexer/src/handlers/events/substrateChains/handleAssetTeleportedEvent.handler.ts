@@ -4,6 +4,7 @@ import { AssetTeleportedService } from "@/services/assetTeleported.service"
 import { decodeAddress } from "@polkadot/util-crypto"
 import { u8aToHex } from "@polkadot/util"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw XcmGateway.AssetTeleported Event on ${getHostStateMachine(chainId)}`)
@@ -28,7 +29,7 @@ export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent)
 	}
 
 	logger.info(
-		`Handling AssetTeleported Event: ${JSON.stringify({
+		`Handling AssetTeleported Event: ${stringify({
 			from: fromHex,
 			to: to.toString(),
 			amount: amount.toString(),

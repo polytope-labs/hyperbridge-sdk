@@ -4,6 +4,7 @@ import { PostResponseHandledLog } from "@/configs/src/types/abi-interfaces/Ether
 import { ResponseService } from "@/services/response.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handles the PostResponseHandled event from Hyperbridge
@@ -15,7 +16,7 @@ export async function handlePostResponseHandledEvent(event: PostResponseHandledL
 	const { relayer: relayer_id, commitment } = args
 
 	logger.info(
-		`Handling PostResponseHandled Event: ${JSON.stringify({
+		`Handling PostResponseHandled Event: ${stringify({
 			blockNumber,
 			transactionHash,
 		})}`,
@@ -37,6 +38,6 @@ export async function handlePostResponseHandledEvent(event: PostResponseHandledL
 			transactionHash,
 		})
 	} catch (error) {
-		logger.error(`Error updating handling post response: ${JSON.stringify(error)}`)
+		logger.error(`Error updating handling post response: ${stringify(error)}`)
 	}
 }

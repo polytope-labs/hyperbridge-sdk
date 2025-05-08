@@ -8,6 +8,7 @@ import { formatChain, getHostStateMachine, isHyperbridge, isSubstrateChain } fro
 import { SUBSTRATE_RPC_URL } from "@/constants"
 import { RequestMetadata } from "@/utils/state-machine.helper"
 import { getBlockTimestamp, replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promise<void> {
 	logger.info(`Saw Ismp.Request Event on ${getHostStateMachine(chainId)}`)
@@ -21,7 +22,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 	const hostId = getHostStateMachine(chainId)
 
 	logger.info(
-		`Handling ISMP Request Event: ${JSON.stringify({
+		`Handling ISMP Request Event: ${stringify({
 			sourceId,
 			destId,
 			request_nonce,
@@ -52,7 +53,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 			accept: "application/json",
 			"content-type": "application/json",
 		},
-		body: JSON.stringify(method),
+		body: stringify(method),
 	})
 	const data = await response.json()
 
@@ -84,7 +85,7 @@ export async function handleSubstrateRequestEvent(event: SubstrateEvent): Promis
 			accept: "application/json",
 			"content-type": "application/json",
 		},
-		body: JSON.stringify({
+		body: stringify({
 			id: 1,
 			jsonrpc: "2.0",
 			method: "childstate_getStorage",

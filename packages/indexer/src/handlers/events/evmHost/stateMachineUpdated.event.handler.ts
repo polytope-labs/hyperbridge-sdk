@@ -2,6 +2,7 @@ import { StateMachineUpdatedLog } from "@/configs/src/types/abi-interfaces/Ether
 import { StateMachineService } from "@/services/stateMachine.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 /**
  * Handle the StateMachineUpdated event
@@ -13,7 +14,7 @@ export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedL
 	const { stateMachineId, height } = args
 
 	logger.info(
-		`Handling StateMachineUpdated Event: ${JSON.stringify({
+		`Handling StateMachineUpdated Event: ${stringify({
 			blockNumber,
 			transactionHash,
 		})}`,
