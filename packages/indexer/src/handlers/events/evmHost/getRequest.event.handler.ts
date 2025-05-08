@@ -20,7 +20,6 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 
 	const { blockNumber, transactionHash, args, block, blockHash } = event
 	let { source, dest, from, nonce, height, context, timeoutTimestamp, fee } = args
-	let { hash } = block
 	let keys = args[3]
 
 	const chain: string = getHostStateMachine(chainId)
@@ -63,7 +62,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 	const normalizedTimestamp = normalizeTimestamp(timestamp)
 	const blockTimestamp = block.timestamp
 
-	const getRequest = await GetRequestService.createOrUpdate({
+	await GetRequestService.createOrUpdate({
 		id: get_request_commitment,
 		source,
 		dest,
@@ -76,7 +75,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		fee: BigInt(fee.toString()),
 		transactionHash,
 		blockNumber: blockNumber.toString(),
-		blockHash: hash,
+		blockHash,
 		blockTimestamp,
 		status: Status.SOURCE,
 		chain,
@@ -89,7 +88,7 @@ export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<
 		chain,
 		timestamp: blockTimestamp,
 		blockNumber: blockNumber.toString(),
-		blockHash: hash,
+		blockHash,
 		transactionHash,
 		createdAt: new Date(Number(normalizedTimestamp)),
 	})
