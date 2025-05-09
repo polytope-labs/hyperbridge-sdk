@@ -105,12 +105,31 @@ test("EVM -> Substrate token transfer", { timeout: 5_400_000 }, async () => {
 	const statusStream = indexer.postRequestStatusStream(commitment)
 
 	for await (const status of statusStream) {
-		if (status.status === TimeoutStatus.PENDING_TIMEOUT) {
-			console.log("Request is now timed out", postRequest.timeoutTimestamp)
-			throw new Error("Request Timedout")
+		switch (status.status) {
+			case RequestStatus.SOURCE: {
+				assertIsToday(BigInt(status.metadata.timestamp!))
+				break
+			}
+			case RequestStatus.SOURCE_FINALIZED: {
+				assertIsToday(BigInt(status.metadata.timestamp!))
+				break
+			}
+
+			case RequestStatus.HYPERBRIDGE_DELIVERED: {
+				assertIsToday(BigInt(status.metadata.timestamp!))
+				break
+			}
+
+			case RequestStatus.HYPERBRIDGE_FINALIZED: {
+				assertIsToday(BigInt(status.metadata.timestamp!))
+				break
+			}
 		}
-		assertIsToday(BigInt(status.metadata.timestamp!))
+
 		console.log(JSON.stringify(status, null, 4))
+		if (status.status === RequestStatus.HYPERBRIDGE_FINALIZED) {
+			break
+		}
 	}
 
 	const req = await indexer.queryRequestWithStatus(commitment)
