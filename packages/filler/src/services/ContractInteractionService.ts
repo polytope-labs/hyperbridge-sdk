@@ -399,4 +399,59 @@ export class ContractInteractionService {
 		})
 		return hostParams
 	}
+
+	async getTokenUsdValue(order: Order): Promise<{ outputUsdValue: bigint; inputUsdValue: bigint }> {
+		let outputUsdValue = BigInt(0)
+		let inputUsdValue = BigInt(0)
+		const outputs = order.outputs
+		const inputs = order.inputs
+
+		for (const output of outputs) {
+			const tokenAddress = bytes32ToBytes20(output.token)
+			const amount = output.amount
+			const price = await this.getTokenPrice(tokenAddress, order.destChain)
+			outputUsdValue = outputUsdValue + amount * price
+		}
+
+		for (const input of inputs) {
+			const tokenAddress = bytes32ToBytes20(input.token)
+			const amount = input.amount
+			const price = await this.getTokenPrice(tokenAddress, order.sourceChain)
+			inputUsdValue = inputUsdValue + amount * price
+		}
+
+		return { outputUsdValue, inputUsdValue }
+	}
+
+	async getTokenPrice(tokenAddress: string, chain: string): Promise<bigint> {
+		const decimals = await this.getTokenDecimals(tokenAddress, chain)
+		const usdValue = await fetchTokenUsdPriceOnchain(tokenAddress, decimals)
+		return usdValue
+	}
+
+	async getFillerBalanceUSD(order: Order, chain: string): Promise<bigint> {
+		// As part of the protocol, the filler will have only two tokens:
+		// 1. The native token of the chain. And 2. DAI
+		// We need to get the balance of the filler in both tokens
+		// and convert them to USD
+		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
+		const destClient = this.clientManager.getPublicClient(chain)
+		// Native token balance
+		const nativeTokenBalance = await destClient.getBalance({ address: fillerWalletAddress })
+		const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order)
+		const nativeTokenUsdValue = nativeTokenBalance * nativeTokenPriceUsd
+
+		// DAI balance
+		const daiBalance = await destClient.readContract({
+			abi: ERC20_ABI,
+			address: this.configService.getDaiAsset(chain),
+			functionName: "balanceOf",
+			args: [fillerWalletAddress],
+		})
+
+		const daiPriceUsd = await this.getTokenPrice(this.configService.getDaiAsset(chain), chain)
+		const daiUsdValue = daiBalance * daiPriceUsd
+
+		return nativeTokenUsdValue + daiUsdValue
+	}
 }
