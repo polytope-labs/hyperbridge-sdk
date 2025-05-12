@@ -1,6 +1,7 @@
+import { copyFileSync, mkdirSync, existsSync } from "node:fs"
+import { dirname } from "node:path"
+
 import { defineConfig } from "tsup"
-import { copyFileSync, mkdirSync, existsSync } from "fs"
-import { join, dirname } from "path"
 
 export default defineConfig({
 	entry: ["src/index.ts"],
@@ -13,8 +14,9 @@ export default defineConfig({
 	treeshake: true,
 	async onSuccess() {
 		// Copy WebAssembly files to dist directory
-		const wasmSourcePath = join(__dirname, "src", "utils", "ckb-mmr-wasm", "ckb_mmr_wasm_bg.wasm")
-		const wasmDestPath = join(__dirname, "dist", "ckb_mmr_wasm_bg.wasm")
+		const wasmSourcePath = new URL("src/utils/ckb-mmr-wasm/dist/node/ckb_mmr_wasm_bg.wasm", import.meta.url)
+			.pathname
+		const wasmDestPath = new URL("dist/ckb_mmr_wasm_bg.wasm", import.meta.url).pathname
 
 		// Ensure the destination directory exists
 		const destDir = dirname(wasmDestPath)
