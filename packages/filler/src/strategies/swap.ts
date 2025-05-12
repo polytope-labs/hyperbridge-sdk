@@ -12,9 +12,9 @@ import {
 import { FillerStrategy } from "./base"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { get1inchExactOutputQuote } from "@/utils"
-import { encodeFunctionData } from "viem"
+import { encodeFunctionData, maxUint256 } from "viem"
 import { erc7821Actions } from "viem/experimental"
+import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -57,7 +57,7 @@ export class BasicFiller implements FillerStrategy {
 			// Check if the filler has enough USD value to fill the order
 			const { outputUsdValue } = await this.contractService.getTokenUsdValue(order)
 
-			if (fillerBalanceUsd < outputUsdValue) {
+			if (fillerBalanceUsd.totalBalanceUsd < outputUsdValue) {
 				console.debug(`Insufficient USD value for order`)
 				return false
 			}
@@ -114,46 +114,50 @@ export class BasicFiller implements FillerStrategy {
 			const operations: { calls: { to: HexString; data: HexString; value?: bigint }[] }[] = []
 
 			for (const token of order.outputs) {
+				await this.contractService.approveTokensIfNeeded(order)
 				const tokenAddress = bytes32ToBytes20(token.token)
-				const tokenBalance = await this.contractService.getTokenBalance(
-					tokenAddress,
-					fillerWalletAddress,
-					order.destChain,
-				)
-				if (tokenBalance === BigInt(0)) {
-					const chainId = Number(order.destChain.split("-")[1])
+				const { nativeTokenBalance, daiBalance, usdcBalance, usdtBalance } =
+					await this.contractService.getFillerBalanceUSD(order, order.destChain)
 
-					const swapData = await get1inchExactOutputQuote({
-						chainId,
-						srcToken: this.configService.getDaiAsset(order.destChain),
-						dstToken: tokenAddress,
-						amount: token.amount.toString(),
-						fromAddress: fillerWalletAddress,
-						slippage: 200,
-						isExactOut: true,
+				const currentBalance =
+					tokenAddress === this.configService.getDaiAsset(order.destChain)
+						? daiBalance
+						: tokenAddress === this.configService.getUsdtAsset(order.destChain)
+							? usdtBalance
+							: tokenAddress === this.configService.getUsdcAsset(order.destChain)
+								? usdcBalance
+								: nativeTokenBalance
+
+				const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
+
+				if (balanceNeeded > BigInt(0)) {
+					const swapData = encodeFunctionData({
+						abi: UNISWAP_ROUTER_V2_ABI,
+						functionName: "swapTokensForExactTokens",
+						args: [
+							balanceNeeded,
+							maxUint256,
+							[this.configService.getDaiAsset(order.destChain), tokenAddress],
+							fillerWalletAddress,
+							order.deadline,
+						],
 					})
+
+					const call = {
+						to: this.configService.getUniswapRouterV2Address(order.destChain),
+						data: swapData,
+						value: BigInt(0),
+					}
 
 					try {
 						// Simulating individual swaps for early debugging
 						await destClient.simulateCalls({
 							account: fillerWalletAddress,
-							calls: [
-								{
-									to: swapData.tx.to as HexString,
-									data: swapData.tx.data as HexString,
-									value: BigInt(swapData.tx.value || 0),
-								},
-							],
+							calls: [call],
 						})
 
 						operations.push({
-							calls: [
-								{
-									to: swapData.tx.to as HexString,
-									data: swapData.tx.data as HexString,
-									value: BigInt(swapData.tx.value || 0),
-								},
-							],
+							calls: [call],
 						})
 					} catch (simulationError) {
 						console.error("Swap simulation failed:", simulationError)

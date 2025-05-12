@@ -63,6 +63,20 @@ export class ChainConfigService {
 	}
 
 	/**
+	 * Gets the USDT asset for a given chain
+	 */
+	getUsdtAsset(chain: string): HexString {
+		return assets[chain as keyof typeof assets].USDT as HexString
+	}
+
+	/**
+	 * Gets the USDC asset for a given chain
+	 */
+	getUsdcAsset(chain: string): HexString {
+		return assets[chain as keyof typeof assets].USDC as HexString
+	}
+
+	/**
 	 * Gets the chain ID for a given chain
 	 */
 	getChainId(chain: string): number {
@@ -88,5 +102,12 @@ export class ChainConfigService {
 	 */
 	getRpcUrl(chain: string): string {
 		return this.rpcUrls[chain as Chains]
+	}
+
+	/**
+	 * Gets the Uniswap Router V2 contract address for a given chain
+	 */
+	getUniswapRouterV2Address(chain: string): HexString {
+		return addresses.UniswapRouterV2[chain as keyof typeof addresses.UniswapRouterV2]! as HexString
 	}
 }

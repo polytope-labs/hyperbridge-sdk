@@ -303,8 +303,8 @@ export class ContractInteractionService {
 	 * Gets the current Native token price in USD
 	 */
 	async getNativeTokenPriceUsd(order: Order): Promise<bigint> {
-		const { asset, decimals } = this.configService.getWrappedNativeAssetWithDecimals(order.destChain)
-		const ethPriceUsd = await fetchTokenUsdPriceOnchain(asset, decimals)
+		const { asset } = this.configService.getWrappedNativeAssetWithDecimals(order.destChain)
+		const ethPriceUsd = await fetchTokenUsdPriceOnchain(asset)
 
 		return ethPriceUsd
 	}
@@ -409,49 +409,81 @@ export class ContractInteractionService {
 		for (const output of outputs) {
 			const tokenAddress = bytes32ToBytes20(output.token)
 			const amount = output.amount
-			const price = await this.getTokenPrice(tokenAddress, order.destChain)
-			outputUsdValue = outputUsdValue + amount * price
+			const decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
+			const price = await this.getTokenPrice(tokenAddress)
+			const tokenUsdValue = (amount / BigInt(10 ** decimals)) * price
+			outputUsdValue = outputUsdValue + tokenUsdValue
 		}
 
 		for (const input of inputs) {
 			const tokenAddress = bytes32ToBytes20(input.token)
 			const amount = input.amount
-			const price = await this.getTokenPrice(tokenAddress, order.sourceChain)
-			inputUsdValue = inputUsdValue + amount * price
+			const decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
+			const price = await this.getTokenPrice(tokenAddress)
+			const tokenUsdValue = (amount / BigInt(10 ** decimals)) * price
+			inputUsdValue = inputUsdValue + tokenUsdValue
 		}
 
 		return { outputUsdValue, inputUsdValue }
 	}
 
-	async getTokenPrice(tokenAddress: string, chain: string): Promise<bigint> {
-		const decimals = await this.getTokenDecimals(tokenAddress, chain)
-		const usdValue = await fetchTokenUsdPriceOnchain(tokenAddress, decimals)
+	async getTokenPrice(tokenAddress: string): Promise<bigint> {
+		const usdValue = await fetchTokenUsdPriceOnchain(tokenAddress)
 		return usdValue
 	}
 
-	async getFillerBalanceUSD(order: Order, chain: string): Promise<bigint> {
-		// As part of the protocol, the filler will have only two tokens:
-		// 1. The native token of the chain. And 2. DAI
-		// We need to get the balance of the filler in both tokens
-		// and convert them to USD
+	async getFillerBalanceUSD(
+		order: Order,
+		chain: string,
+	): Promise<{
+		nativeTokenBalance: bigint
+		daiBalance: bigint
+		usdtBalance: bigint
+		usdcBalance: bigint
+		totalBalanceUsd: bigint
+	}> {
 		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
 		const destClient = this.clientManager.getPublicClient(chain)
-		// Native token balance
+
 		const nativeTokenBalance = await destClient.getBalance({ address: fillerWalletAddress })
 		const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order)
-		const nativeTokenUsdValue = nativeTokenBalance * nativeTokenPriceUsd
+		const nativeTokenUsdValue = (nativeTokenBalance / BigInt(10 ** 18)) * nativeTokenPriceUsd
 
 		// DAI balance
+		const daiAddress = this.configService.getDaiAsset(chain)
 		const daiBalance = await destClient.readContract({
 			abi: ERC20_ABI,
-			address: this.configService.getDaiAsset(chain),
+			address: daiAddress,
 			functionName: "balanceOf",
 			args: [fillerWalletAddress],
 		})
+		const daiDecimals = await this.getTokenDecimals(daiAddress, chain)
+		const daiBalanceUsd = daiBalance / BigInt(10 ** daiDecimals)
 
-		const daiPriceUsd = await this.getTokenPrice(this.configService.getDaiAsset(chain), chain)
-		const daiUsdValue = daiBalance * daiPriceUsd
+		// USDT Balance
+		const usdtAddress = this.configService.getUsdtAsset(chain)
+		const usdtBalance = await destClient.readContract({
+			abi: ERC20_ABI,
+			address: usdtAddress,
+			functionName: "balanceOf",
+			args: [fillerWalletAddress],
+		})
+		const usdtDecimals = await this.getTokenDecimals(usdtAddress, chain)
+		const usdtBalanceUsd = usdtBalance / BigInt(10 ** usdtDecimals)
 
-		return nativeTokenUsdValue + daiUsdValue
+		// USDC Balance
+		const usdcAddress = this.configService.getUsdcAsset(chain)
+		const usdcBalance = await destClient.readContract({
+			abi: ERC20_ABI,
+			address: usdcAddress,
+			functionName: "balanceOf",
+			args: [fillerWalletAddress],
+		})
+		const usdcDecimals = await this.getTokenDecimals(usdcAddress, chain)
+		const usdcBalanceUsd = usdcBalance / BigInt(10 ** usdcDecimals)
+
+		const totalBalanceUsd = nativeTokenUsdValue + daiBalanceUsd + usdtBalanceUsd + usdcBalanceUsd
+
+		return { nativeTokenBalance, daiBalance, usdtBalance, usdcBalance, totalBalanceUsd }
 	}
 }
