@@ -45,7 +45,7 @@ function assertIsToday(timestamp: bigint) {
 	// Difference between timestamps and current timestamps must be less than an hour
 	let diff = (today.getTime() - dateToCheck.getTime()) / 1000
 	expect(isToday).toBeTruthy()
-	expect(diff / 3600).toBeTruthy()
+	expect(diff < 3600).toBeTruthy()
 }
 
 describe.sequential("Hyperbridge Requests", () => {
