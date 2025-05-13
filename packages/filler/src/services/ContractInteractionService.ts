@@ -520,7 +520,7 @@ export class ContractInteractionService {
 							? usdcBalance
 							: nativeTokenBalance
 
-			// Calculate how much more we need
+			// Calculate how much more we need (in actual uint256 with decimals)
 			const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
 
 			if (balanceNeeded > BigInt(0)) {
@@ -532,11 +532,12 @@ export class ContractInteractionService {
 					native: nativeTokenBalance / BigInt(10 ** 18),
 				}
 
+				// Sort balances in descending order
 				const sortedBalances = Object.entries(normalizedBalances).sort(([, a], [, b]) => Number(b - a))
 
 				// Try to fulfill the requirement using the highest balance first
 				let remainingNeeded = balanceNeeded
-				for (const [tokenType, balance] of sortedBalances) {
+				for (const [tokenType, normalizedBalance] of sortedBalances) {
 					if (remainingNeeded <= BigInt(0)) break
 
 					// Skip if this is the same token we're trying to get
@@ -549,19 +550,29 @@ export class ContractInteractionService {
 						continue
 					}
 
-					// Calculate how much we can swap from this token
-					const tokenToSwap =
+					// Get the actual balance with decimals
+					const actualBalance =
 						tokenType === "dai"
-							? daiAsset
+							? daiBalance
 							: tokenType === "usdt"
-								? usdtAsset
+								? usdtBalance
 								: tokenType === "usdc"
-									? usdcAsset
-									: ADDRESS_ZERO
+									? usdcBalance
+									: nativeTokenBalance
 
-					const swapAmount = balance > remainingNeeded ? remainingNeeded : balance
+					// Calculate how much we can swap from this token (in actual uint256 with decimals)
+					const swapAmount = actualBalance > remainingNeeded ? remainingNeeded : actualBalance
 
 					if (swapAmount > BigInt(0)) {
+						const tokenToSwap =
+							tokenType === "dai"
+								? daiAsset
+								: tokenType === "usdt"
+									? usdtAsset
+									: tokenType === "usdc"
+										? usdcAsset
+										: ADDRESS_ZERO
+
 						const swapData = encodeFunctionData({
 							abi: UNISWAP_ROUTER_V2_ABI,
 							functionName: "swapTokensForExactTokens",

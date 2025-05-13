@@ -6,8 +6,10 @@ rpcUrl = { env = "BSC_CHAPEL", url = "https://bnb-testnet.api.onfinality.io/publ
 consensusStateId = "BSC0"
 
 [chains.bsc-chapel.assets]
-WETH = "0xb8c77482e45f1f44de1745f52c74426c631bdd52"
-DAI = "0x0000000000000000000000000000000000000000"
+WETH = "0xae13d989dac2f0debff460ac112a837c89baa7cd"
+DAI = "0x1938165569A5463327fb206bE06d8D9253aa06b7"
+USDC = "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92"
+USDT = "0xc043f483373072f7F27420D6E7D7ad269c018E18"
 
 [chains.bsc-chapel.addresses]
 IntentGateway = "0xb6C27F4beF379d0b5e2fe3Bb36c248D6B71f91A6"
@@ -23,6 +25,8 @@ consensusStateId = "GNO0"
 [chains.gnosis-chiado.assets]
 WETH = "0x0000000000000000000000000000000000000000"
 DAI = "0x0000000000000000000000000000000000000000"
+USDC = "0x0000000000000000000000000000000000000000"
+USDT = "0x0000000000000000000000000000000000000000"
 
 [chains.gnosis-chiado.addresses]
 IntentGateway = "0xb6C27F4beF379d0b5e2fe3Bb36c248D6B71f91A6"
@@ -33,3 +37,23 @@ type = "substrate"
 stateMachineId = "KUSAMA-4009"
 rpcUrl = { env = "HYPERBRIDGE_GARGANTUA", url = "" }
 consensusStateId = "PAS0" 
+
+[chains.sepolia]
+type = "evm"
+stateMachineId = "EVM-11155111"
+wrappedNativeDecimals = 18
+rpcUrl = { env = "SEPOLIA", url = "https://1rpc.io/sepolia" }
+consensusStateId = "ETH0"
+
+[chains.sepolia.assets]
+WETH = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9"
+USDC = "0x0000000000000000000000000000000000000000"
+USDT = "0x0000000000000000000000000000000000000000"
+DAI = "0x0000000000000000000000000000000000000000"
+
+[chains.sepolia.addresses]
+IntentGateway = "0x0000000000000000000000000000000000000000"
+Host = "0x2EdB74C269948b60ec1000040E104cef0eABaae8"
+Calldispatcher = "0xC7f13b6D03A0A7F3239d38897503E90553ABe155"
+
+

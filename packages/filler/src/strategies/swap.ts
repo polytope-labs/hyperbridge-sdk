@@ -1,6 +1,5 @@
 import { ChainConfigService, ChainClientManager, ContractInteractionService } from "@/services"
 import {
-	bytes32ToBytes20,
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
 	ExecutionResult,
@@ -12,9 +11,8 @@ import {
 import { FillerStrategy } from "./base"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { encodeFunctionData, maxUint256 } from "viem"
+import { encodeFunctionData } from "viem"
 import { erc7821Actions } from "viem/experimental"
-import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 
 export class StableSwapFiller implements FillerStrategy {
 	name = "StableSwapFiller"
