@@ -16,8 +16,8 @@ import { encodeFunctionData, maxUint256 } from "viem"
 import { erc7821Actions } from "viem/experimental"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 
-export class BasicFiller implements FillerStrategy {
-	name = "BasicFiller"
+export class StableSwapFiller implements FillerStrategy {
+	name = "StableSwapFiller"
 	private privateKey: HexString
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
@@ -108,63 +108,9 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 			const startTime = Date.now()
-
 			const fillerWalletAddress = privateKeyToAddress(this.privateKey)
 
-			const operations: { calls: { to: HexString; data: HexString; value?: bigint }[] }[] = []
-
-			for (const token of order.outputs) {
-				await this.contractService.approveTokensIfNeeded(order)
-				const tokenAddress = bytes32ToBytes20(token.token)
-				const { nativeTokenBalance, daiBalance, usdcBalance, usdtBalance } =
-					await this.contractService.getFillerBalanceUSD(order, order.destChain)
-
-				const currentBalance =
-					tokenAddress === this.configService.getDaiAsset(order.destChain)
-						? daiBalance
-						: tokenAddress === this.configService.getUsdtAsset(order.destChain)
-							? usdtBalance
-							: tokenAddress === this.configService.getUsdcAsset(order.destChain)
-								? usdcBalance
-								: nativeTokenBalance
-
-				const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
-
-				if (balanceNeeded > BigInt(0)) {
-					const swapData = encodeFunctionData({
-						abi: UNISWAP_ROUTER_V2_ABI,
-						functionName: "swapTokensForExactTokens",
-						args: [
-							balanceNeeded,
-							maxUint256,
-							[this.configService.getDaiAsset(order.destChain), tokenAddress],
-							fillerWalletAddress,
-							order.deadline,
-						],
-					})
-
-					const call = {
-						to: this.configService.getUniswapRouterV2Address(order.destChain),
-						data: swapData,
-						value: BigInt(0),
-					}
-
-					try {
-						// Simulating individual swaps for early debugging
-						await destClient.simulateCalls({
-							account: fillerWalletAddress,
-							calls: [call],
-						})
-
-						operations.push({
-							calls: [call],
-						})
-					} catch (simulationError) {
-						console.error("Swap simulation failed:", simulationError)
-						throw new Error("Swap simulation failed")
-					}
-				}
-			}
+			const operations = await this.contractService.calculateSwapOperations(order, order.destChain)
 
 			const postRequest: IPostRequest = {
 				source: order.destChain,
@@ -233,7 +179,7 @@ export class BasicFiller implements FillerStrategy {
 				gasUsed: receipt.gasUsed.toString(),
 				gasPrice: receipt.effectiveGasPrice.toString(),
 				confirmedAtBlock: Number(receipt.blockNumber),
-				confirmedAt: new Date(),
+				confirmedAt: new Date(endTime),
 				strategyUsed: this.name,
 				processingTimeMs,
 			}

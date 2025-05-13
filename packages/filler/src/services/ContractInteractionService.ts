@@ -1,4 +1,4 @@
-import { getContract, maxUint256, toHex, encodePacked, keccak256 } from "viem"
+import { getContract, maxUint256, toHex, encodePacked, keccak256, encodeFunctionData } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -23,6 +23,7 @@ import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { Chains } from "@/config/chain"
+import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 /**
  * Handles contract interactions for tokens and other contracts
  */
@@ -485,5 +486,126 @@ export class ContractInteractionService {
 		const totalBalanceUsd = nativeTokenUsdValue + daiBalanceUsd + usdtBalanceUsd + usdcBalanceUsd
 
 		return { nativeTokenBalance, daiBalance, usdtBalance, usdcBalance, totalBalanceUsd }
+	}
+
+	async calculateSwapOperations(
+		order: Order,
+		destChain: string,
+	): Promise<{ calls: { to: HexString; data: HexString; value?: bigint }[] }[]> {
+		const operations: { calls: { to: HexString; data: HexString; value?: bigint }[] }[] = []
+		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
+		const destClient = this.clientManager.getPublicClient(destChain)
+
+		const daiAsset = this.configService.getDaiAsset(destChain)
+		const usdtAsset = this.configService.getUsdtAsset(destChain)
+		const usdcAsset = this.configService.getUsdcAsset(destChain)
+		const daiDecimals = await this.getTokenDecimals(daiAsset, destChain)
+		const usdtDecimals = await this.getTokenDecimals(usdtAsset, destChain)
+		const usdcDecimals = await this.getTokenDecimals(usdcAsset, destChain)
+
+		for (const token of order.outputs) {
+			const tokenAddress = bytes32ToBytes20(token.token)
+			const { nativeTokenBalance, daiBalance, usdcBalance, usdtBalance } = await this.getFillerBalanceUSD(
+				order,
+				destChain,
+			)
+
+			// Get current balance of the required token
+			const currentBalance =
+				tokenAddress === daiAsset
+					? daiBalance
+					: tokenAddress === usdtAsset
+						? usdtBalance
+						: tokenAddress === usdcAsset
+							? usdcBalance
+							: nativeTokenBalance
+
+			// Calculate how much more we need
+			const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
+
+			if (balanceNeeded > BigInt(0)) {
+				// Convert all balances to the same unit (18 decimals) for comparison
+				const normalizedBalances = {
+					dai: daiBalance / BigInt(10 ** daiDecimals),
+					usdt: usdtBalance / BigInt(10 ** usdtDecimals),
+					usdc: usdcBalance / BigInt(10 ** usdcDecimals),
+					native: nativeTokenBalance / BigInt(10 ** 18),
+				}
+
+				const sortedBalances = Object.entries(normalizedBalances).sort(([, a], [, b]) => Number(b - a))
+
+				// Try to fulfill the requirement using the highest balance first
+				let remainingNeeded = balanceNeeded
+				for (const [tokenType, balance] of sortedBalances) {
+					if (remainingNeeded <= BigInt(0)) break
+
+					// Skip if this is the same token we're trying to get
+					if (
+						(tokenType === "dai" && tokenAddress === daiAsset) ||
+						(tokenType === "usdt" && tokenAddress === usdtAsset) ||
+						(tokenType === "usdc" && tokenAddress === usdcAsset) ||
+						(tokenType === "native" && tokenAddress === ADDRESS_ZERO)
+					) {
+						continue
+					}
+
+					// Calculate how much we can swap from this token
+					const tokenToSwap =
+						tokenType === "dai"
+							? daiAsset
+							: tokenType === "usdt"
+								? usdtAsset
+								: tokenType === "usdc"
+									? usdcAsset
+									: ADDRESS_ZERO
+
+					const swapAmount = balance > remainingNeeded ? remainingNeeded : balance
+
+					if (swapAmount > BigInt(0)) {
+						const swapData = encodeFunctionData({
+							abi: UNISWAP_ROUTER_V2_ABI,
+							functionName: "swapTokensForExactTokens",
+							args: [
+								swapAmount,
+								maxUint256,
+								[tokenToSwap, tokenAddress],
+								fillerWalletAddress,
+								order.deadline,
+							],
+						})
+
+						const call = {
+							to: this.configService.getUniswapRouterV2Address(destChain),
+							data: swapData,
+							value: BigInt(0),
+						}
+
+						try {
+							// Simulate the swap
+							await destClient.simulateCalls({
+								account: fillerWalletAddress,
+								calls: [call],
+							})
+
+							operations.push({
+								calls: [call],
+							})
+
+							remainingNeeded -= swapAmount
+						} catch (simulationError) {
+							console.error(`Swap simulation failed for ${tokenType}:`, simulationError)
+							continue
+						}
+					}
+				}
+
+				// If we still need more tokens after trying all balances
+				if (remainingNeeded > BigInt(0)) {
+					throw new Error(`Insufficient balance to fulfill token requirement for ${tokenAddress}`)
+				}
+			}
+		}
+
+		return operations
 	}
 }
