@@ -108,6 +108,13 @@ export class ChainConfigService {
 	 * Gets the Uniswap Router V2 contract address for a given chain
 	 */
 	getUniswapRouterV2Address(chain: string): HexString {
-		return addresses.UniswapRouterV2[chain as keyof typeof addresses.UniswapRouterV2]! as HexString
+		return addresses.UniswapRouter02[chain as keyof typeof addresses.UniswapRouter02]! as HexString
+	}
+
+	/**
+	 * Gets the Uniswap V2 Factory contract address for a given chain
+	 */
+	getUniswapV2FactoryAddress(chain: string): HexString {
+		return addresses.UniswapV2Factory[chain as keyof typeof addresses.UniswapV2Factory]! as HexString
 	}
 }

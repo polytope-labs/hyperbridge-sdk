@@ -15,6 +15,7 @@ import {
 	RequestStatus,
 	orderCommitment,
 	bytes20ToBytes32,
+	ADDRESS_ZERO,
 } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -30,13 +31,14 @@ import {
 	WalletClient,
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { privateKeyToAccount } from "viem/accounts"
+import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { bscTestnet } from "viem/chains"
 import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
+import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
 describe.sequential("Basic", () => {
 	let indexer: IndexerClient
 
@@ -353,20 +355,22 @@ describe.sequential("Basic", () => {
 		}
 	}, 1_000_0000)
 
-	it("Should handle order filling with token swaps", async () => {
+	it.only("Should handle order filling with token swaps", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
-			bscWalletClient,
 			bscPublicClient,
 			bscIsmpHost,
 			gnosisChiadoIsmpHost,
-			feeTokenBscAddress,
 			gnosisChiadoPublicClient,
+			gnosisChiadoWalletClient,
 			chainConfigs,
 			fillerConfig,
 			chainConfigService,
 			gnosisChiadoId,
+			feeTokenGnosisChiadoAddress,
+			bscChapelId,
+			bscWalletClient,
 		} = await setUp()
 
 		// Create a new intent filler with StableSwapFiller strategy
@@ -379,27 +383,25 @@ describe.sequential("Basic", () => {
 		const inputs: TokenInfo[] = [
 			{
 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-				amount: 100n,
+				amount: 1000000n,
 			},
 		]
 
-		const daiAsset = chainConfigService.getDaiAsset(gnosisChiadoId)
 		const usdtAsset = chainConfigService.getUsdtAsset(gnosisChiadoId)
 		const usdcAsset = chainConfigService.getUsdcAsset(gnosisChiadoId)
-
 		const outputs: PaymentInfo[] = [
 			{
 				token: bytes20ToBytes32(usdtAsset),
-				amount: 1000000000000000000n, // 1 USDT with 18 decimals
+				amount: 1000000n,
 				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
 			},
 		]
 
 		const order = {
 			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
-			sourceChain: await bscIsmpHost.read.host(),
-			destChain: await gnosisChiadoIsmpHost.read.host(),
-			deadline: 65337297n,
+			sourceChain: await gnosisChiadoIsmpHost.read.host(),
+			destChain: await bscIsmpHost.read.host(),
+			deadline: 6533729700n,
 			nonce: 0n,
 			fees: 1000000n,
 			outputs,
@@ -408,7 +410,32 @@ describe.sequential("Basic", () => {
 		}
 
 		// Approve tokens for the order
-		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
+		await approveTokens(
+			gnosisChiadoWalletClient,
+			gnosisChiadoPublicClient,
+			feeTokenGnosisChiadoAddress,
+			gnosisChiadoIntentGateway.address,
+		)
+
+		const pairAddress = await getPairAddress(
+			bscPublicClient,
+			usdtAsset,
+			usdcAsset,
+			chainConfigService.getUniswapV2FactoryAddress(bscChapelId),
+		)
+
+		if (pairAddress === ADDRESS_ZERO) {
+			await createPair(
+				bscWalletClient,
+				bscPublicClient,
+				chainConfigService.getUniswapRouterV2Address(bscChapelId),
+				usdtAsset,
+				usdcAsset,
+				100000000n,
+				100000000n,
+				privateKeyToAddress(process.env.PRIVATE_KEY as HexString),
+			)
+		}
 
 		// Monitor for order detection
 		const orderDetectedPromise = new Promise<Order>((resolve) => {
@@ -629,15 +656,21 @@ async function approveTokens(
 
 async function createPair(
 	walletClient: WalletClient,
+	publicClient: PublicClient,
+	uniswapRouterAddress: HexString,
 	tokenA: HexString,
 	tokenB: HexString,
 	tokenAAmount: bigint,
 	tokenBAmount: bigint,
 	lpRecipient: HexString,
 ) {
+	// Approve tokens for the pair
+	await approveTokens(walletClient, publicClient, tokenA, uniswapRouterAddress)
+	await approveTokens(walletClient, publicClient, tokenB, uniswapRouterAddress)
+
 	const tx = await walletClient.writeContract({
 		abi: UNISWAP_ROUTER_V2_ABI,
-		address: tokenA,
+		address: uniswapRouterAddress,
 		functionName: "addLiquidity",
 		args: [tokenA, tokenB, tokenAAmount, tokenBAmount, tokenAAmount, tokenBAmount, lpRecipient, 0n],
 		chain: walletClient.chain,
@@ -645,6 +678,22 @@ async function createPair(
 	})
 
 	console.log("Created pair:", tx)
+}
+
+async function getPairAddress(
+	publicClient: PublicClient,
+	tokenA: HexString,
+	tokenB: HexString,
+	factoryAddress: HexString,
+) {
+	const pairAddress = await publicClient.readContract({
+		abi: UNISWAP_V2_FACTORY_ABI,
+		address: factoryAddress,
+		functionName: "getPair",
+		args: [tokenA, tokenB],
+	})
+
+	return pairAddress as HexString
 }
 
 async function checkIfOrderFilled(

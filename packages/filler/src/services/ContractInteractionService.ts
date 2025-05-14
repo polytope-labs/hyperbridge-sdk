@@ -573,12 +573,33 @@ export class ContractInteractionService {
 										? usdcAsset
 										: ADDRESS_ZERO
 
+						const amountsIn = await destClient.readContract({
+							address: this.configService.getUniswapRouterV2Address(destChain),
+							abi: UNISWAP_ROUTER_V2_ABI,
+							functionName: "getAmountsIn",
+							args: [swapAmount, [tokenToSwap, tokenAddress]],
+						})
+
+						const amountIn = amountsIn[0]
+
+						const approveData = encodeFunctionData({
+							abi: ERC20_ABI,
+							functionName: "approve",
+							args: [this.configService.getUniswapRouterV2Address(destChain), amountIn],
+						})
+
+						const approveCall = {
+							to: tokenToSwap,
+							data: approveData,
+							value: BigInt(0),
+						}
+
 						const swapData = encodeFunctionData({
 							abi: UNISWAP_ROUTER_V2_ABI,
 							functionName: "swapTokensForExactTokens",
 							args: [
 								swapAmount,
-								maxUint256,
+								amountIn,
 								[tokenToSwap, tokenAddress],
 								fillerWalletAddress,
 								order.deadline,
@@ -592,14 +613,13 @@ export class ContractInteractionService {
 						}
 
 						try {
-							// Simulate the swap
 							await destClient.simulateCalls({
 								account: fillerWalletAddress,
-								calls: [call],
+								calls: [approveCall, call],
 							})
 
 							operations.push({
-								calls: [call],
+								calls: [approveCall, call],
 							})
 
 							remainingNeeded -= swapAmount

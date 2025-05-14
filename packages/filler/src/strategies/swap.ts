@@ -110,6 +110,8 @@ export class StableSwapFiller implements FillerStrategy {
 
 			const operations = await this.contractService.calculateSwapOperations(order, order.destChain)
 
+			console.log("Operations:", operations)
+
 			const postRequest: IPostRequest = {
 				source: order.destChain,
 				dest: order.sourceChain,
