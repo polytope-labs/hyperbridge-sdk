@@ -32,7 +32,7 @@ import {
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
-import { bscTestnet } from "viem/chains"
+import { bscTestnet, gnosisChiado } from "viem/chains"
 import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
@@ -367,7 +367,6 @@ describe.sequential("Basic", () => {
 			chainConfigs,
 			fillerConfig,
 			chainConfigService,
-			gnosisChiadoId,
 			feeTokenGnosisChiadoAddress,
 			bscChapelId,
 			bscWalletClient,
@@ -387,8 +386,8 @@ describe.sequential("Basic", () => {
 			},
 		]
 
-		const usdtAsset = chainConfigService.getUsdtAsset(gnosisChiadoId)
-		const usdcAsset = chainConfigService.getUsdcAsset(gnosisChiadoId)
+		const usdtAsset = chainConfigService.getUsdtAsset(bscChapelId)
+		const usdcAsset = chainConfigService.getUsdcAsset(bscChapelId)
 		const outputs: PaymentInfo[] = [
 			{
 				token: bytes20ToBytes32(usdtAsset),
@@ -425,7 +424,8 @@ describe.sequential("Basic", () => {
 		)
 
 		if (pairAddress === ADDRESS_ZERO) {
-			await createPair(
+			console.log("Pair address is zero, creating pair and adding liquidity")
+			await addLiquidity(
 				bscWalletClient,
 				bscPublicClient,
 				chainConfigService.getUniswapRouterV2Address(bscChapelId),
@@ -452,13 +452,13 @@ describe.sequential("Basic", () => {
 		})
 
 		// Place the order
-		const hash = await bscIntentGateway.write.placeOrder([order], {
+		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: bscTestnet,
+			chain: gnosisChiado,
 			value: 100n,
 		})
 
-		const receipt = await bscPublicClient.waitForTransactionReceipt({
+		const receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
 			hash,
 			confirmations: 1,
 		})
@@ -519,10 +519,10 @@ describe.sequential("Basic", () => {
 
 async function setUp() {
 	const bscChapelId = "EVM-97"
-	const sepoliaId = "EVM-11155111"
+
 	const gnosisChiadoId = "EVM-10200"
 
-	const chains = [bscChapelId, gnosisChiadoId, sepoliaId]
+	const chains = [bscChapelId, gnosisChiadoId]
 
 	let chainConfigService = new ChainConfigService()
 	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
@@ -654,7 +654,7 @@ async function approveTokens(
 	}
 }
 
-async function createPair(
+async function addLiquidity(
 	walletClient: WalletClient,
 	publicClient: PublicClient,
 	uniswapRouterAddress: HexString,
@@ -664,20 +664,33 @@ async function createPair(
 	tokenBAmount: bigint,
 	lpRecipient: HexString,
 ) {
-	// Approve tokens for the pair
 	await approveTokens(walletClient, publicClient, tokenA, uniswapRouterAddress)
 	await approveTokens(walletClient, publicClient, tokenB, uniswapRouterAddress)
+	try {
+		console.log("Adding liquidity to uniswap router:", uniswapRouterAddress)
+		const tx = await walletClient.writeContract({
+			abi: UNISWAP_ROUTER_V2_ABI,
+			address: uniswapRouterAddress,
+			functionName: "addLiquidity",
+			args: [
+				tokenA,
+				tokenB,
+				tokenAAmount,
+				tokenBAmount,
+				tokenAAmount - 1n,
+				tokenBAmount - 1n,
+				lpRecipient,
+				6533729700n,
+			],
+			chain: walletClient.chain,
+			account: walletClient.account!,
+		})
 
-	const tx = await walletClient.writeContract({
-		abi: UNISWAP_ROUTER_V2_ABI,
-		address: uniswapRouterAddress,
-		functionName: "addLiquidity",
-		args: [tokenA, tokenB, tokenAAmount, tokenBAmount, tokenAAmount, tokenBAmount, lpRecipient, 0n],
-		chain: walletClient.chain,
-		account: walletClient.account!,
-	})
-
-	console.log("Created pair:", tx)
+		console.log("Added liquidity:", tx)
+	} catch (error) {
+		console.error("Error adding liquidity:", error)
+		throw error
+	}
 }
 
 async function getPairAddress(
@@ -693,6 +706,7 @@ async function getPairAddress(
 		args: [tokenA, tokenB],
 	})
 
+	console.log("Pair address:", pairAddress)
 	return pairAddress as HexString
 }
 
