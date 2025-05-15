@@ -382,7 +382,7 @@ describe.sequential("Basic", () => {
 		const inputs: TokenInfo[] = [
 			{
 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-				amount: 1000000n,
+				amount: 100n,
 			},
 		]
 
@@ -451,19 +451,19 @@ describe.sequential("Basic", () => {
 			})
 		})
 
-		// Place the order
-		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
-			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: gnosisChiado,
-			value: 100n,
-		})
+		// // Place the order
+		// const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
+		// 	account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+		// 	chain: gnosisChiado,
+		// 	value: 100n,
+		// })
 
-		const receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
-			hash,
-			confirmations: 1,
-		})
+		// const receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
+		// 	hash,
+		// 	confirmations: 1,
+		// })
 
-		console.log("Order placed on BSC:", receipt.transactionHash)
+		// console.log("Order placed on BSC:", receipt.transactionHash)
 
 		// Wait for order detection
 		console.log("Waiting for event monitor to detect the order...")

@@ -117,4 +117,11 @@ export class ChainConfigService {
 	getUniswapV2FactoryAddress(chain: string): HexString {
 		return addresses.UniswapV2Factory[chain as keyof typeof addresses.UniswapV2Factory]! as HexString
 	}
+
+	/**
+	 * Gets the Batch Executor contract address for a given chain
+	 */
+	getBatchExecutorAddress(chain: string): HexString {
+		return addresses.BatchExecutor[chain as keyof typeof addresses.BatchExecutor]! as HexString
+	}
 }

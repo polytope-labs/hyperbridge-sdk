@@ -63,7 +63,7 @@ export class ContractInteractionService {
 	 * Gets the decimals for a token
 	 */
 	async getTokenDecimals(tokenAddress: string, chain: string): Promise<number> {
-		const bytes20Address = bytes32ToBytes20(tokenAddress)
+		const bytes20Address = tokenAddress.length === 66 ? bytes32ToBytes20(tokenAddress) : tokenAddress
 
 		if (bytes20Address === ADDRESS_ZERO) {
 			return 18 // Native token (ETH, MATIC, etc.)
@@ -408,7 +408,7 @@ export class ContractInteractionService {
 		const inputs = order.inputs
 
 		for (const output of outputs) {
-			const tokenAddress = bytes32ToBytes20(output.token)
+			const tokenAddress = output.token
 			const amount = output.amount
 			const decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
 			const price = await this.getTokenPrice(tokenAddress)
@@ -417,7 +417,7 @@ export class ContractInteractionService {
 		}
 
 		for (const input of inputs) {
-			const tokenAddress = bytes32ToBytes20(input.token)
+			const tokenAddress = input.token
 			const amount = input.amount
 			const decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
 			const price = await this.getTokenPrice(tokenAddress)

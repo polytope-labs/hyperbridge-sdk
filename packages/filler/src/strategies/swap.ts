@@ -161,11 +161,17 @@ export class StableSwapFiller implements FillerStrategy {
 				throw new Error("Batch simulation failed")
 			}
 
-			const tx = await walletClient.extend(erc7821Actions()).executeBatches({
-				address: fillerWalletAddress,
-				batches: operations,
-				account: privateKeyToAccount(this.privateKey),
+			const authorization = await walletClient.signAuthorization({
+				contractAddress: this.configService.getBatchExecutorAddress(order.destChain),
+				account: walletClient.account!,
+			})
+
+			const tx = await walletClient.extend(erc7821Actions()).execute({
+				address: this.configService.getBatchExecutorAddress(order.destChain),
+				calls: operations.flatMap((op) => op.calls),
+				account: walletClient.account!,
 				chain: destClient.chain,
+				authorizationList: [authorization],
 			})
 
 			const endTime = Date.now()
