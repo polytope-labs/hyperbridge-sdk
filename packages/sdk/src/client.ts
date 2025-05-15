@@ -216,7 +216,7 @@ export class IndexerClient {
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
 		if (first_node?.createdAt) {
 			//@ts-ignore
-			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
+			first_node.timestamp = Math.floor(dateStringtoTimestamp(first_node.createdAt) / 1000)
 		}
 		logger.trace("Response >", first_node)
 
