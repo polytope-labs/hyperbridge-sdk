@@ -1,12 +1,11 @@
-import { copyFileSync, mkdirSync, existsSync } from "node:fs"
-import { dirname } from "node:path"
-
 import { defineConfig } from "tsup"
+import { dirname } from "node:path"
+import { copyFileSync, mkdirSync, existsSync } from "node:fs"
 
 export default defineConfig({
 	entry: ["src/index.ts"],
 	outDir: "dist",
-	format: ["cjs", "esm"],
+	format: ["esm"],
 	dts: true,
 	sourcemap: true,
 	clean: true,
@@ -14,18 +13,30 @@ export default defineConfig({
 	treeshake: true,
 	async onSuccess() {
 		// Copy WebAssembly files to dist directory
-		const wasmSourcePath = new URL("src/utils/ckb-mmr-wasm/dist/node/ckb_mmr_wasm_bg.wasm", import.meta.url)
-			.pathname
-		const wasmDestPath = new URL("dist/ckb_mmr_wasm_bg.wasm", import.meta.url).pathname
+		const fullPath = (path: string) => new URL(path, import.meta.url).pathname
+
+		let files = [
+			{ from: "src/utils/ckb-mmr-wasm/dist/node/node_bg.wasm", to: "dist/node_bg.wasm" },
+			{ from: "src/utils/ckb-mmr-wasm/dist/web/web_bg.wasm", to: "dist/web_bg.wasm" },
+		]
+
+		files = files.map((e) => ({
+			from: fullPath(e.from),
+			to: fullPath(e.to),
+		}))
 
 		// Ensure the destination directory exists
-		const destDir = dirname(wasmDestPath)
-		if (!existsSync(destDir)) {
-			mkdirSync(destDir, { recursive: true })
+		for (const entry of files) {
+			const dest_dir = dirname(entry.to)
+
+			if (!existsSync(dest_dir)) {
+				mkdirSync(dest_dir, { recursive: true })
+			}
+
+			// Copy the file
+			copyFileSync(entry.from, entry.to)
 		}
 
-		// Copy the file
-		copyFileSync(wasmSourcePath, wasmDestPath)
-		console.log("Copied WebAssembly file to dist directory")
+		console.log("📦 Copied WebAssembly files to dist directory")
 	},
 })

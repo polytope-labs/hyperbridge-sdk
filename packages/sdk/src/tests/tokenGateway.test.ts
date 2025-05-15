@@ -1,16 +1,14 @@
 import "log-timestamp"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { Keyring } from "@polkadot/keyring"
-import { hexToBytes, toBytes } from "viem"
+import { hexToBytes } from "viem"
 import { teleport } from "@/utils/tokenGateway"
 import type { HexString } from "@/types"
 import type { Signer, SignerResult } from "@polkadot/api/types"
 import type { SignerPayloadRaw } from "@polkadot/types/types"
 import { hexToU8a, u8aToHex } from "@polkadot/util"
 import type { KeyringPair } from "@polkadot/keyring/types"
-import { convertIPostRequestToCodec, convertStateMachineIdToEnum, encodeISMPMessage } from "@/chain"
-import { Vector } from "scale-ts"
-import { Message } from "@/utils/substrate"
+import { encodeISMPMessage } from "@/chain"
 
 // private key for testnet transactions
 const secret_key = process.env.SECRET_PHRASE || ""

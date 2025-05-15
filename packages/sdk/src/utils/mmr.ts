@@ -1,4 +1,5 @@
 import { hexToBytes } from "viem"
+import { env, hasWindow, isNode } from "std-env"
 import { postRequestCommitment } from "@/utils"
 import type { HexString, IPostRequest } from "@/types"
 
@@ -227,7 +228,22 @@ export async function generateRootWithProof(
 }
 
 async function ckb_mmr() {
-	const load = await import("./ckb-mmr-wasm/index").then((e) => e.default)
+	if (isNode) {
+		const wasm = await import("./ckb-mmr-wasm/dist/node/node")
+		return wasm
+	}
 
-	return await load()
+	if (hasWindow) {
+		const wasm = await import("./ckb-mmr-wasm/dist/web/web")
+		await wasm.default()
+		return wasm
+	}
+
+	throw new Error(`SDK not setup for ${env}`)
+}
+
+export async function __test() {
+	const { generate_root_with_proof } = await ckb_mmr()
+
+	return generate_root_with_proof(new Uint8Array(), 120n)
 }
