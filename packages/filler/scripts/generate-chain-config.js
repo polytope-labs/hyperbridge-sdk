@@ -25,6 +25,7 @@ const chainIds = Object.entries(config.chains)
 const chainNameMap = {
 	bsc: "bscTestnet",
 	gnosis: "gnosisChiado",
+	sepolia: "sepolia",
 }
 
 const viemChains = Object.entries(config.chains)
@@ -88,7 +89,7 @@ const consensusStateIds = Object.entries(config.chains)
 	.join(",\n")
 
 const tsContent = `
-import { Chain, bscTestnet, gnosisChiado } from "viem/chains"
+import { Chain, bscTestnet, gnosisChiado, sepolia } from "viem/chains"
 
 /**
  * Enum representing different chains.
@@ -147,7 +148,6 @@ ${addresses}
 export const createRpcUrls = (env: NodeJS.ProcessEnv) => ({
 ${rpcUrls}
 })
-
 
 export const consensusStateIds = {
 ${consensusStateIds}

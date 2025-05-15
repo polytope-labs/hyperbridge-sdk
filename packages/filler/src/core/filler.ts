@@ -101,12 +101,10 @@ export class IntentFiller {
 		let totalUSDValue = BigInt(0)
 
 		for (const input of order.inputs) {
-			const decimals = await this.contractService.getTokenDecimals(input.token, order.sourceChain)
 			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
 				input.token == bytes20ToBytes32(ADDRESS_ZERO)
 					? this.configService.getWrappedNativeAssetWithDecimals(order.sourceChain).asset
 					: input.token,
-				decimals,
 			)
 
 			totalUSDValue = totalUSDValue + BigInt(input.amount * BigInt(tokenUsdPrice))
