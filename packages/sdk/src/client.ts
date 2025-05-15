@@ -173,7 +173,7 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		if (first_node && first_node.createdAt) {
+		if (first_node?.createdAt) {
 			//@ts-ignore
 			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
 		}
@@ -213,7 +213,7 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		if (first_node && first_node.createdAt) {
+		if (first_node?.createdAt) {
 			//@ts-ignore
 			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
 		}
