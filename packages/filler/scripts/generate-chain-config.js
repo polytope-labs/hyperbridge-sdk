@@ -46,7 +46,7 @@ const assets = Object.entries(config.chains)
 	.map(([chain, data]) => {
 		if (!data.assets) return ""
 		const assetEntries = Object.entries(data.assets)
-			.map(([asset, address]) => `\t\t${asset}: "${address}"`)
+			.map(([asset, address]) => `\t\t${asset}: "${address}".toLowerCase()`)
 			.join(",\n")
 		return `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: {\n${assetEntries}\n\t}`
 	})

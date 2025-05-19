@@ -16,6 +16,7 @@ import {
 	orderCommitment,
 	bytes20ToBytes32,
 	ADDRESS_ZERO,
+	bytes32ToBytes20,
 } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -23,11 +24,13 @@ import {
 	decodeFunctionData,
 	encodePacked,
 	getContract,
+	hexToBigInt,
 	hexToString,
 	keccak256,
 	maxUint256,
 	parseEventLogs,
 	PublicClient,
+	toHex,
 	WalletClient,
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
@@ -355,7 +358,7 @@ describe.sequential("Basic", () => {
 		}
 	}, 1_000_0000)
 
-	it.only("Should handle order filling with token swaps", async () => {
+	it("Should handle order filling with token swaps", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -382,16 +385,17 @@ describe.sequential("Basic", () => {
 		const inputs: TokenInfo[] = [
 			{
 				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-				amount: 1000000n,
+				amount: 100n,
 			},
 		]
 
 		const usdtAsset = chainConfigService.getUsdtAsset(bscChapelId)
-		const usdcAsset = chainConfigService.getUsdcAsset(bscChapelId)
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 		const outputs: PaymentInfo[] = [
 			{
 				token: bytes20ToBytes32(usdtAsset),
-				amount: 1000000n,
+				amount: 1n,
 				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
 			},
 		]
@@ -418,8 +422,8 @@ describe.sequential("Basic", () => {
 
 		const pairAddress = await getPairAddress(
 			bscPublicClient,
+			daiAsset,
 			usdtAsset,
-			usdcAsset,
 			chainConfigService.getUniswapV2FactoryAddress(bscChapelId),
 		)
 
@@ -429,8 +433,8 @@ describe.sequential("Basic", () => {
 				bscWalletClient,
 				bscPublicClient,
 				chainConfigService.getUniswapRouterV2Address(bscChapelId),
+				daiAsset,
 				usdtAsset,
-				usdcAsset,
 				100000000n,
 				100000000n,
 				privateKeyToAddress(process.env.PRIVATE_KEY as HexString),
@@ -450,6 +454,8 @@ describe.sequential("Basic", () => {
 				resolve(data.order)
 			})
 		})
+
+		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 
 		// Place the order
 		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
@@ -489,11 +495,7 @@ describe.sequential("Basic", () => {
 		console.log("Order filled:", orderFilledId)
 
 		// Verify order is filled on destination chain
-		let isFilled = await checkIfOrderFilled(
-			orderFilledId as HexString,
-			gnosisChiadoPublicClient,
-			gnosisChiadoIntentGateway.address,
-		)
+		let isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
 
 		expect(isFilled).toBe(true)
 
@@ -501,13 +503,21 @@ describe.sequential("Basic", () => {
 		console.log("Checking if order is filled at the source chain...")
 		await new Promise((resolve) => setTimeout(resolve, 60 * 1000))
 
-		isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
+		isFilled = await checkIfOrderFilled(
+			orderFilledId as HexString,
+			gnosisChiadoPublicClient,
+			gnosisChiadoIntentGateway.address,
+		)
 		let maxAttempts = 20
 		while (!isFilled && maxAttempts > 0) {
 			console.log("Order not filled at the source chain, retrying storage check in 30 seconds...")
 			console.log("Max storage checks left:", maxAttempts)
 			await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
-			isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
+			isFilled = await checkIfOrderFilled(
+				orderFilledId as HexString,
+				gnosisChiadoPublicClient,
+				gnosisChiadoIntentGateway.address,
+			)
 			maxAttempts--
 		}
 
@@ -730,5 +740,35 @@ async function checkIfOrderFilled(
 	} catch (error) {
 		console.error(`Error checking if order filled:`, error)
 		return false
+	}
+}
+
+async function clearOutputTokenBalance(
+	walletClient: WalletClient,
+	publicClient: PublicClient,
+	tokenAddresses: HexString[],
+	pairAddresses: HexString[],
+) {
+	// Send each token to the pair address from user
+	for (const tokenAddress of tokenAddresses) {
+		// First check if the balance is greater than 0
+		const balance = await publicClient.readContract({
+			abi: ERC20_ABI,
+			address: tokenAddress,
+			functionName: "balanceOf",
+			args: [walletClient.account?.address as HexString],
+		})
+
+		if (balance > 0n) {
+			console.log("Clearing balance of", tokenAddress, "from", walletClient.account?.address)
+			const tx = await walletClient.writeContract({
+				abi: ERC20_ABI,
+				address: tokenAddress,
+				functionName: "transfer",
+				args: [pairAddresses[0], balance],
+				chain: walletClient.chain,
+				account: walletClient.account!,
+			})
+		}
 	}
 }

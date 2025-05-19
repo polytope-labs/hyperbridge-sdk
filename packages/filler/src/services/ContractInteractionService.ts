@@ -1,4 +1,4 @@
-import { getContract, maxUint256, toHex, encodePacked, keccak256, encodeFunctionData } from "viem"
+import { getContract, toHex, encodePacked, keccak256, encodeFunctionData, maxUint256 } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -12,6 +12,9 @@ import {
 	estimateGasForPost,
 	constructRedeemEscrowRequestBody,
 	IPostRequest,
+	bytes20ToBytes32,
+	EvmLanguage,
+	calculateBalanceMappingLocation,
 } from "hyperbridge-sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -63,7 +66,7 @@ export class ContractInteractionService {
 	 * Gets the decimals for a token
 	 */
 	async getTokenDecimals(tokenAddress: string, chain: string): Promise<number> {
-		const bytes20Address = bytes32ToBytes20(tokenAddress)
+		const bytes20Address = tokenAddress.length === 66 ? bytes32ToBytes20(tokenAddress) : tokenAddress
 
 		if (bytes20Address === ADDRESS_ZERO) {
 			return 18 // Native token (ETH, MATIC, etc.)
@@ -282,6 +285,92 @@ export class ContractInteractionService {
 			// Approve tokens if needed before estimating gas for failsafe
 			await this.approveTokensIfNeeded(order)
 
+			// For each output token, generate the storage slot of the token balance
+			// Balance slot depends upon implementation of the token contract
+			const overrides = (
+				await Promise.all(
+					order.outputs.map(async (output) => {
+						const tokenAddress = bytes32ToBytes20(output.token)
+						if (tokenAddress === ADDRESS_ZERO) return null
+
+						const userAddress = privateKeyToAddress(this.privateKey)
+						const testValue = toHex(maxUint256)
+
+						// Try both Solidity and Vyper implementations, both have different storage slot implementations
+						for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
+							// Check common slots first (0, 1, 3, 51, 140, 151)
+							const commonSlots = [0n, 1n, 3n, 51n, 140n, 151n]
+
+							for (const slot of commonSlots) {
+								const storageSlot = calculateBalanceMappingLocation(slot, userAddress, language)
+
+								try {
+									const balance = await destClient.readContract({
+										abi: ERC20_ABI,
+										address: tokenAddress,
+										functionName: "balanceOf",
+										args: [userAddress],
+										stateOverride: [
+											{
+												address: tokenAddress,
+												stateDiff: [{ slot: storageSlot, value: testValue }],
+											},
+										],
+									})
+
+									if (toHex(balance) === testValue) {
+										return {
+											address: tokenAddress,
+											stateDiff: [{ slot: storageSlot, value: testValue }],
+										}
+									}
+								} catch (error) {
+									continue
+								}
+							}
+						}
+
+						// Start from slot 0 and go up to 200, but skip already checked slots
+						const checkedSlots = new Set([0n, 1n, 3n, 51n, 140n, 151n])
+
+						for (let i = 0n; i < 200n; i++) {
+							if (checkedSlots.has(i)) continue
+
+							for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
+								const storageSlot = calculateBalanceMappingLocation(i, userAddress, language)
+
+								try {
+									const balance = await destClient.readContract({
+										abi: ERC20_ABI,
+										address: tokenAddress,
+										functionName: "balanceOf",
+										args: [userAddress],
+										stateOverride: [
+											{
+												address: tokenAddress,
+												stateDiff: [{ slot: storageSlot, value: testValue }],
+											},
+										],
+									})
+
+									if (toHex(balance) === testValue) {
+										return {
+											address: tokenAddress,
+											stateDiff: [{ slot: storageSlot, value: testValue }],
+										}
+									}
+								} catch (error) {
+									continue
+								}
+							}
+						}
+
+						console.warn(`Could not find balance slot for token ${tokenAddress}`)
+						return null
+					}),
+				)
+			).filter(Boolean)
+
 			const gas = await destClient.estimateContractGas({
 				abi: INTENT_GATEWAY_ABI,
 				address: this.configService.getIntentGatewayAddress(order.sourceChain),
@@ -289,6 +378,7 @@ export class ContractInteractionService {
 				args: [this.transformOrderForContract(order), fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
 				value: ethValue,
+				stateOverride: overrides as any,
 			})
 
 			console.log(`Gas estimate for filling order ${order.id} on ${order.destChain} is ${gas}`)
@@ -408,7 +498,7 @@ export class ContractInteractionService {
 		const inputs = order.inputs
 
 		for (const output of outputs) {
-			const tokenAddress = bytes32ToBytes20(output.token)
+			const tokenAddress = output.token
 			const amount = output.amount
 			const decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
 			const price = await this.getTokenPrice(tokenAddress)
@@ -417,7 +507,7 @@ export class ContractInteractionService {
 		}
 
 		for (const input of inputs) {
-			const tokenAddress = bytes32ToBytes20(input.token)
+			const tokenAddress = input.token
 			const amount = input.amount
 			const decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
 			const price = await this.getTokenPrice(tokenAddress)
@@ -491,8 +581,8 @@ export class ContractInteractionService {
 	async calculateSwapOperations(
 		order: Order,
 		destChain: string,
-	): Promise<{ calls: { to: HexString; data: HexString; value?: bigint }[] }[]> {
-		const operations: { calls: { to: HexString; data: HexString; value?: bigint }[] }[] = []
+	): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[] }[]> {
+		const operations: { calls: { to: HexString; data: HexString; value: bigint }[] }[] = []
 		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
 		const destClient = this.clientManager.getPublicClient(destChain)
 
@@ -512,11 +602,11 @@ export class ContractInteractionService {
 
 			// Get current balance of the required token
 			const currentBalance =
-				tokenAddress === daiAsset
+				tokenAddress == daiAsset
 					? daiBalance
-					: tokenAddress === usdtAsset
+					: tokenAddress == usdtAsset
 						? usdtBalance
-						: tokenAddress === usdcAsset
+						: tokenAddress == usdcAsset
 							? usdcBalance
 							: nativeTokenBalance
 

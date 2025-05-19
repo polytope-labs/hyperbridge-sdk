@@ -13,6 +13,7 @@ import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { encodeFunctionData } from "viem"
 import { erc7821Actions } from "viem/experimental"
+import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
 
 export class StableSwapFiller implements FillerStrategy {
 	name = "StableSwapFiller"
@@ -110,8 +111,6 @@ export class StableSwapFiller implements FillerStrategy {
 
 			const operations = await this.contractService.calculateSwapOperations(order, order.destChain)
 
-			console.log("Operations:", operations)
-
 			const postRequest: IPostRequest = {
 				source: order.destChain,
 				dest: order.sourceChain,
@@ -150,22 +149,28 @@ export class StableSwapFiller implements FillerStrategy {
 				],
 			})
 
-			try {
-				// Simulating all calls together
-				await destClient.simulateCalls({
-					account: fillerWalletAddress,
-					calls: operations.flatMap((op) => op.calls),
-				})
-			} catch (batchSimulationError) {
-				console.error("Batch simulation failed:", batchSimulationError)
-				throw new Error("Batch simulation failed")
-			}
+			const authorization = await walletClient.signAuthorization({
+				contractAddress: this.configService.getBatchExecutorAddress(order.destChain),
+				account: walletClient.account!,
+			})
 
-			const tx = await walletClient.extend(erc7821Actions()).executeBatches({
-				address: fillerWalletAddress,
-				batches: operations,
-				account: privateKeyToAccount(this.privateKey),
+			const calls = operations
+				.flatMap((op) => op.calls)
+				.map((call) => ({
+					...call,
+					value: call.value ?? 0n,
+				}))
+
+			const tx = await walletClient.sendTransaction({
+				account: walletClient.account!,
 				chain: destClient.chain,
+				data: encodeFunctionData({
+					abi: BATCH_EXECUTOR_ABI,
+					functionName: "execute",
+					args: [calls],
+				}),
+				to: fillerWalletAddress,
+				authorizationList: [authorization],
 			})
 
 			const endTime = Date.now()
