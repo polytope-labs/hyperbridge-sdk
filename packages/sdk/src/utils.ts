@@ -480,6 +480,21 @@ export function constructRedeemEscrowRequestBody(order: Order, beneficiary: HexS
 	return concatHex([requestKind, encodedRequestBody]) as HexString
 }
 
+export const normalizeTimestamp = (timestamp: bigint): bigint => {
+	if (timestamp.toString().length <= 11) {
+		return timestamp * 1000n
+	}
+	return timestamp
+}
+
+/// Convert ensure a date string is in iso format before getting it's timestamp
+export const dateStringtoTimestamp = (date: string): number => {
+	if (!date.endsWith("Z")) {
+		date = `${date}Z`
+	}
+	return new Date(date).getTime()
+}
+
 /**
  * Calculates the balance mapping location for a given slot and holder address.
  * This function handles the different encoding formats used by Solidity and Vyper.
