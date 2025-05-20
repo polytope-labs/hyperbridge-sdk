@@ -21,7 +21,6 @@ packages/indexer/docker/mainnet/
 .claude/
 
 packages/filler/src/config/chain.ts
-packages/filler/cache/filler-cache.json
 # Compiled Java class files
 *.class
 

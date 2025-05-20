@@ -1,18 +1,17 @@
-import fs from "fs"
-import path from "path"
-
 interface GasEstimateCache {
 	fillGas: string
 	postGas: string
 	timestamp: number
 }
 
+interface SwapCall {
+	to: string
+	data: string
+	value: string
+}
+
 interface SwapOperationsCache {
-	calls: {
-		to: string
-		data: string
-		value: string
-	}[]
+	calls: SwapCall[]
 	totalGasEstimate: string
 	timestamp: number
 }
@@ -23,97 +22,97 @@ interface CacheData {
 }
 
 export class CacheService {
-	private cacheFile: string
 	private cacheData: CacheData
-	private readonly CACHE_EXPIRY_MS = 10 * 1000 // 10 seconds
+	private readonly CACHE_EXPIRY_MS = 1 * 60 * 1000 // 1 minute
 
 	constructor() {
-		this.cacheFile = path.join(process.cwd(), "cache", "filler-cache.json")
-		this.cacheData = this.loadCache()
-	}
-
-	private loadCache(): CacheData {
-		try {
-			if (fs.existsSync(this.cacheFile)) {
-				const data = fs.readFileSync(this.cacheFile, "utf-8")
-				return JSON.parse(data)
-			}
-		} catch (error) {
-			console.warn("Error loading cache:", error)
-		}
-		return { gasEstimates: {}, swapOperations: {} }
-	}
-
-	private saveCache() {
-		try {
-			const dir = path.dirname(this.cacheFile)
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true })
-			}
-			fs.writeFileSync(this.cacheFile, JSON.stringify(this.cacheData, null, 2))
-		} catch (error) {
-			console.warn("Error saving cache:", error)
-		}
+		this.cacheData = { gasEstimates: {}, swapOperations: {} }
 	}
 
 	private isCacheValid(timestamp: number): boolean {
 		return Date.now() - timestamp < this.CACHE_EXPIRY_MS
 	}
 
+	private cleanupStaleData(): void {
+		// Clean up gas estimates
+		const staleGasEstimateIds = Object.entries(this.cacheData.gasEstimates)
+			.filter(([_, data]) => !this.isCacheValid(data.timestamp))
+			.map(([orderId]) => orderId)
+
+		staleGasEstimateIds.forEach((orderId) => {
+			delete this.cacheData.gasEstimates[orderId]
+		})
+
+		// Clean up swap operations
+		const staleSwapOperationIds = Object.entries(this.cacheData.swapOperations)
+			.filter(([_, data]) => !this.isCacheValid(data.timestamp))
+			.map(([orderId]) => orderId)
+
+		staleSwapOperationIds.forEach((orderId) => {
+			delete this.cacheData.swapOperations[orderId]
+		})
+	}
+
 	getGasEstimate(orderId: string): { fillGas: bigint; postGas: bigint } | null {
-		const cache = this.cacheData.gasEstimates[orderId]
-		if (cache && this.isCacheValid(cache.timestamp)) {
-			return {
-				fillGas: BigInt(cache.fillGas),
-				postGas: BigInt(cache.postGas),
+		try {
+			const cache = this.cacheData.gasEstimates[orderId]
+			if (cache && this.isCacheValid(cache.timestamp)) {
+				return {
+					fillGas: BigInt(cache.fillGas),
+					postGas: BigInt(cache.postGas),
+				}
 			}
+			return null
+		} catch (error) {
+			console.error("Error getting gas estimate:", error)
+			return null
 		}
-		return null
 	}
 
-	setGasEstimate(orderId: string, fillGas: bigint, postGas: bigint) {
-		this.cacheData.gasEstimates[orderId] = {
-			fillGas: fillGas.toString(),
-			postGas: postGas.toString(),
-			timestamp: Date.now(),
+	setGasEstimate(orderId: string, fillGas: bigint, postGas: bigint): void {
+		if (fillGas <= 0n || postGas <= 0n) {
+			throw new Error("Gas values must be positive")
 		}
-		this.saveCache()
+		try {
+			this.cleanupStaleData()
+			this.cacheData.gasEstimates[orderId] = {
+				fillGas: fillGas.toString(),
+				postGas: postGas.toString(),
+				timestamp: Date.now(),
+			}
+		} catch (error) {
+			console.error("Error setting gas estimate:", error)
+			throw error
+		}
 	}
 
-	getSwapOperations(
-		orderId: string,
-	): { calls: { to: string; data: string; value: string }[]; totalGasEstimate: bigint } | null {
-		const cache = this.cacheData.swapOperations[orderId]
-		if (cache && this.isCacheValid(cache.timestamp)) {
-			return {
-				calls: cache.calls,
-				totalGasEstimate: BigInt(cache.totalGasEstimate),
+	getSwapOperations(orderId: string): { calls: SwapCall[]; totalGasEstimate: bigint } | null {
+		try {
+			const cache = this.cacheData.swapOperations[orderId]
+			if (cache && this.isCacheValid(cache.timestamp)) {
+				return {
+					calls: cache.calls,
+					totalGasEstimate: BigInt(cache.totalGasEstimate),
+				}
 			}
+			return null
+		} catch (error) {
+			console.error("Error getting swap operations:", error)
+			return null
 		}
-		return null
 	}
 
-	setSwapOperations(orderId: string, calls: { to: string; data: string; value: string }[], totalGasEstimate: bigint) {
-		this.cacheData.swapOperations[orderId] = {
-			calls,
-			totalGasEstimate: totalGasEstimate.toString(),
-			timestamp: Date.now(),
+	setSwapOperations(orderId: string, calls: SwapCall[], totalGasEstimate: bigint): void {
+		try {
+			this.cleanupStaleData()
+			this.cacheData.swapOperations[orderId] = {
+				calls,
+				totalGasEstimate: totalGasEstimate.toString(),
+				timestamp: Date.now(),
+			}
+		} catch (error) {
+			console.error("Error setting swap operations:", error)
+			throw error
 		}
-		this.saveCache()
-	}
-
-	clearExpiredCache() {
-		const now = Date.now()
-		Object.keys(this.cacheData.gasEstimates).forEach((key) => {
-			if (!this.isCacheValid(this.cacheData.gasEstimates[key].timestamp)) {
-				delete this.cacheData.gasEstimates[key]
-			}
-		})
-		Object.keys(this.cacheData.swapOperations).forEach((key) => {
-			if (!this.isCacheValid(this.cacheData.swapOperations[key].timestamp)) {
-				delete this.cacheData.swapOperations[key]
-			}
-		})
-		this.saveCache()
 	}
 }
