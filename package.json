@@ -1,5 +1,5 @@
 {
-	"name": "hyperbridge-tools",
+	"name": "hyperbridge-sdk",
 	"private": true,
 	"version": "0.1.0",
 	"description": "Hyperbridge SDK workspace",
