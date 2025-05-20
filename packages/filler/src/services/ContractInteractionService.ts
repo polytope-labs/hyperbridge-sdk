@@ -27,18 +27,21 @@ import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { Chains } from "@/config/chain"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
+import { CacheService } from "./CacheService"
 /**
  * Handles contract interactions for tokens and other contracts
  */
 export class ContractInteractionService {
 	private configService: ChainConfigService
 	private api: ApiPromise | null = null
+	private cacheService: CacheService
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 	) {
 		this.configService = new ChainConfigService()
+		this.cacheService = new CacheService()
 	}
 
 	/**
@@ -257,6 +260,13 @@ export class ContractInteractionService {
 	 */
 	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint }> {
 		try {
+			// Check cache first
+			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
+			if (cachedEstimate) {
+				console.log(`Using cached gas estimate for order ${order.id}`)
+				return cachedEstimate
+			}
+
 			const { sourceClient, destClient } = this.clientManager.getClientsForOrder(order)
 			const postRequest: IPostRequest = {
 				source: order.destChain,
@@ -382,6 +392,10 @@ export class ContractInteractionService {
 			})
 
 			console.log(`Gas estimate for filling order ${order.id} on ${order.destChain} is ${gas}`)
+
+			// Cache the results
+			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate)
+
 			return { fillGas: gas, postGas: postGasEstimate }
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
@@ -581,8 +595,23 @@ export class ContractInteractionService {
 	async calculateSwapOperations(
 		order: Order,
 		destChain: string,
-	): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[] }[]> {
-		const operations: { calls: { to: HexString; data: HexString; value: bigint }[] }[] = []
+	): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[]; totalGasEstimate: bigint }> {
+		// Check cache first
+		const cachedOperations = this.cacheService.getSwapOperations(order.id!)
+		if (cachedOperations) {
+			console.log(`Using cached swap operations for order ${order.id}`)
+			return {
+				calls: cachedOperations.calls.map((call) => ({
+					to: call.to as HexString,
+					data: call.data as HexString,
+					value: BigInt(call.value),
+				})),
+				totalGasEstimate: cachedOperations.totalGasEstimate,
+			}
+		}
+
+		const calls: { to: HexString; data: HexString; value: bigint }[] = []
+		let totalGasEstimate = BigInt(0)
 		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
 		const destClient = this.clientManager.getPublicClient(destChain)
 
@@ -703,15 +732,18 @@ export class ContractInteractionService {
 						}
 
 						try {
-							await destClient.simulateCalls({
+							const { results } = await destClient.simulateCalls({
 								account: fillerWalletAddress,
 								calls: [approveCall, call],
 							})
 
-							operations.push({
-								calls: [approveCall, call],
-							})
+							const operationGasEstimate = results.reduce(
+								(acc, result) => acc + result.gasUsed,
+								BigInt(0),
+							)
 
+							calls.push(approveCall, call)
+							totalGasEstimate += operationGasEstimate
 							remainingNeeded -= swapAmount
 						} catch (simulationError) {
 							console.error(`Swap simulation failed for ${tokenType}:`, simulationError)
@@ -727,6 +759,17 @@ export class ContractInteractionService {
 			}
 		}
 
-		return operations
+		// Cache the results
+		this.cacheService.setSwapOperations(
+			order.id!,
+			calls.map((call) => ({
+				to: call.to,
+				data: call.data,
+				value: call.value.toString(),
+			})),
+			totalGasEstimate,
+		)
+
+		return { calls, totalGasEstimate }
 	}
 }

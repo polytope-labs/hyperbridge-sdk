@@ -9,10 +9,9 @@ import {
 	Order,
 } from "hyperbridge-sdk"
 import { FillerStrategy } from "./base"
-import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
+import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { encodeFunctionData } from "viem"
-import { erc7821Actions } from "viem/experimental"
 import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
 
 export class StableSwapFiller implements FillerStrategy {
@@ -77,13 +76,14 @@ export class StableSwapFiller implements FillerStrategy {
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
+			const { totalGasEstimate } = await this.contractService.calculateSwapOperations(order, order.destChain)
 			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
 
 			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
 			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
 
-			const totalGasWei = fillGas + relayerFeeEth
+			const totalGasWei = fillGas + relayerFeeEth + totalGasEstimate
 
 			const gasCostUsd = (totalGasWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
@@ -109,24 +109,9 @@ export class StableSwapFiller implements FillerStrategy {
 			const startTime = Date.now()
 			const fillerWalletAddress = privateKeyToAddress(this.privateKey)
 
-			const operations = await this.contractService.calculateSwapOperations(order, order.destChain)
+			const { calls } = await this.contractService.calculateSwapOperations(order, order.destChain)
 
-			const postRequest: IPostRequest = {
-				source: order.destChain,
-				dest: order.sourceChain,
-				body: constructRedeemEscrowRequestBody(order, privateKeyToAddress(this.privateKey)),
-				timeoutTimestamp: 0n,
-				nonce: await this.contractService.getHostNonce(order.sourceChain),
-				from: this.configService.getIntentGatewayAddress(order.sourceChain),
-				to: this.configService.getIntentGatewayAddress(order.destChain),
-			}
-
-			const postGasEstimate = await estimateGasForPost({
-				postRequest: postRequest,
-				sourceClient: this.clientManager.getPublicClient(order.sourceChain) as any,
-				hostLatestStateMachineHeight: await this.contractService.getHostLatestStateMachineHeight(),
-				hostAddress: this.configService.getHostAddress(order.sourceChain),
-			})
+			const { postGas: postGasEstimate } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
 				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
 			}
@@ -139,27 +124,16 @@ export class StableSwapFiller implements FillerStrategy {
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
 			})
 
-			operations.push({
-				calls: [
-					{
-						to: this.configService.getIntentGatewayAddress(order.destChain),
-						data: fillOrderData,
-						value: this.contractService.calculateRequiredEthValue(order.outputs),
-					},
-				],
+			calls.push({
+				to: this.configService.getIntentGatewayAddress(order.destChain),
+				data: fillOrderData,
+				value: this.contractService.calculateRequiredEthValue(order.outputs),
 			})
 
 			const authorization = await walletClient.signAuthorization({
 				contractAddress: this.configService.getBatchExecutorAddress(order.destChain),
 				account: walletClient.account!,
 			})
-
-			const calls = operations
-				.flatMap((op) => op.calls)
-				.map((call) => ({
-					...call,
-					value: call.value ?? 0n,
-				}))
 
 			const tx = await walletClient.sendTransaction({
 				account: walletClient.account!,
