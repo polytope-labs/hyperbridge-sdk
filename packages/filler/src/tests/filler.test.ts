@@ -542,16 +542,12 @@ describe.sequential("Basic", () => {
 		const { orderId, hash: filledHash } = await orderFilledPromise
 		console.log("Order filled:", orderId, filledHash)
 
-		const filledReceipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
+		const filledReceipt = await bscPublicClient.waitForTransactionReceipt({
 			hash: filledHash as `0x${string}`,
 			confirmations: 1,
 		})
 
-		let isFilled = await checkIfOrderFilled(
-			orderId as HexString,
-			gnosisChiadoPublicClient,
-			gnosisChiadoIntentGateway.address,
-		)
+		let isFilled = await checkIfOrderFilled(orderId as HexString, bscPublicClient, bscIntentGateway.address)
 
 		expect(isFilled).toBe(true)
 
