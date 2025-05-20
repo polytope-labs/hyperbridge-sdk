@@ -17,6 +17,7 @@ import {
 	bytes20ToBytes32,
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
+	postRequestCommitment,
 } from "hyperbridge-sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -86,6 +87,7 @@ describe.sequential("Basic", () => {
 			chainConfigs,
 			fillerConfig,
 			gnosisChiadoPublicClient,
+			bscHandler,
 		} = await setUp()
 
 		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
@@ -150,45 +152,106 @@ describe.sequential("Basic", () => {
 		const detectedOrder = await orderDetectedPromise
 		console.log("Order successfully detected by event monitor:", detectedOrder)
 
-		const orderFilledPromise = new Promise<string>((resolve) => {
+		const orderFilledPromise = new Promise<{ orderId: string; hash: string }>((resolve) => {
 			const eventMonitor = intentFiller.monitor
 			if (!eventMonitor) {
 				console.error("Event monitor not found on intentFiller")
-				resolve("")
+				resolve({ orderId: "", hash: "" })
 				return
 			}
 
-			eventMonitor.on("orderFilled", (data: { orderId: string }) => {
-				console.log("Order filled by event monitor:", data.orderId)
-				resolve(data.orderId)
+			eventMonitor.on("orderFilled", (data: { orderId: string; hash: string }) => {
+				console.log("Order filled by event monitor:", data.orderId, data.hash)
+				resolve(data)
 			})
 		})
 
-		const orderFilledId = await orderFilledPromise
-		console.log("Order filled:", orderFilledId)
+		const { orderId, hash: filledHash } = await orderFilledPromise
+		console.log("Order filled:", orderId, filledHash)
+
+		const filledReceipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
+			hash: filledHash as `0x${string}`,
+			confirmations: 1,
+		})
 
 		let isFilled = await checkIfOrderFilled(
-			orderFilledId as HexString,
+			orderId as HexString,
 			gnosisChiadoPublicClient,
 			gnosisChiadoIntentGateway.address,
 		)
 
 		expect(isFilled).toBe(true)
 
-		console.log("Checking if order is filled at the source chain...")
-		await new Promise((resolve) => setTimeout(resolve, 60 * 1000))
+		// parse EvmHost PostRequestEvent emitted in the transcation logs
+		const event = parseEventLogs({ abi: EVM_HOST, logs: filledReceipt.logs })[0]
 
-		isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
-		let maxAttempts = 20
-		while (!isFilled && maxAttempts > 0) {
-			console.log("Order not filled at the source chain, retrying storage check in 30 seconds...")
-			console.log("Max storage checks left:", maxAttempts)
-			await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
-			isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
-			maxAttempts--
+		if (event.eventName !== "PostRequestEvent") {
+			throw new Error("Unexpected Event type")
 		}
 
-		expect(isFilled).toBe(true)
+		const request = event.args
+		console.log("PostRequestEvent", { request })
+		const commitment = postRequestCommitment(request).commitment
+
+		for await (const status of indexer.postRequestStatusStream(commitment)) {
+			console.log(JSON.stringify(status, null, 4))
+			switch (status.status) {
+				case RequestStatus.SOURCE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+					)
+					const { args, functionName } = decodeFunctionData({
+						abi: HandlerV1_ABI,
+						data: status.metadata.calldata,
+					})
+
+					expect(functionName).toBe("handlePostRequests")
+
+					try {
+						const hash = await bscHandler.write.handlePostRequests(args as any, {
+							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+							chain: bscTestnet,
+						})
+						await bscPublicClient.waitForTransactionReceipt({
+							hash,
+							confirmations: 1,
+						})
+
+						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
+
+						// Now check if the order is filled at the source chain
+						isFilled = await checkIfOrderFilled(
+							orderId as HexString,
+							bscPublicClient,
+							bscIntentGateway.address,
+						)
+						expect(isFilled).toBe(true)
+					} catch (e) {
+						console.error("Error self-relaying: ", e)
+					}
+
+					break
+				}
+				case RequestStatus.DESTINATION: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+			}
+		}
 
 		intentFiller.stop()
 	}, 1_000_000)
@@ -205,11 +268,14 @@ describe.sequential("Basic", () => {
 			gnosisChiadoIntentGateway,
 			bscHandler,
 			bscChapelId,
+			chainConfigService,
 		} = await setUp()
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 
 		const inputs: TokenInfo[] = [
 			{
-				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				token: bytes20ToBytes32(daiAsset),
 				amount: 100n,
 			},
 		]
@@ -373,6 +439,7 @@ describe.sequential("Basic", () => {
 			feeTokenGnosisChiadoAddress,
 			bscChapelId,
 			bscWalletClient,
+			gnosisChiadoHandler,
 		} = await setUp()
 
 		// Create a new intent filler with StableSwapFiller strategy
@@ -477,51 +544,106 @@ describe.sequential("Basic", () => {
 		console.log("Order successfully detected by event monitor:", detectedOrder)
 
 		// Monitor for order filling
-		const orderFilledPromise = new Promise<string>((resolve) => {
+		const orderFilledPromise = new Promise<{ orderId: string; hash: string }>((resolve) => {
 			const eventMonitor = newIntentFiller.monitor
 			if (!eventMonitor) {
 				console.error("Event monitor not found on intentFiller")
-				resolve("")
+				resolve({ orderId: "", hash: "" })
 				return
 			}
 
-			eventMonitor.on("orderFilled", (data: { orderId: string }) => {
-				console.log("Order filled by event monitor:", data.orderId)
-				resolve(data.orderId)
+			eventMonitor.on("orderFilled", (data: { orderId: string; hash: string }) => {
+				console.log("Order filled by event monitor:", data.orderId, data.hash)
+				resolve(data)
 			})
 		})
 
-		const orderFilledId = await orderFilledPromise
-		console.log("Order filled:", orderFilledId)
+		const { orderId, hash: filledHash } = await orderFilledPromise
+		console.log("Order filled:", orderId, filledHash)
 
-		// Verify order is filled on destination chain
-		let isFilled = await checkIfOrderFilled(orderFilledId as HexString, bscPublicClient, bscIntentGateway.address)
+		const filledReceipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
+			hash: filledHash as `0x${string}`,
+			confirmations: 1,
+		})
 
-		expect(isFilled).toBe(true)
-
-		// Verify order is filled on source chain
-		console.log("Checking if order is filled at the source chain...")
-		await new Promise((resolve) => setTimeout(resolve, 60 * 1000))
-
-		isFilled = await checkIfOrderFilled(
-			orderFilledId as HexString,
+		let isFilled = await checkIfOrderFilled(
+			orderId as HexString,
 			gnosisChiadoPublicClient,
 			gnosisChiadoIntentGateway.address,
 		)
-		let maxAttempts = 20
-		while (!isFilled && maxAttempts > 0) {
-			console.log("Order not filled at the source chain, retrying storage check in 30 seconds...")
-			console.log("Max storage checks left:", maxAttempts)
-			await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
-			isFilled = await checkIfOrderFilled(
-				orderFilledId as HexString,
-				gnosisChiadoPublicClient,
-				gnosisChiadoIntentGateway.address,
-			)
-			maxAttempts--
-		}
 
 		expect(isFilled).toBe(true)
+
+		// parse EvmHost PostRequestEvent emitted in the transcation logs
+		const event = parseEventLogs({ abi: EVM_HOST, logs: filledReceipt.logs })[0]
+
+		if (event.eventName !== "PostRequestEvent") {
+			throw new Error("Unexpected Event type")
+		}
+
+		const request = event.args
+		console.log("PostRequestEvent", { request })
+		const commitment = postRequestCommitment(request).commitment
+
+		for await (const status of indexer.postRequestStatusStream(commitment)) {
+			console.log(JSON.stringify(status, null, 4))
+			switch (status.status) {
+				case RequestStatus.SOURCE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_DELIVERED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gargantua.statescan.io/#/extrinsics/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+				case RequestStatus.HYPERBRIDGE_FINALIZED: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+					)
+					const { args, functionName } = decodeFunctionData({
+						abi: HandlerV1_ABI,
+						data: status.metadata.calldata,
+					})
+
+					expect(functionName).toBe("handlePostRequests")
+
+					try {
+						const hash = await gnosisChiadoHandler.write.handlePostRequests(args as any, {
+							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+							chain: gnosisChiado,
+						})
+						await gnosisChiadoPublicClient.waitForTransactionReceipt({
+							hash,
+							confirmations: 1,
+						})
+
+						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
+
+						// Now check if the order is filled at the source chain
+						isFilled = await checkIfOrderFilled(
+							orderId as HexString,
+							gnosisChiadoPublicClient,
+							gnosisChiadoIntentGateway.address,
+						)
+						expect(isFilled).toBe(true)
+					} catch (e) {
+						console.error("Error self-relaying: ", e)
+					}
+
+					break
+				}
+				case RequestStatus.DESTINATION: {
+					console.log(
+						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+					)
+					break
+				}
+			}
+		}
 
 		newIntentFiller.stop()
 	}, 1_000_000)
@@ -579,6 +701,7 @@ async function setUp() {
 	const bscIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
 	const gnosisChiadoIsmpHostAddress = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb" as HexString
 	const bscHandlerAddress = "0x4638945E120846366cB7Abc08DB9c0766E3a663F" as HexString
+	const gnosisChiadoHandlerAddress = "0x4638945E120846366cB7Abc08DB9c0766E3a663F" as HexString
 	const bscIntentGateway = getContract({
 		address: intentGatewayAddress as HexString,
 		abi: INTENT_GATEWAY_ABI,
@@ -609,6 +732,12 @@ async function setUp() {
 		client: { public: bscPublicClient, wallet: bscWalletClient },
 	})
 
+	const gnosisChiadoHandler = getContract({
+		address: gnosisChiadoHandlerAddress,
+		abi: HandlerV1_ABI,
+		client: { public: gnosisChiadoPublicClient, wallet: gnosisChiadoWalletClient },
+	})
+
 	return {
 		chainClientManager,
 		bscWalletClient,
@@ -630,6 +759,7 @@ async function setUp() {
 		chainConfigService,
 		fillerConfig,
 		chainConfigs,
+		gnosisChiadoHandler,
 	}
 }
 

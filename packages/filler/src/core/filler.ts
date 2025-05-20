@@ -154,7 +154,7 @@ export class IntentFiller {
 						const result = await bestStrategy.executeOrder(order)
 						console.log(`Order execution result:`, result)
 						if (result.success) {
-							this.monitor.emit("orderFilled", { orderId: order.id })
+							this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
 						}
 						return result
 					} catch (error) {
