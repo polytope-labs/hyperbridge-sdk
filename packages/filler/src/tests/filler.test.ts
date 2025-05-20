@@ -88,15 +88,18 @@ describe.sequential("Basic", () => {
 			fillerConfig,
 			gnosisChiadoPublicClient,
 			bscHandler,
+			chainConfigService,
+			bscChapelId,
 		} = await setUp()
 
 		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
 		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
 		intentFiller.start()
 
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 		const inputs: TokenInfo[] = [
 			{
-				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				token: bytes20ToBytes32(daiAsset),
 				amount: 100n,
 			},
 		]
@@ -138,7 +141,6 @@ describe.sequential("Basic", () => {
 		const hash = await bscIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
-			value: 100n,
 		})
 
 		const receipt = await bscPublicClient.waitForTransactionReceipt({
@@ -212,42 +214,21 @@ describe.sequential("Basic", () => {
 					console.log(
 						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
 					)
-					const { args, functionName } = decodeFunctionData({
-						abi: HandlerV1_ABI,
-						data: status.metadata.calldata,
-					})
-
-					expect(functionName).toBe("handlePostRequests")
-
-					try {
-						const hash = await bscHandler.write.handlePostRequests(args as any, {
-							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-							chain: bscTestnet,
-						})
-						await bscPublicClient.waitForTransactionReceipt({
-							hash,
-							confirmations: 1,
-						})
-
-						console.log(`Transaction submitted: https://testnet.bscscan.com/tx/${hash}`)
-
-						// Now check if the order is filled at the source chain
-						isFilled = await checkIfOrderFilled(
-							orderId as HexString,
-							bscPublicClient,
-							bscIntentGateway.address,
-						)
-						expect(isFilled).toBe(true)
-					} catch (e) {
-						console.error("Error self-relaying: ", e)
-					}
 
 					break
 				}
 				case RequestStatus.DESTINATION: {
 					console.log(
-						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+						`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
 					)
+
+					// Check if the order is filled at the source chain
+					const isFilled = await checkIfOrderFilled(
+						orderId as HexString,
+						bscPublicClient,
+						bscIntentGateway.address,
+					)
+					expect(isFilled).toBe(true)
 					break
 				}
 			}
@@ -304,7 +285,6 @@ describe.sequential("Basic", () => {
 		let hash = await bscIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
-			value: 100n,
 		})
 
 		let receipt = await bscPublicClient.waitForTransactionReceipt({
@@ -437,9 +417,10 @@ describe.sequential("Basic", () => {
 			fillerConfig,
 			chainConfigService,
 			feeTokenGnosisChiadoAddress,
-			bscChapelId,
+			gnosisChiadoId,
 			bscWalletClient,
 			gnosisChiadoHandler,
+			bscChapelId,
 		} = await setUp()
 
 		// Create a new intent filler with StableSwapFiller strategy
@@ -447,6 +428,9 @@ describe.sequential("Basic", () => {
 		const newIntentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
 
 		newIntentFiller.start()
+
+		const usdtAsset = chainConfigService.getUsdtAsset(bscChapelId)
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 
 		// Create an order that requires token swaps
 		const inputs: TokenInfo[] = [
@@ -456,9 +440,6 @@ describe.sequential("Basic", () => {
 			},
 		]
 
-		const usdtAsset = chainConfigService.getUsdtAsset(bscChapelId)
-
-		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 		const outputs: PaymentInfo[] = [
 			{
 				token: bytes20ToBytes32(usdtAsset),
@@ -604,35 +585,6 @@ describe.sequential("Basic", () => {
 					console.log(
 						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
 					)
-					const { args, functionName } = decodeFunctionData({
-						abi: HandlerV1_ABI,
-						data: status.metadata.calldata,
-					})
-
-					expect(functionName).toBe("handlePostRequests")
-
-					try {
-						const hash = await gnosisChiadoHandler.write.handlePostRequests(args as any, {
-							account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-							chain: gnosisChiado,
-						})
-						await gnosisChiadoPublicClient.waitForTransactionReceipt({
-							hash,
-							confirmations: 1,
-						})
-
-						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
-
-						// Now check if the order is filled at the source chain
-						isFilled = await checkIfOrderFilled(
-							orderId as HexString,
-							gnosisChiadoPublicClient,
-							gnosisChiadoIntentGateway.address,
-						)
-						expect(isFilled).toBe(true)
-					} catch (e) {
-						console.error("Error self-relaying: ", e)
-					}
 
 					break
 				}
@@ -640,6 +592,14 @@ describe.sequential("Basic", () => {
 					console.log(
 						`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
 					)
+
+					// Check if the order is filled at the source chain
+					const isFilled = await checkIfOrderFilled(
+						orderId as HexString,
+						gnosisChiadoPublicClient,
+						gnosisChiadoIntentGateway.address,
+					)
+					expect(isFilled).toBe(true)
 					break
 				}
 			}
