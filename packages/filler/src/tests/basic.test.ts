@@ -34,6 +34,7 @@ import "./setup"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
+
 describe.sequential("Basic", () => {
 	let intentFiller: IntentFiller
 	let indexer: IndexerClient
@@ -78,7 +79,6 @@ describe.sequential("Basic", () => {
 			bscIsmpHost,
 			gnosisChiadoIsmpHost,
 			feeTokenBscAddress,
-
 			gnosisChiadoPublicClient,
 		} = await setUp()
 
