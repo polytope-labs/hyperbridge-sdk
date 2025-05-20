@@ -229,7 +229,7 @@ describe.sequential("Basic", () => {
 							confirmations: 1,
 						})
 
-						console.log(`Transaction submitted: https://gnosis-chiado.blockscout.com/tx/${hash}`)
+						console.log(`Transaction submitted: https://testnet.bscscan.com/tx/${hash}`)
 
 						// Now check if the order is filled at the source chain
 						isFilled = await checkIfOrderFilled(
