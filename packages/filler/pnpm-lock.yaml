@@ -14,9 +14,6 @@ importers:
       '@polkadot/util-crypto':
         specifier: ^13.4.4
         version: 13.4.4(@polkadot/util@13.4.4)
-      ckb-mmr-wasm:
-        specifier: link:wasm-b
-        version: link:wasm-b
       dotenv:
         specifier: ^16.4.7
         version: 16.5.0
