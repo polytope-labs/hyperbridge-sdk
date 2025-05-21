@@ -1,19 +1,21 @@
-import { FillerStrategy } from "@/strategies/base"
+import { ChainConfigService, ChainClientManager, ContractInteractionService } from "@/services"
 import {
-	Order,
-	ExecutionResult,
-	HexString,
-	FillOptions,
-	estimateGasForPost,
 	constructRedeemEscrowRequestBody,
+	estimateGasForPost,
+	ExecutionResult,
+	FillOptions,
+	HexString,
 	IPostRequest,
+	Order,
 } from "hyperbridge-sdk"
+import { FillerStrategy } from "./base"
+import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
-import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
+import { encodeFunctionData } from "viem"
+import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
 
-export class BasicFiller implements FillerStrategy {
-	name = "BasicFiller"
+export class StableSwapFiller implements FillerStrategy {
+	name = "StableSwapFiller"
 	private privateKey: HexString
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
@@ -27,10 +29,9 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Determines if this strategy can fill the given order
-	 * @param order The order to check
-	 * @param config The filler configuration
-	 * @returns True if the strategy can fill the order
+	 * Checks the USD value of the filler's balance against the order's USD value
+	 * @param order The order to check if it can be filled
+	 * @returns True if the filler has enough balance, false otherwise
 	 */
 	async canFill(order: Order): Promise<boolean> {
 		try {
@@ -49,9 +50,13 @@ export class BasicFiller implements FillerStrategy {
 				return false
 			}
 
-			const hasEnoughTokens = await this.contractService.checkTokenBalances(order.outputs, order.destChain)
-			if (!hasEnoughTokens) {
-				console.debug(`Insufficient token balances for order`)
+			const fillerBalanceUsd = await this.contractService.getFillerBalanceUSD(order, order.destChain)
+
+			// Check if the filler has enough USD value to fill the order
+			const { outputUsdValue } = await this.contractService.getTokenUsdValue(order)
+
+			if (fillerBalanceUsd.totalBalanceUsd < outputUsdValue) {
+				console.debug(`Insufficient USD value for order`)
 				return false
 			}
 
@@ -63,71 +68,84 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Calculates the expected profit of filling this order
-	 * @param order The order to calculate profit for
-	 * @returns The expected profit in DAI (BigInt) which is the order fees minus the total cost
+	 * Calculates the USD value of the order's inputs, outputs, fees and compares
+	 * what will the filler receive and what will the filler pay
+	 * @param order The order to calculate the USD value for
+	 * @returns The profit in USD (BigInt)
 	 */
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
+			const { totalGasEstimate } = await this.contractService.calculateSwapOperations(order, order.destChain)
 			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
 
-			// 2% on top of postGas
 			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
 			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
 
-			// fillGas and relayerFeeEth are in wei (10^18)
-			// nativeTokenPriceUsd has 18 decimals
-			const totalGasWei = fillGas + relayerFeeEth
+			const totalGasWei = fillGas + relayerFeeEth + totalGasEstimate
 
-			// Converting gas cost from wei to USD using the formula:
-			// gasCostUsd = (gasWei * priceUsd) / 10^18
-			// Result has 18 decimals (matching nativeTokenPriceUsd)
 			const gasCostUsd = (totalGasWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
-			// Both gasCostUsd and protocolFeeUSD have 18 decimals
-			const totalCostUsd = gasCostUsd + protocolFeeUSD
+			const totalGasCostUsd = gasCostUsd + protocolFeeUSD
 
-			// Return profitability if positive, otherwise negative
-			// order.fees also has 18 decimals
-			return order.fees > totalCostUsd ? order.fees - totalCostUsd : BigInt(-1)
+			const { outputUsdValue, inputUsdValue } = await this.contractService.getTokenUsdValue(order)
+
+			const toReceive = outputUsdValue + order.fees
+			const toPay = inputUsdValue + totalGasCostUsd
+
+			const profit = toReceive - toPay
+
+			return profit
 		} catch (error) {
 			console.error(`Error calculating profitability:`, error)
 			return BigInt(0)
 		}
 	}
 
-	/**
-	 * Executes the order fill
-	 * @param order The order to fill
-	 * @returns The execution result
-	 */
 	async executeOrder(order: Order): Promise<ExecutionResult> {
-		const startTime = Date.now()
-
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
+			const startTime = Date.now()
+			const fillerWalletAddress = privateKeyToAddress(this.privateKey)
+
+			const { calls } = await this.contractService.calculateSwapOperations(order, order.destChain)
 
 			const { postGas: postGasEstimate } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
 				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
 			}
 
-			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)
-
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const { request } = await destClient.simulateContract({
+			const fillOrderData = encodeFunctionData({
 				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: ethValue,
 			})
 
-			const tx = await walletClient.writeContract(request)
+			calls.push({
+				to: this.configService.getIntentGatewayAddress(order.destChain),
+				data: fillOrderData,
+				value: this.contractService.calculateRequiredEthValue(order.outputs),
+			})
+
+			const authorization = await walletClient.signAuthorization({
+				contractAddress: this.configService.getBatchExecutorAddress(order.destChain),
+				account: walletClient.account!,
+			})
+
+			const tx = await walletClient.sendTransaction({
+				account: walletClient.account!,
+				chain: destClient.chain,
+				data: encodeFunctionData({
+					abi: BATCH_EXECUTOR_ABI,
+					functionName: "execute",
+					args: [calls],
+				}),
+				to: fillerWalletAddress,
+				authorizationList: [authorization],
+			})
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
@@ -140,16 +158,14 @@ export class BasicFiller implements FillerStrategy {
 				gasUsed: receipt.gasUsed.toString(),
 				gasPrice: receipt.effectiveGasPrice.toString(),
 				confirmedAtBlock: Number(receipt.blockNumber),
-				confirmedAt: new Date(),
+				confirmedAt: new Date(endTime),
 				strategyUsed: this.name,
 				processingTimeMs,
 			}
 		} catch (error) {
 			console.error(`Error executing order:`, error)
-
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : "Unknown error",
 			}
 		}
 	}

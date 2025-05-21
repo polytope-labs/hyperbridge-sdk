@@ -1,6 +1,7 @@
 export { IndexerClient } from "@/client"
 export { createQueryClient, queryGetRequest, queryPostRequest } from "@/query-client"
 export {
+	__test,
 	postRequestCommitment,
 	getRequestCommitment,
 	orderCommitment,
@@ -12,6 +13,7 @@ export {
 	hexToString,
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
+	calculateBalanceMappingLocation,
 } from "@/utils"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"

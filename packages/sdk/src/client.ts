@@ -174,7 +174,7 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		if (first_node && first_node.createdAt) {
+		if (first_node?.createdAt) {
 			//@ts-ignore
 			first_node.timestamp = Math.floor(dateStringtoTimestamp(first_node.createdAt) / 1000)
 		}
@@ -214,9 +214,9 @@ export class IndexerClient {
 		)
 
 		const first_node = response?.stateMachineUpdateEvents?.nodes[0]
-		if (first_node && first_node.createdAt) {
+		if (first_node?.createdAt) {
 			//@ts-ignore
-			first_node.timestamp = Math.floor(new Date(first_node.createdAt).getTime() / 1000)
+			first_node.timestamp = Math.floor(dateStringtoTimestamp(first_node.createdAt) / 1000)
 		}
 		logger.trace("Response >", first_node)
 
@@ -583,11 +583,12 @@ export class IndexerClient {
 
 		logger.trace("`Request` found")
 		const chain = await getChain(this.config.dest)
-		const timeoutStream = this.timeoutStream(request.timeoutTimestamp, chain)
+		const timeoutStream =
+			request.timeoutTimestamp > 0 ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
 		const statusStream = this.postRequestStatusStreamInternal(hash)
 
 		logger.trace("Listening for events")
-		const combined = mergeRace(timeoutStream, statusStream)
+		const combined = timeoutStream ? mergeRace(timeoutStream, statusStream) : statusStream
 
 		logger.trace("Listening for events")
 		let item = await combined.next()
