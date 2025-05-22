@@ -327,14 +327,10 @@ export class StableSwapFiller implements FillerStrategy {
 								calls: [transferCall, call],
 							})
 
-							console.log("results", results)
-
 							const operationGasEstimate = results.reduce(
 								(acc, result) => acc + result.gasUsed,
 								BigInt(0),
 							)
-
-							console.log("operationGasEstimate", operationGasEstimate)
 
 							calls.push(transferCall, call)
 							totalGasEstimate += operationGasEstimate
