@@ -3,12 +3,11 @@ import { ADDRESS_ZERO, bytes32ToBytes20, ExecutionResult, FillOptions, HexString
 import { FillerStrategy } from "./base"
 import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { encodeFunctionData } from "viem"
+import { encodeAbiParameters, encodeFunctionData, encodePacked } from "viem"
 import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { ERC20_ABI } from "@/config/abis/ERC20"
-import { SafeService } from "@/services/SafeService"
-import { safeConfig } from "@/config/chain"
+import { UNIVERSAL_ROUTER_ABI } from "@/config/abis/UniversalRouter"
 
 export class StableSwapFiller implements FillerStrategy {
 	name = "StableSwapFiller"
@@ -16,28 +15,12 @@ export class StableSwapFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: ChainConfigService
-	private safeService!: SafeService
 
 	constructor(privateKey: HexString) {
 		this.privateKey = privateKey
 		this.configService = new ChainConfigService()
 		this.clientManager = new ChainClientManager(privateKey)
 		this.contractService = new ContractInteractionService(this.clientManager, privateKey)
-	}
-
-	private async initializeSafeService(order: Order) {
-		const chainConfig = safeConfig[order.destChain as keyof typeof safeConfig]
-		if (!chainConfig) {
-			throw new Error(`No Safe configuration found for chain ${order.destChain}`)
-		}
-
-		const provider = this.clientManager.getPublicClient(order.destChain).transport.url
-		this.safeService = new SafeService(
-			chainConfig.safeAddress as HexString,
-			chainConfig.chainId,
-			provider,
-			this.privateKey,
-		)
 	}
 
 	/**
@@ -215,12 +198,14 @@ export class StableSwapFiller implements FillerStrategy {
 		const usdtDecimals = await contractService.getTokenDecimals(usdtAsset, destChain)
 		const usdcDecimals = await contractService.getTokenDecimals(usdcAsset, destChain)
 
+		// Universal Router constants
+		const V2_SWAP_EXACT_OUT = 0x09
+
 		for (const token of order.outputs) {
 			const tokenAddress = bytes32ToBytes20(token.token)
 			const { nativeTokenBalance, daiBalance, usdcBalance, usdtBalance } =
 				await contractService.getFillerBalanceUSD(order, destChain)
 
-			// Get current balance of the required token
 			const currentBalance =
 				tokenAddress == daiAsset
 					? daiBalance
@@ -230,11 +215,9 @@ export class StableSwapFiller implements FillerStrategy {
 							? usdcBalance
 							: nativeTokenBalance
 
-			// Calculate how much more we need (in actual uint256 with decimals)
 			const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
 
 			if (balanceNeeded > BigInt(0)) {
-				// Convert all balances to the same unit (18 decimals) for comparison
 				const normalizedBalances = {
 					dai: daiBalance / BigInt(10 ** daiDecimals),
 					usdt: usdtBalance / BigInt(10 ** usdtDecimals),
@@ -242,7 +225,6 @@ export class StableSwapFiller implements FillerStrategy {
 					native: nativeTokenBalance / BigInt(10 ** 18),
 				}
 
-				// Sort balances in descending order
 				const sortedBalances = Object.entries(normalizedBalances).sort(([, a], [, b]) => Number(b - a))
 
 				// Try to fulfill the requirement using the highest balance first
@@ -283,6 +265,7 @@ export class StableSwapFiller implements FillerStrategy {
 										? usdcAsset
 										: ADDRESS_ZERO
 
+						// Still use getAmountsIn to calculate the required input amount
 						const amountsIn = await destClient.readContract({
 							address: this.configService.getUniswapRouterV2Address(destChain),
 							abi: UNISWAP_ROUTER_V2_ABI,
@@ -292,32 +275,48 @@ export class StableSwapFiller implements FillerStrategy {
 
 						const amountIn = amountsIn[0]
 
-						const approveData = encodeFunctionData({
+						// Transfer tokens directly to Universal Router (no approval needed)
+						const transferData = encodeFunctionData({
 							abi: ERC20_ABI,
-							functionName: "approve",
-							args: [this.configService.getUniswapRouterV2Address(destChain), amountIn],
+							functionName: "transfer",
+							args: [this.configService.getUniversalRouterAddress(destChain), amountIn],
 						})
 
-						const approveCall = {
+						const transferCall = {
 							to: tokenToSwap,
-							data: approveData,
+							data: transferData,
 							value: BigInt(0),
 						}
 
+						// Universal Router swap call
+						const isPermit2 = false
+						const path = [tokenToSwap, tokenAddress]
+
+						const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
+
+						// Inputs for V2_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+
+						const inputs = [
+							encodeAbiParameters(
+								[
+									{ type: "address", name: "recipient" },
+									{ type: "uint256", name: "amountOut" },
+									{ type: "uint256", name: "amountInMax" },
+									{ type: "address[]", name: "path" },
+									{ type: "bool", name: "isPermit2" },
+								],
+								[fillerWalletAddress, swapAmount, amountIn, path, isPermit2],
+							),
+						]
+
 						const swapData = encodeFunctionData({
-							abi: UNISWAP_ROUTER_V2_ABI,
-							functionName: "swapTokensForExactTokens",
-							args: [
-								swapAmount,
-								amountIn,
-								[tokenToSwap, tokenAddress],
-								fillerWalletAddress,
-								order.deadline,
-							],
+							abi: UNIVERSAL_ROUTER_ABI,
+							functionName: "execute",
+							args: [commands, inputs, order.deadline],
 						})
 
 						const call = {
-							to: this.configService.getUniswapRouterV2Address(destChain),
+							to: this.configService.getUniversalRouterAddress(destChain),
 							data: swapData,
 							value: BigInt(0),
 						}
@@ -325,15 +324,19 @@ export class StableSwapFiller implements FillerStrategy {
 						try {
 							const { results } = await destClient.simulateCalls({
 								account: fillerWalletAddress,
-								calls: [approveCall, call],
+								calls: [transferCall, call],
 							})
+
+							console.log("results", results)
 
 							const operationGasEstimate = results.reduce(
 								(acc, result) => acc + result.gasUsed,
 								BigInt(0),
 							)
 
-							calls.push(approveCall, call)
+							console.log("operationGasEstimate", operationGasEstimate)
+
+							calls.push(transferCall, call)
 							totalGasEstimate += operationGasEstimate
 							remainingNeeded -= swapAmount
 						} catch (simulationError) {

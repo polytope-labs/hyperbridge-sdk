@@ -124,4 +124,11 @@ export class ChainConfigService {
 	getBatchExecutorAddress(chain: string): HexString {
 		return addresses.BatchExecutor[chain as keyof typeof addresses.BatchExecutor]! as HexString
 	}
+
+	/**
+	 * Gets the Universal Router contract address for a given chain
+	 */
+	getUniversalRouterAddress(chain: string): HexString {
+		return addresses.UniversalRouter[chain as keyof typeof addresses.UniversalRouter]! as HexString
+	}
 }

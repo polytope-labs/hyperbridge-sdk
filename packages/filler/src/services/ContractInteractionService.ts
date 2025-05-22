@@ -1,4 +1,4 @@
-import { getContract, toHex, encodePacked, keccak256, encodeFunctionData, maxUint256 } from "viem"
+import { getContract, toHex, encodePacked, keccak256, maxUint256 } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,

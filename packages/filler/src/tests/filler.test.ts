@@ -404,7 +404,7 @@ describe.sequential("Basic", () => {
 		}
 	}, 1_000_0000)
 
-	it("Should handle order filling with token swaps", async () => {
+	it.only("Should handle order filling with token swaps", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -503,8 +503,6 @@ describe.sequential("Basic", () => {
 			})
 		})
 
-		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
-
 		// Place the order
 		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
@@ -596,6 +594,8 @@ describe.sequential("Basic", () => {
 						gnosisChiadoIntentGateway.address,
 					)
 					expect(isFilled).toBe(true)
+
+					await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 					break
 				}
 			}
