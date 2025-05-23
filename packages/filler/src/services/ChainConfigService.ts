@@ -131,4 +131,25 @@ export class ChainConfigService {
 	getUniversalRouterAddress(chain: string): HexString {
 		return addresses.UniversalRouter[chain as keyof typeof addresses.UniversalRouter]! as HexString
 	}
+
+	/**
+	 * Gets the Uniswap V3 Router contract address for a given chain
+	 */
+	getUniswapV3RouterAddress(chain: string): HexString {
+		return addresses.UniswapV3Router[chain as keyof typeof addresses.UniswapV3Router]! as HexString
+	}
+
+	/**
+	 * Gets the Uniswap V3 Factory contract address for a given chain
+	 */
+	getUniswapV3FactoryAddress(chain: string): HexString {
+		return addresses.UniswapV3Factory[chain as keyof typeof addresses.UniswapV3Factory]! as HexString
+	}
+
+	/**
+	 * Gets the Uniswap V3 Quoter contract address for a given chain
+	 */
+	getUniswapV3QuoterAddress(chain: string): HexString {
+		return addresses.UniswapV3Quoter[chain as keyof typeof addresses.UniswapV3Quoter]! as HexString
+	}
 }

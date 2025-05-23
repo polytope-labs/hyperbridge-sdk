@@ -3,11 +3,15 @@ import { ADDRESS_ZERO, bytes32ToBytes20, ExecutionResult, FillOptions, HexString
 import { FillerStrategy } from "./base"
 import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { encodeAbiParameters, encodeFunctionData, encodePacked } from "viem"
+import { encodeAbiParameters, encodeFunctionData, encodePacked, maxUint256 } from "viem"
 import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { UNIVERSAL_ROUTER_ABI } from "@/config/abis/UniversalRouter"
+import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
+import { UNISWAP_V3_FACTORY_ABI } from "@/config/abis/UniswapV3Factory"
+import { UNISWAP_V3_POOL_ABI } from "@/config/abis/UniswapV3Pool"
+import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
 
 export class StableSwapFiller implements FillerStrategy {
 	name = "StableSwapFiller"
@@ -200,6 +204,7 @@ export class StableSwapFiller implements FillerStrategy {
 
 		// Universal Router constants
 		const V2_SWAP_EXACT_OUT = 0x09
+		const V3_SWAP_EXACT_OUT = 0x01
 
 		for (const token of order.outputs) {
 			const tokenAddress = bytes32ToBytes20(token.token)
@@ -265,15 +270,19 @@ export class StableSwapFiller implements FillerStrategy {
 										? usdcAsset
 										: ADDRESS_ZERO
 
-						// Still use getAmountsIn to calculate the required input amount
-						const amountsIn = await destClient.readContract({
-							address: this.configService.getUniswapRouterV2Address(destChain),
-							abi: UNISWAP_ROUTER_V2_ABI,
-							functionName: "getAmountsIn",
-							args: [swapAmount, [tokenToSwap, tokenAddress]],
-						})
+						const bestProtocol = await this.findBestProtocol(
+							tokenToSwap,
+							tokenAddress,
+							swapAmount,
+							destChain,
+						)
 
-						const amountIn = amountsIn[0]
+						if (bestProtocol.protocol === null) {
+							console.warn(`No liquidity available for swap ${tokenToSwap} -> ${tokenAddress}`)
+							continue
+						}
+
+						const amountIn = bestProtocol.amountIn
 
 						// Transfer tokens directly to Universal Router (no approval needed)
 						const transferData = encodeFunctionData({
@@ -288,26 +297,53 @@ export class StableSwapFiller implements FillerStrategy {
 							value: BigInt(0),
 						}
 
-						// Universal Router swap call
+						// Universal Router swap call based on protocol
+						let commands: HexString
+						let inputs: HexString[]
 						const isPermit2 = false
-						const path = [tokenToSwap, tokenAddress]
 
-						const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
+						if (bestProtocol.protocol === "v2") {
+							// V2 swap
+							const path = [tokenToSwap, tokenAddress]
+							commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
 
-						// Inputs for V2_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+							// Inputs for V2_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+							inputs = [
+								encodeAbiParameters(
+									[
+										{ type: "address", name: "recipient" },
+										{ type: "uint256", name: "amountOut" },
+										{ type: "uint256", name: "amountInMax" },
+										{ type: "address[]", name: "path" },
+										{ type: "bool", name: "isPermit2" },
+									],
+									[fillerWalletAddress, swapAmount, amountIn, path, isPermit2],
+								),
+							]
+						} else {
+							// V3 swap
+							// Encode path with fee: tokenIn + fee + tokenOut
+							const pathV3 = encodePacked(
+								["address", "uint24", "address"],
+								[tokenToSwap, bestProtocol.fee!, tokenAddress],
+							)
 
-						const inputs = [
-							encodeAbiParameters(
-								[
-									{ type: "address", name: "recipient" },
-									{ type: "uint256", name: "amountOut" },
-									{ type: "uint256", name: "amountInMax" },
-									{ type: "address[]", name: "path" },
-									{ type: "bool", name: "isPermit2" },
-								],
-								[fillerWalletAddress, swapAmount, amountIn, path, isPermit2],
-							),
-						]
+							commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
+
+							// Inputs for V3_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+							inputs = [
+								encodeAbiParameters(
+									[
+										{ type: "address", name: "recipient" },
+										{ type: "uint256", name: "amountOut" },
+										{ type: "uint256", name: "amountInMax" },
+										{ type: "bytes", name: "path" },
+										{ type: "bool", name: "isPermit2" },
+									],
+									[fillerWalletAddress, swapAmount, amountIn, pathV3, isPermit2],
+								),
+							]
+						}
 
 						const swapData = encodeFunctionData({
 							abi: UNIVERSAL_ROUTER_ABI,
@@ -335,8 +371,15 @@ export class StableSwapFiller implements FillerStrategy {
 							calls.push(transferCall, call)
 							totalGasEstimate += operationGasEstimate
 							remainingNeeded -= swapAmount
+
+							console.log(
+								`Using ${bestProtocol.protocol.toUpperCase()} for swap ${tokenToSwap} -> ${tokenAddress}, amountIn: ${amountIn}${bestProtocol.fee ? `, fee: ${bestProtocol.fee}` : ""}`,
+							)
 						} catch (simulationError) {
-							console.error(`Swap simulation failed for ${tokenType}:`, simulationError)
+							console.error(
+								`Swap simulation failed for ${tokenType} using ${bestProtocol.protocol}:`,
+								simulationError,
+							)
 							continue
 						}
 					}
@@ -361,5 +404,127 @@ export class StableSwapFiller implements FillerStrategy {
 		)
 
 		return { calls, totalGasEstimate }
+	}
+
+	// Find whether uniswap v2 or v3 is the best protocol to use based on the amountIn the filler has to pay
+	async findBestProtocol(
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		destChain: string,
+	): Promise<{
+		protocol: "v2" | "v3" | null
+		amountIn: bigint
+		fee?: number // For V3
+		gasEstimate?: bigint // For V3
+	}> {
+		const destClient = this.clientManager.getPublicClient(destChain)
+		let amountInV2 = maxUint256
+		let amountInV3 = maxUint256
+		let bestV3Fee = 0
+		let v3GasEstimate = BigInt(0)
+
+		const v2Router = this.configService.getUniswapRouterV2Address(destChain)
+		const v2Factory = this.configService.getUniswapV2FactoryAddress(destChain)
+		const v3Factory = this.configService.getUniswapV3FactoryAddress(destChain)
+		const v3Quoter = this.configService.getUniswapV3QuoterAddress(destChain)
+
+		try {
+			const v2PairExists = (await destClient.readContract({
+				address: v2Factory,
+				abi: UNISWAP_V2_FACTORY_ABI,
+				functionName: "getPair",
+				args: [tokenIn, tokenOut],
+			})) as HexString
+
+			if (v2PairExists !== ADDRESS_ZERO) {
+				const v2AmountIn = (await destClient.readContract({
+					address: v2Router,
+					abi: UNISWAP_ROUTER_V2_ABI,
+					functionName: "getAmountsIn",
+					args: [amountOut, [tokenIn, tokenOut]],
+				})) as bigint[]
+
+				amountInV2 = v2AmountIn[0]
+			}
+		} catch (error) {
+			console.warn("V2 quote failed:", error)
+		}
+
+		// Find the best pool in v3 with best quote
+		let bestV3AmountIn = maxUint256
+		const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
+
+		for (const fee of fees) {
+			try {
+				const pool = await destClient.readContract({
+					address: v3Factory,
+					abi: UNISWAP_V3_FACTORY_ABI,
+					functionName: "getPool",
+					args: [tokenIn, tokenOut, fee],
+				})
+
+				if (pool !== ADDRESS_ZERO) {
+					const liquidity = await destClient.readContract({
+						address: pool,
+						abi: UNISWAP_V3_POOL_ABI,
+						functionName: "liquidity",
+					})
+
+					if (liquidity > BigInt(0)) {
+						// Get quote from quoter
+						const quoteResult = (await destClient.readContract({
+							address: v3Quoter,
+							abi: UNISWAP_V3_QUOTER_V2_ABI,
+							functionName: "quoteExactOutputSingle",
+							args: [
+								{
+									tokenIn: tokenIn,
+									tokenOut: tokenOut,
+									fee: fee,
+									amount: amountOut,
+									sqrtPriceLimitX96: BigInt(0),
+								},
+							],
+						})) as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+
+						const [amountIn, , , gasEstimate] = quoteResult
+
+						if (amountIn < bestV3AmountIn) {
+							bestV3AmountIn = amountIn
+							bestV3Fee = fee
+							v3GasEstimate = gasEstimate
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(`V3 quote failed for fee ${fee}:`, error)
+				// Continue to next fee tier
+			}
+		}
+
+		amountInV3 = bestV3AmountIn
+
+		if (amountInV2 === maxUint256 && amountInV3 === maxUint256) {
+			// No liquidity in either protocol
+			return {
+				protocol: null,
+				amountIn: maxUint256,
+			}
+		}
+
+		if (amountInV2 <= amountInV3) {
+			return {
+				protocol: "v2",
+				amountIn: amountInV2,
+			}
+		} else {
+			return {
+				protocol: "v3",
+				amountIn: amountInV3,
+				fee: bestV3Fee,
+				gasEstimate: v3GasEstimate,
+			}
+		}
 	}
 }
