@@ -234,7 +234,6 @@ async function ckb_mmr() {
 		return wasm
 	}
 
-	// console.log({ isTest, isNode, runtime, platform })
 	if (isNode) {
 		const wasm = await import("@/ckb-utils/node")
 		return wasm
