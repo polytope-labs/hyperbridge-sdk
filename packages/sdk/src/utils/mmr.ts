@@ -228,14 +228,15 @@ export async function generateRootWithProof(
 }
 
 async function ckb_mmr() {
-	if (isNode) {
-		const wasm = await import("./ckb-mmr-wasm/dist/node/node")
+	if (hasWindow) {
+		const wasm = await import("@/ckb-utils/web")
+		await wasm.default()
 		return wasm
 	}
 
-	if (hasWindow) {
-		const wasm = await import("./ckb-mmr-wasm/dist/web/web")
-		await wasm.default()
+	// console.log({ isTest, isNode, runtime, platform })
+	if (isNode) {
+		const wasm = await import("@/ckb-utils/node")
 		return wasm
 	}
 

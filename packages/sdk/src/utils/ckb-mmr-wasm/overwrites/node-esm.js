@@ -225,7 +225,7 @@ export function __wbindgen_throw(arg0, arg1) {
 }
 
 // Load and initialize the WebAssembly module
-const wasmPath = join(__dirname, "node_bg.wasm")
+const wasmPath = join(__dirname, "./node_bg.wasm")
 const wasmBytes = readFileSync(wasmPath)
 
 const bindings = {

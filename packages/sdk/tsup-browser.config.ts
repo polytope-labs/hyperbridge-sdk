@@ -4,21 +4,25 @@ import { copyFileSync, mkdirSync, existsSync } from "node:fs"
 
 export default defineConfig({
 	entry: ["src/index.ts"],
-	outDir: "dist",
+	outDir: "dist/browser",
 	format: ["esm"],
 	dts: true,
 	sourcemap: true,
+	platform: "browser",
 	clean: true,
 	splitting: false,
 	treeshake: true,
+	esbuildOptions: (esbuildOpt) => {
+		esbuildOpt.alias = {
+			"@/ckb-utils/web": "./src/utils/ckb-mmr-wasm/dist/web/web",
+			"@/ckb-utils/node": "./src/utils/ckb-mmr-wasm/dist/web/web",
+		}
+	},
 	async onSuccess() {
 		// Copy WebAssembly files to dist directory
 		const fullPath = (path: string) => new URL(path, import.meta.url).pathname
 
-		let files = [
-			{ from: "src/utils/ckb-mmr-wasm/dist/node/node_bg.wasm", to: "dist/node_bg.wasm" },
-			{ from: "src/utils/ckb-mmr-wasm/dist/web/web_bg.wasm", to: "dist/web_bg.wasm" },
-		]
+		let files = [{ from: "src/utils/ckb-mmr-wasm/dist/web/web_bg.wasm", to: "dist/browser/web_bg.wasm" }]
 
 		files = files.map((e) => ({
 			from: fullPath(e.from),

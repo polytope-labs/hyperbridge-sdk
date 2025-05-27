@@ -11,7 +11,8 @@
 		"rootDir": "./src",
 		"baseUrl": ".",
 		"paths": {
-			"@/*": ["src/*"]
+			"@/*": ["src/*"],
+			"@/ckb-utils/*": ["./src/utils/ckb-mmr-wasm/dist/node/*", "./src/utils/ckb-mmr-wasm/dist/web/*"]
 		},
 		"allowSyntheticDefaultImports": true,
 		"types": ["node", "vitest/globals"]
