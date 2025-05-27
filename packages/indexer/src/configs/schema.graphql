@@ -738,3 +738,119 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	transactionHash: String!
 }
+
+"""
+Represents an order placed through the IntentGateway contract.
+This entity tracks cross-chain orders.
+"""
+type OrderPlaced @entity {
+	"""
+	Unique identifier for the order (commitment)
+	"""
+	id: ID!
+
+	"""
+	Address of the user who placed the order
+	"""
+	user: String! @index
+
+	"""
+	Source chain identifier where the order originates from
+	"""
+	sourceChain: String! @index
+
+	"""
+	Destination chain identifier where the order will be executed
+	"""
+	destChain: String! @index
+
+	"""
+	Unique commitment hash of the order used for verification
+	"""
+	commitment: String! @index
+
+	"""
+	Timestamp after which the order expires
+	"""
+	deadline: BigInt! @index
+
+	"""
+	Sequential number to ensure uniqueness of the order
+	"""
+	nonce: BigInt! @index
+
+	"""
+	Total fees supplied by the user for executing the order
+	"""
+	fees: BigInt! @index
+
+	"""
+	Array of input token addresses
+	"""
+	inputTokens: [String!]!
+
+	"""
+	Array of input token amounts corresponding to inputTokens
+	"""
+	inputAmounts: [BigInt!]!
+
+	"""
+	Array of USD values for each input token amount
+	"""
+	inputValuesUSD: [BigInt!]!
+
+	"""
+	Total USD value of all input tokens
+	"""
+	inputUSD: [BigInt!]!
+
+	"""
+	Array of output token addresses
+	"""
+	outputTokens: [String!]!
+
+	"""
+	Array of output token amounts corresponding to outputTokens
+	"""
+	outputAmounts: [BigInt!]!
+
+	"""
+	Array of USD values for each output token amount
+	"""
+	outputValuesUSD: [BigInt!]!
+
+	"""
+	Total USD value of all output tokens
+	"""
+	outputUSD: [BigInt!]!
+
+	"""
+	Array of beneficiary addresses that will receive the output tokens
+	"""
+	outputBeneficiaries: [String!]!
+
+	"""
+	Encoded function call data to be executed on the destination chain
+	"""
+	calldata: String!
+
+	"""
+	Timestamp when the order was created
+	"""
+	createdAt: Date! @index
+
+	"""
+	Block number where the order was placed
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block where the order was placed
+	"""
+	blockTimestamp: BigInt! @index
+
+	"""
+	Hash of the transaction that placed the order
+	"""
+	transactionHash: String! @index
+}
