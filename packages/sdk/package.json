@@ -8,10 +8,15 @@
 		".": {
 			"browser": "./dist/browser/index.js",
 			"import": "./dist/node/index.js"
+		},
+		"./plugins/vite": {
+			"import": "./plugins/vite.js",
+			"types": "./plugins/vite.d.ts"
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"plugins"
 	],
 	"keywords": [
 		"hyperbridge",
@@ -79,6 +84,9 @@
 		"typescript": "^5.7.3",
 		"vite-tsconfig-paths": "^5.1.4",
 		"vitest": "^3.0.7"
+	},
+	"peerDependencies": {
+		"vite": "^5.0.0 || ^6.0.0"
 	},
 	"publishConfig": {
 		"access": "public"
