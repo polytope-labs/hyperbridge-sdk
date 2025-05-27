@@ -251,6 +251,22 @@ dataSources:
           filter:
             topics:
               - 'Transfer(address indexed from, address indexed to, uint256 amount)'
+  - kind: ethereum/Runtime
+    startBlock: ${blockNumber}
+    options:
+      abi: intentGateway
+      address: '${config.contracts.intentGateway}'
+    assets:
+      intentGateway:
+        file: ./abis/IntentGateway.abi.json
+    mapping:
+      file: ./dist/index.js
+      handlers:
+        - kind: ethereum/LogHandler
+          handler: handleOrderPlacedEvent
+          filter:
+            topics:
+              - 'OrderPlaced(bytes32,bytes,bytes,uint256,uint256,uint256,(bytes32,uint256,bytes32)[],(bytes32,uint256)[],bytes)'
   # - kind: ethereum/Runtime
   #   startBlock: 21535312
   #   options:
