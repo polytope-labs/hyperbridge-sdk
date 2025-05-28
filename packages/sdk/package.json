@@ -76,14 +76,14 @@
 		"@polkadot/keyring": "13.4.3",
 		"@polytope-labs/hyperclient": "1.2.0",
 		"@types/node": "^22.13.5",
-		"@vitest/coverage-v8": "^3.0.7",
+		"@vitest/coverage-v8": "^3.1.4",
 		"dotenv": "^16.4.7",
 		"jsdom": "^26.0.0",
 		"log-timestamp": "^0.3.0",
 		"tsup": "^8.4.0",
 		"typescript": "^5.7.3",
 		"vite-tsconfig-paths": "^5.1.4",
-		"vitest": "^3.0.7"
+		"vitest": "^3.1.4"
 	},
 	"peerDependencies": {
 		"vite": "^5.0.0 || ^6.0.0"
