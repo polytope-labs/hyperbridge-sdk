@@ -27,6 +27,7 @@
 		"cryptocurrency",
 		"interoperability"
 	],
+	"type": "module",
 	"engines": {
 		"node": ">=22"
 	},
@@ -37,7 +38,7 @@
 		"clean": "rm -rf dist node_modules",
 		"server": "docker run -d --name graphql-server -p 3000:3000 --restart always --env-file ../../.env.$ENV subquerynetwork/subql-query:latest --name=app --playground",
 		"codegen:subql": "subql codegen -f src/configs",
-		"codegen:yamls": "node scripts/generate-chain-yamls.js && node scripts/generate-compose.js",
+		"codegen:yamls": "tsx scripts/generate-chain-yamls.ts && tsx scripts/generate-compose.ts",
 		"start": "./scripts/up.sh ./docker/$ENV",
 		"down": "./scripts/down.sh ./docker/$ENV",
 		"start:local": "ENV=local npm run build && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local rm -fsv",

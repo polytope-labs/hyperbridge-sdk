@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-const dotenv = require("dotenv")
-const fs = require("fs")
-const path = require("path")
-const Handlebars = require("handlebars")
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-const { RpcWebSocketClient } = require("rpc-websocket-client")
-const { hexToNumber } = require("viem")
+import dotenv from "dotenv"
+import Handlebars from "handlebars"
+import { RpcWebSocketClient } from "rpc-websocket-client"
+import { hexToNumber } from "viem"
 
 const currentEnv = process.env.ENV
 if (!currentEnv) throw new Error("$ENV variable not set")
@@ -13,23 +14,27 @@ if (!currentEnv) throw new Error("$ENV variable not set")
 const root = process.cwd()
 dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 
-const configs = require(root + `/src/configs/config-${currentEnv}.json`)
+const configPath = path.join(root, `src/configs/config-${currentEnv}.json`)
+const configs = JSON.parse(fs.readFileSync(configPath, "utf8"))
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // Load and compile templates
-const templatesDir = path.join(__dirname, 'templates')
-const partialsDir = path.join(templatesDir, 'partials')
+const templatesDir = path.join(__dirname, "templates")
+const partialsDir = path.join(templatesDir, "partials")
 
 // Register partials
-Handlebars.registerPartial('metadata', fs.readFileSync(path.join(partialsDir, 'metadata.hbs'), 'utf8'))
-Handlebars.registerPartial('network-config', fs.readFileSync(path.join(partialsDir, 'network-config.hbs'), 'utf8'))
-Handlebars.registerPartial('evm-handlers', fs.readFileSync(path.join(partialsDir, 'evm-handlers.hbs'), 'utf8'))
-Handlebars.registerPartial('substrate-handlers', fs.readFileSync(path.join(partialsDir, 'substrate-handlers.hbs'), 'utf8'))
+Handlebars.registerPartial("handlers", fs.readFileSync(path.join(partialsDir, "handlers.hbs"), "utf8"))
+Handlebars.registerPartial("metadata", fs.readFileSync(path.join(partialsDir, "metadata.hbs"), "utf8"))
+Handlebars.registerPartial("network-config", fs.readFileSync(path.join(partialsDir, "network-config.hbs"), "utf8"))
 
 // Compile templates
-const substrateTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, 'substrate-chain.yaml.hbs'), 'utf8'))
-const evmTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, 'evm-chain.yaml.hbs'), 'utf8'))
-const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, 'multichain.yaml.hbs'), 'utf8'))
-
+const substrateTemplate = Handlebars.compile(
+	fs.readFileSync(path.join(templatesDir, "substrate-chain.yaml.hbs"), "utf8"),
+)
+const evmTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "evm-chain.yaml.hbs"), "utf8"))
+const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "multichain.yaml.hbs"), "utf8"))
 
 const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen
@@ -56,7 +61,9 @@ const generateEndpoints = (chain) => {
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
-	const endpoints = generateEndpoints(chain).split('\n').map(line => line.trim().replace(/^- '/, '').replace(/'$/, ''))
+	const endpoints = generateEndpoints(chain)
+		.split("\n")
+		.map((line) => line.trim().replace(/^- '/, "").replace(/'$/, ""))
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -73,22 +80,48 @@ const generateSubstrateYaml = async (chain, config) => {
 		description: `${chain.charAt(0).toUpperCase() + chain.slice(1)} Chain Indexer`,
 		runner: {
 			node: {
-				name: '@subql/node',
-				version: '>=4.0.0'
-			}
+				name: "@subql/node",
+				version: ">=4.0.0",
+			},
 		},
 		config,
 		endpoints,
 		chainTypesConfig,
 		blockNumber,
-		isHyperbridgeChain
+		isHyperbridgeChain,
+		handlerKind: "substrate/EventHandler",
+		handlers: [
+			{ handler: "handleIsmpStateMachineUpdatedEvent", module: "ismp", method: "StateMachineUpdated" },
+			{ handler: "handleSubstrateRequestEvent", module: "ismp", method: "Request" },
+			{ handler: "handleSubstrateResponseEvent", module: "ismp", method: "Response" },
+			{ handler: "handleSubstratePostRequestHandledEvent", module: "ismp", method: "PostRequestHandled" },
+			{ handler: "handleSubstratePostResponseHandledEvent", module: "ismp", method: "PostResponseHandled" },
+			{
+				handler: "handleSubstratePostRequestTimeoutHandledEvent",
+				module: "ismp",
+				method: "PostRequestTimeoutHandled",
+			},
+			{ handler: "handleSubstrateGetRequestHandledEvent", module: "ismp", method: "GetRequestHandled" },
+			{
+				handler: "handleSubstrateGetRequestTimeoutHandledEvent",
+				module: "ismp",
+				method: "GetRequestTimeoutHandled",
+			},
+			{
+				handler: "handleSubstratePostResponseTimeoutHandledEvent",
+				module: "ismp",
+				method: "PostResponseTimeoutHandled",
+			},
+		],
 	}
 
 	return substrateTemplate(templateData)
 }
 
 const generateEvmYaml = async (chain, config) => {
-	const endpoints = generateEndpoints(chain).split('\n').map(line => line.trim().replace(/^- '/, '').replace(/'$/, ''))
+	const endpoints = generateEndpoints(chain)
+		.split("\n")
+		.map((line) => line.trim().replace(/^- '/, "").replace(/'$/, ""))
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -112,13 +145,35 @@ const generateEvmYaml = async (chain, config) => {
 		description: `${chain.charAt(0).toUpperCase() + chain.slice(1)} Indexer`,
 		runner: {
 			node: {
-				name: '@subql/node-ethereum',
-				version: '>=3.0.0'
-			}
+				name: "@subql/node-ethereum",
+				version: ">=3.0.0",
+			},
 		},
 		config,
 		endpoints,
-		blockNumber
+		blockNumber,
+		handlerKind: "ethereum/LogHandler",
+		handlers: [
+			{ handler: "handleStateMachineUpdatedEvent", topic: "StateMachineUpdated(string,uint256)" },
+			{
+				handler: "handlePostRequestEvent",
+				topic: "PostRequestEvent(string,string,address,bytes,uint256,uint256,bytes,uint256)",
+			},
+			{
+				handler: "handlePostResponseEvent",
+				topic: "PostResponseEvent(string,string,address,bytes,uint256,uint256,bytes,bytes,uint256,uint256)",
+			},
+			{ handler: "handlePostRequestHandledEvent", topic: "PostRequestHandled(bytes32,address)" },
+			{ handler: "handlePostResponseHandledEvent", topic: "PostResponseHandled(bytes32,address)" },
+			{ handler: "handlePostRequestTimeoutHandledEvent", topic: "PostRequestTimeoutHandled(bytes32,string)" },
+			{ handler: "handlePostResponseTimeoutHandledEvent", topic: "PostResponseTimeoutHandled(bytes32,string)" },
+			{
+				handler: "handleGetRequestEvent",
+				topic: "GetRequestEvent(string,string,address,bytes[],uint256,uint256,uint256,bytes,uint256)",
+			},
+			{ handler: "handleGetRequestHandledEvent", topic: "GetRequestHandled(bytes32,address)" },
+			{ handler: "handleGetRequestTimeoutHandledEvent", topic: "GetRequestTimeoutHandled(bytes32,string)" },
+		],
 	}
 
 	return evmTemplate(templateData)
@@ -151,7 +206,7 @@ const generateMultichainYaml = () => {
 	const projects = validChains.map(([chain]) => `./${chain}.yaml`)
 
 	const templateData = {
-		projects
+		projects,
 	}
 
 	const yaml = multichainTemplate(templateData)
@@ -226,16 +281,15 @@ const generateChainsByIsmpHost = () => {
 	console.log("Generated chains-by-ismp-host.ts")
 }
 
-generateAllChainYamls()
-	.then(() => {
-		generateMultichainYaml()
-		generateSubstrateWsJson()
-		generateEvmWsJson()
-		generateChainIdsByGenesis()
-		generateChainsByIsmpHost()
-		process.exit(0)
-	})
-	.catch((err) => {
-		console.error("Error generating YAMLs:", err)
-		process.exit(1)
-	})
+try {
+	await generateAllChainYamls()
+	generateMultichainYaml()
+	generateSubstrateWsJson()
+	generateEvmWsJson()
+	generateChainIdsByGenesis()
+	generateChainsByIsmpHost()
+	process.exit(0)
+} catch (err) {
+	console.error("Error generating YAMLs:", err)
+	process.exit(1)
+}

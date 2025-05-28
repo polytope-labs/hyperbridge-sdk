@@ -14,7 +14,7 @@ dataSources:
     mapping:
       file: ./dist/index.js
       handlers:
-{{> evm-handlers}}
+      {{> handlers}}
   - kind: ethereum/Runtime
     startBlock: {{blockNumber}}
     options:

@@ -10,7 +10,7 @@ dataSources:
     mapping:
       file: ./dist/index.js
       handlers:
-{{> substrate-handlers}}
+      {{> handlers}}
 {{#if isHyperbridgeChain}}
         - handler: handleSubstrateAssetTeleportedEvent
           kind: substrate/EventHandler
