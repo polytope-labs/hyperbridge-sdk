@@ -3,9 +3,9 @@
 	"version": "1.1.7-rc.3",
 	"description": "The hyperclient SDK provides utilities for querying proofs and statuses for cross-chain requests from HyperBridge.",
 	"type": "module",
-	"types": "./dist/node/index.d.ts",
 	"exports": {
 		".": {
+			"types": "./dist/node/index.d.ts",
 			"browser": "./dist/browser/index.js",
 			"import": "./dist/node/index.js"
 		},
@@ -69,7 +69,8 @@
 		"scale-ts": "^1.6.1",
 		"std-env": "^3.9.0",
 		"ts-pattern": "^5.6.2",
-		"viem": "^2.23.5"
+		"viem": "^2.23.5",
+		"ckb-mmr-wasm": "file:../ckb-mmr-wasm"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
@@ -93,6 +94,6 @@
 	},
 	"engineStrict": true,
 	"engines": {
-		"node": ">=18.0.0"
+		"node": ">=22.x.x"
 	}
 }

@@ -1,10 +1,13 @@
-import { readFileSync } from "fs"
-import { join } from "path"
-import { TextDecoder, TextEncoder } from "util"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { TextDecoder, TextEncoder } from "node:util"
 
 let wasm
 
-const __dirname = new URL(".", import.meta.url).pathname
+// new URL('.', import.meta.url).pathname doesn't work fine with Nextjs
+// so I switched to this method of resolving the directory
+const full_path = import.meta.url.split("/").slice(1)
+const __dirname = `${full_path.slice(0, full_path.length - 1).join("/")}/`
 
 let cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true })
 
@@ -225,7 +228,7 @@ export function __wbindgen_throw(arg0, arg1) {
 }
 
 // Load and initialize the WebAssembly module
-const wasmPath = join(__dirname, "node_bg.wasm")
+const wasmPath = join(__dirname, "./node_bg.wasm")
 const wasmBytes = readFileSync(wasmPath)
 
 const bindings = {
@@ -246,3 +249,7 @@ wasm = wasmInstance.exports
 export const __wasm = wasm
 
 wasm.__wbindgen_start()
+
+export default function init() {
+	console.log("CKB MMR WASM initialized")
+}

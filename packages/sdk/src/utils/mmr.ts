@@ -202,8 +202,7 @@ export async function generateRootWithProof(
 	postRequest: IPostRequest,
 	treeSize: bigint,
 ): Promise<{ root: HexString; proof: HexString[]; index: bigint; kIndex: bigint; treeSize: bigint; mmrSize: bigint }> {
-	const { generate_root_with_proof } = await ckb_mmr()
-
+	const { generate_root_with_proof } = await load_ckb_mmr()
 	const { commitment: hash, encodePacked } = postRequestCommitment(postRequest)
 
 	const result = JSON.parse(generate_root_with_proof(hexToBytes(encodePacked), treeSize))
@@ -227,15 +226,16 @@ export async function generateRootWithProof(
 	}
 }
 
-async function ckb_mmr() {
+async function load_ckb_mmr() {
 	if (hasWindow) {
-		const wasm = await import("@/ckb-utils/web")
+		const wasm = await import("ckb-mmr-wasm")
 		await wasm.default()
+
 		return wasm
 	}
 
 	if (isNode) {
-		const wasm = await import("@/ckb-utils/node")
+		const wasm = await import("ckb-mmr-wasm")
 		return wasm
 	}
 
@@ -243,7 +243,7 @@ async function ckb_mmr() {
 }
 
 export async function __test() {
-	const { generate_root_with_proof } = await ckb_mmr()
+	const { generate_root_with_proof } = await load_ckb_mmr()
 
 	return generate_root_with_proof(new Uint8Array(), 120n)
 }
