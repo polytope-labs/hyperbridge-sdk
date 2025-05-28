@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-const dotenv = require("dotenv")
-const path = require("path")
-const os = require("os")
+import fs from "node:fs"
+import path from "node:path"
+
+import dotenv from "dotenv"
 
 const currentEnv = process.env.ENV
 if (!currentEnv) throw new Error("$ENV variable not set")
@@ -9,8 +10,8 @@ if (!currentEnv) throw new Error("$ENV variable not set")
 const root = process.cwd()
 dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
 
-const fs = require("fs-extra")
-const configs = require(`${root}/src/configs/config-${currentEnv}.json`)
+const configPath = path.join(root, `src/configs/config-${currentEnv}.json`)
+const configs = JSON.parse(fs.readFileSync(configPath, "utf8"))
 
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
