@@ -20,7 +20,7 @@ const logMessage = (message) => {
  *
  * @returns {Plugin}
  */
-export const copyWasm = () => {
+const copyWasm = () => {
 	return {
 		name: "hyperbridge-copy-wasm-plugin",
 		buildStart: async function makeCopy(ctx) {
