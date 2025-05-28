@@ -1,58 +1,59 @@
 #!/usr/bin/env node
 import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
+import Handlebars from "handlebars"
 import { getEnv, getValidChains } from "../src/configs"
 
+const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
+const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
+
+// Setup paths
 const root = process.cwd()
 const currentEnv = getEnv()
 const validChains = getValidChains()
 
-const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
-const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Load and compile templates
+const templatesDir = path.join(__dirname, "templates")
+const partialsDir = path.join(templatesDir, "partials")
+
+// Register partials
+Handlebars.registerPartial("docker-command", fs.readFileSync(path.join(partialsDir, "docker-command.hbs"), "utf8"))
+Handlebars.registerPartial("docker-service", fs.readFileSync(path.join(partialsDir, "docker-service.hbs"), "utf8"))
+
+// Compile templates
+const serviceTemplate = Handlebars.compile(
+	fs.readFileSync(path.join(templatesDir, "docker-compose-service.yaml.hbs"), "utf8"),
+)
 
 const generateNodeServices = () => {
-	const unfinalized = `
-      - --historical=timestamp
-      - --block-confirmations=0
-      - --unfinalized-blocks`
+	const dockerDir = path.join(root, "docker", currentEnv)
+	if (!fs.existsSync(dockerDir)) {
+		fs.mkdirSync(dockerDir, { recursive: true })
+	}
 
-	validChains.forEach((config, chain) => {
-		const image = config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE
-		const file = `services:
-  subquery-${chain}:
-    image: ${image}
-    restart: unless-stopped
-    environment:
-      DB_USER: \${DB_USER}
-      DB_PASS: \${DB_PASS}
-      DB_DATABASE: \${DB_DATABASE}
-      DB_HOST: \${DB_HOST}
-      DB_PORT: \${DB_PORT}
-    volumes:
-      - ../../src/configs:/app
-      - ../../dist:/app/dist
-    command:
-      - \${SUB_COMMAND:-}
-      - -f=/app/${chain}.yaml
-      - --db-schema=app
-      - --workers=\${SUBQL_WORKERS:-16}
-      - --batch-size=\${SUBQL_BATCH_SIZE:-100}
-      - --multi-chain
-      - --unsafe
-      - --log-level=info${config.type === "substrate" ? "" : unfinalized}
-      - --store-cache-async=true
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
-      interval: 3s
-      timeout: 5s
-      retries: 10`
+	validChains.forEach((config, chainName) => {
+		const serviceData = {
+			chainName,
+			image: config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE,
+			unfinalizedBlocks: config.type === "evm", // Only EVM chains need unfinalized blocks handling
+			config,
+			volumesPath: '../../'
+		}
 
-		const filePath = `${root}/docker/${currentEnv}/${chain}.yml`
+		const yaml = serviceTemplate(serviceData)
+
+		const filePath = path.join(dockerDir, `${chainName}.yml`)
+
 		if (!fs.existsSync(filePath)) {
-			fs.outputFileSync(filePath, file)
-			console.log(`Generated ${root}/docker/${currentEnv}/${chain}.yml`)
+			fs.writeFileSync(filePath, yaml)
+			console.log(`Generated ${filePath}`)
 		} else {
-			console.log(`Skipping ${root}/docker/${currentEnv}/${chain}.yml - File already exists`)
+			console.log(`Skipping ${filePath} - File already exists`)
 		}
 	})
 }
