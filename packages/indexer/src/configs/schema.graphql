@@ -802,7 +802,7 @@ type OrderPlaced @entity {
 	"""
 	Total USD value of all input tokens
 	"""
-	inputUSD: [BigInt!]!
+	inputUSD: BigInt!
 
 	"""
 	Array of output token addresses
@@ -822,7 +822,7 @@ type OrderPlaced @entity {
 	"""
 	Total USD value of all output tokens
 	"""
-	outputUSD: [BigInt!]!
+	outputUSD: BigInt!
 
 	"""
 	Array of beneficiary addresses that will receive the output tokens
@@ -851,6 +851,43 @@ type OrderPlaced @entity {
 
 	"""
 	Hash of the transaction that placed the order
+	"""
+	transactionHash: String! @index
+}
+
+type OrderFilled @entity {
+	"""
+	Unique identifier for the order (commitment)
+	"""
+	id: ID!
+
+	"""
+	Address of the user who filled the order
+	"""
+	filler: String! @index
+
+	"""
+	Reference to the order that was filled
+	"""
+	order: OrderPlaced!
+
+	"""
+	Timestamp when the order was filled
+	"""
+	createdAt: Date! @index
+
+	"""
+	Block number where the order was filled
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block where the order was filled
+	"""
+	blockTimestamp: BigInt! @index
+
+	"""
+	Hash of the transaction that filled the order
 	"""
 	transactionHash: String! @index
 }
