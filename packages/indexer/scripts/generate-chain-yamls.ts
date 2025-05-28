@@ -3,19 +3,15 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import dotenv from "dotenv"
 import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { hexToNumber } from "viem"
 
-const currentEnv = process.env.ENV
-if (!currentEnv) throw new Error("$ENV variable not set")
+import { getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
-dotenv.config({ path: path.resolve(root, `../../.env.${currentEnv}`) })
-
-const configPath = path.join(root, `src/configs/config-${currentEnv}.json`)
-const configs = JSON.parse(fs.readFileSync(configPath, "utf8"))
+const currentEnv = getEnv()
+const validChains = getValidChains()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,31 +35,25 @@ const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(template
 const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
-
 	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
 
 	// Check if file exists
 	if (fs.existsSync(potentialPath)) {
 		return potentialPath
 	}
-
 	return null
 }
 
 const generateEndpoints = (chain) => {
 	const envKey = chain.replace(/-/g, "_").toUpperCase()
 	// Expect comma-separated endpoints in env var
-	const endpoints = process.env[envKey]?.split(",") || []
-
-	return endpoints.map((endpoint) => `    - '${endpoint.trim()}'`).join("\n")
+	return process.env[envKey]?.split(",") || []
 }
 
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
-		.split("\n")
-		.map((line) => line.trim().replace(/^- '/, "").replace(/'$/, ""))
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -120,8 +110,6 @@ const generateSubstrateYaml = async (chain, config) => {
 
 const generateEvmYaml = async (chain, config) => {
 	const endpoints = generateEndpoints(chain)
-		.split("\n")
-		.map((line) => line.trim().replace(/^- '/, "").replace(/'$/, ""))
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -179,17 +167,6 @@ const generateEvmYaml = async (chain, config) => {
 	return evmTemplate(templateData)
 }
 
-const validChains = Object.entries(configs).filter(([chain, config]) => {
-	const envKey = chain.replace(/-/g, "_").toUpperCase()
-	const endpoint = process.env[envKey]
-
-	if (!endpoint) {
-		console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`)
-		return false
-	}
-	return true
-})
-
 async function generateAllChainYamls() {
 	for (const [chain, config] of validChains) {
 		const yaml =
@@ -203,7 +180,7 @@ async function generateAllChainYamls() {
 }
 
 const generateMultichainYaml = () => {
-	const projects = validChains.map(([chain]) => `./${chain}.yaml`)
+	const projects = Array.from(validChains.keys()).map((chain) => `./${chain}.yaml`)
 
 	const templateData = {
 		projects,
@@ -217,7 +194,7 @@ const generateMultichainYaml = () => {
 const generateSubstrateWsJson = () => {
 	const substrateWsConfig = {}
 
-	validChains.forEach(([chain, config]) => {
+	validChains.forEach((config, chain) => {
 		if (config.type === "substrate") {
 			const envKey = chain.replace(/-/g, "_").toUpperCase()
 			const endpoints = process.env[envKey]?.split(",") || []
@@ -235,7 +212,7 @@ const generateSubstrateWsJson = () => {
 const generateEvmWsJson = () => {
 	const evmWsConfig = {}
 
-	validChains.forEach(([chain, config]) => {
+	validChains.forEach((config, chain) => {
 		if (config.type === "evm") {
 			const envKey = chain.replace(/-/g, "_").toUpperCase()
 			const endpoints = process.env[envKey]?.split(",") || []
@@ -253,7 +230,7 @@ const generateEvmWsJson = () => {
 const generateChainIdsByGenesis = () => {
 	const chainIdsByGenesis = {}
 
-	validChains.forEach(([chain, config]) => {
+	validChains.forEach((config) => {
 		if (config.chainId) {
 			chainIdsByGenesis[config.chainId] = config.stateMachineId
 		}
@@ -268,7 +245,7 @@ const generateChainIdsByGenesis = () => {
 const generateChainsByIsmpHost = () => {
 	const chainsByIsmpHost = {}
 
-	validChains.forEach(([chain, config]) => {
+	validChains.forEach((config) => {
 		// Only include EVM chains with ethereumHost contract
 		if (config.type === "evm" && config.contracts?.ethereumHost) {
 			chainsByIsmpHost[config.stateMachineId] = config.contracts.ethereumHost
