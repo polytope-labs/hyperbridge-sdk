@@ -22,7 +22,7 @@ export default defineConfig({
 		// Copy WebAssembly files to dist directory
 		const fullPath = (path: string) => new URL(path, import.meta.url).pathname
 
-		let files = [{ from: "node_modules/ckb-mmr-wasm/dist/node/node_bg.wasm", to: "dist/node/node_bg.wasm" }]
+		let files = [{ from: "src/utils/ckb-mmr-wasm/dist/node/node_bg.wasm", to: "dist/node/node_bg.wasm" }]
 
 		files = files.map((e) => ({
 			from: fullPath(e.from),
