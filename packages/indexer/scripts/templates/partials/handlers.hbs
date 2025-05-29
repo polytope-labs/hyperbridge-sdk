@@ -1,6 +1,6 @@
 {{#each handlers}}
-  - kind: {{handlerKind}}
-    handler: {{this.handler}}
+  - handler: {{this.handler}}
+    kind: {{../handlerKind}}
     filter:
     {{#if this.module}}
       module: '{{this.module}}'
