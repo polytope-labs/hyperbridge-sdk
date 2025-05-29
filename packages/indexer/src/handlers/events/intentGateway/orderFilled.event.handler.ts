@@ -2,6 +2,7 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderFilledLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { IntentGatewayService } from "@/services/intentGateway.service"
+import { OrderStatus } from "@/configs/src/types"
 
 export async function handleOrderFilledEvent(event: OrderFilledLog): Promise<void> {
 	logger.info(`Order Filled Event: ${stringify(event)}`)
@@ -19,9 +20,14 @@ export async function handleOrderFilledEvent(event: OrderFilledLog): Promise<voi
 		})} by ${filler}`,
 	)
 
-	await IntentGatewayService.getOrCreateOrderFilled(commitment, filler, {
-		transactionHash,
-		blockNumber,
-		timestamp: Number(timestamp),
-	})
+	await IntentGatewayService.updateOrderStatus(
+		commitment,
+		OrderStatus.FILLED,
+		{
+			transactionHash,
+			blockNumber,
+			timestamp,
+		},
+		filler,
+	)
 }
