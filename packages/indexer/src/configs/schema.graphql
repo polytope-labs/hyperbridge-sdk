@@ -862,6 +862,11 @@ type OrderPlaced @entity {
 	status: OrderStatus!
 
 	"""
+	Metatdata about the order's progression through different statuses
+	"""
+	statusMetadata: [OrderStatusMetadata]! @derivedFrom(field: "order")
+
+	"""
 	Timestamp when the order was created
 	"""
 	createdAt: Date! @index
@@ -919,34 +924,52 @@ type OrderFilled @entity {
 	transactionHash: String! @index
 }
 
-type EscrowRefunded @entity {
+"""
+Metadata about the status of an Order
+"""
+type OrderStatusMetadata @entity {
 	"""
-	Unique identifier for the order (commitment)
+	The ID of the OrderStatusMetadata
 	"""
 	id: ID!
 
 	"""
-	Reference to the order that was cancelled
+	The status of the order
+	"""
+	status: OrderStatus!
+
+	"""
+	The chain on which the status change occurred
+	"""
+	chain: String!
+
+	"""
+	The timestamp of the event
+	"""
+	timestamp: BigInt!
+
+	"""
+	The number of the block in which the event occurred
+	"""
+	blockNumber: String!
+
+	"""
+	The hash of the transaction in which the event occurred
+	"""
+	transactionHash: String!
+
+	"""
+	The order that owns this status change
 	"""
 	order: OrderPlaced!
 
 	"""
-	Timestamp when the order was cancelled
+	The filler of the order if the order has been filled
+	"""
+	filler: String
+
+	"""
+	The timestamp when this record was created
 	"""
 	createdAt: Date! @index
-
-	"""
-	Block number where the order was cancelled
-	"""
-	blockNumber: BigInt! @index
-
-	"""
-	Timestamp of the block where the order was cancelled
-	"""
-	blockTimestamp: BigInt! @index
-
-	"""
-	Hash of the transaction that cancelled the order
-	"""
-	transactionHash: String! @index
 }

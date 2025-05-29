@@ -3,6 +3,7 @@ import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { HexString, Order, orderCommitment } from "hyperbridge-sdk"
 import { IntentGatewayService } from "@/services/intentGateway.service"
+import { OrderStatus } from "@/configs/src/types"
 
 export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<void> {
 	logger.info(`Order Placed Event: ${stringify(event)}`)
@@ -46,6 +47,12 @@ export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<voi
 	await IntentGatewayService.getOrCreateOrder(order, {
 		transactionHash,
 		blockNumber,
-		timestamp: Number(timestamp),
+		timestamp,
+	})
+
+	await IntentGatewayService.updateOrderStatus(commitment, OrderStatus.PLACED, {
+		transactionHash,
+		blockNumber,
+		timestamp,
 	})
 }

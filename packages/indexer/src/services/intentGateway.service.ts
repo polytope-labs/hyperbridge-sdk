@@ -1,8 +1,9 @@
 import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
-import { EscrowRefunded, OrderFilled, OrderStatus } from "@/configs/src/types"
+import { OrderFilled, OrderStatus, OrderStatusMetadata } from "@/configs/src/types"
 import { Order, bytes32ToBytes20 } from "hyperbridge-sdk"
 import PriceHelper from "@/utils/price.helpers"
 import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants"
+import { timestampToDate } from "@/utils/date.helpers"
 
 export class IntentGatewayService {
 	static async getOrCreateOrder(
@@ -10,7 +11,7 @@ export class IntentGatewayService {
 		logsData: {
 			transactionHash: string
 			blockNumber: number
-			timestamp: number
+			timestamp: bigint
 		},
 	): Promise<OrderPlaced> {
 		const { transactionHash, blockNumber, timestamp } = logsData
@@ -40,9 +41,9 @@ export class IntentGatewayService {
 				outputBeneficiaries: order.outputs.map((output) => output.beneficiary),
 				calldata: order.callData,
 				status: OrderStatus.PLACED,
-				createdAt: new Date(timestamp),
+				createdAt: timestampToDate(timestamp),
 				blockNumber: BigInt(blockNumber),
-				blockTimestamp: BigInt(timestamp),
+				blockTimestamp: timestamp,
 				transactionHash,
 			})
 			await orderPlaced.save()
@@ -131,73 +132,35 @@ export class IntentGatewayService {
 		}
 	}
 
-	static async getOrCreateOrderFilled(
+	static async updateOrderStatus(
 		commitment: string,
-		filler: string,
+		status: OrderStatus,
 		logsData: {
 			transactionHash: string
 			blockNumber: number
-			timestamp: number
+			timestamp: bigint
 		},
-	): Promise<OrderFilled> {
+		filler?: string,
+	): Promise<void> {
 		const { transactionHash, blockNumber, timestamp } = logsData
 
-		let orderPlaced = await OrderPlaced.get(commitment)
+		const orderPlaced = await OrderPlaced.get(commitment)
 
 		if (orderPlaced) {
-			orderPlaced.status = OrderStatus.FILLED
+			orderPlaced.status = status
 			await orderPlaced.save()
 		}
 
-		let orderFilled = await OrderFilled.get(commitment)
-
-		if (!orderFilled) {
-			orderFilled = await OrderFilled.create({
-				id: commitment,
-				filler,
-				orderId: commitment,
-				createdAt: new Date(timestamp),
-				blockNumber: BigInt(blockNumber),
-				blockTimestamp: BigInt(timestamp),
-				transactionHash,
-			})
-			await orderFilled.save()
-		}
-
-		return orderFilled
-	}
-
-	static async getOrCreateEscrowRefunded(
-		commitment: string,
-		logsData: {
-			transactionHash: string
-			blockNumber: number
-			timestamp: number
-		},
-	): Promise<EscrowRefunded> {
-		const { transactionHash, blockNumber, timestamp } = logsData
-
-		let orderPlaced = await OrderPlaced.get(commitment)
-
-		if (orderPlaced) {
-			orderPlaced.status = OrderStatus.REFUNDED
-			await orderPlaced.save()
-		}
-
-		let escrowRefunded = await EscrowRefunded.get(commitment)
-
-		if (!escrowRefunded) {
-			escrowRefunded = await EscrowRefunded.create({
-				id: commitment,
-				orderId: commitment,
-				createdAt: new Date(timestamp),
-				blockNumber: BigInt(blockNumber),
-				blockTimestamp: BigInt(timestamp),
-				transactionHash,
-			})
-			await escrowRefunded.save()
-		}
-
-		return escrowRefunded
+		await OrderStatusMetadata.create({
+			id: commitment,
+			orderId: commitment,
+			status,
+			chain: chainId,
+			timestamp,
+			blockNumber: blockNumber.toString(),
+			filler,
+			transactionHash,
+			createdAt: timestampToDate(timestamp),
+		})
 	}
 }
