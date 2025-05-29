@@ -1,25 +1,25 @@
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
-import { OrderFilledLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
+import { EscrowRefundedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { IntentGatewayService } from "@/services/intentGateway.service"
 
-export async function handleOrderFilledEvent(event: OrderFilledLog): Promise<void> {
+export async function handleEscrowRefundedEvent(event: EscrowRefundedLog): Promise<void> {
 	logger.info(`Order Filled Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, block } = event
-	const { commitment, filler } = args!
+	const { commitment } = args!
 
 	if (!args) return
 
 	const timestamp = await getBlockTimestamp(block.hash, chainId)
 
 	logger.info(
-		`Order Filled: ${stringify({
+		`Escrow Refunded: ${stringify({
 			commitment,
-		})} by ${filler}`,
+		})}`,
 	)
 
-	await IntentGatewayService.getOrCreateOrderFilled(commitment, filler, {
+	await IntentGatewayService.getOrCreateEscrowRefunded(commitment, {
 		transactionHash,
 		blockNumber,
 		timestamp: Number(timestamp),

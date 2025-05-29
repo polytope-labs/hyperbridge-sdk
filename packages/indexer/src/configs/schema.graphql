@@ -740,6 +740,28 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 }
 
 """
+The status of an order
+"""
+enum OrderStatus {
+	"""
+	The order has been placed
+	"""
+	PLACED
+	"""
+	The order has been filled
+	"""
+	FILLED
+	"""
+	The order has been redeemed on the source chain
+	"""
+	REDEEMED
+	"""
+	The order has been cancelled and refunded on the source chain
+	"""
+	REFUNDED
+}
+
+"""
 Represents an order placed through the IntentGateway contract.
 This entity tracks cross-chain orders.
 """
@@ -835,6 +857,11 @@ type OrderPlaced @entity {
 	calldata: String!
 
 	"""
+	Status of the order
+	"""
+	status: OrderStatus!
+
+	"""
 	Timestamp when the order was created
 	"""
 	createdAt: Date! @index
@@ -888,6 +915,38 @@ type OrderFilled @entity {
 
 	"""
 	Hash of the transaction that filled the order
+	"""
+	transactionHash: String! @index
+}
+
+type EscrowRefunded @entity {
+	"""
+	Unique identifier for the order (commitment)
+	"""
+	id: ID!
+
+	"""
+	Reference to the order that was cancelled
+	"""
+	order: OrderPlaced!
+
+	"""
+	Timestamp when the order was cancelled
+	"""
+	createdAt: Date! @index
+
+	"""
+	Block number where the order was cancelled
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block where the order was cancelled
+	"""
+	blockTimestamp: BigInt! @index
+
+	"""
+	Hash of the transaction that cancelled the order
 	"""
 	transactionHash: String! @index
 }

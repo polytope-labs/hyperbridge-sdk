@@ -2,7 +2,7 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { HexString, Order, orderCommitment } from "hyperbridge-sdk"
-import { OrderPlacedService } from "@/services/orderPlaced.service"
+import { IntentGatewayService } from "@/services/intentGateway.service"
 
 export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<void> {
 	logger.info(`Order Placed Event: ${stringify(event)}`)
@@ -43,7 +43,7 @@ export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<voi
 
 	logger.info(`Order Commitment: ${commitment}`)
 
-	await OrderPlacedService.getOrCreate(order, {
+	await IntentGatewayService.getOrCreateOrder(order, {
 		transactionHash,
 		blockNumber,
 		timestamp: Number(timestamp),
