@@ -152,7 +152,7 @@ export class IntentGatewayService {
 		}
 
 		await OrderStatusMetadata.create({
-			id: commitment,
+			id: `${commitment}.${status}`,
 			orderId: commitment,
 			status,
 			chain: chainId,
