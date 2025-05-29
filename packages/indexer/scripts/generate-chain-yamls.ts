@@ -142,25 +142,28 @@ const generateEvmYaml = async (chain, config) => {
 		blockNumber,
 		handlerKind: "ethereum/LogHandler",
 		handlers: [
-			{ handler: "handleStateMachineUpdatedEvent", topic: "StateMachineUpdated(string,uint256)" },
+			{ handler: "handleStateMachineUpdatedEvent", topics: ["StateMachineUpdated(string,uint256)"] },
 			{
 				handler: "handlePostRequestEvent",
-				topic: "PostRequestEvent(string,string,address,bytes,uint256,uint256,bytes,uint256)",
+				topics: ["PostRequestEvent(string,string,address,bytes,uint256,uint256,bytes,uint256)"],
 			},
 			{
 				handler: "handlePostResponseEvent",
-				topic: "PostResponseEvent(string,string,address,bytes,uint256,uint256,bytes,bytes,uint256,uint256)",
+				topics: ["PostResponseEvent(string,string,address,bytes,uint256,uint256,bytes,bytes,uint256,uint256)"],
 			},
-			{ handler: "handlePostRequestHandledEvent", topic: "PostRequestHandled(bytes32,address)" },
-			{ handler: "handlePostResponseHandledEvent", topic: "PostResponseHandled(bytes32,address)" },
-			{ handler: "handlePostRequestTimeoutHandledEvent", topic: "PostRequestTimeoutHandled(bytes32,string)" },
-			{ handler: "handlePostResponseTimeoutHandledEvent", topic: "PostResponseTimeoutHandled(bytes32,string)" },
+			{ handler: "handlePostRequestHandledEvent", topics: ["PostRequestHandled(bytes32,address)"] },
+			{ handler: "handlePostResponseHandledEvent", topics: ["PostResponseHandled(bytes32,address)"] },
+			{ handler: "handlePostRequestTimeoutHandledEvent", topics: ["PostRequestTimeoutHandled(bytes32,string)"] },
+			{
+				handler: "handlePostResponseTimeoutHandledEvent",
+				topics: ["PostResponseTimeoutHandled(bytes32,string)"],
+			},
 			{
 				handler: "handleGetRequestEvent",
-				topic: "GetRequestEvent(string,string,address,bytes[],uint256,uint256,uint256,bytes,uint256)",
+				topics: ["GetRequestEvent(string,string,address,bytes[],uint256,uint256,uint256,bytes,uint256)"],
 			},
-			{ handler: "handleGetRequestHandledEvent", topic: "GetRequestHandled(bytes32,address)" },
-			{ handler: "handleGetRequestTimeoutHandledEvent", topic: "GetRequestTimeoutHandled(bytes32,string)" },
+			{ handler: "handleGetRequestHandledEvent", topics: ["GetRequestHandled(bytes32,address)"] },
+			{ handler: "handleGetRequestTimeoutHandledEvent", topics: ["GetRequestTimeoutHandled(bytes32,string)"] },
 		],
 	}
 

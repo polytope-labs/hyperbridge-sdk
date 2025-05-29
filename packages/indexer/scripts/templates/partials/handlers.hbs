@@ -7,6 +7,8 @@
       method: '{{this.method}}'
     {{else}}
       topics:
-        - '{{this.topic}}'
+      {{#each this.topics}}
+        - '{{this}}'
+      {{/each}}
     {{/if}}
 {{/each}}

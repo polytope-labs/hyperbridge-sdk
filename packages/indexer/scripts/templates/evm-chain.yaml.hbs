@@ -26,8 +26,8 @@ dataSources:
     mapping:
       file: ./dist/index.js
       handlers:
-        - kind: ethereum/LogHandler
-          handler: handleTransferEvent
+        - handler: handleTransferEvent
+          kind: ethereum/LogHandler
           filter:
             topics:
               - 'Transfer(address indexed from, address indexed to, uint256 amount)'
