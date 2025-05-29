@@ -42,7 +42,7 @@ const generateNodeServices = () => {
 			image: config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE,
 			unfinalizedBlocks: config.type === "evm", // Only EVM chains need unfinalized blocks handling
 			config,
-			volumesPath: '../../'
+			volumesPath: "../../",
 		}
 
 		const yaml = serviceTemplate(serviceData)
