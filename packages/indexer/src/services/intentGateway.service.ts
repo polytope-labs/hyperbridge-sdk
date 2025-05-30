@@ -4,6 +4,7 @@ import { Order, bytes32ToBytes20 } from "hyperbridge-sdk"
 import PriceHelper from "@/utils/price.helpers"
 import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants"
 import { timestampToDate } from "@/utils/date.helpers"
+import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
 
 export class IntentGatewayService {
 	static async getOrCreateOrder(
@@ -86,42 +87,61 @@ export class IntentGatewayService {
 		tokens: { token: string; amount: bigint }[],
 	): Promise<{ total: number; values: number[] }> {
 		const valuesUSD = await Promise.all(
-			tokens.map((token) => this.getTokenPriceInUSD(bytes32ToBytes20(token.token), token.amount)),
+			tokens.map(async (token) => {
+				// Read token decimals from the token address
+				const tokenAddress = bytes32ToBytes20(token.token)
+				const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
+				const decimals = await tokenContract.decimals()
+
+				return this.getTokenPriceInUSD(tokenAddress, token.amount, decimals)
+			}),
 		)
+
+		// Convert all numbers to integers (multiply by 10000 to preserve 4 decimal places)
+		// then add them, then convert back to decimal
+		const total = valuesUSD.reduce((acc, curr) => {
+			const currInt = Math.round(curr.amountValueInUSD * 10000)
+			const accInt = Math.round(acc * 10000)
+			return (accInt + currInt) / 10000
+		}, 0)
+
 		return {
-			total: valuesUSD.reduce((acc, curr) => acc + curr.amountValueInUSD, 0),
+			total: Number(total.toFixed(4)),
 			values: valuesUSD.map((value) => value.amountValueInUSD),
 		}
 	}
 
+	// The IntentGatway currently only supports the following tokens:
+	// - WETH
+	// - Stablecoins
 	private static async getTokenPriceInUSD(
 		tokenAddress: string,
 		amount: bigint,
+		decimals: number,
 	): Promise<{
 		priceInUSD: number
 		amountValueInUSD: number
 	}> {
 		try {
-			const supportedAssets = SUPPORTED_ASSETS_CONTRACT_ADDRESSES[chainId] || []
-			const tokenDetails = supportedAssets.find(
-				(asset) => asset.address.toLowerCase() === tokenAddress.toLowerCase(),
-			)
-
-			if (!tokenDetails) {
-				logger.warn(`No price feed found for token ${tokenAddress} on chain ${chainId}`)
+			// Non zero address means it's a stablecoin
+			// Zero address means it's the native currency
+			if (tokenAddress != "0x0000000000000000000000000000000000000000") {
+				const amountNormalized = Number(amount) / Math.pow(10, decimals)
 				return {
-					priceInUSD: 0,
-					amountValueInUSD: 0,
+					priceInUSD: 1,
+					amountValueInUSD: Number(amountNormalized.toFixed(4)),
 				}
 			}
 
-			const priceInUSD = await PriceHelper.getTokenPriceInUsd(tokenDetails)
-
-			const amountValueInUSD = (priceInUSD * amount) / BigInt(10 ** 18)
+			const priceInUSD = await PriceHelper.getNativeCurrencyPrice(chainId)
+			// Price is already in 18 decimals from PriceHelper
+			const priceNormalized = Number(priceInUSD) / Math.pow(10, 18)
+			const amountNormalized = Number(amount) / Math.pow(10, decimals)
+			const amountValueInUSD = priceNormalized * amountNormalized
 
 			return {
-				priceInUSD: Number(priceInUSD) / 1e18,
-				amountValueInUSD: Number(amountValueInUSD),
+				priceInUSD: priceNormalized,
+				amountValueInUSD: Number(amountValueInUSD.toFixed(4)),
 			}
 		} catch (error) {
 			logger.error(`Error getting token price for ${tokenAddress}: ${error}`)
