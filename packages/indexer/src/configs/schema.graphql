@@ -774,37 +774,37 @@ type OrderPlaced @entity {
 	"""
 	Address of the user who placed the order
 	"""
-	user: String! @index
+	user: String!
 
 	"""
 	Source chain identifier where the order originates from
 	"""
-	sourceChain: String! @index
+	sourceChain: String!
 
 	"""
 	Destination chain identifier where the order will be executed
 	"""
-	destChain: String! @index
+	destChain: String!
 
 	"""
 	Unique commitment hash of the order used for verification
 	"""
-	commitment: String! @index
+	commitment: String!
 
 	"""
 	Timestamp after which the order expires
 	"""
-	deadline: BigInt! @index
+	deadline: BigInt!
 
 	"""
 	Sequential number to ensure uniqueness of the order
 	"""
-	nonce: BigInt! @index
+	nonce: BigInt!
 
 	"""
 	Total fees supplied by the user for executing the order
 	"""
-	fees: BigInt! @index
+	fees: BigInt!
 
 	"""
 	Array of input token addresses
