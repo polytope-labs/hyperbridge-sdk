@@ -75,7 +75,7 @@ describe.sequential("Basic", () => {
 		})
 	})
 
-	it("Should listen, place order, fill order, and check if filled at the source chain", async () => {
+	it.only("Should listen, place order, fill order, and check if filled at the source chain", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,

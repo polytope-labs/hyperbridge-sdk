@@ -267,6 +267,21 @@ dataSources:
           filter:
             topics:
               - 'OrderPlaced(bytes32,bytes,bytes,uint256,uint256,uint256,(bytes32,uint256,bytes32)[],(bytes32,uint256)[],bytes)'
+        - kind: ethereum/LogHandler
+          handler: handleOrderFilledEvent
+          filter:
+            topics:
+              - 'OrderFilled(bytes32,address)'
+        - kind: ethereum/LogHandler
+          handler: handleEscrowReleasedEvent
+          filter:
+            topics:
+              - 'EscrowReleased(bytes32)'
+        - kind: ethereum/LogHandler
+          handler: handleEscrowRefundedEvent
+          filter:
+            topics:
+              - 'EscrowRefunded(bytes32)'
   # - kind: ethereum/Runtime
   #   startBlock: 21535312
   #   options:
