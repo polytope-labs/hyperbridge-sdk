@@ -172,6 +172,13 @@ export enum HyperClientStatus {
 	ERROR = "ERROR",
 }
 
+export enum OrderStatus {
+	PLACED = "PLACED",
+	FILLED = "FILLED",
+	REDEEMED = "REDEEMED",
+	REFUNDED = "REFUNDED",
+}
+
 export interface BlockMetadata {
 	blockHash: string
 	blockNumber: number
