@@ -817,14 +817,14 @@ type OrderPlaced @entity {
 	inputAmounts: [BigInt!]!
 
 	"""
-	Array of USD values for each input token amount
+	Array of input token values in USD
 	"""
-	inputValuesUSD: [BigInt!]!
+	inputValuesUSD: [String!]!
 
 	"""
-	Total USD value of all input tokens
+	Total input value in USD
 	"""
-	inputUSD: BigInt!
+	inputUSD: String!
 
 	"""
 	Array of output token addresses
@@ -835,16 +835,6 @@ type OrderPlaced @entity {
 	Array of output token amounts corresponding to outputTokens
 	"""
 	outputAmounts: [BigInt!]!
-
-	"""
-	Array of USD values for each output token amount
-	"""
-	outputValuesUSD: [BigInt!]!
-
-	"""
-	Total USD value of all output tokens
-	"""
-	outputUSD: BigInt!
 
 	"""
 	Array of beneficiary addresses that will receive the output tokens

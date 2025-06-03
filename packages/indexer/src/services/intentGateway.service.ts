@@ -5,85 +5,27 @@ import { timestampToDate } from "@/utils/date.helpers"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
 import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, toHex, hexToString } from "viem"
 import type { Hex } from "viem"
+import Decimal from "decimal.js"
 
-/**
- * Represents token information for an order
- */
 export interface TokenInfo {
-	/**
-	 * The address of the ERC20 token
-	 * address(0) is used as a sentinel for the native token
-	 */
 	token: Hex
-
-	/**
-	 * The amount of the token
-	 */
 	amount: bigint
 }
 
-/**
- * Represents payment information for an order
- */
 export interface PaymentInfo extends TokenInfo {
-	/**
-	 * The address to receive the output tokens
-	 */
 	beneficiary: Hex
 }
 
-/**
- * Represents an order in the IntentGateway
- */
 export interface Order {
-	/**
-	 * The unique identifier for the order
-	 */
 	id?: string
-
-	/**
-	 * The address of the user who is initiating the transfer
-	 */
 	user: Hex
-
-	/**
-	 * The state machine identifier of the origin chain
-	 */
 	sourceChain: string
-
-	/**
-	 * The state machine identifier of the destination chain
-	 */
 	destChain: string
-
-	/**
-	 * The block number by which the order must be filled on the destination chain
-	 */
 	deadline: bigint
-
-	/**
-	 * The nonce of the order
-	 */
 	nonce: bigint
-
-	/**
-	 * Represents the dispatch fees associated with the IntentGateway
-	 */
 	fees: bigint
-
-	/**
-	 * The tokens that the filler will provide
-	 */
 	outputs: PaymentInfo[]
-
-	/**
-	 * The tokens that are escrowed for the filler
-	 */
 	inputs: TokenInfo[]
-
-	/**
-	 * A bytes array to store the calls if any
-	 */
 	callData: Hex
 }
 
@@ -100,7 +42,7 @@ export class IntentGatewayService {
 
 		let orderPlaced = await OrderPlaced.get(order.id!)
 
-		const { inputUSD, outputUSD, inputValuesUSD, outputValuesUSD } = await this.getOrderValue(order)
+		const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 
 		if (!orderPlaced) {
 			orderPlaced = await OrderPlaced.create({
@@ -114,12 +56,10 @@ export class IntentGatewayService {
 				fees: order.fees,
 				inputTokens: order.inputs.map((input) => input.token),
 				inputAmounts: order.inputs.map((input) => input.amount),
-				inputValuesUSD: inputValuesUSD.map((value) => BigInt(value)),
-				inputUSD: BigInt(inputUSD),
+				inputValuesUSD: inputValuesUSD,
+				inputUSD: inputUSD,
 				outputTokens: order.outputs.map((output) => output.token),
 				outputAmounts: order.outputs.map((output) => output.amount),
-				outputValuesUSD: outputValuesUSD.map((value) => BigInt(value)),
-				outputUSD: BigInt(outputUSD),
 				outputBeneficiaries: order.outputs.map((output) => output.beneficiary),
 				calldata: order.callData,
 				status: OrderStatus.PLACED,
@@ -142,93 +82,83 @@ export class IntentGatewayService {
 		return orderPlaced
 	}
 
-	private static async getOrderValue(
-		order: Order,
-	): Promise<{ inputUSD: number; outputUSD: number; inputValuesUSD: number[]; outputValuesUSD: number[] }> {
+	private static async getOrderValue(order: Order): Promise<{ inputUSD: string; inputValuesUSD: string[] }> {
 		const inputValuesUSD = await this.getInputValuesUSD(order)
-		const outputValuesUSD = await this.getOutputValuesUSD(order)
 
 		return {
 			inputUSD: inputValuesUSD.total,
-			outputUSD: outputValuesUSD.total,
 			inputValuesUSD: inputValuesUSD.values,
-			outputValuesUSD: outputValuesUSD.values,
 		}
 	}
 
-	private static async getInputValuesUSD(order: Order): Promise<{ total: number; values: number[] }> {
+	private static async getInputValuesUSD(order: Order): Promise<{ total: string; values: string[] }> {
 		return this.getTokenValuesUSD(order.inputs)
-	}
-
-	private static async getOutputValuesUSD(order: Order): Promise<{ total: number; values: number[] }> {
-		return this.getTokenValuesUSD(order.outputs)
 	}
 
 	private static async getTokenValuesUSD(
 		tokens: { token: string; amount: bigint }[],
-	): Promise<{ total: number; values: number[] }> {
+	): Promise<{ total: string; values: string[] }> {
 		const valuesUSD = await Promise.all(
 			tokens.map(async (token) => {
-				// Read token decimals from the token address
 				const tokenAddress = this.bytes32ToBytes20(token.token)
-				const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
-				const decimals = await tokenContract.decimals()
+				let decimals = 18
+
+				if (tokenAddress != "0x0000000000000000000000000000000000000000") {
+					const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
+					decimals = await tokenContract.decimals()
+				}
 
 				return this.getTokenPriceInUSD(tokenAddress, token.amount, decimals)
 			}),
 		)
 
-		// Convert all numbers to integers (multiply by 10000 to preserve 4 decimal places)
-		// then add them, then convert back to decimal
 		const total = valuesUSD.reduce((acc, curr) => {
-			const currInt = Math.round(curr.amountValueInUSD * 10000)
-			const accInt = Math.round(acc * 10000)
-			return (accInt + currInt) / 10000
-		}, 0)
+			return acc.plus(new Decimal(curr.amountValueInUSD))
+		}, new Decimal(0))
 
 		return {
-			total: Number(total.toFixed(4)),
+			total: total.toFixed(18),
 			values: valuesUSD.map((value) => value.amountValueInUSD),
 		}
 	}
 
-	// The IntentGatway currently only supports the following tokens:
-	// - WETH
-	// - Stablecoins
 	private static async getTokenPriceInUSD(
 		tokenAddress: string,
 		amount: bigint,
 		decimals: number,
 	): Promise<{
-		priceInUSD: number
-		amountValueInUSD: number
+		priceInUSD: string
+		amountValueInUSD: string
 	}> {
 		try {
-			// Non zero address means it's a stablecoin
-			// Zero address means it's the native currency
-			if (tokenAddress != "0x0000000000000000000000000000000000000000") {
-				const amountNormalized = Number(amount) / Math.pow(10, decimals)
+			const isNativeToken = tokenAddress.endsWith("0000000000000000000000000000000000000000")
+
+			if (!isNativeToken) {
+				const amountDecimal = new Decimal(amount.toString())
+				const divisor = new Decimal(10).pow(decimals)
+				const amountValueInUSD = amountDecimal.dividedBy(divisor)
+
 				return {
-					priceInUSD: 1,
-					amountValueInUSD: Number(amountNormalized.toFixed(4)),
+					priceInUSD: "1",
+					amountValueInUSD: amountValueInUSD.toFixed(18),
 				}
 			}
 
 			const priceInUSD = await PriceHelper.getNativeCurrencyPrice(chainId)
 			// Price is already in 18 decimals from PriceHelper
-			const priceNormalized = Number(priceInUSD) / Math.pow(10, 18)
-			const amountNormalized = Number(amount) / Math.pow(10, decimals)
-			const amountValueInUSD = priceNormalized * amountNormalized
+			const priceDecimal = new Decimal(priceInUSD.toString()).dividedBy(new Decimal(10).pow(18))
+			const amountDecimal = new Decimal(amount.toString()).dividedBy(new Decimal(10).pow(decimals))
+			const amountValueInUSD = priceDecimal.times(amountDecimal)
 
 			return {
-				priceInUSD: priceNormalized,
-				amountValueInUSD: Number(amountValueInUSD.toFixed(4)),
+				priceInUSD: priceDecimal.toFixed(18),
+				amountValueInUSD: amountValueInUSD.toFixed(18),
 			}
 		} catch (error) {
 			logger.error(`Error getting token price for ${tokenAddress}: ${error}`)
 			return {
-				priceInUSD: 0,
-				amountValueInUSD: 0,
+				priceInUSD: "0",
+				amountValueInUSD: "0",
 			}
 		}
 	}
