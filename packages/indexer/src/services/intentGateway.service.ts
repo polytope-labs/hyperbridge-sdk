@@ -1,10 +1,91 @@
 import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
-import { OrderFilled, OrderStatus, OrderStatusMetadata } from "@/configs/src/types"
-import { Order, bytes32ToBytes20 } from "hyperbridge-sdk"
+import { OrderStatus, OrderStatusMetadata } from "@/configs/src/types"
 import PriceHelper from "@/utils/price.helpers"
-import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants"
 import { timestampToDate } from "@/utils/date.helpers"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
+import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, toHex, hexToString } from "viem"
+import type { Hex } from "viem"
+
+/**
+ * Represents token information for an order
+ */
+export interface TokenInfo {
+	/**
+	 * The address of the ERC20 token
+	 * address(0) is used as a sentinel for the native token
+	 */
+	token: Hex
+
+	/**
+	 * The amount of the token
+	 */
+	amount: bigint
+}
+
+/**
+ * Represents payment information for an order
+ */
+export interface PaymentInfo extends TokenInfo {
+	/**
+	 * The address to receive the output tokens
+	 */
+	beneficiary: Hex
+}
+
+/**
+ * Represents an order in the IntentGateway
+ */
+export interface Order {
+	/**
+	 * The unique identifier for the order
+	 */
+	id?: string
+
+	/**
+	 * The address of the user who is initiating the transfer
+	 */
+	user: Hex
+
+	/**
+	 * The state machine identifier of the origin chain
+	 */
+	sourceChain: string
+
+	/**
+	 * The state machine identifier of the destination chain
+	 */
+	destChain: string
+
+	/**
+	 * The block number by which the order must be filled on the destination chain
+	 */
+	deadline: bigint
+
+	/**
+	 * The nonce of the order
+	 */
+	nonce: bigint
+
+	/**
+	 * Represents the dispatch fees associated with the IntentGateway
+	 */
+	fees: bigint
+
+	/**
+	 * The tokens that the filler will provide
+	 */
+	outputs: PaymentInfo[]
+
+	/**
+	 * The tokens that are escrowed for the filler
+	 */
+	inputs: TokenInfo[]
+
+	/**
+	 * A bytes array to store the calls if any
+	 */
+	callData: Hex
+}
 
 export class IntentGatewayService {
 	static async getOrCreateOrder(
@@ -89,7 +170,7 @@ export class IntentGatewayService {
 		const valuesUSD = await Promise.all(
 			tokens.map(async (token) => {
 				// Read token decimals from the token address
-				const tokenAddress = bytes32ToBytes20(token.token)
+				const tokenAddress = this.bytes32ToBytes20(token.token)
 				const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
 				const decimals = await tokenContract.decimals()
 
@@ -182,5 +263,74 @@ export class IntentGatewayService {
 			transactionHash,
 			createdAt: timestampToDate(timestamp),
 		})
+	}
+
+	static bytes32ToBytes20(bytes32: string): string {
+		if (bytes32 === "0x0000000000000000000000000000000000000000000000000000000000000000") {
+			return "0x0000000000000000000000000000000000000000"
+		}
+
+		const bytes = hexToBytes(bytes32 as Hex)
+		const addressBytes = bytes.slice(12)
+		return bytesToHex(addressBytes) as Hex
+	}
+
+	static computeOrderCommitment(order: Order): string {
+		const encodedOrder = encodeAbiParameters(
+			[
+				{
+					name: "order",
+					type: "tuple",
+					components: [
+						{ name: "user", type: "bytes32" },
+						{ name: "sourceChain", type: "bytes" },
+						{ name: "destChain", type: "bytes" },
+						{ name: "deadline", type: "uint256" },
+						{ name: "nonce", type: "uint256" },
+						{ name: "fees", type: "uint256" },
+						{
+							name: "outputs",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+								{ name: "beneficiary", type: "bytes32" },
+							],
+						},
+						{
+							name: "inputs",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+						{ name: "callData", type: "bytes" },
+					],
+				},
+			],
+			[
+				{
+					user: order.user as Hex,
+					sourceChain: order.sourceChain as Hex,
+					destChain: order.destChain as Hex,
+					deadline: order.deadline,
+					nonce: order.nonce,
+					fees: order.fees,
+					outputs: order.outputs.map((output) => ({
+						token: output.token as Hex,
+						amount: output.amount,
+						beneficiary: output.beneficiary as Hex,
+					})),
+					inputs: order.inputs.map((input) => ({
+						token: input.token as Hex,
+						amount: input.amount,
+					})),
+					callData: order.callData as Hex,
+				},
+			],
+		)
+
+		return keccak256(encodedOrder)
 	}
 }

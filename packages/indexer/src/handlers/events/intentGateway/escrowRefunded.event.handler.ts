@@ -3,16 +3,18 @@ import stringify from "safe-stable-stringify"
 import { EscrowRefundedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { IntentGatewayService } from "@/services/intentGateway.service"
 import { OrderStatus } from "@/configs/src/types"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 export async function handleEscrowRefundedEvent(event: EscrowRefundedLog): Promise<void> {
 	logger.info(`Order Filled Event: ${stringify(event)}`)
 
-	const { blockNumber, transactionHash, args, block } = event
+	const { blockNumber, transactionHash, args, block, blockHash } = event
 	const { commitment } = args!
 
 	if (!args) return
 
-	const timestamp = await getBlockTimestamp(block.hash, chainId)
+	const chain = getHostStateMachine(chainId)
+	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	logger.info(
 		`Escrow Refunded: ${stringify({

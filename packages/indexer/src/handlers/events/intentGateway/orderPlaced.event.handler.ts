@@ -1,36 +1,40 @@
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
-import { HexString, Order, orderCommitment } from "hyperbridge-sdk"
-import { IntentGatewayService } from "@/services/intentGateway.service"
+import { IntentGatewayService, Order } from "@/services/intentGateway.service"
 import { OrderStatus } from "@/configs/src/types"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { Hex } from "viem"
 
 export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<void> {
 	logger.info(`Order Placed Event: ${stringify(event)}`)
 
-	const { blockNumber, transactionHash, args, block } = event
+	const { blockNumber, transactionHash, args, block, blockHash } = event
 
 	if (!args) return
 
 	const order: Order = {
-		user: args!.user as HexString,
-		sourceChain: args!.sourceChain as HexString,
-		destChain: args!.destChain as HexString,
-		deadline: args!.deadline.toBigInt(),
-		nonce: args!.nonce.toBigInt(),
-		fees: args!.fees.toBigInt(),
-		inputs: args!.inputs.map((input) => ({
-			token: input.token as HexString,
+		id: "",
+		user: args.user as Hex,
+		sourceChain: args.sourceChain,
+		destChain: args.destChain,
+		deadline: args.deadline.toBigInt(),
+		nonce: args.nonce.toBigInt(),
+		fees: args.fees.toBigInt(),
+		inputs: args.inputs.map((input) => ({
+			token: input.token as Hex,
 			amount: input.amount.toBigInt(),
 		})),
-		outputs: args!.outputs.map((output) => ({
-			token: output.token as HexString,
+		outputs: args.outputs.map((output) => ({
+			token: output.token as Hex,
 			amount: output.amount.toBigInt(),
-			beneficiary: output.beneficiary as HexString,
+			beneficiary: output.beneficiary as Hex,
 		})),
-		callData: args!.callData as HexString,
+		callData: args.callData as Hex,
 	}
-	const timestamp = await getBlockTimestamp(block.hash, order.sourceChain)
+
+	const chain = getHostStateMachine(chainId)
+	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	logger.info(
 		`Computing Order Commitment: ${stringify({
@@ -38,7 +42,7 @@ export async function handleOrderPlacedEvent(event: OrderPlacedLog): Promise<voi
 		})}`,
 	)
 
-	const commitment = orderCommitment(order)
+	const commitment = IntentGatewayService.computeOrderCommitment(order)
 
 	order.id = commitment
 

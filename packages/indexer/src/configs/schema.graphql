@@ -45,6 +45,28 @@ enum RewardPointsActivityType {
 }
 
 """
+The status of an order
+"""
+enum OrderStatus {
+	"""
+	The order has been placed
+	"""
+	PLACED
+	"""
+	The order has been filled
+	"""
+	FILLED
+	"""
+	The order has been redeemed on the source chain
+	"""
+	REDEEMED
+	"""
+	The order has been cancelled and refunded on the source chain
+	"""
+	REFUNDED
+}
+
+"""
 Important Hyperbridge Stats for a specific chain
 """
 type HyperBridgeChainStats @entity {
@@ -737,28 +759,6 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	Hash of the transaction that created the response
 	"""
 	transactionHash: String!
-}
-
-"""
-The status of an order
-"""
-enum OrderStatus {
-	"""
-	The order has been placed
-	"""
-	PLACED
-	"""
-	The order has been filled
-	"""
-	FILLED
-	"""
-	The order has been redeemed on the source chain
-	"""
-	REDEEMED
-	"""
-	The order has been cancelled and refunded on the source chain
-	"""
-	REFUNDED
 }
 
 """

@@ -65,8 +65,7 @@
 		"node-fetch": "^2.7.0",
 		"safe-stable-stringify": "^2.5.0",
 		"scale-ts": "^1.6.1",
-		"viem": "^2.23.5",
-		"hyperbridge-sdk": "workspace:*"
+		"viem": "^2.23.5"
 	},
 	"devDependencies": {
 		"@subql/cli": "5.7.1-0",
