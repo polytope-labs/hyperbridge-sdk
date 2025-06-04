@@ -182,7 +182,7 @@ export class IntentGatewayService {
 			await orderPlaced.save()
 		}
 
-		await OrderStatusMetadata.create({
+		const orderStatusMetadata = await OrderStatusMetadata.create({
 			id: `${commitment}.${status}`,
 			orderId: commitment,
 			status,
@@ -193,6 +193,8 @@ export class IntentGatewayService {
 			transactionHash,
 			createdAt: timestampToDate(timestamp),
 		})
+
+		await orderStatusMetadata.save()
 	}
 
 	static bytes32ToBytes20(bytes32: string): string {

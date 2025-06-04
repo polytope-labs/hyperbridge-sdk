@@ -877,43 +877,6 @@ type OrderPlaced @entity {
 	transactionHash: String! @index
 }
 
-type OrderFilled @entity {
-	"""
-	Unique identifier for the order (commitment)
-	"""
-	id: ID!
-
-	"""
-	Address of the user who filled the order
-	"""
-	filler: String! @index
-
-	"""
-	Reference to the order that was filled
-	"""
-	order: OrderPlaced!
-
-	"""
-	Timestamp when the order was filled
-	"""
-	createdAt: Date! @index
-
-	"""
-	Block number where the order was filled
-	"""
-	blockNumber: BigInt! @index
-
-	"""
-	Timestamp of the block where the order was filled
-	"""
-	blockTimestamp: BigInt! @index
-
-	"""
-	Hash of the transaction that filled the order
-	"""
-	transactionHash: String! @index
-}
-
 """
 Metadata about the status of an Order
 """
