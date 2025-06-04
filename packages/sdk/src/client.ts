@@ -420,8 +420,10 @@ export class IndexerClient {
 			return request
 		}
 
-		// If timeoutTimestamp is 0, request never times out
 		if (request.timeoutTimestamp === 0n) {
+			// Early exit for requests with no timeout configured
+			// This prevents unnecessary timeout processing and expensive chain queries
+			// The events array is still empty at this point, so no timeout events are added
 			return addTimeoutEvents(request)
 		}
 
@@ -432,7 +434,7 @@ export class IndexerClient {
 
 		const is_finished = request.statuses.find((item) => item.status === RequestStatus.DESTINATION)
 
-		if (!is_finished) {
+		if (!is_finished && request.timeoutTimestamp > 0n) {
 			events.push({
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
@@ -459,17 +461,17 @@ export class IndexerClient {
 				chain: this.config.hyperbridge.stateMachineId,
 			})
 
-			if (!destFinalized) return addTimeoutEvents(request)
-
-			events.push({
-				status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT,
-				metadata: {
-					blockHash: destFinalized.blockHash,
-					blockNumber: destFinalized.blockNumber,
-					transactionHash: destFinalized.transactionHash,
-					timestamp: destFinalized.timestamp,
-				},
-			})
+			if (destFinalized && request.timeoutTimestamp > 0n) {
+				events.push({
+					status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT,
+					metadata: {
+						blockHash: destFinalized.blockHash,
+						blockNumber: destFinalized.blockNumber,
+						transactionHash: destFinalized.transactionHash,
+						timestamp: destFinalized.timestamp,
+					},
+				})
+			}
 
 			// if the source is the hyperbridge state machine, no further action is needed
 			// use the timeout stream to timeout on hyperbridge
@@ -513,16 +515,18 @@ export class IndexerClient {
 			],
 		})
 
-		events.push({
-			status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
-			metadata: {
-				blockHash: hyperbridgeFinalized.blockHash,
-				blockNumber: hyperbridgeFinalized.blockNumber,
-				transactionHash: hyperbridgeFinalized.transactionHash,
-				timestamp: hyperbridgeFinalized.timestamp,
-				calldata,
-			},
-		})
+		if (request.timeoutTimestamp > 0n) {
+			events.push({
+				status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
+				metadata: {
+					blockHash: hyperbridgeFinalized.blockHash,
+					blockNumber: hyperbridgeFinalized.blockNumber,
+					transactionHash: hyperbridgeFinalized.transactionHash,
+					timestamp: hyperbridgeFinalized.timestamp,
+					calldata,
+				},
+			})
+		}
 
 		return addTimeoutEvents(request)
 	}
@@ -589,7 +593,7 @@ export class IndexerClient {
 		logger.trace("`Request` found")
 		const chain = await getChain(this.config.dest)
 		const timeoutStream =
-			request.timeoutTimestamp > 0 ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
+			request.timeoutTimestamp > 0n ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
 		const statusStream = this.postRequestStatusStreamInternal(hash)
 
 		logger.trace("Listening for events")
@@ -617,13 +621,7 @@ export class IndexerClient {
 	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
 		const logger = this.logger.withTag("[timeoutStream()]")
 
-		// If timeoutTimestamp is 0, request never times out
-		if (timeoutTimestamp === 0n) {
-			logger.trace("Request has timeoutTimestamp = 0, never timing out")
-			return
-		}
-
-		if (timeoutTimestamp > 0) {
+		if (timeoutTimestamp > 0n) {
 			let timestamp = await chain.timestamp()
 
 			while (timestamp < timeoutTimestamp) {
@@ -1081,12 +1079,6 @@ export class IndexerClient {
 		const logger = this.logger.withTag("PostRequestTimeoutStream")
 		const request = await this.queryPostRequest(hash)
 		if (!request) throw new Error("Request not found")
-
-		// If timeoutTimestamp is 0, request never times out - end stream immediately
-		if (request.timeoutTimestamp === 0n) {
-			logger.trace("Request has timeoutTimestamp = 0, ending timeout stream")
-			return
-		}
 
 		logger.trace("Reading destination chain")
 		const destChain = await getChain(this.config.dest)
