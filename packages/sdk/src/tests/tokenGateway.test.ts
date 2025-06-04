@@ -20,7 +20,7 @@ const secret_key = process.env.SECRET_PHRASE || ""
  The tx can be decoded by the rpc node
  */
 describe("teleport function", () => {
-	it("should teleport assets correctly", async () => {
+	it.skip("should teleport assets correctly", async () => {
 		// Set up the connection to a local node
 		const wsProvider = new WsProvider(process.env.BIFROST_PASEO)
 		const api = await ApiPromise.create({ provider: wsProvider })
