@@ -420,6 +420,11 @@ export class IndexerClient {
 			return request
 		}
 
+		// If timeoutTimestamp is 0, request never times out
+		if (request.timeoutTimestamp === 0n) {
+			return addTimeoutEvents(request)
+		}
+
 		// request not timed out
 		if (reciept || request.timeoutTimestamp > destTimestamp) {
 			return addTimeoutEvents(request)
@@ -611,6 +616,12 @@ export class IndexerClient {
 	 */
 	async *timeoutStream(timeoutTimestamp: bigint, chain: IChain): AsyncGenerator<RequestStatusWithMetadata, void> {
 		const logger = this.logger.withTag("[timeoutStream()]")
+
+		// If timeoutTimestamp is 0, request never times out
+		if (timeoutTimestamp === 0n) {
+			logger.trace("Request has timeoutTimestamp = 0, never timing out")
+			return
+		}
 
 		if (timeoutTimestamp > 0) {
 			let timestamp = await chain.timestamp()
@@ -1070,6 +1081,12 @@ export class IndexerClient {
 		const logger = this.logger.withTag("PostRequestTimeoutStream")
 		const request = await this.queryPostRequest(hash)
 		if (!request) throw new Error("Request not found")
+
+		// If timeoutTimestamp is 0, request never times out - end stream immediately
+		if (request.timeoutTimestamp === 0n) {
+			logger.trace("Request has timeoutTimestamp = 0, ending timeout stream")
+			return
+		}
 
 		logger.trace("Reading destination chain")
 		const destChain = await getChain(this.config.dest)
