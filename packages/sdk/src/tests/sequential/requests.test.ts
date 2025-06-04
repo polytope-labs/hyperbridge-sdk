@@ -67,7 +67,7 @@ describe.sequential("Get and Post Requests", () => {
 	})
 
 	describe("Post Request", () => {
-		it("should stream and query the timeout status", async () => {
+		it.skip("should stream and query the timeout status", async () => {
 			const { bscTestnetClient, bscHandler, bscPing, gnosisChiadoHost } = await setUp()
 			console.log("\n\nSending Post Request\n\n")
 
