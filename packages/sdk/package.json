@@ -47,7 +47,7 @@
 		"test": "npm run test:concurrent && npm run test:sequence",
 		"test:file": "vitest --watch=false --maxConcurrency=1",
 		"test:concurrent": "vitest --watch=false --exclude=./src/tests/sequential",
-		"test:sequence": "vitest --watch=false --sequence.concurrent=false ./src/tests/sequential/**",
+		"test:sequence": "vitest --watch=false --sequence.concurrent=false ./src/tests/sequential/** && pnpm test:intent-gateway",
 		"test:requests": "vitest --watch=false --sequence.concurrent=false ./src/tests/sequential/requests.test.ts",
 		"test:intent-gateway": "vitest --watch=false --sequence.concurrent=false ./src/tests/intentGateway.test.ts",
 		"test:watch": "vitest --exclude=./src/tests/sequential",
