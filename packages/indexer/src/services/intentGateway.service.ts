@@ -1,11 +1,12 @@
 import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
-import { OrderStatus, OrderStatusMetadata } from "@/configs/src/types"
+import { OrderStatus, OrderStatusMetadata, ProtocolParticipant, RewardPointsActivityType } from "@/configs/src/types"
 import PriceHelper from "@/utils/price.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
 import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, toHex, hexToString } from "viem"
 import type { Hex } from "viem"
 import Decimal from "decimal.js"
+import { PointsService } from "./points.service"
 
 export interface TokenInfo {
 	token: Hex
@@ -69,6 +70,21 @@ export class IntentGatewayService {
 				transactionHash,
 			})
 			await orderPlaced.save()
+
+			// Award points for order placement - using USD value directly
+			const orderValue = new Decimal(inputUSD)
+			const pointsToAward = orderValue.floor().toNumber()
+
+			await PointsService.awardPoints(
+				order.user,
+				order.sourceChain,
+				BigInt(pointsToAward),
+				ProtocolParticipant.USER,
+				RewardPointsActivityType.ORDER_PLACED_POINTS,
+				transactionHash,
+				`Points awarded for placing order ${order.id} with value ${inputUSD} USD`,
+				timestamp,
+			)
 		}
 
 		return orderPlaced
@@ -180,6 +196,40 @@ export class IntentGatewayService {
 		if (orderPlaced) {
 			orderPlaced.status = status
 			await orderPlaced.save()
+
+			// Award points for order filling - using USD value directly
+			if (status === OrderStatus.FILLED && filler) {
+				const orderValue = new Decimal(orderPlaced.inputUSD)
+				const pointsToAward = orderValue.floor().toNumber()
+
+				await PointsService.awardPoints(
+					filler,
+					orderPlaced.destChain,
+					BigInt(pointsToAward),
+					ProtocolParticipant.FILLER,
+					RewardPointsActivityType.ORDER_FILLED_POINTS,
+					transactionHash,
+					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+					timestamp,
+				)
+			}
+
+			// Deduct points when order is cancelled
+			if (status === OrderStatus.REFUNDED) {
+				const orderValue = new Decimal(orderPlaced.inputUSD)
+				const pointsToDeduct = orderValue.floor().toNumber()
+
+				await PointsService.deductPoints(
+					orderPlaced.user,
+					orderPlaced.sourceChain,
+					BigInt(pointsToDeduct),
+					ProtocolParticipant.USER,
+					RewardPointsActivityType.ORDER_PLACED_POINTS,
+					transactionHash,
+					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+					timestamp,
+				)
+			}
 		}
 
 		const orderStatusMetadata = await OrderStatusMetadata.create({

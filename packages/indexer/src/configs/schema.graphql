@@ -42,6 +42,8 @@ System activity types related to reward points
 """
 enum RewardPointsActivityType {
 	REWARD_POINTS_EARNED
+	ORDER_PLACED_POINTS
+	ORDER_FILLED_POINTS
 }
 
 """
