@@ -434,7 +434,7 @@ export class IndexerClient {
 
 		const is_finished = request.statuses.find((item) => item.status === RequestStatus.DESTINATION)
 
-		if (!is_finished && request.timeoutTimestamp > 0n) {
+		if (!is_finished) {
 			events.push({
 				status: TimeoutStatus.PENDING_TIMEOUT,
 				metadata: { blockHash: "0x", blockNumber: 0, transactionHash: "0x" },
@@ -461,7 +461,7 @@ export class IndexerClient {
 				chain: this.config.hyperbridge.stateMachineId,
 			})
 
-			if (destFinalized && request.timeoutTimestamp > 0n) {
+			if (destFinalized) {
 				events.push({
 					status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT,
 					metadata: {
@@ -515,18 +515,16 @@ export class IndexerClient {
 			],
 		})
 
-		if (request.timeoutTimestamp > 0n) {
-			events.push({
-				status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
-				metadata: {
-					blockHash: hyperbridgeFinalized.blockHash,
-					blockNumber: hyperbridgeFinalized.blockNumber,
-					transactionHash: hyperbridgeFinalized.transactionHash,
-					timestamp: hyperbridgeFinalized.timestamp,
-					calldata,
-				},
-			})
-		}
+		events.push({
+			status: TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
+			metadata: {
+				blockHash: hyperbridgeFinalized.blockHash,
+				blockNumber: hyperbridgeFinalized.blockNumber,
+				transactionHash: hyperbridgeFinalized.transactionHash,
+				timestamp: hyperbridgeFinalized.timestamp,
+				calldata,
+			},
+		})
 
 		return addTimeoutEvents(request)
 	}
@@ -863,7 +861,7 @@ export class IndexerClient {
 
 		const chain = await getChain(this.config.dest)
 		const timeoutStream =
-			request.timeoutTimestamp > 0 ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
+			request.timeoutTimestamp > 0n ? this.timeoutStream(request.timeoutTimestamp, chain) : undefined
 		const statusStream = this.getRequestStatusStreamInternal(hash)
 		const combined = timeoutStream ? mergeRace(timeoutStream, statusStream) : statusStream
 
