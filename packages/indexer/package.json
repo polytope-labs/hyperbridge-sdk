@@ -48,7 +48,6 @@
 		"@ethersproject/abi": "^5.7.0",
 		"@ethersproject/providers": "^5.7.2",
 		"@ethersproject/shims": "^5.7.0",
-		"@graphprotocol/graph-ts": "^0.38.1",
 		"@open-web3/orml-type-definitions": "^2.0.1",
 		"@polkadot/api": "latest",
 		"@polkadot/types": "latest",
