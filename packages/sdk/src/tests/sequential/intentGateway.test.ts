@@ -5,7 +5,6 @@ import {
 	createWalletClient,
 	getContract,
 	http,
-	parseAbi,
 	parseEventLogs,
 	type PublicClient,
 	type WalletClient,
@@ -22,14 +21,9 @@ import ERC6160 from "@/abis/erc6160"
 import INTENT_GATEWAY_ABI from "@/abis/IntentGateway"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { EvmChain, SubstrateChain } from "@/chain"
+import { SubstrateChain } from "@/chain"
 import { createQueryClient } from "@/query-client"
 import { IntentFiller, BasicFiller, ConfirmationPolicy, ChainConfigService } from "@hyperbridge/filler"
-
-const ERC20_ABI = parseAbi([
-	"function allowance(address owner, address spender) view returns (uint256)",
-	"function approve(address spender, uint256 amount) returns (bool)",
-])
 
 describe.sequential("Order Status Stream", () => {
 	let indexer: IndexerClient
@@ -75,7 +69,6 @@ describe.sequential("Order Status Stream", () => {
 	it("should successfully stream and query the order status", async () => {
 		const {
 			bscIntentGateway,
-			gnosisChiadoIntentGateway,
 			bscWalletClient,
 			bscPublicClient,
 			bscIsmpHost,
@@ -83,8 +76,6 @@ describe.sequential("Order Status Stream", () => {
 			bscFeeToken,
 			chainConfigs,
 			fillerConfig,
-			gnosisChiadoPublicClient,
-			bscHandler,
 			chainConfigService,
 			bscChapelId,
 		} = await setUp()
@@ -324,7 +315,7 @@ async function approveTokens(
 	spender: HexString,
 ) {
 	const approval = await publicClient.readContract({
-		abi: ERC20_ABI,
+		abi: ERC6160.ABI,
 		address: tokenAddress,
 		functionName: "allowance",
 		args: [walletClient.account?.address as HexString, spender],
@@ -334,7 +325,7 @@ async function approveTokens(
 	if (approval == 0n) {
 		console.log("Approving tokens for test")
 		const tx = await walletClient.writeContract({
-			abi: ERC20_ABI,
+			abi: ERC6160.ABI,
 			address: tokenAddress,
 			functionName: "approve",
 			args: [spender, maxUint256],

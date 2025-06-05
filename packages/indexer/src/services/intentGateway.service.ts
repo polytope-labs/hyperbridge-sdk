@@ -7,6 +7,9 @@ import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, toHex, hexToStr
 import type { Hex } from "viem"
 import Decimal from "decimal.js"
 import { PointsService } from "./points.service"
+import { UNISWAP_ADDRESSES } from "@/addresses/uniswap.addresses"
+import { ethers } from "ethers"
+import uniswapV2Abi from "@/configs/abis/UniswapV2.abi.json"
 
 export interface TokenInfo {
 	token: Hex
@@ -149,26 +152,23 @@ export class IntentGatewayService {
 		try {
 			const isNativeToken = tokenAddress.endsWith("0000000000000000000000000000000000000000")
 
-			if (!isNativeToken) {
-				const amountDecimal = new Decimal(amount.toString())
-				const divisor = new Decimal(10).pow(decimals)
-				const amountValueInUSD = amountDecimal.dividedBy(divisor)
-
-				return {
-					priceInUSD: "1",
-					amountValueInUSD: amountValueInUSD.toFixed(18),
-				}
+			let priceInUSD: string
+			if (isNativeToken) {
+				const nativePrice = await PriceHelper.getNativeCurrencyPrice(chainId)
+				priceInUSD = new Decimal(nativePrice.toString()).dividedBy(new Decimal(10).pow(18)).toFixed(18)
+			} else {
+				const uniswapPrice = await this.getUniswapPrice(tokenAddress)
+				priceInUSD = uniswapPrice.toFixed(18)
 			}
 
-			const priceInUSD = await PriceHelper.getNativeCurrencyPrice(chainId)
-			// Price is already in 18 decimals from PriceHelper
-			const priceDecimal = new Decimal(priceInUSD.toString()).dividedBy(new Decimal(10).pow(18))
-			const amountDecimal = new Decimal(amount.toString()).dividedBy(new Decimal(10).pow(decimals))
-			const amountValueInUSD = priceDecimal.times(amountDecimal)
+			const amountValueInUSD = new Decimal(amount.toString())
+				.dividedBy(new Decimal(10).pow(decimals))
+				.times(new Decimal(priceInUSD))
+				.toFixed(18)
 
 			return {
-				priceInUSD: priceDecimal.toFixed(18),
-				amountValueInUSD: amountValueInUSD.toFixed(18),
+				priceInUSD,
+				amountValueInUSD,
 			}
 		} catch (error) {
 			logger.error(`Error getting token price for ${tokenAddress}: ${error}`)
@@ -176,6 +176,80 @@ export class IntentGatewayService {
 				priceInUSD: "0",
 				amountValueInUSD: "0",
 			}
+		}
+	}
+
+	private static async getUniswapPrice(tokenAddress: string): Promise<Decimal> {
+		try {
+			const addresses = UNISWAP_ADDRESSES[`EVM-${chainId}`]
+			const { FACTORY, WETH, USDC, USDT, DAI } = addresses
+
+			const quoteTokens = [USDC, USDT, DAI, WETH]
+
+			for (const quoteToken of quoteTokens) {
+				const pairAddress = await this.getUniswapV2PairAddress(FACTORY, tokenAddress, quoteToken)
+				if (pairAddress) {
+					try {
+						const price = await this.getPriceFromPair(pairAddress, quoteToken)
+						// If we got a price from WETH pair, convert to USD
+						if (quoteToken === WETH) {
+							const wethUsdcPair = await this.getUniswapV2PairAddress(FACTORY, WETH, USDC)
+							if (wethUsdcPair) {
+								const wethUsdPrice = await this.getPriceFromPair(wethUsdcPair, USDC)
+								return price.times(wethUsdPrice)
+							}
+						}
+						return price
+					} catch (error) {
+						logger.error(`Error getting price from pair ${pairAddress}: ${error}`)
+						continue
+					}
+				}
+			}
+
+			throw new Error(`No Uniswap V2 pair found for token ${tokenAddress}`)
+		} catch (error) {
+			logger.error(`Error getting Uniswap price for ${tokenAddress}: ${error}`)
+			return new Decimal(1)
+		}
+	}
+
+	private static async getUniswapV2PairAddress(
+		factoryAddress: string,
+		token0: string,
+		token1: string,
+	): Promise<string | null> {
+		try {
+			const factory = new ethers.Contract(factoryAddress, uniswapV2Abi.factory, api)
+
+			const pairAddress = await factory.getPair(token0, token1)
+			return pairAddress === "0x0000000000000000000000000000000000000000" ? null : pairAddress
+		} catch (error) {
+			logger.error(`Error getting pair address for ${token0}/${token1}: ${error}`)
+			return null
+		}
+	}
+
+	private static async getPriceFromPair(pairAddress: string, quoteToken: string): Promise<Decimal> {
+		try {
+			const pair = new ethers.Contract(pairAddress, uniswapV2Abi.pair, api)
+
+			const [token0, token1] = await Promise.all([pair.token0(), pair.token1()])
+
+			const [reserve0, reserve1] = await pair.getReserves()
+
+			// Calculate price based on reserves
+			const reserveIn = token0.toLowerCase() === quoteToken.toLowerCase() ? reserve0 : reserve1
+			const reserveOut = token0.toLowerCase() === quoteToken.toLowerCase() ? reserve1 : reserve0
+
+			if (reserveIn.eq(0) || reserveOut.eq(0)) {
+				throw new Error("Zero reserves")
+			}
+
+			return new Decimal(reserveIn.toString()).dividedBy(new Decimal(reserveOut.toString()))
+		} catch (error) {
+			logger.error(`Error getting price from pair ${pairAddress}: ${error}`)
+			throw error
 		}
 	}
 
