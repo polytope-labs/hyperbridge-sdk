@@ -83,8 +83,8 @@ export class IntentGatewayService {
 			const pointsToAward = orderValue.floor().toNumber()
 
 			await PointsService.awardPoints(
-				order.user,
-				order.sourceChain,
+				this.bytes32ToBytes20(order.user),
+				ethers.utils.toUtf8String(order.sourceChain),
 				BigInt(pointsToAward),
 				ProtocolParticipant.USER,
 				RewardPointsActivityType.ORDER_PLACED_POINTS,
@@ -363,7 +363,8 @@ export class IntentGatewayService {
 		try {
 			const factory = new ethers.Contract(factoryAddress, uniswapV2Abi.factory, api)
 
-			const pairAddress = await factory.getPair(token0, token1)
+			const pairAddress = await factory.callStatic.getPair(token0, token1)
+			logger.info(`Pair address for ${token0}/${token1}: ${pairAddress}`)
 			return pairAddress === "0x0000000000000000000000000000000000000000" ? null : pairAddress
 		} catch (error) {
 			logger.error(`Error getting pair address for ${token0}/${token1}: ${error}`)
@@ -419,7 +420,7 @@ export class IntentGatewayService {
 
 				await PointsService.awardPoints(
 					filler,
-					orderPlaced.destChain,
+					ethers.utils.toUtf8String(orderPlaced.destChain),
 					BigInt(pointsToAward),
 					ProtocolParticipant.FILLER,
 					RewardPointsActivityType.ORDER_FILLED_POINTS,
