@@ -1,0 +1,35 @@
+{{> metadata}}
+{{> network-config}}
+dataSources:
+  - kind: ethereum/Runtime
+    startBlock: {{blockNumber}}
+    options:
+      abi: ethereumHost
+      address: '{{config.contracts.ethereumHost}}'
+    assets:
+      ethereumHost:
+        file: ./abis/EthereumHost.abi.json
+      chainLinkAggregatorV3:
+        file: ./abis/ChainLinkAggregatorV3.abi.json
+    mapping:
+      file: ./dist/index.js
+      handlers:
+      {{> handlers}}
+  - kind: ethereum/Runtime
+    startBlock: {{blockNumber}}
+    options:
+      abi: erc6160ext20
+      address: '{{config.contracts.erc6160ext20}}'
+    assets:
+      erc6160ext20:
+        file: ./abis/ERC6160Ext20.abi.json
+    mapping:
+      file: ./dist/index.js
+      handlers:
+        - handler: handleTransferEvent
+          kind: ethereum/LogHandler
+          filter:
+            topics:
+              - 'Transfer(address indexed from, address indexed to, uint256 amount)'
+
+repository: 'https://github.com/polytope-labs/hyperbridge'
