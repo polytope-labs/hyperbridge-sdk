@@ -13,6 +13,7 @@ import uniswapV2Abi from "@/configs/abis/UniswapV2.abi.json"
 import uniswapV3FactoryAbi from "@/configs/abis/UniswapV3Factory.abi.json"
 import uniswapV3PoolAbi from "@/configs/abis/UniswapV3Pool.abi.json"
 import uniswapV3QuoterV2Abi from "@/configs/abis/UniswapV3QuoterV2.abi.json"
+import uniswapV4QuoterAbi from "@/configs/abis/UniswapV4Quoter.abi.json"
 
 export interface TokenInfo {
 	token: Hex
@@ -185,7 +186,7 @@ export class IntentGatewayService {
 	private static async getUniswapPrice(tokenAddress: string, decimals: number): Promise<Decimal> {
 		try {
 			const addresses = UNISWAP_ADDRESSES[`EVM-${chainId}`]
-			const { V2_FACTORY, WETH, USDC, USDT, DAI } = addresses
+			const { V2_FACTORY, WETH, USDC, USDT, DAI, V4_QUOTER, V3_FACTORY, V3_QUOTER } = addresses
 
 			const amountIn = BigInt(10 ** decimals)
 
@@ -214,17 +215,15 @@ export class IntentGatewayService {
 			}
 
 			// If V2 fails, try V3
-			const v3Factory = addresses.V3_FACTORY
-			const v3Quoter = addresses.V3_QUOTER
 
-			if (v3Factory && v3Quoter) {
+			if (V3_FACTORY && V3_QUOTER) {
 				// Out of three tiers, we return the first one that works
 				const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
 
 				for (const quoteToken of quoteTokens) {
 					for (const fee of fees) {
 						try {
-							const factory = new ethers.Contract(v3Factory, uniswapV3FactoryAbi, api)
+							const factory = new ethers.Contract(V3_FACTORY, uniswapV3FactoryAbi, api)
 							const pool = await factory.getPool(tokenAddress, quoteToken, fee)
 
 							if (pool && pool !== "0x0000000000000000000000000000000000000000") {
@@ -232,7 +231,7 @@ export class IntentGatewayService {
 								const liquidity = await poolContract.liquidity()
 
 								if (liquidity > BigInt(0)) {
-									const quoter = new ethers.Contract(v3Quoter, uniswapV3QuoterV2Abi, api)
+									const quoter = new ethers.Contract(V3_QUOTER, uniswapV3QuoterV2Abi, api)
 									const quoteResult = await quoter.quoteExactInputSingle({
 										tokenIn: tokenAddress,
 										tokenOut: quoteToken,
@@ -280,7 +279,76 @@ export class IntentGatewayService {
 				}
 			}
 
-			throw new Error(`No Uniswap V2 or V3 pair found for token ${tokenAddress}`)
+			// If V3 fails, try V4
+			if (V4_QUOTER) {
+				for (const quoteToken of quoteTokens) {
+					for (const fee of [500, 3000, 10000]) {
+						// Same fee tiers as V3
+						try {
+							const quoter = new ethers.Contract(V4_QUOTER, uniswapV4QuoterAbi, api)
+
+							const [token0, token1] =
+								tokenAddress.toLowerCase() < quoteToken.toLowerCase()
+									? [tokenAddress, quoteToken]
+									: [quoteToken, tokenAddress]
+
+							const poolKey = {
+								currency0: token0,
+								currency1: token1,
+								fee: fee,
+								tickSpacing: fee === 500 ? 10 : fee === 3000 ? 60 : 200, // Tick spacing changes based on fee
+								hooks: "0x0000000000000000000000000000000000000000" as Hex,
+							}
+
+							// Determine if token0 is the input token
+							const zeroForOne = tokenAddress.toLowerCase() === token0.toLowerCase()
+
+							const quoteParams = {
+								poolKey,
+								zeroForOne,
+								exactAmount: amountIn,
+								hookData: "0x" as Hex,
+							}
+
+							const quoteResult = await quoter.callStatic.quoteExactInputSingle(quoteParams)
+							const amountOut = quoteResult.amountOut
+
+							let price = new Decimal(amountOut.toString()).dividedBy(new Decimal(10 ** decimals))
+
+							if (quoteToken === WETH) {
+								const wethUsdcPoolKey = {
+									currency0: WETH,
+									currency1: USDC,
+									fee: 500,
+									tickSpacing: 10,
+									hooks: "0x0000000000000000000000000000000000000000" as Hex,
+								}
+
+								const wethQuoteParams = {
+									poolKey: wethUsdcPoolKey,
+									zeroForOne: true,
+									exactAmount: BigInt(10 ** decimals),
+									hookData: "0x" as Hex,
+								}
+
+								const wethQuoteResult = await quoter.callStatic.quoteExactInputSingle(wethQuoteParams)
+								const wethAmountOut = wethQuoteResult.amountOut
+								const wethUsdPrice = new Decimal(wethAmountOut.toString()).dividedBy(
+									new Decimal(10 ** decimals),
+								)
+								price = price.times(wethUsdPrice)
+							}
+
+							return price
+						} catch (error) {
+							logger.error(`Error getting price from V4 pool for fee ${fee}: ${error}`)
+							continue
+						}
+					}
+				}
+			}
+
+			throw new Error(`No Uniswap V2, V3, or V4 pair found for token ${tokenAddress}`)
 		} catch (error) {
 			logger.error(`Error getting Uniswap price for ${tokenAddress}: ${error}`)
 			return new Decimal(1)
