@@ -461,18 +461,6 @@ export class IndexerClient {
 				chain: this.config.hyperbridge.stateMachineId,
 			})
 
-			if (destFinalized) {
-				events.push({
-					status: TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT,
-					metadata: {
-						blockHash: destFinalized.blockHash,
-						blockNumber: destFinalized.blockNumber,
-						transactionHash: destFinalized.transactionHash,
-						timestamp: destFinalized.timestamp,
-					},
-				})
-			}
-
 			// if the source is the hyperbridge state machine, no further action is needed
 			// use the timeout stream to timeout on hyperbridge
 			if (request.source === this.config.hyperbridge.stateMachineId) return request
