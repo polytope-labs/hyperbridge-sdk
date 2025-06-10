@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url"
 
 import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
-import { hexToNumber } from "viem"
+import { Hex, hexToNumber } from "viem"
 
-import { getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -32,7 +32,7 @@ const substrateTemplate = Handlebars.compile(
 const evmTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "evm-chain.yaml.hbs"), "utf8"))
 const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "multichain.yaml.hbs"), "utf8"))
 
-const getChainTypesPath = (chain) => {
+const getChainTypesPath = (chain: string) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
 	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
@@ -44,26 +44,26 @@ const getChainTypesPath = (chain) => {
 	return null
 }
 
-const generateEndpoints = (chain) => {
+const generateEndpoints = (chain: string) => {
 	const envKey = chain.replace(/-/g, "_").toUpperCase()
 	// Expect comma-separated endpoints in env var
 	return process.env[envKey]?.split(",") || []
 }
 
 // Generate chain-specific YAML files
-const generateSubstrateYaml = async (chain, config) => {
+const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
 	const rpc = new RpcWebSocketClient()
-	await rpc.connect(rpcUrl)
-	const header = await rpc.call("chain_getHeader", [])
+	await rpc.connect(rpcUrl as string)
+	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
 	const blockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
-	const isHyperbridgeChain = config.stateMachineId === "KUSAMA-4009" || config.stateMachineId === "POLKADOT-3367"
+	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
 
 	const templateData = {
 		name: `${chain}-chain`,
@@ -108,12 +108,12 @@ const generateSubstrateYaml = async (chain, config) => {
 	return substrateTemplate(templateData)
 }
 
-const generateEvmYaml = async (chain, config) => {
+const generateEvmYaml = async (chain: string, config: Configuration) => {
 	const endpoints = generateEndpoints(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
-	const response = await fetch(rpcUrl, {
+	const response = await fetch(rpcUrl as string, {
 		method: "POST",
 		headers: {
 			accept: "application/json",

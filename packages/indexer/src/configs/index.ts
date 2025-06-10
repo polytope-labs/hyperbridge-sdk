@@ -9,6 +9,7 @@ const evmContractsSchema = z.object({
 	ethereumHost: z.string().min(3, "Invalid Ethereum address"),
 	handlerV1: z.string().min(3, "Invalid Ethereum address"),
 	erc6160ext20: z.string().min(3, "Invalid Ethereum address"),
+	intentGateway: z.string(),
 })
 
 // Base chain configuration schema
@@ -31,6 +32,11 @@ export type ConfigObject = z.infer<typeof schemaConfiguration>
 export type Configuration = ConfigObject[0]
 export type Environment = "local" | "testnet" | "mainnet"
 
+/**
+ * Validate configuration for the configuration structure and validate the schema.
+ * @param config
+ * @returns
+ */
 function validateConfig(config: unknown): ConfigObject {
 	return schemaConfiguration.parse(config)
 }
