@@ -282,6 +282,22 @@ dataSources:
           filter:
             topics:
               - 'EscrowRefunded(bytes32)'
+  - kind: ethereum/Runtime
+    startBlock: ${blockNumber}
+    options:
+      abi: tokenGateway
+      address: '${config.contracts.tokenGateway}'
+    assets:
+      tokenGateway:
+        file: ./abis/TokenGateway.abi.json
+    mapping:
+      file: ./dist/index.js
+      handlers:
+        - kind: ethereum/LogHandler
+          handler: handleAssetTeleportedEvent
+          filter:
+            topics:
+              - 'AssetTeleported(bytes32,string,uint256,bytes32,address,bytes32,bool)'
   # - kind: ethereum/Runtime
   #   startBlock: 21535312
   #   options:

@@ -68,6 +68,21 @@ enum OrderStatus {
 	REFUNDED
 }
 
+enum TeleportStatus {
+	"""
+	The asset has been teleported to another chain
+	"""
+	TELEPORTED
+	"""
+	The asset has been received on the destination chain
+	"""
+	RECEIVED
+	"""
+	The asset has been refunded due to failed teleport
+	"""
+	REFUNDED
+}
+
 """
 Important Hyperbridge Stats for a specific chain
 """
@@ -922,6 +937,137 @@ type OrderStatusMetadata @entity {
 	The filler of the order if the order has been filled
 	"""
 	filler: String
+
+	"""
+	The timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}
+
+"""
+Represents a teleport of assets through the TokenGateway contract.
+This entity tracks cross-chain asset teleports.
+"""
+type TokenGatewayAssetTeleported @entity {
+	"""
+	Unique identifier for the teleport (commitment)
+	"""
+	id: ID!
+
+	"""
+	Address of the user who initiated the teleport
+	"""
+	from: String! @index
+
+	"""
+	Beneficiary address that will receive the teleported assets
+	"""
+	to: String! @index
+
+	"""
+	Source chain identifier where the teleport originates from
+	"""
+	sourceChain: String! @index
+
+	"""
+	Destination chain identifier where the teleport will be executed
+	"""
+	destChain: String! @index
+
+	"""
+	Unique commitment hash of the teleport used for verification
+	"""
+	commitment: String! @index
+
+	"""
+	Amount of assets being teleported
+	"""
+	amount: BigInt! @index
+
+	"""
+	Amount of value in USD being teleported
+	"""
+	usdValue: String! @index
+
+	"""
+	Asset ID being teleported
+	"""
+	assetId: String! @index
+
+	"""
+	Whether the assets should be redeemed on the destination chain
+	"""
+	redeem: Boolean!
+
+	"""
+	Status of the teleport
+	"""
+	status: TeleportStatus!
+
+	"""
+	Metadata about the teleport's progression through different statuses
+	"""
+	statusMetadata: [TeleportStatusMetadata]! @derivedFrom(field: "teleport")
+
+	"""
+	Timestamp when the teleport was created
+	"""
+	createdAt: Date! @index
+
+	"""
+	Block number where the teleport was initiated
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block where the teleport was initiated
+	"""
+	blockTimestamp: BigInt! @index
+
+	"""
+	Hash of the transaction that initiated the teleport
+	"""
+	transactionHash: String! @index
+}
+
+"""
+Metadata about the status of a Teleport
+"""
+type TeleportStatusMetadata @entity {
+	"""
+	The ID of the TeleportStatusMetadata
+	"""
+	id: ID!
+
+	"""
+	The status of the teleport
+	"""
+	status: TeleportStatus!
+
+	"""
+	The chain on which the status change occurred
+	"""
+	chain: String!
+
+	"""
+	The timestamp of the event
+	"""
+	timestamp: BigInt!
+
+	"""
+	The number of the block in which the event occurred
+	"""
+	blockNumber: String!
+
+	"""
+	The hash of the transaction in which the event occurred
+	"""
+	transactionHash: String!
+
+	"""
+	The teleport that owns this status change
+	"""
+	teleport: TokenGatewayAssetTeleported!
 
 	"""
 	The timestamp when this record was created
