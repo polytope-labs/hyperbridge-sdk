@@ -298,6 +298,16 @@ dataSources:
           filter:
             topics:
               - 'AssetTeleported(bytes32,string,uint256,bytes32,address,bytes32,bool)'
+        - kind: ethereum/LogHandler
+          handler: handleAssetReceivedEvent
+          filter:
+            topics:
+              - 'AssetReceived(uint256,bytes32,bytes32,address,bytes32)'
+        - kind: ethereum/LogHandler
+          handler: handleAssetRefundedEvent
+          filter:
+            topics:
+              - 'AssetRefunded(uint256,bytes32,address,bytes32)'
   # - kind: ethereum/Runtime
   #   startBlock: 21535312
   #   options:
