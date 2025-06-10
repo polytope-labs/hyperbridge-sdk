@@ -1,18 +1,26 @@
 import { ERC20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
-import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants"
 import PriceHelper from "@/utils/price.helpers"
 import { TeleportStatus, TeleportStatusMetadata, TokenGatewayAssetTeleported } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
-import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, hexToString } from "viem"
+import { hexToBytes, bytesToHex, hexToString } from "viem"
 import type { Hex } from "viem"
 import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
-import Decimal from "decimal.js"
 
 export interface IAssetDetails {
 	erc20_address: string
 	erc6160_address: string
 	is_erc20: boolean
 	is_erc6160: boolean
+}
+
+export interface ITeleportParams {
+	to: string
+	dest: string
+	amount: bigint
+	commitment: string
+	from: string
+	assetId: string
+	redeem: boolean
 }
 
 export class TokenGatewayService {
@@ -37,13 +45,14 @@ export class TokenGatewayService {
 	/**
 	 * Get or create a teleport record
 	 */
-	static async getOrCreateTeleport(
-		teleportParams: any,
+	static async getOrCreate(
+		teleportParams: ITeleportParams,
 		logsData: {
 			transactionHash: string
 			blockNumber: number
 			timestamp: bigint
 		},
+		sourceChain: string,
 	): Promise<TokenGatewayAssetTeleported> {
 		const { transactionHash, blockNumber, timestamp } = logsData
 
@@ -63,8 +72,8 @@ export class TokenGatewayService {
 			teleport = await TokenGatewayAssetTeleported.create({
 				id: teleportParams.commitment,
 				from: this.bytes32ToBytes20(teleportParams.from),
-				sourceChain: hexToString(teleportParams.sourceChain),
-				destChain: hexToString(teleportParams.destChain),
+				sourceChain: `EVM-${sourceChain}`,
+				destChain: hexToString(teleportParams.dest as Hex),
 				commitment: teleportParams.commitment,
 				amount: teleportParams.amount,
 				assetId: teleportParams.assetId.toString(),
