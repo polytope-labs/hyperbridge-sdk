@@ -1,10 +1,18 @@
 import { ERC20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
 import PriceHelper from "@/utils/price.helpers"
-import { TeleportStatus, TeleportStatusMetadata, TokenGatewayAssetTeleported } from "@/configs/src/types"
+import {
+	TeleportStatus,
+	TeleportStatusMetadata,
+	TokenGatewayAssetTeleported,
+	ProtocolParticipant,
+	RewardPointsActivityType,
+} from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import { hexToBytes, bytesToHex, hexToString } from "viem"
 import type { Hex } from "viem"
 import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
+import { PointsService } from "./points.service"
+import Decimal from "decimal.js"
 
 export interface IAssetDetails {
 	erc20_address: string
@@ -87,6 +95,21 @@ export class TokenGatewayService {
 				transactionHash,
 			})
 			await teleport.save()
+
+			// Award points for token teleport - using USD value directly
+			const teleportValue = new Decimal(usdValue.amountValueInUSD)
+			const pointsToAward = teleportValue.floor().toNumber()
+
+			await PointsService.awardPoints(
+				this.bytes32ToBytes20(teleportParams.from),
+				`EVM-${sourceChain}`,
+				BigInt(pointsToAward),
+				ProtocolParticipant.USER,
+				RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+				transactionHash,
+				`Points awarded for teleporting token ${teleportParams.assetId} with value ${usdValue.amountValueInUSD} USD`,
+				timestamp,
+			)
 		}
 
 		return teleport
@@ -119,6 +142,23 @@ export class TokenGatewayService {
 		if (teleport) {
 			teleport.status = status
 			await teleport.save()
+
+			// Deduct points when teleport is refunded
+			if (status === TeleportStatus.REFUNDED) {
+				const teleportValue = new Decimal(teleport.usdValue)
+				const pointsToDeduct = teleportValue.floor().toNumber()
+
+				await PointsService.deductPoints(
+					teleport.from,
+					teleport.sourceChain,
+					BigInt(pointsToDeduct),
+					ProtocolParticipant.USER,
+					RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+					transactionHash,
+					`Points deducted for refunded teleport ${commitment} with value ${teleport.usdValue} USD`,
+					timestamp,
+				)
+			}
 		}
 
 		const teleportStatusMetadata = await TeleportStatusMetadata.create({
