@@ -1,73 +1,141 @@
-// import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants";
-// // import { TokenGatewayAbi__factory } from "@/types/contracts";
-// import PriceHelper from "@/utils/price.helpers";
+import { ERC20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
+import { SUPPORTED_ASSETS_CONTRACT_ADDRESSES } from "@/constants"
+import PriceHelper from "@/utils/price.helpers"
+import { TeleportStatus, TeleportStatusMetadata, TokenGatewayAssetTeleported } from "@/configs/src/types"
+import { timestampToDate } from "@/utils/date.helpers"
+import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters, hexToString } from "viem"
+import type { Hex } from "viem"
+import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
+import Decimal from "decimal.js"
 
-// export interface IAssetDetails {
-//   erc20_address: string;
-//   erc6160_address: string;
-//   is_erc20: boolean;
-//   is_erc6160: boolean;
-// }
+export interface IAssetDetails {
+	erc20_address: string
+	erc6160_address: string
+	is_erc20: boolean
+	is_erc6160: boolean
+}
 
-// export class TokenGatewayService {
-//   /**
-//    * Get asset details
-//    */
-//   static async getAssetDetails(
-//     contract_address: string,
-//     asset_id: string
-//   ): Promise<IAssetDetails> {
-//     const tokenGatewayContract = TokenGatewayAbi__factory.connect(
-//       contract_address,
-//       api
-//     );
+export class TokenGatewayService {
+	/**
+	 * Get asset details
+	 */
+	static async getAssetDetails(asset_id: string): Promise<IAssetDetails> {
+		const TOKEN_GATEWAY_CONTRACT_ADDRESS = TOKEN_GATEWAY_CONTRACT_ADDRESSES[chainId]
+		const tokenGatewayContract = TokenGatewayAbi__factory.connect(TOKEN_GATEWAY_CONTRACT_ADDRESS, api)
 
-//     const erc20Address = await tokenGatewayContract.erc20(asset_id);
-//     const erc6160Address = await tokenGatewayContract.erc6160(asset_id);
+		const erc20Address = await tokenGatewayContract.erc20(asset_id)
+		const erc6160Address = await tokenGatewayContract.erc6160(asset_id)
 
-//     return {
-//       erc20_address: erc20Address,
-//       erc6160_address: erc6160Address,
-//       is_erc20: erc20Address !== null && erc20Address.trim().length > 0,
-//       is_erc6160: erc6160Address !== null && erc6160Address.trim().length > 0,
-//     };
-//   }
+		return {
+			erc20_address: erc20Address,
+			erc6160_address: erc6160Address,
+			is_erc20: erc20Address !== null && erc20Address.trim().length > 0,
+			is_erc6160: erc6160Address !== null && erc6160Address.trim().length > 0,
+		}
+	}
 
-//   /**
-//    * Get the USD value of an asset transfer on TokenGateway
-//    */
-//   static async getUsdValueOfAsset(
-//     chain: string,
-//     contract_address: string,
-//     asset_id: string,
-//     amount: bigint
-//   ): Promise<bigint> {
-//     const assetDetails = await TokenGatewayService.getAssetDetails(
-//       contract_address,
-//       asset_id
-//     );
+	/**
+	 * Get or create a teleport record
+	 */
+	static async getOrCreateTeleport(
+		teleportParams: any,
+		logsData: {
+			transactionHash: string
+			blockNumber: number
+			timestamp: bigint
+		},
+	): Promise<TokenGatewayAssetTeleported> {
+		const { transactionHash, blockNumber, timestamp } = logsData
 
-//     const assetsSupportedForChain = SUPPORTED_ASSETS_CONTRACT_ADDRESSES[chain];
+		let teleport = await TokenGatewayAssetTeleported.get(teleportParams.commitment)
 
-//     // Ensure we have a list of supported assets for the chain
-//     if ((assetsSupportedForChain?.length ?? 0) === 0) {
-//       logger.info(`Could not get supported assets for chain ${chain}`);
-//       return BigInt(0);
-//     }
+		const tokenDetails = await this.getAssetDetails(teleportParams.assetId.toString())
+		const tokenContract = ERC20Abi__factory.connect(tokenDetails.erc20_address, api)
+		const decimals = tokenDetails.is_erc20 ? await tokenContract.decimals() : 18
 
-//     const priceFeedDetails = assetsSupportedForChain.find(
-//       (asset) =>
-//         asset.address.toLowerCase() == assetDetails.erc20_address.toLowerCase()
-//     );
+		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(
+			teleportParams.assetId.toString(),
+			teleportParams.amount,
+			decimals,
+		)
 
-//     if (typeof priceFeedDetails == "undefined") {
-//       logger.info(
-//         `Could not get asset contract address price feed details on chain ${chain} for asset with assetID ${asset_id}`
-//       );
-//       return BigInt(0);
-//     }
+		if (!teleport) {
+			teleport = await TokenGatewayAssetTeleported.create({
+				id: teleportParams.commitment,
+				from: this.bytes32ToBytes20(teleportParams.from),
+				sourceChain: hexToString(teleportParams.sourceChain),
+				destChain: hexToString(teleportParams.destChain),
+				commitment: teleportParams.commitment,
+				amount: teleportParams.amount,
+				assetId: teleportParams.assetId.toString(),
+				to: this.bytes32ToBytes20(teleportParams.to),
+				redeem: teleportParams.redeem,
+				status: TeleportStatus.TELEPORTED,
+				usdValue: usdValue.amountValueInUSD,
+				createdAt: timestampToDate(timestamp),
+				blockNumber: BigInt(blockNumber),
+				blockTimestamp: timestamp,
+				transactionHash,
+			})
+			await teleport.save()
+		}
 
-//     const priceInUsd = await PriceHelper.getTokenPriceInUsd(priceFeedDetails);
-//     return BigInt(priceInUsd * amount);
-//   }
-// }
+		return teleport
+	}
+
+	/**
+	 * Get teleport by commitment
+	 */
+	static async getByCommitment(commitment: string): Promise<TokenGatewayAssetTeleported | undefined> {
+		const teleport = await TokenGatewayAssetTeleported.get(commitment)
+		return teleport
+	}
+
+	/**
+	 * Update teleport status
+	 */
+	static async updateTeleportStatus(
+		commitment: string,
+		status: TeleportStatus,
+		logsData: {
+			transactionHash: string
+			blockNumber: number
+			timestamp: bigint
+		},
+	): Promise<void> {
+		const { transactionHash, blockNumber, timestamp } = logsData
+
+		const teleport = await TokenGatewayAssetTeleported.get(commitment)
+
+		if (teleport) {
+			teleport.status = status
+			await teleport.save()
+		}
+
+		const teleportStatusMetadata = await TeleportStatusMetadata.create({
+			id: `${commitment}.${status}`,
+			status,
+			chain: chainId,
+			timestamp,
+			blockNumber: blockNumber.toString(),
+			transactionHash,
+			teleportId: teleport?.id ?? "",
+			createdAt: timestampToDate(timestamp),
+		})
+
+		await teleportStatusMetadata.save()
+	}
+
+	/**
+	 * Convert bytes32 to bytes20 (address)
+	 */
+	private static bytes32ToBytes20(bytes32: string): string {
+		if (bytes32 === "0x0000000000000000000000000000000000000000000000000000000000000000") {
+			return "0x0000000000000000000000000000000000000000"
+		}
+
+		const bytes = hexToBytes(bytes32 as Hex)
+		const addressBytes = bytes.slice(12)
+		return bytesToHex(addressBytes) as Hex
+	}
+}
