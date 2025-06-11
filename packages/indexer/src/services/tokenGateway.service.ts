@@ -1,4 +1,4 @@
-import { ERC20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
+import { ERC6160Ext20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
 import PriceHelper from "@/utils/price.helpers"
 import {
 	TeleportStatus,
@@ -67,7 +67,7 @@ export class TokenGatewayService {
 		let teleport = await TokenGatewayAssetTeleported.get(teleportParams.commitment)
 
 		const tokenDetails = await this.getAssetDetails(teleportParams.assetId.toString())
-		const tokenContract = ERC20Abi__factory.connect(tokenDetails.erc20_address, api)
+		const tokenContract = ERC6160Ext20Abi__factory.connect(tokenDetails.erc20_address, api)
 		const decimals = tokenDetails.is_erc20 ? await tokenContract.decimals() : 18
 
 		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(
