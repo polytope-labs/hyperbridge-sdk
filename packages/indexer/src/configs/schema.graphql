@@ -1075,3 +1075,20 @@ type TeleportStatusMetadata @entity {
 	"""
 	createdAt: Date! @index
 }
+
+type CumulativeVolumeUSD @entity {
+	"""
+	Unique identifier for the cumulative stats
+	"""
+	id: ID!
+
+	"""
+	Last updated at
+	"""
+	lastUpdatedAt: BigInt! @index
+
+	"""
+	Volume in USD
+	"""
+	volumeUSD: String! @index
+}
