@@ -1,8 +1,8 @@
-import { PostRequestEventLog, PostResponseEventLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
-import { Relayer, Transfer } from "@/configs/src/types/models"
+import { PostRequestEventLog, PostResponseEventLog } from "@/types/abi-interfaces/EthereumHostAbi"
+import { Relayer, Transfer } from "@/types/models"
 import { HyperBridgeChainStatsService } from "@/services/hyperbridgeChainStats.service"
 import { isHexString } from "ethers/lib/utils"
-import { EthereumHostAbi__factory } from "@/configs/src/types/contracts"
+import { EthereumHostAbi__factory } from "@/types/contracts"
 // import {
 //  HandlePostRequestsTransaction,
 //  HandlePostResponsesTransaction,

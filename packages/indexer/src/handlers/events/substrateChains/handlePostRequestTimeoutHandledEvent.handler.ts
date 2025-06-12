@@ -1,7 +1,7 @@
 import { SubstrateEvent } from "@subql/types"
 import { RequestService } from "@/services/request.service"
-import { Status } from "@/configs/src/types"
-import { Request } from "@/configs/src/types/models"
+import { Status } from "@/types"
+import { Request } from "@/types/models"
 import { getHostStateMachine, isHyperbridge } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 

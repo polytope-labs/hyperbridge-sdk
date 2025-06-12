@@ -1,6 +1,6 @@
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Status } from "@/configs/src/types"
-import { PostResponseHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
+import { Status } from "@/types"
+import { PostResponseHandledLog } from "@/types/abi-interfaces/EthereumHostAbi"
 import { ResponseService } from "@/services/response.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
