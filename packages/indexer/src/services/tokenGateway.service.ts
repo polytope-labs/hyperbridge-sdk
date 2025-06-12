@@ -6,6 +6,7 @@ import {
 	TokenGatewayAssetTeleported,
 	ProtocolParticipant,
 	RewardPointsActivityType,
+	CumulativeVolumeUSD,
 } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import { hexToBytes, bytesToHex, hexToString } from "viem"
@@ -110,6 +111,22 @@ export class TokenGatewayService {
 				`Points awarded for teleporting token ${teleportParams.assetId} with value ${usdValue.amountValueInUSD} USD`,
 				timestamp,
 			)
+
+			// Count the volume in USD
+			let cumulativeVolumeUSD = await CumulativeVolumeUSD.get(`TokenGateway`)
+			if (cumulativeVolumeUSD) {
+				cumulativeVolumeUSD.volumeUSD = new Decimal(cumulativeVolumeUSD.volumeUSD)
+					.plus(new Decimal(usdValue.amountValueInUSD))
+					.toFixed(18)
+			} else {
+				cumulativeVolumeUSD = await CumulativeVolumeUSD.create({
+					id: `TokenGateway`,
+					volumeUSD: new Decimal(usdValue.amountValueInUSD).toFixed(18),
+					lastUpdatedAt: timestamp,
+				})
+			}
+
+			await cumulativeVolumeUSD.save()
 		}
 
 		return teleport

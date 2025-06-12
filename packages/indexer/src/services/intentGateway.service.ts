@@ -1,5 +1,11 @@
 import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
-import { OrderStatus, OrderStatusMetadata, ProtocolParticipant, RewardPointsActivityType } from "@/configs/src/types"
+import {
+	CumulativeVolumeUSD,
+	OrderStatus,
+	OrderStatusMetadata,
+	ProtocolParticipant,
+	RewardPointsActivityType,
+} from "@/configs/src/types"
 import PriceHelper from "@/utils/price.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
@@ -86,6 +92,22 @@ export class IntentGatewayService {
 				`Points awarded for placing order ${order.id} with value ${inputUSD} USD`,
 				timestamp,
 			)
+
+			// Count the volume in USD
+			let cumulativeVolumeUSD = await CumulativeVolumeUSD.get(`IntentGateway.USER`)
+			if (cumulativeVolumeUSD) {
+				cumulativeVolumeUSD.volumeUSD = new Decimal(cumulativeVolumeUSD.volumeUSD)
+					.plus(new Decimal(inputUSD))
+					.toFixed(18)
+			} else {
+				cumulativeVolumeUSD = await CumulativeVolumeUSD.create({
+					id: "cumulativeVolumeUSD",
+					volumeUSD: new Decimal(inputUSD).toFixed(18),
+					lastUpdatedAt: timestamp,
+				})
+			}
+
+			await cumulativeVolumeUSD.save()
 		}
 
 		return orderPlaced
@@ -110,6 +132,10 @@ export class IntentGatewayService {
 
 	private static async getInputValuesUSD(order: Order): Promise<{ total: string; values: string[] }> {
 		return this.getTokenValuesUSD(order.inputs)
+	}
+
+	private static async getOutputValuesUSD(outputs: PaymentInfo[]): Promise<{ total: string; values: string[] }> {
+		return this.getTokenValuesUSD(outputs)
 	}
 
 	private static async getTokenValuesUSD(
@@ -172,6 +198,29 @@ export class IntentGatewayService {
 					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 					timestamp,
 				)
+
+				// Count the volume in USD
+				let cumulativeVolumeUSD = await CumulativeVolumeUSD.get(`IntentGateway.FILLER`)
+				let outputPaymentInfo: PaymentInfo[] = orderPlaced.outputTokens.map((token, index) => {
+					return {
+						token: token as Hex,
+						amount: orderPlaced.outputAmounts[index],
+						beneficiary: orderPlaced.outputBeneficiaries[index] as Hex,
+					}
+				})
+				let outputUSD = await this.getOutputValuesUSD(outputPaymentInfo)
+				if (cumulativeVolumeUSD) {
+					cumulativeVolumeUSD.volumeUSD = new Decimal(cumulativeVolumeUSD.volumeUSD)
+						.plus(new Decimal(outputUSD.total))
+						.toFixed(18)
+				} else {
+					cumulativeVolumeUSD = await CumulativeVolumeUSD.create({
+						id: `IntentGateway.FILLER`,
+						volumeUSD: new Decimal(outputUSD.total).toFixed(18),
+						lastUpdatedAt: timestamp,
+					})
+				}
+				await cumulativeVolumeUSD.save()
 			}
 
 			// Deduct points when order is cancelled
