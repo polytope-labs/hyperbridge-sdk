@@ -187,9 +187,11 @@ const generateMultichainYaml = () => {
 
 	const templateData = {
 		projects,
-		// TODO: resolve correct block () and CID values.
-		// untilBlock: 0,
-		parentCID: "QmcBQA6gwEepXpn7RXLcS57FhXCmxVEJssiTrEP3VLQCjC",
+		// // TODO: dynamic resolution of the correct parent untilBlock and CID values.
+		// parent: {
+		//   untilBlock: undefined,
+		// 	CID: "QmcBQA6gwEepXpn7RXLcS57FhXCmxVEJssiTrEP3VLQCjC",
+		// }
 	}
 
 	const yaml = multichainTemplate(templateData)
