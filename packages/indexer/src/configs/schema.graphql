@@ -958,42 +958,42 @@ type TokenGatewayAssetTeleported @entity {
 	"""
 	Address of the user who initiated the teleport
 	"""
-	from: String! @index
+	from: String!
 
 	"""
 	Beneficiary address that will receive the teleported assets
 	"""
-	to: String! @index
+	to: String!
 
 	"""
 	Source chain identifier where the teleport originates from
 	"""
-	sourceChain: String! @index
+	sourceChain: String!
 
 	"""
 	Destination chain identifier where the teleport will be executed
 	"""
-	destChain: String! @index
+	destChain: String!
 
 	"""
 	Unique commitment hash of the teleport used for verification
 	"""
-	commitment: String! @index
+	commitment: String!
 
 	"""
 	Amount of assets being teleported
 	"""
-	amount: BigInt! @index
+	amount: BigInt!
 
 	"""
 	Amount of value in USD being teleported
 	"""
-	usdValue: String! @index
+	usdValue: String!
 
 	"""
 	Asset ID being teleported
 	"""
-	assetId: String! @index
+	assetId: String!
 
 	"""
 	Whether the assets should be redeemed on the destination chain
@@ -1013,22 +1013,22 @@ type TokenGatewayAssetTeleported @entity {
 	"""
 	Timestamp when the teleport was created
 	"""
-	createdAt: Date! @index
+	createdAt: Date!
 
 	"""
 	Block number where the teleport was initiated
 	"""
-	blockNumber: BigInt! @index
+	blockNumber: BigInt!
 
 	"""
 	Timestamp of the block where the teleport was initiated
 	"""
-	blockTimestamp: BigInt! @index
+	blockTimestamp: BigInt!
 
 	"""
 	Hash of the transaction that initiated the teleport
 	"""
-	transactionHash: String! @index
+	transactionHash: String!
 }
 
 """
@@ -1073,7 +1073,7 @@ type TeleportStatusMetadata @entity {
 	"""
 	The timestamp when this record was created
 	"""
-	createdAt: Date! @index
+	createdAt: Date!
 }
 
 type CumulativeVolumeUSD @entity {
@@ -1085,10 +1085,10 @@ type CumulativeVolumeUSD @entity {
 	"""
 	Last updated at
 	"""
-	lastUpdatedAt: BigInt! @index
+	lastUpdatedAt: BigInt!
 
 	"""
 	Volume in USD
 	"""
-	volumeUSD: String! @index
+	volumeUSD: String!
 }
