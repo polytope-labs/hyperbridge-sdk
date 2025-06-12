@@ -81,6 +81,7 @@ Thumbs.db
 .env*
 .tsconfig
 .tsbuildinfo
+.*-cid
 
 evm-ws.json
 substrate-ws.json

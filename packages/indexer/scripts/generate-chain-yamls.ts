@@ -187,9 +187,9 @@ const generateMultichainYaml = () => {
 
 	const templateData = {
 		projects,
-		// TODO: resolve correct block and CID values.
-		untilBlock: 1050,
-		parentCID: "QmXw6FN6eScxvYXYceuCjKMpqmnuCxwY3Cx4HPhDXgUWe5",
+		// TODO: resolve correct block () and CID values.
+		// untilBlock: 0,
+		parentCID: "QmcBQA6gwEepXpn7RXLcS57FhXCmxVEJssiTrEP3VLQCjC",
 	}
 
 	const yaml = multichainTemplate(templateData)

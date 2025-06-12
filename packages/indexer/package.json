@@ -14,7 +14,7 @@
 	"files": [
 		"dist",
 		"src/configs/schema.graphql",
-		"src/configs/subquery-multichain.yaml"
+		"src/subquery-multichain.yaml"
 	],
 	"author": "Polytope Labs",
 	"license": "MIT",
