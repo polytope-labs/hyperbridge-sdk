@@ -52,12 +52,8 @@ const generateNodeServices = () => {
 
 		const filePath = path.join(dockerDir, `${chainName}.yml`)
 
-		if (!fs.existsSync(filePath)) {
-			fs.writeFileSync(filePath, yaml)
-			console.log(`Generated ${filePath}`)
-		} else {
-			console.log(`Skipping ${filePath} - File already exists`)
-		}
+		fs.writeFileSync(filePath, yaml)
+		console.log(`Generated ${filePath}`)
 	})
 }
 
