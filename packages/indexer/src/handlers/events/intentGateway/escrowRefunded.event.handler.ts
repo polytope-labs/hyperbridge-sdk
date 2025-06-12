@@ -1,8 +1,8 @@
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
-import { EscrowRefundedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
+import { EscrowRefundedLog } from "@/types/abi-interfaces/IntentGatewayAbi"
 import { IntentGatewayService } from "@/services/intentGateway.service"
-import { OrderStatus } from "@/configs/src/types"
+import { OrderStatus } from "@/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 export async function handleEscrowRefundedEvent(event: EscrowRefundedLog): Promise<void> {

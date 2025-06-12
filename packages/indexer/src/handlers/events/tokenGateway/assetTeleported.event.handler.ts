@@ -1,8 +1,8 @@
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
-import { AssetTeleportedLog } from "@/configs/src/types/abi-interfaces/TokenGatewayAbi"
+import { AssetTeleportedLog } from "@/types/abi-interfaces/TokenGatewayAbi"
 import { TokenGatewayService } from "@/services/tokenGateway.service"
-import { TeleportStatus } from "@/configs/src/types"
+import { TeleportStatus } from "@/types"
 import { getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 
 export async function handleAssetTeleportedEvent(event: AssetTeleportedLog): Promise<void> {

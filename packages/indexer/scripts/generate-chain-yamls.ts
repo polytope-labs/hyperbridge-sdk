@@ -177,8 +177,8 @@ async function generateAllChainYamls() {
 				? await generateSubstrateYaml(chain, config)
 				: await generateEvmYaml(chain, config)
 
-		fs.writeFileSync(root + `/src/configs/${chain}.yaml`, yaml)
-		console.log(`Generated ${root}/src/configs/${chain}.yaml`)
+		fs.writeFileSync(root + `/${chain}.yaml`, yaml)
+		console.log(`Generated ${root}/${chain}.yaml`)
 	}
 }
 
@@ -187,10 +187,13 @@ const generateMultichainYaml = () => {
 
 	const templateData = {
 		projects,
+		// TODO: resolve correct block and CID values.
+		untilBlock: 1050,
+		parentCID: "QmXw6FN6eScxvYXYceuCjKMpqmnuCxwY3Cx4HPhDXgUWe5",
 	}
 
 	const yaml = multichainTemplate(templateData)
-	fs.writeFileSync(root + "/src/configs/subquery-multichain.yaml", yaml)
+	fs.writeFileSync(root + "/subquery-multichain.yaml", yaml)
 	console.log("Generated subquery-multichain.yaml")
 }
 
@@ -208,7 +211,7 @@ const generateSubstrateWsJson = () => {
 		}
 	})
 
-	fs.writeFileSync(root + "/src/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
+	fs.writeFileSync(root + "/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
 	console.log("Generated substrate-ws.json")
 }
 
@@ -226,7 +229,7 @@ const generateEvmWsJson = () => {
 		}
 	})
 
-	fs.writeFileSync(root + "/src/evm-ws.json", JSON.stringify(evmWsConfig, null, 2))
+	fs.writeFileSync(root + "/evm-ws.json", JSON.stringify(evmWsConfig, null, 2))
 	console.log("Generated evm-ws.json")
 }
 
@@ -241,7 +244,7 @@ const generateChainIdsByGenesis = () => {
 
 	const chainIdsByGenesisContent = `// Auto-generated, DO NOT EDIT \nexport const CHAIN_IDS_BY_GENESIS = ${JSON.stringify(chainIdsByGenesis, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
+	fs.writeFileSync(root + "/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
 	console.log("Generated chain-ids-by-genesis.ts")
 }
 
@@ -257,7 +260,7 @@ const generateChainsByIsmpHost = () => {
 
 	const chainsByIsmpHostContent = `// Auto-generated, DO NOT EDIT \nexport const CHAINS_BY_ISMP_HOST = ${JSON.stringify(chainsByIsmpHost, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chains-by-ismp-host.ts", chainsByIsmpHostContent)
+	fs.writeFileSync(root + "/chains-by-ismp-host.ts", chainsByIsmpHostContent)
 	console.log("Generated chains-by-ismp-host.ts")
 }
 

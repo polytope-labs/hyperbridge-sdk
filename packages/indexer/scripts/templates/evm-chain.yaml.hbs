@@ -8,9 +8,9 @@ dataSources:
       address: '{{config.contracts.ethereumHost}}'
     assets:
       ethereumHost:
-        file: ./abis/EthereumHost.abi.json
+        file: ./src/configs/abis/EthereumHost.abi.json
       chainLinkAggregatorV3:
-        file: ./abis/ChainLinkAggregatorV3.abi.json
+        file: ./src/configs/abis/ChainLinkAggregatorV3.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -22,7 +22,7 @@ dataSources:
       address: '{{config.contracts.erc6160ext20}}'
     assets:
       erc6160ext20:
-        file: ./abis/ERC6160Ext20.abi.json
+        file: ./src/configs/abis/ERC6160Ext20.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -38,7 +38,7 @@ dataSources:
       address: '{{config.contracts.intentGateway}}'
     assets:
       intentGateway:
-        file: ./abis/IntentGateway.abi.json
+        file: ./src/configs/abis/IntentGateway.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -69,7 +69,7 @@ dataSources:
       address: '{{config.contracts.tokenGateway}}'
     assets:
       tokenGateway:
-        file: ./abis/TokenGateway.abi.json
+        file: ./src/configs/abis/TokenGateway.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -95,7 +95,7 @@ dataSources:
   #     address: '0xA801da100bF16D07F668F4A49E1f71fc54D05177'
   #   assets:
   #     handlerV1:
-  #       file: ./abis/HandlerV1.abi.json
+  #       file: ./src/configs/abis/HandlerV1.abi.json
   #   mapping:
   #     file: ./dist/index.js
   #     handlers:

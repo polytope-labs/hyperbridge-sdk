@@ -1,4 +1,4 @@
-import { StateMachineUpdateEvent } from "@/configs/src/types"
+import { StateMachineUpdateEvent } from "@/types"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate, getStateId } from "@/utils/state-machine.helper"
 import { timestampToDate } from "@/utils/date.helpers"
 

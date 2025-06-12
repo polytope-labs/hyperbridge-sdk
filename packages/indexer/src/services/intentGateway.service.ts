@@ -1,14 +1,14 @@
-import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
+import { OrderPlaced } from "@/types/models/OrderPlaced"
 import {
 	CumulativeVolumeUSD,
 	OrderStatus,
 	OrderStatusMetadata,
 	ProtocolParticipant,
 	RewardPointsActivityType,
-} from "@/configs/src/types"
+} from "@/types"
 import PriceHelper from "@/utils/price.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
-import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
+import { ERC6160Ext20Abi__factory } from "@/types/contracts"
 import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters } from "viem"
 import type { Hex } from "viem"
 import Decimal from "decimal.js"
