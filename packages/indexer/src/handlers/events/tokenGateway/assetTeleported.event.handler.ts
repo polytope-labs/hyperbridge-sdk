@@ -41,7 +41,6 @@ export async function handleAssetTeleportedEvent(event: AssetTeleportedLog): Pro
 			blockNumber,
 			timestamp,
 		},
-		chainId,
 	)
 
 	await TokenGatewayService.updateTeleportStatus(commitment, TeleportStatus.TELEPORTED, {

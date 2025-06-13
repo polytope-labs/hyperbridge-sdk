@@ -9,8 +9,6 @@ import {
 	CumulativeVolumeUSD,
 } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
-import { hexToBytes, bytesToHex, hexToString } from "viem"
-import type { Hex } from "viem"
 import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
 import { PointsService } from "./points.service"
 import Decimal from "decimal.js"
@@ -37,7 +35,7 @@ export class TokenGatewayService {
 	 * Get asset details
 	 */
 	static async getAssetDetails(asset_id: string): Promise<IAssetDetails> {
-		const TOKEN_GATEWAY_CONTRACT_ADDRESS = TOKEN_GATEWAY_CONTRACT_ADDRESSES[chainId]
+		const TOKEN_GATEWAY_CONTRACT_ADDRESS = TOKEN_GATEWAY_CONTRACT_ADDRESSES[`EVM-${chainId}`]
 		const tokenGatewayContract = TokenGatewayAbi__factory.connect(TOKEN_GATEWAY_CONTRACT_ADDRESS, api)
 
 		const erc20Address = await tokenGatewayContract.erc20(asset_id)
@@ -46,8 +44,8 @@ export class TokenGatewayService {
 		return {
 			erc20_address: erc20Address,
 			erc6160_address: erc6160Address,
-			is_erc20: erc20Address !== null && erc20Address.trim().length > 0,
-			is_erc6160: erc6160Address !== null && erc6160Address.trim().length > 0,
+			is_erc20: erc20Address !== "0x0000000000000000000000000000000000000000",
+			is_erc6160: erc6160Address !== "0x0000000000000000000000000000000000000000",
 		}
 	}
 
@@ -61,15 +59,15 @@ export class TokenGatewayService {
 			blockNumber: number
 			timestamp: bigint
 		},
-		sourceChain: string,
 	): Promise<TokenGatewayAssetTeleported> {
 		const { transactionHash, blockNumber, timestamp } = logsData
 
 		let teleport = await TokenGatewayAssetTeleported.get(teleportParams.commitment)
 
 		const tokenDetails = await this.getAssetDetails(teleportParams.assetId.toString())
-		const tokenContract = ERC6160Ext20Abi__factory.connect(tokenDetails.erc20_address, api)
-		const decimals = tokenDetails.is_erc20 ? await tokenContract.decimals() : 18
+		const tokenAddress = tokenDetails.is_erc20 ? tokenDetails.erc20_address : tokenDetails.erc6160_address
+		const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
+		const decimals = tokenDetails.is_erc20 || tokenDetails.is_erc6160 ? await tokenContract.decimals() : 18
 
 		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(
 			teleportParams.assetId.toString(),
@@ -80,13 +78,13 @@ export class TokenGatewayService {
 		if (!teleport) {
 			teleport = await TokenGatewayAssetTeleported.create({
 				id: teleportParams.commitment,
-				from: this.bytes32ToBytes20(teleportParams.from),
-				sourceChain: `EVM-${sourceChain}`,
-				destChain: hexToString(teleportParams.dest as Hex),
+				from: teleportParams.from,
+				sourceChain: chainId,
+				destChain: teleportParams.dest,
 				commitment: teleportParams.commitment,
 				amount: teleportParams.amount,
 				assetId: teleportParams.assetId.toString(),
-				to: this.bytes32ToBytes20(teleportParams.to),
+				to: teleportParams.to,
 				redeem: teleportParams.redeem,
 				status: TeleportStatus.TELEPORTED,
 				usdValue: usdValue.amountValueInUSD,
@@ -102,8 +100,8 @@ export class TokenGatewayService {
 			const pointsToAward = teleportValue.floor().toNumber()
 
 			await PointsService.awardPoints(
-				this.bytes32ToBytes20(teleportParams.from),
-				`EVM-${sourceChain}`,
+				teleportParams.from,
+				chainId,
 				BigInt(pointsToAward),
 				ProtocolParticipant.USER,
 				RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
@@ -181,7 +179,7 @@ export class TokenGatewayService {
 		const teleportStatusMetadata = await TeleportStatusMetadata.create({
 			id: `${commitment}.${status}`,
 			status,
-			chain: chainId,
+			chain: `EVM-${chainId}`,
 			timestamp,
 			blockNumber: blockNumber.toString(),
 			transactionHash,
@@ -190,18 +188,5 @@ export class TokenGatewayService {
 		})
 
 		await teleportStatusMetadata.save()
-	}
-
-	/**
-	 * Convert bytes32 to bytes20 (address)
-	 */
-	private static bytes32ToBytes20(bytes32: string): string {
-		if (bytes32 === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-			return "0x0000000000000000000000000000000000000000"
-		}
-
-		const bytes = hexToBytes(bytes32 as Hex)
-		const addressBytes = bytes.slice(12)
-		return bytesToHex(addressBytes) as Hex
 	}
 }
