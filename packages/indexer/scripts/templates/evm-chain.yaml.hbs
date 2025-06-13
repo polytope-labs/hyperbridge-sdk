@@ -1,5 +1,10 @@
 {{> metadata}}
 {{> network-config}}
+{{#if parent}}
+parent:
+  untilBlock: {{parent.untilBlock}}
+  reference: '{{parent.reference}}'
+{{/if}}
 dataSources:
   - kind: ethereum/Runtime
     startBlock: {{blockNumber}}
