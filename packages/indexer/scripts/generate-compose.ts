@@ -30,7 +30,7 @@ const serviceTemplate = Handlebars.compile(
 	fs.readFileSync(path.join(templatesDir, "docker-compose-service.yaml.hbs"), "utf8"),
 )
 const dockerComposeLocalTemplate = Handlebars.compile(
-  fs.readFileSync(path.join(templatesDir, "docker-compose-local.yaml.hbs"), "utf8"),
+	fs.readFileSync(path.join(templatesDir, "docker-compose-local.yaml.hbs"), "utf8"),
 )
 
 const generateNodeServices = () => {

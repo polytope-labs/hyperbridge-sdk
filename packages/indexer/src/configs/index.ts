@@ -111,3 +111,13 @@ export function getValidChains(): Map<string, Configuration> {
 
 	return validChains
 }
+
+export function getChainCid(chain: string): string | null {
+	const filePath = path.resolve(process.cwd(), `.${chain}-cid`)
+
+	if (!fs.existsSync(filePath)) {
+		return null
+	}
+
+	return fs.readFileSync(filePath, { encoding: "utf8" })
+}

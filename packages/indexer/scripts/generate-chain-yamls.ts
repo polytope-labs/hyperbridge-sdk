@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainCid, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -31,6 +31,21 @@ const substrateTemplate = Handlebars.compile(
 )
 const evmTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "evm-chain.yaml.hbs"), "utf8"))
 const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(templatesDir, "multichain.yaml.hbs"), "utf8"))
+
+interface ParentManifest {
+	untilBlock: number
+	reference: string
+}
+
+const getParentManifest = (blockNumber: number, chain: string): ParentManifest | null => {
+	const chainCid = getChainCid(chain)
+	if (!chainCid) return null
+
+	return {
+		untilBlock: blockNumber,
+		reference: chainCid,
+	}
+}
 
 const getChainTypesPath = (chain: string) => {
 	// Extract base chain name before the hyphen
@@ -64,6 +79,8 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
+
+	const parent = getParentManifest(blockNumber, chain)
 
 	const templateData = {
 		name: `${chain}-chain`,
@@ -103,6 +120,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 				method: "PostResponseTimeoutHandled",
 			},
 		],
+		parent,
 	}
 
 	return substrateTemplate(templateData)
@@ -127,6 +145,8 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 	})
 	const data = await response.json()
 	const blockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
+
+	const parent = getParentManifest(blockNumber, chain)
 
 	const templateData = {
 		name: chain,
@@ -165,6 +185,7 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 			{ handler: "handleGetRequestHandledEvent", topics: ["GetRequestHandled(bytes32,address)"] },
 			{ handler: "handleGetRequestTimeoutHandledEvent", topics: ["GetRequestTimeoutHandled(bytes32,string)"] },
 		],
+		parent,
 	}
 
 	return evmTemplate(templateData)
@@ -187,11 +208,6 @@ const generateMultichainYaml = () => {
 
 	const templateData = {
 		projects,
-		// // TODO: dynamic resolution of the correct parent untilBlock and CID values.
-		// parent: {
-		//   untilBlock: undefined,
-		// 	CID: "QmcBQA6gwEepXpn7RXLcS57FhXCmxVEJssiTrEP3VLQCjC",
-		// }
 	}
 
 	const yaml = multichainTemplate(templateData)
