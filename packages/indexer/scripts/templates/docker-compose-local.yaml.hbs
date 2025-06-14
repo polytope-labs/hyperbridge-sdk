@@ -18,29 +18,29 @@ services:
                 condition: service_healthy
 
         volumes:
+        {{#unless hasCid}}
             - ../{{@key}}.yaml:/app/{{@key}}.yaml
+        {{/unless}}
             - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
+        {{#if hasCid}}
+            - -f=ipfs://{{cid}}
+        {{else}}
             - -f=/app/{{@key}}.yaml
+        {{/if}}
             - --db-schema=app
             - --workers=${SUBQL_WORKERS:-6}
             - --batch-size=${SUBQL_BATCH_SIZE:-10}
             - --multi-chain
             - --unsafe
             - --log-level=info
-        {{#if isEvm}}
             - --historical=timestamp
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
             - --allow-schema-migration
-        {{else}}
-            - --block-confirmations=0
-            - --store-cache-async=false
-            - --store-cache-threshold=1
-        {{/if}}
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s

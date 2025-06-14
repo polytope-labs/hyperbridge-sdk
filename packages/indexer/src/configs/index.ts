@@ -119,5 +119,5 @@ export function getChainCid(chain: string): string | null {
 		return null
 	}
 
-	return fs.readFileSync(filePath, { encoding: "utf8" })
+	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
 }

@@ -1,14 +1,18 @@
 - ${SUB_COMMAND:-}
+{{#if hasCid}}
+- -f={{cid}}
+{{else}}
 - -f=/app/{{chainName}}.yaml
+{{/if}}
 - --db-schema=app
 - --workers=${SUBQL_WORKERS:-16}
 - --batch-size=${SUBQL_BATCH_SIZE:-100}
 - --multi-chain
 - --unsafe
 - --log-level=info
-{{#if unfinalizedBlocks}}
 - --historical=timestamp
-- --block-confirmations=0
 - --allow-schema-migration
+{{#if unfinalizedBlocks}}
+- --block-confirmations=0
 {{/if}}
 - --store-cache-async=true
