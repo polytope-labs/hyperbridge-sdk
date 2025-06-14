@@ -1,0 +1,94 @@
+name: Subql Publish - Artifact (Indexer)
+
+on:
+    push:
+        tags:
+            - "v*"
+    # pull_request:
+    #     branches: [main]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: "7"
+
+            - name: Get version from tag
+              id: get_version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+            - name: Install dependencies
+              run: pnpm install
+
+            - name: Set up environment variables
+              run: |
+                  # Set up environment variables from secrets
+                  cat > .env.local << EOF
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
+                  HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  PASEO_RPC_URL=${{ secrets.PASEO_RPC_URL }}
+                  BIFROST_PASEO=${{ secrets.BIFROST_PASEO }}
+                  CERE_LOCAL=${{ secrets.CERE_RPC_URL }}
+                  INDEXER_URL=${{ secrets.INDEXER_URL }}
+                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+                  SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
+                  PING_MODULE_ADDRESS: "0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
+                  TOKEN_GATEWAY_ADDRESS: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
+                  EOF
+
+            - name: Build packages
+              run: pnpm build
+              env:
+                  ENV: local
+
+            - name: Subql Publish
+              env:
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+              run: |
+                  cd packages/indexer
+                  ./node_modules/.bin/subql publish
+
+            - name: Create CID Artifact
+              run: |
+                  cd packages/indexer
+
+                  CID_FILES=$(find . -maxdepth 1 -name ".*-cid" -type f)
+                  if [ -z "$CID_FILES" ]; then
+                      echo "❌ No CID files found matching pattern .*-cid"
+                      exit 1
+                  fi
+
+                  echo "Found CID files:"
+                  echo "$CID_FILES"
+
+                  ARTIFACT_DIR="cid-artifacts"
+                  mkdir -p "$ARTIFACT_DIR"
+
+                  for file in $CID_FILES; do
+                      filename=$(basename "$file")
+                      cp "$file" "$ARTIFACT_DIR/"
+                  done
+
+                  echo "Created artifact.zip with the following contents:"
+                  zip -r artifact.zip "$ARTIFACT_DIR/"
+                  unzip -l artifact.zip
+
+            - name: Upload CID Artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cid-artifacts-${{ steps.get_version.outputs.VERSION }}
+                  path: artifact.zip
+                  retention-days: 30
+                  if-no-files-found: error
