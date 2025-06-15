@@ -225,7 +225,6 @@ query TokenGatewayAssetTeleportedStatus($commitment: String!) {
           chain
           timestamp
           blockNumber
-          blockHash
           transactionHash
         }
       }

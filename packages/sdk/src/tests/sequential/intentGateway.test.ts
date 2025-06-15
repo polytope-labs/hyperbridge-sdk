@@ -308,7 +308,7 @@ async function setUp() {
 	}
 }
 
-async function approveTokens(
+export async function approveTokens(
 	walletClient: WalletClient,
 	publicClient: PublicClient,
 	tokenAddress: HexString,
