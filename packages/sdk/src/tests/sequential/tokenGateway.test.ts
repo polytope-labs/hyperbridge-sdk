@@ -134,8 +134,10 @@ describe("teleport function", () => {
 			pollInterval: 1_000,
 		})
 
+		const amount = BigInt(200000000000)
+
 		const params = {
-			amount: BigInt(200000000000),
+			amount: amount,
 			relayerFee: BigInt(0),
 			assetId: u8aToHex(keccakAsU8a("USD.h")),
 			redeem: false,
@@ -158,6 +160,7 @@ describe("teleport function", () => {
 
 		// Apporve tokens if needed
 		await approveTokens(bscWalletClient, bscPublicClient, erc6160, bscTokenGateway.address)
+		await dripTokensIfNeeded(bscWalletClient, bscPublicClient, amount)
 
 		const tx = await bscTokenGateway.write.teleport([params], {
 			account: bscWalletClient.account!,
@@ -310,14 +313,6 @@ async function setUp() {
 		client: { public: gnosisChiadoPublicClient, wallet: gnosisChiadoWalletClient },
 	})
 
-	const tokenFaucet = getContract({
-		address: "0x17d8cc0859fbA942A7af243c3EBB69AbBfe0a320",
-		abi: parseAbi(["function drip(address token) public"]),
-		client: { public: bscPublicClient, wallet: bscWalletClient },
-	})
-
-	const USDH = "0xA801da100bF16D07F668F4A49E1f71fc54D05177" as HexString
-
 	return {
 		bscTokenGateway,
 		gnosisChiadoTokenGateway,
@@ -349,7 +344,7 @@ async function getAssetDetails(assetId: string, publicClient: PublicClient) {
 	}
 }
 
-export async function approveTokens(
+async function approveTokens(
 	walletClient: WalletClient,
 	publicClient: PublicClient,
 	tokenAddress: HexString,
@@ -374,8 +369,33 @@ export async function approveTokens(
 			account: walletClient.account!,
 		})
 
-		console.log("Approved tokens for test:", tx)
-		// Wait for the 5 seconds, to make sure the transaction is mined
-		await new Promise((resolve) => setTimeout(resolve, 5000))
+		const receipt = await publicClient.waitForTransactionReceipt({ hash: tx })
+		console.log("Approved tokens for test:", receipt)
+	}
+}
+
+async function dripTokensIfNeeded(walletClient: WalletClient, publicClient: PublicClient, amountCheck: bigint) {
+	const USDH = "0xA801da100bF16D07F668F4A49E1f71fc54D05177" as HexString
+	const balance = await publicClient.readContract({
+		abi: erc6160.ABI,
+		address: USDH,
+		functionName: "balanceOf",
+		args: [walletClient.account?.address as HexString],
+		account: walletClient.account,
+	})
+
+	if (balance < amountCheck) {
+		console.log("Dripping tokens for test")
+		const tx = await walletClient.writeContract({
+			abi: parseAbi(["function drip(address token) public"]),
+			address: "0x1794aB22388303ce9Cb798bE966eeEBeFe59C3a3",
+			functionName: "drip",
+			args: [USDH],
+			chain: walletClient.chain,
+			account: walletClient.account!,
+		})
+
+		const receipt = await publicClient.waitForTransactionReceipt({ hash: tx })
+		console.log("Dripped tokens for test:", receipt)
 	}
 }
