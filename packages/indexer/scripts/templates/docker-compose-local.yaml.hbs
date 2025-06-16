@@ -27,6 +27,9 @@ services:
             - ${SUB_COMMAND:-}
         {{#if hasCid}}
             - -f=ipfs://{{cid}}
+            {{#each endpoints}}
+            - --network-endpoint='{{this}}'
+            {{/each}}
         {{else}}
             - -f=/app/{{@key}}.yaml
         {{/if}}

@@ -4,7 +4,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import Handlebars from "handlebars"
-import { getChainCid, getEnv, getValidChains } from "../src/configs"
+import { getChainCid, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
 
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
@@ -40,7 +40,8 @@ const generateNodeServices = () => {
 	}
 
 	validChains.forEach((config, chainName) => {
-	  const cid = getChainCid(chainName)
+		const cid = getChainCid(chainName)
+		const endpoints = getChainEndpoints(chainName)
 
 		const serviceData = {
 			chainName,
@@ -48,8 +49,9 @@ const generateNodeServices = () => {
 			unfinalizedBlocks: config.type === "evm", // Only EVM chains need unfinalized blocks handling
 			config,
 			volumesPath: "../../",
-			hasCid: typeof cid === 'string',
+			hasCid: typeof cid === "string",
 			cid,
+			endpoints,
 		}
 
 		const yaml = serviceTemplate(serviceData)
@@ -73,7 +75,8 @@ const generateDockerComposeLocal = () => {
 	const chainsData: Record<string, any> = {}
 
 	validChains.forEach((config, chainName) => {
-    const cid = getChainCid(chainName)
+		const cid = getChainCid(chainName)
+		const endpoints = getChainEndpoints(chainName)
 
 		chainsData[chainName] = {
 			image: config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE,
@@ -81,8 +84,9 @@ const generateDockerComposeLocal = () => {
 			isSubstrate: config.type === "substrate",
 			networkMode: config.type === "substrate" ? "host" : undefined,
 			config,
-			hasCid: typeof cid === 'string',
+			hasCid: typeof cid === "string",
 			cid,
+			endpoints,
 		}
 	})
 

@@ -121,3 +121,9 @@ export function getChainCid(chain: string): string | null {
 
 	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
 }
+
+export const getChainEndpoints = (chain: string) => {
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	// Expect comma-separated endpoints in env var
+	return process.env[envKey]?.split(",") || []
+}

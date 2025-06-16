@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getChainCid, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainCid, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -59,16 +59,10 @@ const getChainTypesPath = (chain: string) => {
 	return null
 }
 
-const generateEndpoints = (chain: string) => {
-	const envKey = chain.replace(/-/g, "_").toUpperCase()
-	// Expect comma-separated endpoints in env var
-	return process.env[envKey]?.split(",") || []
-}
-
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
-	const endpoints = generateEndpoints(chain)
+	const endpoints = getChainEndpoints(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -127,7 +121,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 }
 
 const generateEvmYaml = async (chain: string, config: Configuration) => {
-	const endpoints = generateEndpoints(chain)
+	const endpoints = getChainEndpoints(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]

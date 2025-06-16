@@ -1,6 +1,9 @@
 - ${SUB_COMMAND:-}
 {{#if hasCid}}
 - -f={{cid}}
+{{#each endpoints}}
+- --network-endpoint='{{this}}'
+{{/each}}
 {{else}}
 - -f=/app/{{chainName}}.yaml
 {{/if}}
