@@ -7,9 +7,12 @@ import {
 	getContract,
 	hexToBytes,
 	http,
+	maxUint256,
+	parseAbi,
 	parseEventLogs,
 	PublicClient,
 	stringToHex,
+	WalletClient,
 } from "viem"
 import { teleport } from "@/utils/tokenGateway"
 import type { HexString } from "@/types"
@@ -24,8 +27,8 @@ import { IndexerClient } from "@/client"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { bscTestnet, gnosisChiado } from "viem/chains"
 import tokenGateway from "@/abis/tokenGateway"
-import { approveTokens } from "./intentGateway.test"
 import { keccakAsU8a } from "@polkadot/util-crypto"
+import erc6160 from "@/abis/erc6160"
 
 // private key for testnet transactions
 const secret_key = process.env.SECRET_PHRASE || ""
@@ -307,6 +310,14 @@ async function setUp() {
 		client: { public: gnosisChiadoPublicClient, wallet: gnosisChiadoWalletClient },
 	})
 
+	const tokenFaucet = getContract({
+		address: "0x17d8cc0859fbA942A7af243c3EBB69AbBfe0a320",
+		abi: parseAbi(["function drip(address token) public"]),
+		client: { public: bscPublicClient, wallet: bscWalletClient },
+	})
+
+	const USDH = "0xA801da100bF16D07F668F4A49E1f71fc54D05177" as HexString
+
 	return {
 		bscTokenGateway,
 		gnosisChiadoTokenGateway,
@@ -335,5 +346,36 @@ async function getAssetDetails(assetId: string, publicClient: PublicClient) {
 	return {
 		erc20,
 		erc6160,
+	}
+}
+
+export async function approveTokens(
+	walletClient: WalletClient,
+	publicClient: PublicClient,
+	tokenAddress: HexString,
+	spender: HexString,
+) {
+	const approval = await publicClient.readContract({
+		abi: erc6160.ABI,
+		address: tokenAddress,
+		functionName: "allowance",
+		args: [walletClient.account?.address as HexString, spender],
+		account: walletClient.account,
+	})
+
+	if (approval == 0n) {
+		console.log("Approving tokens for test")
+		const tx = await walletClient.writeContract({
+			abi: erc6160.ABI,
+			address: tokenAddress,
+			functionName: "approve",
+			args: [spender, maxUint256],
+			chain: walletClient.chain,
+			account: walletClient.account!,
+		})
+
+		console.log("Approved tokens for test:", tx)
+		// Wait for the 5 seconds, to make sure the transaction is mined
+		await new Promise((resolve) => setTimeout(resolve, 5000))
 	}
 }
