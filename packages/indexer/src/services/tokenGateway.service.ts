@@ -4,8 +4,8 @@ import {
 	TeleportStatus,
 	TeleportStatusMetadata,
 	TokenGatewayAssetTeleported,
+	PointsType,
 	ProtocolParticipant,
-	RewardPointsActivityType,
 	CumulativeVolumeUSD,
 } from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
@@ -104,7 +104,7 @@ export class TokenGatewayService {
 				chainId,
 				BigInt(pointsToAward),
 				ProtocolParticipant.USER,
-				RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+				PointsType.TOKEN_TELEPORTED_POINTS,
 				transactionHash,
 				`Points awarded for teleporting token ${teleportParams.assetId} with value ${usdValue.amountValueInUSD} USD`,
 				timestamp,
@@ -168,7 +168,7 @@ export class TokenGatewayService {
 					teleport.sourceChain,
 					BigInt(pointsToDeduct),
 					ProtocolParticipant.USER,
-					RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+					PointsType.TOKEN_TELEPORTED_POINTS,
 					transactionHash,
 					`Points deducted for refunded teleport ${commitment} with value ${teleport.usdValue} USD`,
 					timestamp,
