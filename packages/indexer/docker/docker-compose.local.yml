@@ -27,9 +27,11 @@ services:
             - --multi-chain
             - --unsafe
             - --log-level=info
+            - --historical=timestamp
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
+            - --allow-schema-migration
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s
@@ -140,9 +142,11 @@ services:
             - --multi-chain
             - --unsafe
             - --log-level=info
+            - --historical=timestamp
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
+            - --allow-schema-migration
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s
