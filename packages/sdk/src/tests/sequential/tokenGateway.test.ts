@@ -24,7 +24,7 @@ import { IndexerClient } from "@/client"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { bscTestnet, gnosisChiado } from "viem/chains"
 import tokenGateway from "@/abis/tokenGateway"
-import { approveTokens } from "./sequential/intentGateway.test"
+import { approveTokens } from "./intentGateway.test"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 // private key for testnet transactions
@@ -102,13 +102,7 @@ describe("teleport function", () => {
 	}, 300_000)
 
 	it("should query the order status", async () => {
-		const {
-			bscTokenGateway,
-			gnosisChiadoTokenGateway,
-			bscPublicClient,
-			gnosisChiadoPublicClient,
-			bscWalletClient,
-		} = await setUp()
+		const { bscTokenGateway, bscPublicClient, bscWalletClient } = await setUp()
 		const bscIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
 		const gnosisChiadoIsmpHostAddress = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb" as HexString
 		const query_client = createQueryClient({
