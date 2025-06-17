@@ -174,19 +174,19 @@ export class TokenGatewayService {
 					timestamp,
 				)
 			}
+
+			const teleportStatusMetadata = await TeleportStatusMetadata.create({
+				id: `${commitment}.${status}`,
+				status,
+				chain: `EVM-${chainId}`,
+				timestamp,
+				blockNumber: blockNumber.toString(),
+				transactionHash,
+				teleportId: teleport?.id ?? "",
+				createdAt: timestampToDate(timestamp),
+			})
+
+			await teleportStatusMetadata.save()
 		}
-
-		const teleportStatusMetadata = await TeleportStatusMetadata.create({
-			id: `${commitment}.${status}`,
-			status,
-			chain: `EVM-${chainId}`,
-			timestamp,
-			blockNumber: blockNumber.toString(),
-			transactionHash,
-			teleportId: teleport?.id ?? "",
-			createdAt: timestampToDate(timestamp),
-		})
-
-		await teleportStatusMetadata.save()
 	}
 }

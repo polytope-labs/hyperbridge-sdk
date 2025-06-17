@@ -14,6 +14,11 @@ export async function handleAssetTeleportedEvent(event: AssetTeleportedLog): Pro
 	const chain = getHostStateMachine(chainId)
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
+	if (dest.includes("SUBSTRATE") || dest.includes("KUSAMA")) {
+		logger.info(`Skipping teleport to substrate`)
+		return
+	}
+
 	logger.info(
 		`Asset Teleported Event: ${stringify({
 			to,
