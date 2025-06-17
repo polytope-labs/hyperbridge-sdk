@@ -3,7 +3,7 @@ import stringify from "safe-stable-stringify"
 import { AssetTeleportedLog } from "@/configs/src/types/abi-interfaces/TokenGatewayAbi"
 import { TokenGatewayService } from "@/services/tokenGateway.service"
 import { TeleportStatus } from "@/configs/src/types"
-import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 
 export async function handleAssetTeleportedEvent(event: AssetTeleportedLog): Promise<void> {
 	logger.info(`Asset Teleported Event: ${stringify(event)}`)
@@ -14,8 +14,8 @@ export async function handleAssetTeleportedEvent(event: AssetTeleportedLog): Pro
 	const chain = getHostStateMachine(chainId)
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	if (dest.includes("SUBSTRATE") || dest.includes("KUSAMA")) {
-		logger.info(`Skipping teleport to substrate`)
+	if (isSubstrateChain(dest)) {
+		logger.info(`Skipping teleport to substrate chain: ${dest}`)
 		return
 	}
 

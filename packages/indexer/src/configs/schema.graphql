@@ -69,6 +69,9 @@ enum OrderStatus {
 	REFUNDED
 }
 
+"""
+The status of an asset teleported via the Token Gateway
+"""
 enum TeleportStatus {
 	"""
 	The asset has been teleported to another chain

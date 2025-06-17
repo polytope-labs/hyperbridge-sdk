@@ -65,15 +65,15 @@ export class TokenGatewayService {
 		let teleport = await TokenGatewayAssetTeleported.get(teleportParams.commitment)
 
 		const tokenDetails = await this.getAssetDetails(teleportParams.assetId.toString())
-		const tokenAddress = tokenDetails.is_erc20 ? tokenDetails.erc20_address : tokenDetails.erc6160_address
+		const tokenAddress = tokenDetails.is_erc20
+			? tokenDetails.erc20_address
+			: tokenDetails.erc6160_address
+				? tokenDetails.erc6160_address
+				: "0x0000000000000000000000000000000000000000"
 		const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
 		const decimals = tokenDetails.is_erc20 || tokenDetails.is_erc6160 ? await tokenContract.decimals() : 18
 
-		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(
-			teleportParams.assetId.toString(),
-			teleportParams.amount,
-			decimals,
-		)
+		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(tokenAddress, teleportParams.amount, decimals)
 
 		if (!teleport) {
 			teleport = await TokenGatewayAssetTeleported.create({
