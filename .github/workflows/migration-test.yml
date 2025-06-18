@@ -225,8 +225,8 @@ jobs:
 
                       total_count=$(echo "$metadata_result" | jq -r '.data._metadatas.totalCount // 0' 2>/dev/null)
 
-                      if [[ "$total_count" -gt 1 ]]; then
-                        echo "Migrated schema indexing successful: Found $total_count Metadata"
+                      if [[ "$metadata_result" == *"ipfs://"* ]]; then
+                        echo "Migrated schema indexing successful with IPFS link: Found $total_count Metadata"
                         break
                       fi
                     else
