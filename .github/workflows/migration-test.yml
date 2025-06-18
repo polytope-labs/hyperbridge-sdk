@@ -225,9 +225,19 @@ jobs:
 
                       total_count=$(echo "$metadata_result" | jq -r '.data._metadatas.totalCount // 0' 2>/dev/null)
 
-                      if [[ "$metadata_result" == *"ipfs://"* ]]; then
-                        echo "Migrated schema indexing successful with IPFS link: Found $total_count Metadata"
-                        break
+                      if [[ "$total_count" -gt 0 ]]; then
+                        deployments=$(echo "$metadata_result" | jq -r '.data._metadatas.nodes[].deployments // empty' 2>/dev/null)
+                        ipfs_count=$(echo "$deployments" | grep -c "ipfs://" 2>/dev/null || echo "0")
+
+                        if [[ "$ipfs_count" -eq "$total_count"]]; then
+                          echo "Migrated schema indexing successful with IPFS link: Found $total_count Metadata"
+                          break
+                        elif [[ "$ipfs_count" -gt 0 && "$ipfs_count" -lt "$total_count" ]]; then
+                          echo "Partial IPFS migration: $ipfs_count/$total_count deployments have IPFS links"
+                          echo "Waiting for remaining deployments to migrate..."
+                        else
+                          echo "No IPFS links found yet, migration still in progress..."
+                        fi
                       fi
                     else
                       http_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/graphql 2>/dev/null || echo "000")
