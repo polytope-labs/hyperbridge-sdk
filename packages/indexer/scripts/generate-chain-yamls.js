@@ -13,6 +13,8 @@ const { RpcWebSocketClient } = require("rpc-websocket-client")
 const { hexToNumber } = require("viem")
 const configs = require(root + `/src/configs/config-${currentEnv}.json`)
 
+const chainBlockNumber = {};
+
 const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
@@ -35,10 +37,24 @@ const generateEndpoints = (chain) => {
 	return endpoints.map((endpoint) => `    - '${endpoint.trim()}'`).join("\n")
 }
 
+const getChainCid = (chain) => {
+	const filePath = path.resolve(process.cwd(), `.${chain}-cid`)
+	if (!fs.existsSync(filePath)) {
+		return null
+	}
+
+	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
+}
+
+const getParentSection = (cid, blockNumber) => {
+ return cid ? `\nparent:\n    untilBlock: ${blockNumber + 10}\n    reference: ${cid}` : ""
+}
+
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
+	const cid = getChainCid(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -47,6 +63,9 @@ const generateSubstrateYaml = async (chain, config) => {
 	const header = await rpc.call("chain_getHeader", [])
 	const blockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
+	const parentSection = getParentSection(cid, blockNumber)
+
+	chainBlockNumber[chain] = { blockNumber, cid };
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = config.stateMachineId === "KUSAMA-4009" || config.stateMachineId === "POLKADOT-3367"
@@ -73,11 +92,11 @@ runner:
     name: '@subql/query'
     version: '*'
 schema:
-  file: ./schema.graphql
+  file: ./src/configs/schema.graphql
 network:
   chainId: '${config.chainId}'
   endpoint:
-${endpoints}${chainTypesSection}
+${endpoints}${chainTypesSection}${parentSection}
 dataSources:
   - kind: substrate/Runtime
     startBlock: ${blockNumber}
@@ -125,6 +144,7 @@ repository: 'https://github.com/polytope-labs/hyperbridge'`
 
 const generateEvmYaml = async (chain, config) => {
 	const endpoints = generateEndpoints(chain)
+	const cid = getChainCid(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -142,6 +162,9 @@ const generateEvmYaml = async (chain, config) => {
 	})
 	const data = await response.json()
 	const blockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
+	const parentSection = getParentSection(cid, blockNumber)
+
+  chainBlockNumber[chain] = { blockNumber, cid };
 
 	return `# // Auto-generated , DO NOT EDIT
 specVersion: 1.0.0
@@ -156,11 +179,11 @@ runner:
     name: '@subql/query'
     version: '*'
 schema:
-  file: ./schema.graphql
+  file: ./src/configs/schema.graphql
 network:
   chainId: '${config.chainId}'
   endpoint:
-${endpoints}
+${endpoints}${parentSection}
 dataSources:
   - kind: ethereum/Runtime
     startBlock: ${blockNumber}
@@ -169,9 +192,9 @@ dataSources:
       address: '${config.contracts.ethereumHost}'
     assets:
       ethereumHost:
-        file: ./abis/EthereumHost.abi.json
+        file: ./src/configs/abis/EthereumHost.abi.json
       chainLinkAggregatorV3:
-        file: ./abis/ChainLinkAggregatorV3.abi.json
+        file: ./src/configs/abis/ChainLinkAggregatorV3.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -217,7 +240,7 @@ dataSources:
       address: '${config.contracts.erc6160ext20}'
     assets:
       erc6160ext20:
-        file: ./abis/ERC6160Ext20.abi.json
+        file: ./src/configs/abis/ERC6160Ext20.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -233,7 +256,7 @@ dataSources:
   #     address: '0xA801da100bF16D07F668F4A49E1f71fc54D05177'
   #   assets:
   #     handlerV1:
-  #       file: ./abis/HandlerV1.abi.json
+  #       file: ./src/configs/abis/HandlerV1.abi.json
   #   mapping:
   #     file: ./dist/index.js
   #     handlers:
@@ -267,9 +290,9 @@ async function generateAllChainYamls() {
 				? await generateSubstrateYaml(chain, config)
 				: await generateEvmYaml(chain, config)
 
-		const filePath = root + `/src/configs/${chain}.yaml`
+		const filePath = root + `/${chain}.yaml`
 		fs.writeFileSync(filePath, yaml)
-		console.log(`Generated ${root}/src/configs/${chain}.yaml`)
+		console.log(`Generated ${root}/${chain}.yaml`)
 	}
 }
 
@@ -283,7 +306,7 @@ query:
 projects:
 ${projects}`
 
-	fs.writeFileSync(root + "/src/configs/subquery-multichain.yaml", yaml)
+	fs.writeFileSync(root + "/subquery-multichain.yaml", yaml)
 	console.log("Generated subquery-multichain.yaml")
 }
 
@@ -301,7 +324,7 @@ const generateSubstrateWsJson = () => {
 		}
 	})
 
-	fs.writeFileSync(root + "/src/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
+	fs.writeFileSync(root + "/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
 	console.log("Generated substrate-ws.json")
 }
 
@@ -317,7 +340,7 @@ const generateChainIdsByGenesis = () => {
 	const chainIdsByGenesisContent = `// Auto-generated, DO NOT EDIT
 export const CHAIN_IDS_BY_GENESIS = ${JSON.stringify(chainIdsByGenesis, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
+	fs.writeFileSync(root + "/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
 	console.log("Generated chain-ids-by-genesis.ts")
 }
 
@@ -334,8 +357,16 @@ const generateChainsByIsmpHost = () => {
 	const chainsByIsmpHostContent = `// Auto-generated, DO NOT EDIT
 export const CHAINS_BY_ISMP_HOST = ${JSON.stringify(chainsByIsmpHost, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chains-by-ismp-host.ts", chainsByIsmpHostContent)
+	fs.writeFileSync(root + "/chains-by-ismp-host.ts", chainsByIsmpHostContent)
 	console.log("Generated chains-by-ismp-host.ts")
+}
+
+const generateChainBlockNumber = () => {
+ 	const chainsBlockNumber = `// Auto-generated, DO NOT EDIT
+export const CHAINS_BLOCK_NUMBER = ${JSON.stringify(chainBlockNumber, null, 2)}`
+
+	fs.writeFileSync(root + "/chains-block-number.ts", chainsBlockNumber)
+	console.log("Generated chains-block-number.ts")
 }
 
 generateAllChainYamls()
@@ -344,6 +375,7 @@ generateAllChainYamls()
 		generateSubstrateWsJson()
 		generateChainIdsByGenesis()
 		generateChainsByIsmpHost()
+		generateChainBlockNumber()
 		process.exit(0)
 	})
 	.catch((err) => {

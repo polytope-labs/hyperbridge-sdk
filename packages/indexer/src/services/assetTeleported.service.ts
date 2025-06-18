@@ -1,4 +1,4 @@
-import { AssetTeleported } from "@/configs/src/types/models"
+import { AssetTeleported } from "@/types/models"
 
 // Arguments for creating AssetTeleported records
 export interface IAssetTeleportedArgs {

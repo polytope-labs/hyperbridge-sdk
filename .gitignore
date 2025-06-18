@@ -14,12 +14,18 @@ package-lock.json
 
 packages/indexer/configs/*.yaml
 packages/indexer/src/configs/*.yaml
+packages/indexer/src/types/*
+!packages/indexer/src/types/global.d.ts
+!packages/indexer/src/types/network.types.ts
+packages/indexer/*.yaml
+!packages/indexer/pnpm-lock.yaml
 packages/indexer/configs/src/types*
 packages/indexer/src/configs/src/types*
 packages/indexer/docker/testnet/
 packages/indexer/docker/mainnet/
 .claude/
 
+packages/filler/src/config/chain.ts
 # Compiled Java class files
 *.class
 
@@ -75,7 +81,12 @@ Thumbs.db
 .env*
 .tsconfig
 .tsbuildinfo
+.*-cid
 
+evm-ws.json
 substrate-ws.json
 chain-ids-by-genesis.ts
 chains-by-ismp-host.ts
+chains-block-number.ts
+
+packages/filler/src/config/chain.ts

@@ -1,4 +1,4 @@
-import { StateMachineUpdateEvent } from "@/configs/src/types"
+import { StateMachineUpdateEvent } from "@/types"
 import { fetchStateCommitmentsEVM, fetchStateCommitmentsSubstrate, getStateId } from "@/utils/state-machine.helper"
 
 // Arguments to functions that create StateMachineUpdated events

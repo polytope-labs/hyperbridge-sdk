@@ -36,7 +36,7 @@
 		"format": "prettier --write \"**/*.ts\"",
 		"clean": "rm -rf dist node_modules",
 		"server": "docker run -d --name graphql-server -p 3000:3000 --restart always --env-file ../../.env.$ENV subquerynetwork/subql-query:latest --name=app --playground",
-		"codegen:subql": "subql codegen -f src/configs",
+		"codegen:subql": "subql codegen -f .",
 		"codegen:yamls": "node scripts/generate-chain-yamls.js && node scripts/generate-compose.js",
 		"start": "./scripts/up.sh ./docker/$ENV",
 		"down": "./scripts/down.sh ./docker/$ENV",
