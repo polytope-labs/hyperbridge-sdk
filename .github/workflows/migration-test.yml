@@ -229,7 +229,7 @@ jobs:
                         deployments=$(echo "$metadata_result" | jq -r '.data._metadatas.nodes[].deployments // empty' 2>/dev/null)
                         ipfs_count=$(echo "$deployments" | grep -c "ipfs://" 2>/dev/null || echo "0")
 
-                        if [[ "$ipfs_count" -eq "$total_count"]]; then
+                        if [[ "$ipfs_count" -eq "$total_count" ]]; then
                           echo "Migrated schema indexing successful with IPFS link: Found $total_count Metadata"
                           break
                         elif [[ "$ipfs_count" -gt 0 && "$ipfs_count" -lt "$total_count" ]]; then
