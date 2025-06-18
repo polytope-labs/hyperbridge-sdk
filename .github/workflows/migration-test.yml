@@ -188,7 +188,7 @@ jobs:
 
                   pnpm build
 
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local rm -fsv > indexer_migration.log 2>&1 &
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration.log 2>&1 &
                   echo $! > indexer_migration_pid.txt
                   echo "Migration indexer started with PID: $(cat indexer_migration_pid.txt)"
 

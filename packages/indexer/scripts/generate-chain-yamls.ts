@@ -42,8 +42,8 @@ const getParentManifest = (blockNumber: number, chain: string): ParentManifest |
 	if (!chainCid) return null
 
 	return {
-		untilBlock: blockNumber,
-		reference: chainCid,
+		untilBlock: blockNumber + 100,
+		reference: '/app',
 	}
 }
 
