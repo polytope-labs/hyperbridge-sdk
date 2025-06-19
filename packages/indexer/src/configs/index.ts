@@ -127,3 +127,23 @@ export const getChainEndpoints = (chain: string) => {
 	// Expect comma-separated endpoints in env var
 	return process.env[envKey]?.split(",") || []
 }
+
+interface ChainBlockNumber {
+  blockNumber: number;
+  cid: string
+}
+
+/**
+ * get the previously published blockNumber and cid
+ * @param chain
+ * @returns
+ */
+export const getChainBlockNumber = async (chain: string) => {
+  try {
+    const { CHAINS_BLOCK_NUMBER } = await import('~/chains-block-number')
+
+    return CHAINS_BLOCK_NUMBER[chain] as ChainBlockNumber
+  } catch {
+    return { blockNumber: null, cid: null }
+  }
+}

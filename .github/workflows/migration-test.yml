@@ -17,7 +17,7 @@ on:
             - ".github/workflows/migration-test.yml"
 
 env:
-    OLD_COMMIT_REF: '260cc91113d234a9beb5355234eeaee6340b7320'
+    OLD_COMMIT_REF: '3ed9ccd25fe9f026cb7fe7ad6143192888785dba'
 
 jobs:
     schema-migration-test:
@@ -157,13 +157,25 @@ jobs:
                   echo "Final verification details:"
                   echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
 
+            # Step 3: Publish old schema manifest
+            - name: Publish new schema manifest
+              env:
+                  ENV: local
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+              run: |
+                  cd packages/indexer
+
+                  ./node_modules/.bin/subql publish
+
+                  pnpm build
+
             - name: Stop running indexer (old schema)
               run: |
                   cd packages/indexer
 
                   docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
 
-            # Step 3: Checkout new schema and perform migration
+            # Step 4: Checkout new schema and perform migration
             - name: Checkout new schema
               run: |
                   git stash push -m "Stash old schema changes" || true
@@ -261,7 +273,7 @@ jobs:
                   # echo "Final verification details:"
                   # echo "$metadata_result" | jq '.' 2>/dev/null || echo "$metadata_result"
 
-            # Step 4: Run SDK test suites
+            # Step 5: Run SDK test suites
             - name: Run SDK tests
               run: pnpm --filter="hyperbridge-sdk" test
 
