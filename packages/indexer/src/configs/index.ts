@@ -142,7 +142,12 @@ export const getChainBlockNumber = async (chain: string) => {
   try {
     const { CHAINS_BLOCK_NUMBER } = await import('~/chains-block-number')
 
-    return CHAINS_BLOCK_NUMBER[chain] as ChainBlockNumber
+    const values = CHAINS_BLOCK_NUMBER[chain]
+    if (!values) {
+      throw new Error(`No block number configured for ${chain}`)
+    }
+
+    return values as ChainBlockNumber
   } catch {
     return { blockNumber: null, cid: null }
   }

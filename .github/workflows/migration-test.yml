@@ -158,7 +158,7 @@ jobs:
                   echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
 
             # Step 3: Publish old schema manifest
-            - name: Publish new schema manifest
+            - name: Publish old schema manifest
               env:
                   ENV: local
                   SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
