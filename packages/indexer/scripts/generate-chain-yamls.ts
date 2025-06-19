@@ -62,7 +62,7 @@ const getChainTypesPath = (chain: string) => {
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = getChainEndpoints(chain)
-	let { blockNumber, cid } = await getChainBlockNumber(chain)
+	let { blockNumber, cid } = getChainBlockNumber(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -125,7 +125,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 
 const generateEvmYaml = async (chain: string, config: Configuration) => {
 	const endpoints = getChainEndpoints(chain)
-	let { blockNumber, cid } = await getChainBlockNumber(chain)
+	let { blockNumber, cid } = getChainBlockNumber(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]

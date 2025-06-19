@@ -129,26 +129,40 @@ export const getChainEndpoints = (chain: string) => {
 }
 
 interface ChainBlockNumber {
-  blockNumber: number;
-  cid: string
+  blockNumber: number | null;
+  cid: string | null
 }
+
+const getChainBlockNumberConfig = (): Map<string, ChainBlockNumber> => {
+  try {
+    const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
+    if (!fs.existsSync(configFilePath)) {
+      throw new Error(`Configuration file: '${configFilePath}' not found`)
+    }
+
+    const configurations = JSON.parse(fs.readFileSync(configFilePath, { encoding: "utf8" }).trim())
+    if (!configurations) {
+      throw new Error(`Configuration not found`)
+    }
+
+    return new Map(Object.entries(configurations))
+  } catch (error) {
+    console.error(error)
+    return new Map()
+  }
+}
+
+const chainsBlockNumber = getChainBlockNumberConfig()
 
 /**
  * get the previously published blockNumber and cid
  * @param chain
  * @returns
  */
-export const getChainBlockNumber = async (chain: string) => {
-  try {
-    const { CHAINS_BLOCK_NUMBER } = await import('~/chains-block-number')
-
-    const values = CHAINS_BLOCK_NUMBER[chain]
-    if (!values) {
-      throw new Error(`No block number configured for ${chain}`)
-    }
-
-    return values as ChainBlockNumber
-  } catch {
+export const getChainBlockNumber = (chain: string): ChainBlockNumber => {
+  if (!chainsBlockNumber.has(chain)) {
     return { blockNumber: null, cid: null }
   }
+
+  return chainsBlockNumber.get(chain)!
 }
