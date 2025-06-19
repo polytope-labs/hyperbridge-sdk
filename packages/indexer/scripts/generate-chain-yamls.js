@@ -46,8 +46,33 @@ const getChainCid = (chain) => {
 	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
 }
 
-const getParentSection = (cid, blockNumber) => {
- return cid ? `\nparent:\n    untilBlock: ${blockNumber + 10}\n    reference: ${cid}` : ""
+const getChainBlockNumberConfig = () => {
+  try {
+    const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
+    if (!fs.existsSync(configFilePath)) {
+      throw new Error(`Configuration file: '${configFilePath}' not found`)
+    }
+
+    const configurations = JSON.parse(fs.readFileSync(configFilePath, { encoding: "utf8" }).trim())
+    if (!configurations) {
+      throw new Error(`Configuration for chain '${chain}' not found`)
+    }
+
+    return new Map(Object.entries(configurations))
+  } catch (error) {
+    console.error(error)
+    return new Map()
+  }
+}
+
+const chainsBlockNumber = getChainBlockNumberConfig()
+
+const getChainBlockNumber = (chain) => {
+  if (!chainsBlockNumber.has(chain)) {
+    return { blockNumber: null, cid: null }
+  }
+
+  return chainsBlockNumber.get(chain)
 }
 
 // Generate chain-specific YAML files
@@ -55,15 +80,19 @@ const generateSubstrateYaml = async (chain, config) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = generateEndpoints(chain)
 	const cid = getChainCid(chain)
+	let { blockNumber } = getChainBlockNumber(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
 	const rpc = new RpcWebSocketClient()
 	await rpc.connect(rpcUrl)
 	const header = await rpc.call("chain_getHeader", [])
-	const blockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
+	const latestBlockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
 	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
-	const parentSection = getParentSection(cid, blockNumber)
+
+	if (!blockNumber) {
+	  blockNumber = latestBlockNumber;
+	}
 
 	chainBlockNumber[chain] = { blockNumber, cid };
 
@@ -96,7 +125,7 @@ schema:
 network:
   chainId: '${config.chainId}'
   endpoint:
-${endpoints}${chainTypesSection}${parentSection}
+${endpoints}${chainTypesSection}
 dataSources:
   - kind: substrate/Runtime
     startBlock: ${blockNumber}
@@ -145,6 +174,7 @@ repository: 'https://github.com/polytope-labs/hyperbridge'`
 const generateEvmYaml = async (chain, config) => {
 	const endpoints = generateEndpoints(chain)
 	const cid = getChainCid(chain)
+	let { blockNumber } = getChainBlockNumber(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -161,8 +191,11 @@ const generateEvmYaml = async (chain, config) => {
 		}),
 	})
 	const data = await response.json()
-	const blockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
-	const parentSection = getParentSection(cid, blockNumber)
+	const latestBlockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
+
+	if (!blockNumber) {
+	  blockNumber = latestBlockNumber;
+	}
 
   chainBlockNumber[chain] = { blockNumber, cid };
 
@@ -183,7 +216,7 @@ schema:
 network:
   chainId: '${config.chainId}'
   endpoint:
-${endpoints}${parentSection}
+${endpoints}
 dataSources:
   - kind: ethereum/Runtime
     startBlock: ${blockNumber}
@@ -362,11 +395,8 @@ export const CHAINS_BY_ISMP_HOST = ${JSON.stringify(chainsByIsmpHost, null, 2)}`
 }
 
 const generateChainBlockNumber = () => {
- 	const chainsBlockNumber = `// Auto-generated, DO NOT EDIT
-export const CHAINS_BLOCK_NUMBER = ${JSON.stringify(chainBlockNumber, null, 2)}`
-
-	fs.writeFileSync(root + "/chains-block-number.ts", chainsBlockNumber)
-	console.log("Generated chains-block-number.ts")
+	fs.writeFileSync(root + "/chains-block-number.json", JSON.stringify(chainBlockNumber, null, 2))
+	console.log("Generated chains-block-number.json")
 }
 
 generateAllChainYamls()

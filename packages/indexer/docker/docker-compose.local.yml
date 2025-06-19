@@ -15,8 +15,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
             - ../dist:/app/dist
+            - ../src/configs:/app/src/configs
+            - ../hyperbridge-gargantua.yaml:/app/hyperbridge-gargantua.yaml
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/hyperbridge-gargantua.yaml
@@ -50,8 +51,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
             - ../dist:/app/dist
+            - ../src/configs:/app/src/configs
+            - ../bsc-chapel.yaml:/app/bsc-chapel.yaml
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/bsc-chapel.yaml
@@ -87,8 +89,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
             - ../dist:/app/dist
+            - ../src/configs:/app/src/configs
+            - ../gnosis-chiado.yaml:/app/gnosis-chiado.yaml
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/gnosis-chiado.yaml

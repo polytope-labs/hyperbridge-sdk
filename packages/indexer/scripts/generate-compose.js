@@ -17,15 +17,6 @@ const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
 const QUERY_IMAGE = "subquerynetwork/subql-query:v2.21.0"
 const POSTGRES_IMAGE = "postgres:14-alpine"
 
-const getChainCid = (chain) => {
-	const filePath = path.resolve(process.cwd(), `.${chain}-cid`)
-	if (!fs.existsSync(filePath)) {
-		return null
-	}
-
-	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
-}
-
 const generateNodeServices = () => {
 	const unfinalized = `
       - --historical=timestamp
@@ -87,16 +78,10 @@ const generateLocalNodeServices = () => {
 	// Generate node services for each chain
 	const nodeServices = validChains.map(([chain, config]) => {
 		const image = config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE
-		const envKey = chain.replace(/-/g, "_").toUpperCase()
 		const serviceName = `subquery-node-${chain}-local`
 
 		const networkMode = config.type === "substrate" ? "\n        network_mode: host" : ""
 		const dbHost = config.type === "substrate" ? "0.0.0.0" : "${DB_HOST}"
-
-    const cid = getChainCid(chain)
-		const flag = cid ? `\n            - -f='ipfs://${cid}'` : `\n            - -f=/app/${chain}.yaml`
-		const networkEndpoint = cid ? `\n            - --network-endpoint='\${${envKey}}'` : ''
-		const configsDirectory = cid ? '' : `\n            - ../src/configs:/app/src/configs\n            - ../${chain}.yaml:/app/${chain}.yaml`
 
 		const unfinalized = `
             - --historical=timestamp
@@ -118,9 +103,12 @@ const generateLocalNodeServices = () => {
                 condition: service_healthy
 
         volumes:
-            - ../dist:/app/dist${configsDirectory}
+            - ../dist:/app/dist
+            - ../src/configs:/app/src/configs
+            - ../${chain}.yaml:/app/${chain}.yaml
         command:
-            - \${SUB_COMMAND:-}${flag}${networkEndpoint}
+            - \${SUB_COMMAND:-}
+            - -f=/app/${chain}.yaml
             - --db-schema=app
             - --workers=\${SUBQL_WORKERS:-6}
             - --batch-size=\${SUBQL_BATCH_SIZE:-10}
@@ -128,7 +116,7 @@ const generateLocalNodeServices = () => {
             - --unsafe
             - --log-level=info${config.type === "substrate" ? "\n            - --block-confirmations=0" : unfinalized}
             - --store-cache-async=false
-            - --store-cache-threshold=1${cid ? "\n            - --allow-schema-migration" : ""}
+            - --store-cache-threshold=1
         healthcheck:
             test: ["CMD", "curl", "-f", "http://${serviceName}:3000/ready"]
             interval: 3s
