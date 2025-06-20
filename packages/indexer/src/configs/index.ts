@@ -147,7 +147,6 @@ const getChainBlockNumberConfig = (): Map<string, ChainBlockNumber> => {
 
     return new Map(Object.entries(configurations))
   } catch (error) {
-    console.error(error)
     return new Map()
   }
 }

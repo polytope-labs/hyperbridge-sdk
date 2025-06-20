@@ -49,7 +49,7 @@ const getParentManifest = (blockNumber: number, chainCid: string | null): Parent
 const getChainTypesPath = (chain: string) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
-	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
+	const potentialPath = `./chaintypes/${baseChainName}.json`
 
 	// Check if file exists
 	if (fs.existsSync(potentialPath)) {

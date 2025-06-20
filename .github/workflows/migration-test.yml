@@ -200,6 +200,7 @@ jobs:
                   }
 
                   echo "Fetching metadata tables..."
+                  echo ""
 
                   tables_result=$(run_query "SELECT tablename FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'")
                   if [ $? -ne 0 ]; then
@@ -245,6 +246,7 @@ jobs:
                       else
                           echo "❌ Failed to update $chain_name"
                       fi
+                      echo ""
                   done <<< "$tables_result"
 
                   echo "Deployment updates completed!"
@@ -366,11 +368,12 @@ jobs:
               if: success()
               run: |
                   echo "=== Schema Migration Test Summary ==="
-                  echo "✅ Old schema indexer started successfully"
-                  echo "✅ Indexed data with old schema"
-                  echo "✅ Schema migration completed successfully"
-                  echo "✅ New schema indexer running and stable"
-                  echo "✅ SDK test suites passed"
+                  echo "Old schema indexer started successfully"
+                  echo "Indexed data with old schema"
+                  echo "Schema migration completed successfully"
+                  echo "New schema indexer running and stable"
+                  echo "SDK test suites passed"
+                  echo ""
                   echo "Migration from commit $OLD_COMMIT_REF to ${{ github.sha }} successful!"
 
             - name: Show indexer logs on failure

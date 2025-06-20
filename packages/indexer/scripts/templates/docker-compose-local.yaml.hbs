@@ -23,6 +23,7 @@ services:
         {{#unless hasCid}}
             - ../{{@key}}.yaml:/app/{{@key}}.yaml
         {{/unless}}
+            - ../chaintypes:/app/chaintypes
             - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
