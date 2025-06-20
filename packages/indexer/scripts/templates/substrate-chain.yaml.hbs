@@ -5,10 +5,6 @@ parent:
   untilBlock: {{parent.untilBlock}}
   reference: '{{parent.reference}}'
 {{/if}}
-{{#if chainTypesConfig}}
-  chaintypes:
-    file: {{chainTypesConfig}}
-{{/if}}
 dataSources:
   - kind: substrate/Runtime
     startBlock: {{blockNumber}}
