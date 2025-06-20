@@ -33,6 +33,7 @@
 	},
 	"scripts": {
 		"prepack": "rm -rf dist && npm run build",
+		"prebuild": "tsc src/substrate-chaintypes/hyperbridge.ts --outDir dist/substrate-chaintypes/",
 		"test": "jest --runInBand --detectOpenHandles",
 		"format": "prettier --write \"**/*.ts\"",
 		"clean": "rm -rf dist node_modules",

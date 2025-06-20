@@ -17,7 +17,7 @@ on:
             - ".github/workflows/migration-test.yml"
 
 env:
-    OLD_COMMIT_REF: 'fb8f61aa1efddaadea2c13c380cb9bca622b2e02'
+    OLD_COMMIT_REF: '25211a1a533ebb9e3390f76fe4d15bddecfa27af'
 
 jobs:
     schema-migration-test:
