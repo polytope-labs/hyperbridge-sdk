@@ -71,6 +71,8 @@ const generateDockerComposeLocal = () => {
 
 	const dockerDir = path.join(root, "docker")
 
+  const hasProvisionDatabase = Boolean(process.env.HAS_PROVISIONED_DB);
+
 	// Prepare chains data for template
 	const chainsData: Record<string, any> = {}
 
@@ -90,7 +92,7 @@ const generateDockerComposeLocal = () => {
 		}
 	})
 
-	const yaml = dockerComposeLocalTemplate({ chains: chainsData })
+	const yaml = dockerComposeLocalTemplate({ chains: chainsData, hasProvisionDatabase })
 	const filePath = path.join(dockerDir, "docker-compose.local.yml")
 
 	fs.writeFileSync(filePath, yaml)

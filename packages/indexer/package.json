@@ -92,9 +92,6 @@
 		"tsx": "^4.19.4",
 		"typescript": "latest"
 	},
-	"exports": {
-		"./substrate-chaintypes/hyperbridge": "./src/substrate-chaintypes/hyperbridge.ts"
-	},
 	"publishConfig": {
 		"access": "public"
 	}
