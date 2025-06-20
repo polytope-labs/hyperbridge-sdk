@@ -355,9 +355,12 @@ jobs:
                   # echo "Final verification details:"
                   # echo "$metadata_result" | jq '.' 2>/dev/null || echo "$metadata_result"
 
-            # Step 6: Run SDK test suites
+            # Step 6: Run test suites
             - name: Run SDK tests
               run: pnpm --filter="hyperbridge-sdk" test
+
+            - name: Run Intent Filler tests
+              run: pnpm --filter="filler" test
 
             - name: Show migration summary
               if: success()
