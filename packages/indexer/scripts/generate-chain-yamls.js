@@ -19,7 +19,7 @@ const getChainTypesPath = (chain) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
 
-	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
+	const potentialPath = `./chaintypes/${baseChainName}.json`
 
 	// Check if file exists
 	if (fs.existsSync(potentialPath)) {
@@ -60,7 +60,6 @@ const getChainBlockNumberConfig = () => {
 
     return new Map(Object.entries(configurations))
   } catch (error) {
-    console.error(error)
     return new Map()
   }
 }
@@ -88,7 +87,7 @@ const generateSubstrateYaml = async (chain, config) => {
 	await rpc.connect(rpcUrl)
 	const header = await rpc.call("chain_getHeader", [])
 	const latestBlockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
-	const chainTypesSection = chainTypesConfig ? `\n  chaintypes:\n    file: ${chainTypesConfig}` : ""
+	const chainTypesSection = chainTypesConfig ? `  chaintypes:\n    file: ${chainTypesConfig}` : ""
 
 	if (!blockNumber) {
 	  blockNumber = latestBlockNumber;
@@ -125,7 +124,8 @@ schema:
 network:
   chainId: '${config.chainId}'
   endpoint:
-${endpoints}${chainTypesSection}
+${endpoints}
+${chainTypesSection}
 dataSources:
   - kind: substrate/Runtime
     startBlock: ${blockNumber}

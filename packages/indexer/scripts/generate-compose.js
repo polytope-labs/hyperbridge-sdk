@@ -41,8 +41,10 @@ const generateNodeServices = () => {
       DB_HOST: \${DB_HOST}
       DB_PORT: \${DB_PORT}
     volumes:
-      - ../../src/configs:/app
-      - ../../dist:/app/dist
+      - ../dist:/app/dist
+      - ../src/configs:/app/src/configs
+      - ../${chain}.yaml:/app/${chain}.yaml
+      - ../chaintypes:/app/chaintypes
     command:
       - \${SUB_COMMAND:-}
       - -f=/app/${chain}.yaml
@@ -51,8 +53,7 @@ const generateNodeServices = () => {
       - --batch-size=\${SUBQL_BATCH_SIZE:-100}
       - --multi-chain
       - --unsafe
-      - --log-level=info${config.type === "substrate" ? "" : unfinalized}
-      - --store-cache-async=true
+      - --log-level=info${config.type === "substrate" ? "\n      - --block-confirmations=0" : unfinalized}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://subquery-node-${chain}:3000/ready']
       interval: 3s
@@ -106,6 +107,7 @@ const generateLocalNodeServices = () => {
             - ../dist:/app/dist
             - ../src/configs:/app/src/configs
             - ../${chain}.yaml:/app/${chain}.yaml
+            - ../chaintypes:/app/chaintypes
         command:
             - \${SUB_COMMAND:-}
             - -f=/app/${chain}.yaml
