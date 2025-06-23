@@ -75,9 +75,9 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
 
 	const parent = getParentManifest(latestBlockNumber, cid)
-  if (!blockNumber) {
-    blockNumber = latestBlockNumber
-  }
+	if (!blockNumber) {
+		blockNumber = latestBlockNumber
+	}
 
 	const templateData = {
 		name: `${chain}-chain`,
@@ -145,9 +145,9 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 	const latestBlockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
 
 	const parent = getParentManifest(latestBlockNumber, cid)
-  if (!blockNumber) {
-    blockNumber = latestBlockNumber
-  }
+	if (!blockNumber) {
+		blockNumber = latestBlockNumber
+	}
 
 	const templateData = {
 		name: chain,

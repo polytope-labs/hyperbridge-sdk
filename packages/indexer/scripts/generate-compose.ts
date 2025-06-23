@@ -71,7 +71,7 @@ const generateDockerComposeLocal = () => {
 
 	const dockerDir = path.join(root, "docker")
 
-  const hasProvisionDatabase = Boolean(process.env.HAS_PROVISIONED_DB);
+	const hasProvisionDatabase = Boolean(process.env.HAS_PROVISIONED_DB)
 
 	// Prepare chains data for template
 	const chainsData: Record<string, any> = {}
