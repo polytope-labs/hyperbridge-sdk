@@ -17,7 +17,7 @@ on:
             - ".github/workflows/migration-test.yml"
 
 env:
-    OLD_COMMIT_REF: 'fcee4b2cdd8224ccab618f8afd1f7fc09e5060e8'
+    OLD_COMMIT_REF: "fcee4b2cdd8224ccab618f8afd1f7fc09e5060e8"
 
 jobs:
     schema-migration-test:
@@ -28,7 +28,7 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
               with:
-                  fetch-depth: 0  # Fetch all history for git operations
+                  fetch-depth: 0 # Fetch all history for git operations
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
@@ -57,7 +57,6 @@ jobs:
                   CERE_LOCAL=${{ secrets.CERE_RPC_URL }}
                   INDEXER_URL=${{ secrets.INDEXER_URL }}
                   PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-                  SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
                   PING_MODULE_ADDRESS: "0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
                   TOKEN_GATEWAY_ADDRESS: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
                   DB_USER=postgres
