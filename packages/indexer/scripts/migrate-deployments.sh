@@ -55,30 +55,31 @@ check_database_state() {
     fi
 
     if [[ -n "$DB_PASS" && -n "$DB_DATABASE" && -n "$DB_PORT" && -n "$DB_USER" ]]; then
-        local table_count
-        table_count=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c \
-            "SELECT COUNT(*) FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'" 2>/dev/null || echo "0")
+        local tables
+        tables=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c \
+            "SELECT tablename::text FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'" 2>/dev/null || echo "0")
 
-        if [[ "$table_count" -gt 0 ]]; then
-            echo "Found $table_count metadata tables in database"
+        if [[ "${#tables[@]}" -eq 0 ]]; then
+            echo "No metadata table found - fresh database setup"
+            return 0 # Fresh setup
+        fi
 
-            # Check if deployments are already set
+        echo "$tables" | while read -r table; do
+            echo "Found $table metadata table in database"
+
             local deployment_count
             deployment_count=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c \
-                "SELECT COUNT(*) FROM app._metadata_* WHERE key = 'deployments' AND value::text LIKE '%ipfs://%'" 2>/dev/null || echo "0")
+                "SELECT COUNT(*) FROM app.$table WHERE key = 'deployments' AND value::text LIKE '%ipfs://%'" 2>/dev/null || echo "0")
 
             if [[ "$deployment_count" -gt 0 ]]; then
                 echo "Deployments already configured in database"
                 echo "This appears to be a subsequent migration"
-                return 2  # Special return code for already-migrated state
             else
                 echo "No IPFS deployments found - this will be the initial v0 migration"
-                return 1  # Need initial migration
             fi
-        else
-            echo "No metadata tables found - fresh database setup"
-            return 0  # Fresh setup
-        fi
+
+            return 0
+        done
     else
         echo "Database connection variables not set, skipping state check"
         return 0
@@ -185,15 +186,7 @@ if [[ "$ENV" == "local" ]]; then
         INDEXER_RUNNING=true
     fi
 
-    DB_STATE=0
     check_database_state
-    DB_STATE=$?
-
-    case $DB_STATE in
-        0) echo "Fresh setup detected" ;;
-        1) echo "Initial migration needed" ;;
-        2) echo "Subsequent migration detected" ;;
-    esac
 fi
 
 
@@ -232,6 +225,6 @@ echo ""
 echo "Migration Summary:"
 echo "  Environment: $ENV"
 echo "  Parent Tag: $TAG"
-echo "  Database State: $([ $DB_STATE -eq 2 ] && echo 'Previously migrated' || echo 'Newly migrated')"
-echo "  Indexer Status: $([ $INDEXER_RUNNING = true ] && echo 'Was running' || echo 'Not running')"
+echo "  Database State: $([[ "$DB_STATE" -eq 2 ]] && echo 'Previously migrated' || echo 'Newly migrated')"
+echo "  Indexer Status: $([[ "$INDEXER_RUNNING" == true ]] && echo 'Was running' || echo 'Not running')"
 echo ""
