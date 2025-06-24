@@ -47,7 +47,6 @@ interface ParentManifest {
 const getParentManifest = (blockNumber: number, chainCid: string | null): ParentManifest | null => {
 	if (!chainCid) return null
 
-	// TODO: 1hr migration delay for each chain.
 	return {
 		untilBlock: Math.floor(blockNumber),
 		reference: chainCid,
@@ -78,7 +77,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
 	const latestBlockNumber = hexToNumber(header.number)
-	const blockNumberDelay = getMigrationDelay(config)
+	const blockNumberDelay = currentEnv === "local" ? 10 : getMigrationDelay(config)
 	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
@@ -153,7 +152,7 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 	})
 	const data = await response.json()
 	const latestBlockNumber = hexToNumber(data.result)
-	const blockNumberDelay = getMigrationDelay(config)
+	const blockNumberDelay = currentEnv === "local" ? 10 : getMigrationDelay(config)
 	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	let blockNumber = startBlockFromConfig
