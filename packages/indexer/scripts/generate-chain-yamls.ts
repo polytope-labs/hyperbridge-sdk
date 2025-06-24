@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getChainStartBlock, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainStartBlock, getChainEndpoints, getEnv, getValidChains, getMigrationDelay } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -42,7 +42,7 @@ const getParentManifest = (blockNumber: number, chainCid: string | null): Parent
 
 	// TODO: 1hr migration delay for each chain.
 	return {
-		untilBlock: blockNumber + 10,
+		untilBlock: blockNumber,
 		reference: chainCid,
 	}
 }
@@ -71,7 +71,8 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
 	const latestBlockNumber = hexToNumber(header.number)
-	const parent = getParentManifest(latestBlockNumber, cid)
+	const blockNumberDelay = getMigrationDelay(config)
+	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
@@ -145,7 +146,8 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 	})
 	const data = await response.json()
 	const latestBlockNumber = hexToNumber(data.result)
-	const parent = getParentManifest(latestBlockNumber, cid)
+	const blockNumberDelay = getMigrationDelay(config)
+	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	let blockNumber = startBlockFromConfig
 	if (!startBlockFromConfig) {

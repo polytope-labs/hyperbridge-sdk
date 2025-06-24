@@ -2,30 +2,35 @@
 	"hyperbridge-nexus": {
 		"type": "substrate",
 		"chainId": "0x61ea8a51fd4a058ee8c0e86df0a89cc85b8b67a0a66432893d09719050c9f540",
+		"blockTime": 12,
 		"startBlock": 2541729,
 		"stateMachineId": "POLKADOT-3367"
 	},
 	"bifrost-mainnet": {
 		"type": "substrate",
 		"chainId": "0x262e1b2ad728475fd6fe88e62d34c200abe6fd693931ddad144059b1eb884e5b",
+		"blockTime": 6,
 		"startBlock": 6425711,
 		"stateMachineId": "POLKADOT-2030"
 	},
 	"cere-mainnet": {
 		"type": "substrate",
 		"chainId": "0x81443836a9a24caaa23f1241897d1235717535711d1d3fe24eae4fdc942c092c",
+		"blockTime": 6,
 		"startBlock": 19167175,
 		"stateMachineId": "SUBSTRATE-cere"
 	},
 	"argon-mainnet": {
 		"type": "substrate",
 		"chainId": "0xee11bf2ff8838fcb0832c09085c5319a08ba6111c225ecd899fe659872d9d45d",
+		"blockTime": 60,
 		"startBlock": 70515,
 		"stateMachineId": "SUBSTRATE-argn"
 	},
 	"ethereum-mainnet": {
 		"type": "evm",
 		"chainId": "1",
+		"blockTime": 6,
 		"startBlock": 21099382,
 		"stateMachineId": "EVM-1",
 		"contracts": {
@@ -38,6 +43,7 @@
 	"arbitrum-mainnet": {
 		"type": "evm",
 		"chainId": "42161",
+		"blockTime": 0.25,
 		"startBlock": 270229930,
 		"stateMachineId": "EVM-42161",
 		"contracts": {
@@ -50,6 +56,7 @@
 	"optimism-mainnet": {
 		"type": "evm",
 		"chainId": "10",
+		"blockTime": 2,
 		"startBlock": 127472624,
 		"stateMachineId": "EVM-10",
 		"contracts": {
@@ -62,6 +69,7 @@
 	"base-mainnet": {
 		"type": "evm",
 		"chainId": "8453",
+		"blockTime": 2,
 		"startBlock": 21877423,
 		"stateMachineId": "EVM-8453",
 		"contracts": {
@@ -74,6 +82,7 @@
 	"bsc-mainnet": {
 		"type": "evm",
 		"chainId": "56",
+		"blockTime": 0.75,
 		"startBlock": 43654810,
 		"stateMachineId": "EVM-56",
 		"contracts": {
@@ -86,6 +95,7 @@
 	"gnosis-mainnet": {
 		"type": "evm",
 		"chainId": "100",
+		"blockTime": 5,
 		"startBlock": 36816861,
 		"stateMachineId": "EVM-100",
 		"contracts": {
@@ -98,6 +108,7 @@
 	"soneium-mainnet": {
 		"type": "evm",
 		"chainId": "1868",
+		"blockTime": 2,
 		"startBlock": 2762568,
 		"stateMachineId": "EVM-1868",
 		"contracts": {

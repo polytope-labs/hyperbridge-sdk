@@ -17,6 +17,7 @@ const evmContractsSchema = z.object({
 const baseChainConfigSchema = z.object({
 	chainId: z.string(),
 	startBlock: z.number().int().min(0),
+	blockTime: z.number(),
 	stateMachineId: z.string().min(3, "Invalid state machine ID format"),
 })
 
@@ -173,4 +174,9 @@ export const getChainStartBlock = (chain: string): ChainStartBlock => {
 	  startBlockFromConfig: blockNumber,
 		cid,
 	}
+}
+
+
+export const getMigrationDelay = (config: Configuration): number => {
+  return ((config?.blockTime || 0) / 60) * 60
 }
