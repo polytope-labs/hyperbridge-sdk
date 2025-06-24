@@ -143,7 +143,7 @@ echo "$tables" | while read -r table; do
         continue
     fi
 
-    deployment_json=$(jq -nc --arg b "$block_number" --arg c "$cid" '{($b): ("ipfs://" + $c)}')
+    deployment_json=$(jq -nc --arg b "$block_number" --arg c "$cid" '{($b): ("ipfs://" + $c)} | @json')
     if run_query "UPDATE app.$table SET value = '$deployment_json'::jsonb WHERE key = 'deployments'" >/dev/null; then
         echo "Updated $chain_name (block: $block_number, cid: $cid)"
     else
