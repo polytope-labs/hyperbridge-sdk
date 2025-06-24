@@ -53,35 +53,29 @@ jobs:
 
                   # Set up testnet environment
                   cat > .env.testnet << EOF
-                  ETHEREUM_SEPOLIA=${{ secrets.ETHEREUM_SEPOLIA }}
-                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
-                  OPTIMISM_SEPOLIA=${{ secrets.OPTIMISM_SEPOLIA }}
-                  BASE_SEPOLIA=${{ secrets.BASE_SEPOLIA }}
-                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
-                  ARBITRUM_SEPOLIA=${{ secrets.ARBITRUM_SEPOLIA }}
                   HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
                   BIFROST_PASEO=${{ secrets.BIFROST_PASEO }}
-                  INDEXER_URL=${{ secrets.INDEXER_URL }}
-                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-                  SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
+                  SEPOLIA=${{ secrets.SEPOLIA }}
+                  ARBITRUM_SEPOLIA=${{ secrets.ARBITRUM_SEPOLIA }}
+                  OPTIMISM_SEPOLIA=${{ secrets.OPTIMISM_SEPOLIA }}
+                  BASE_SEPOLIA=${{ secrets.BASE_SEPOLIA }}
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
                   EOF
 
                   # Set up mainnet environment
                   cat > .env.mainnet << EOF
-                  ARBITRUM_ONE=${{ secrets.ARBITRUM_ONE }}
+                  HYPERBRIDGE_NEXUS=${{ secrets.HYPERBRIDGE_NEXUS }}
+                  BIFROST_MAINNET=${{ secrets.BIFROST_MAINNET }}
+                  CERE_MAINNET=${{ secrets.CERE_MAINNET }}
+                  ARGON_MAINNET=${{ secrets.ARGON_MAINNET }}
                   ETHEREUM_MAINNET=${{ secrets.ETHEREUM_MAINNET }}
-                  BIFROST_POLKADOT=${{ secrets.BIFROST_POLKADOT }}
+                  ARBITRUM_MAINNET=${{ secrets.ARBITRUM_MAINNET }}
+                  OPTIMISM_MAINNET=${{ secrets.OPTIMISM_MAINNET }}
                   BASE_MAINNET=${{ secrets.BASE_MAINNET }}
                   BSC_MAINNET=${{ secrets.BSC_MAINNET }}
-                  PIONEER_NETWORK=${{ secrets.PIONEER_NETWORK }}
-                  CERE_MAINNET=${{ secrets.CERE_MAINNET }}
-                  OPTIMISM_MAINNET=${{ secrets.OPTIMISM_MAINNET }}
-                  HYPERBRIDGE_NEXUS=${{ secrets.HYPERBRIDGE_NEXUS }}
                   GNOSIS_MAINNET=${{ secrets.GNOSIS_MAINNET }}
-                  ARGON_MAINNET=${{ secrets.ARGON_MAINNET }}
-                  INDEXER_URL=${{ secrets.INDEXER_URL }}
-                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-                  SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
+                  SONEIUM_MAINNET=${{ secrets.SONEIUM_MAINNET }}
                   EOF
 
             - name: Prepare Artifacts using script

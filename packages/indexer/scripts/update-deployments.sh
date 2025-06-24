@@ -14,22 +14,22 @@ get_chain_name() {
 
         # Mainnet
         "Hyperbridge (Nexus)") echo "hyperbridge-nexus" ;;
-        "Bifrost Polkadot") echo "bifrost-polkadot" ;;
+        "Bifrost Polkadot") echo "bifrost-mainnet" ;;
         "Cere Mainnet Beta") echo "cere-mainnet" ;;
         "Argon") echo "argon-mainnet" ;;
         "1") echo "ethereum-mainnet" ;;
-        "42161") echo "arbitrum-one" ;;
+        "42161") echo "arbitrum-mainnet" ;;
         "10") echo "optimism-mainnet" ;;
         "8453") echo "base-mainnet" ;;
         "56") echo "bsc-mainnet" ;;
         "100") echo "gnosis-mainnet" ;;
-        "1868") echo "pioneer-network" ;;
+        "1868") echo "soneium-mainnet" ;;
 
 
         # Testnet
         "Hyperbridge(Gargantua)") echo "hyperbridge-gargantua" ;;
         "Bifrost Paseo") echo "bifrost-paseo" ;;
-        "11155111") echo "ethereum-sepolia" ;;
+        "11155111") echo "sepolia" ;;
         "421614") echo "arbitrum-sepolia" ;;
         "11155420") echo "optimism-sepolia" ;;
         "84532") echo "base-sepolia" ;;
