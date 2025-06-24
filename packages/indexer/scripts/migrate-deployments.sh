@@ -65,7 +65,7 @@ check_database_state() {
             # Check if deployments are already set
             local deployment_count
             deployment_count=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c \
-                "SELECT COUNT(*) FROM app._metadata_1 WHERE key = 'deployments' AND value::text LIKE '%ipfs://%'" 2>/dev/null || echo "0")
+                "SELECT COUNT(*) FROM app._metadata_* WHERE key = 'deployments' AND value::text LIKE '%ipfs://%'" 2>/dev/null || echo "0")
 
             if [[ "$deployment_count" -gt 0 ]]; then
                 echo "Deployments already configured in database"
@@ -176,23 +176,26 @@ build_with_parent_references() {
     return 0
 }
 
-echo "Pre-migration checks..."
-echo ""
+if [[ "$ENV" == "local" ]]; then
+    echo "Pre-migration checks..."
+    echo ""
 
-INDEXER_RUNNING=false
-if check_existing_indexer; then
-    INDEXER_RUNNING=true
+    INDEXER_RUNNING=false
+    if check_existing_indexer; then
+        INDEXER_RUNNING=true
+    fi
+
+    DB_STATE=0
+    check_database_state
+    DB_STATE=$?
+
+    case $DB_STATE in
+        0) echo "Fresh setup detected" ;;
+        1) echo "Initial migration needed" ;;
+        2) echo "Subsequent migration detected" ;;
+    esac
 fi
 
-DB_STATE=0
-check_database_state
-DB_STATE=$?
-
-case $DB_STATE in
-    0) echo "Fresh setup detected" ;;
-    1) echo "Initial migration needed" ;;
-    2) echo "Subsequent migration detected" ;;
-esac
 
 echo ""
 echo "Starting migration process..."
