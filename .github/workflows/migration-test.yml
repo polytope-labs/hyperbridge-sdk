@@ -169,6 +169,13 @@ jobs:
                   echo "Final verification details:"
                   echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
 
+            - name: Keep database running for schema update
+              run: |
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up postgres --force-recreate --remove-orphans > indexer_old_schema.log 2>&1 &
+
             # Step 4: Checkout new schema - NOW WE HAVE ACCESS TO NEW SCRIPTS
             - name: Checkout new schema and get latest scripts
               run: |
