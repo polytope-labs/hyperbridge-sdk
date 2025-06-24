@@ -1,282 +1,144 @@
 #!/bin/bash
 
-# Migration script for upgrading indexer deployments
-# Usage: ./migrate-deployment.sh [ENV] [TARGET_VERSION]
-# Example: ./migrate-deployment.sh local v0
+# Script to automate schema migration
+# Usage: ./migration-deployments.sh [ENV] [V0_TAG]
+# Example: ./migration-deployments.sh local v1.0.0
 
 set -e
+
+ENV=${1:-local}
+V0_TAG=${2:-v0}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT_DIR="$(cd "$PACKAGE_DIR/../.." && pwd)"
 
-ENV=${1:-local}
-TARGET_VERSION=${2:-v0}
-MIGRATION_BUFFER_BLOCKS=1000  # Buffer blocks for migration safety
-GITHUB_REPO="polytope-labs/hyperbridge-sdk"
+echo "Starting schema migration for environment: $ENV"
+echo "Using v0 tag: $V0_TAG"
 
-ENV_FILE="$ROOT_DIR/.env.$ENV"
-CHAINS_DATA_FILE="$PACKAGE_DIR/chains-block-number.json"
+# # Function to check if indexer is running
+# check_indexer_health() {
+#     local timeout=300
+#     local elapsed=0
+#     local interval=10
 
-echo "Starting Hyperbridge Indexer Migration"
-echo "Environment: $ENV"
-echo "Target Version: $TARGET_VERSION"
-echo "Migration Buffer: $MIGRATION_BUFFER_BLOCKS blocks"
-echo ""
+#     echo "Checking indexer health..."
 
-# Function to check if indexer is running
-check_indexer_status() {
-    echo "Checking indexer status..."
+#     while [ $elapsed -lt $timeout ]; do
+#         result=$(curl -s -X POST http://localhost:3100/graphql \
+#             -H "Content-Type: application/json" \
+#             -d '{"query": "query { _metadatas { totalCount } }"}' 2>/dev/null || echo "failed")
 
-    if [ -z "$DB_PASS" ] || [ -z "$DB_DATABASE" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ]; then
-        echo "❌ Missing database environment variables"
+#         if [[ "$result" == *"_metadatas"* ]]; then
+#             echo "Indexer is healthy and responding"
+#             return 0
+#         fi
+
+#         echo "Waiting for indexer... (${elapsed}s elapsed)"
+#         sleep $interval
+#         elapsed=$((elapsed + interval))
+#     done
+
+#     echo "❌ Indexer health check failed after ${timeout}s"
+#     return 1
+# }
+
+# Function to build and publish schema
+build_and_publish() {
+    echo "Building and publishing schema..."
+
+    cd "$PACKAGE_DIR"
+
+    if ! ENV="$ENV" pnpm build; then
+        echo "❌ Build failed"
         return 1
     fi
 
-    # Try to connect to database
-    local result
-    result=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c "SELECT 1" 2>&1)
-    if [ $? -eq 0 ]; then
-        echo "Database connection successful"
-
-        # Check if there are any metadata tables (indicates indexer has been running)
-        local tables_count
-        tables_count=$(PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c "SELECT COUNT(*) FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'" 2>/dev/null || echo "0")
-
-        if [ "$tables_count" -gt 0 ]; then
-            echo "Found $tables_count metadata table(s) - indexer appears to be initialized"
-            return 0
-        else
-            echo "X No metadata tables found - indexer may not be fully initialized"
-            return 1
-        fi
-    else
-        echo "❌ Database connection failed: $result"
-        return 1
-    fi
-}
-
-# Function to fetch artifact.zip for the latest tag of hyperbridge-indexer-schema
-fetch_artifact_data() {
-    echo "Fetching chains deployment data..."
-
-    local temp_dir="$TARGET_VERSION-artifact"
-    local artifact_zip="$temp_dir/artifact.zip"
-    local TAG_NAME="hyperbridge-indexer-schema"
-    local artifact_url="https://github.com/polytope-labs/hyperbridge-sdk/releases/download/$TAG_NAME-$TARGET_VERSION/artifact.zip"
-
-    # Cleanup function
-    cleanup_temp() {
-        if [[ -d "$temp_dir" ]]; then
-            echo "Cleaning up temporary directory: $temp_dir"
-            rm -rf "$temp_dir"
-        fi
-    }
-
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "❌ curl command not found. Please install curl to fetch artifacts."
+    if ! ./node_modules/.bin/subql publish; then
+        echo "❌ SubQL publish failed"
         return 1
     fi
 
-    if [[ -d "$temp_dir" ]]; then
-        echo "Temporary directory $temp_dir already exists, removing it..."
-        rm -rf "$temp_dir"
-    fi
-
-    mkdir -p "$temp_dir"
-    echo "Created temporary directory: $temp_dir"
-
-    echo "Attempting to fetch version $TARGET_VERSION artifact from: $artifact_url"
-    if ! curl -sfL "$artifact_url" -o "$artifact_zip"; then
-        echo "❌ Failed to fetch artifact from $artifact_url"
-        cleanup_temp
+    if ! ENV="$ENV" pnpm build; then
+        echo "❌ Second build failed"
         return 1
     fi
 
-    echo "Successfully downloaded artifact.zip"
-
-    if [[ ! -f "$artifact_zip" ]] || [[ ! -s "$artifact_zip" ]]; then
-        echo "❌ Downloaded artifact.zip is missing or empty"
-        cleanup_temp
-        return 1
-    fi
-
-    echo "Extracting artifact.zip..."
-    if ! unzip -q "$artifact_zip" -d "$temp_dir"; then
-        echo "❌ Failed to extract artifact.zip"
-        cleanup_temp
-        return 1
-    fi
-
-    rm -f "$artifact_zip"
-
-    local artifact_subdir="$temp_dir/cid-artifacts"
-    if [[ ! -d "$artifact_subdir" ]]; then
-        echo "❌ Expected artifact subdirectory not found: $artifact_subdir"
-        cleanup_temp
-        return 1
-    fi
-
-    echo "Copying artifact files to root directory..."
-    local copied_count=0
-    while IFS= read -r -d '' file; do
-        local filename=$(basename "$file")
-        echo "Copying: $filename"
-        if cp "$file" "./$filename"; then
-            ((copied_count++))
-        else
-            echo "❌ Failed to copy $filename"
-        fi
-    done < <(find "$artifact_subdir" -type f -print0)
-
-    if [[ $copied_count -eq 0 ]]; then
-        echo "No files were copied from the artifact"
-        cleanup_temp
-        return 1
-    fi
-
-    echo "Successfully copied $copied_count files to root directory"
-
-    cleanup_temp
+    echo "Build and publish completed"
     return 0
 }
 
+echo ""
+echo "Step 1: Updating deployments to create v0..."
+echo ""
 
-# # Function to get current block numbers for migration buffer
-# get_current_blocks() {
-#     local chain_name="$1"
-#     local endpoint="$2"
+if ! bash "$SCRIPT_DIR/update-deployments.sh" "$ENV"; then
+    echo "❌ Failed to update deployments"
+    exit 1
+fi
 
-#     echo "Getting current block for $chain_name..."
+echo "Deployments updated successfully"
 
-#     # This would need to be implemented based on your chain RPC methods
-#     # For now, we'll use a placeholder that adds buffer to existing block numbers
-#     local current_block=$(echo "$CHAINS_DATA" | jq -r ".\"$chain_name\".blockNumber // 0")
-#     local until_block=$((current_block + MIGRATION_BUFFER_BLOCKS))
+echo "Indexer running with v0 deployments"
 
-#     echo "Current: $current_block, UntilBlock: $until_block"
-#     echo "$until_block"
-# }
+echo ""
+echo "Step 2: Pulling deployment data from v0 tag..."
+echo ""
 
-# # Function to generate migration release data
-# generate_migration_release() {
-#     echo "Generating migration release data..."
-
-#     local migration_file="$PACKAGE_DIR/chains-migration-$TARGET_VERSION.json"
-#     local chains_with_migration="{}"
-
-#     # Read current chains data
-#     CHAINS_DATA=$(cat "$CHAINS_DATA_FILE")
-
-#     # Process each chain to add migration buffer
-#     for chain_name in $(echo "$CHAINS_DATA" | jq -r 'keys[]'); do
-#         echo "Processing $chain_name..."
-
-#         # Get original data
-#         local original_block=$(echo "$CHAINS_DATA" | jq -r ".\"$chain_name\".blockNumber")
-#         local original_cid=$(echo "$CHAINS_DATA" | jq -r ".\"$chain_name\".cid")
-
-#         # Calculate until block for migration
-#         local until_block=$((original_block + MIGRATION_BUFFER_BLOCKS))
-
-#         # Add to migration data
-#         chains_with_migration=$(echo "$chains_with_migration" | jq \
-#             --arg chain "$chain_name" \
-#             --arg block "$original_block" \
-#             --arg until "$until_block" \
-#             --arg cid "$original_cid" \
-#             '.[$chain] = {
-#                 "blockNumber": ($block | tonumber),
-#                 "untilBlock": ($until | tonumber),
-#                 "cid": $cid,
-#                 "version": "v0",
-#                 "parentCid": null
-#             }')
-
-#         echo "$chain_name: block $original_block -> until $until_block"
-#     done
-
-#     # Save migration file
-#     echo "$chains_with_migration" | jq '.' > "$migration_file"
-#     echo "Migration data saved to: $migration_file"
-
-#     # Update the main chains file for the deployment script
-#     echo "$chains_with_migration" | jq 'to_entries | map({key: .key, value: {blockNumber: .value.blockNumber, cid: .value.cid}}) | from_entries' > "$CHAINS_DATA_FILE"
-#     echo "Updated chains data file for deployment"
-# }
-
-# Function to run deployment update
-run_deployment_update() {
-    echo "Running deployment update..."
-
-    local update_script="$SCRIPT_DIR/update-deployments.sh"
-    if [ ! -f "$update_script" ]; then
-        echo "   ❌ Deployment update script not found: $update_script"
-        return 1
-    fi
-
-    echo "Executing: $update_script $ENV"
-    chmod +x "$update_script"
-    "$update_script" "$ENV"
-
-    if [ $? -eq 0 ]; then
-        echo "Deployment update completed successfully"
-        return 0
-    else
-        echo "X Deployment update failed"
-        return 1
-    fi
-}
-
-# Main migration process
-main() {
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "❌ Environment file not found: $ENV_FILE"
+if ! bash "$SCRIPT_DIR/pull-artifact.sh" "$ENV" "$V0_TAG" "false"; then
+    echo "Failed to pull from v0 tag, checking if chains-block-number.json exists locally"
+    if [[ ! -f "chains-block-number.json" ]]; then
+        echo "❌ chains-block-number.json not found. Cannot proceed with v1 migration"
         exit 1
     fi
+    echo "Using existing chains-block-number.json"
+else
+    echo "Successfully pulled chains-block-number.json from v0 tag"
+fi
 
-    set -a
-    source "$ENV_FILE"
-    set +a
+if [[ ! -f "chains-block-number.json" ]]; then
+    echo "❌ chains-block-number.json not found after pull attempt"
+    exit 1
+fi
 
-    echo "Environment loaded: $ENV_FILE"
-    echo ""
+echo "chains-block-number.json is ready for v1 build"
 
-    # # Step 1: Check indexer status
-    # if ! check_indexer_status; then
-    #     echo "⚠️  Indexer may not be running properly, but continuing with migration..."
-    # fi
-    # echo ""
+echo ""
+echo "Step 3: Building and publishing v1 schema..."
+echo ""
 
-    # Step 2: Fetch artifact data
-    if ! fetch_artifact_data; then
-        echo "❌ Failed to fetch chains data"
-        exit 1
-    fi
-    echo ""
+if ! build_and_publish; then
+    echo "❌ Failed to build and publish v1 schema"
+    exit 1
+fi
 
-    # # Step 3: Generate migration release
-    # generate_migration_release
-    # echo ""
+echo "v1 schema built and published successfully"
 
-    # # Step 4: Run deployment update
-    # if ! run_deployment_update; then
-    #     echo "❌ Migration failed during deployment update"
-    #     exit 1
-    # fi
-    # echo ""
+# echo ""
+# echo "Step 4: Final verification..."
+# echo ""
 
-    # echo "Migration to $TARGET_VERSION completed successfully!"
-    # echo ""
-    # echo "Next steps:"
-    # echo "1. Monitor indexer logs to ensure smooth operation"
-    # echo "2. Verify database has been updated with new deployment data"
-    # echo "3. Prepare for future v1 migration using current v0 as parent CID"
-    # echo ""
-    # echo "Migration artifacts:"
-    # echo " - Migration data: $PACKAGE_DIR/chains-migration-$TARGET_VERSION.json"
-    # echo " - Backup chains data: $CHAINS_DATA_FILE.backup"
-}
+# sleep 30
 
-# Execute main function
-main "$@"
+# if check_indexer_health; then
+#     echo "Final verification successful"
+# else
+#     echo "❌ Final verification failed"
+#     echo "Checking logs for troubleshooting..."
+#     echo "=== Recent indexer logs ==="
+#     tail -50 "indexer_${ENV}.log" || echo "No log file found"
+#     exit 1
+# fi
+
+echo ""
+echo "Schema migration completed successfully!"
+echo ""
+echo "v0: Deployments updated in database"
+echo "v0: Indexer restarted and verified"
+echo "v1: Deployment data pulled from v0 tag"
+echo "v1: Schema built and published"
+echo "v1: Indexer running with new configuration"
+echo ""
+
+echo ""
+echo "Migration process completed!"

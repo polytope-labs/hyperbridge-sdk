@@ -47,6 +47,7 @@ fetch_and_prepare_artifact() {
     mkdir -p "$temp_dir"
 
     echo "Extracting artifact.zip..."
+    echo ""
     if ! unzip -q "$artifact_zip" -d "$temp_dir"; then
         echo "❌ Failed to extract artifact.zip"
         rm -rf "$temp_dir"
@@ -91,6 +92,7 @@ fetch_and_prepare_artifact() {
         return 1
     fi
 
+    echo ""
     echo "Successfully copied $copied_count files for environment: $ENVIRONMENT"
 
     if [[ "$CLEANUP_ARTIFACT" == "true" ]]; then
@@ -104,6 +106,7 @@ fetch_and_prepare_artifact() {
 
 if fetch_and_prepare_artifact; then
     echo "Successfully prepared artifact for environment: $ENVIRONMENT"
+    echo ""
 else
     echo "❌ Failed to prepare artifact for environment: $ENVIRONMENT"
     exit 1

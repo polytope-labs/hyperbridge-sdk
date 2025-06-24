@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getChainBlockNumber, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainStartBlock, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -40,6 +40,7 @@ interface ParentManifest {
 const getParentManifest = (blockNumber: number, chainCid: string | null): ParentManifest | null => {
 	if (!chainCid) return null
 
+	// TODO: 1hr migration delay for each chain.
 	return {
 		untilBlock: blockNumber + 10,
 		reference: chainCid,
@@ -62,21 +63,22 @@ const getChainTypesPath = (chain: string) => {
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = getChainEndpoints(chain)
-	let { blockNumber, cid } = getChainBlockNumber(chain)
+  let { startBlockFromConfig: startBlockFromConfig, cid } = getChainStartBlock(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
 	const rpc = new RpcWebSocketClient()
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
-	const latestBlockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
+	const latestBlockNumber = hexToNumber(header.number)
+	const parent = getParentManifest(latestBlockNumber, cid)
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
 
-	const parent = getParentManifest(latestBlockNumber, cid)
-	if (!blockNumber) {
-		blockNumber = latestBlockNumber
+	let blockNumber = startBlockFromConfig
+	if (!startBlockFromConfig) {
+		blockNumber = (currentEnv === "local") ? latestBlockNumber : config.startBlock
 	}
 
 	const templateData = {
@@ -125,7 +127,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 
 const generateEvmYaml = async (chain: string, config: Configuration) => {
 	const endpoints = getChainEndpoints(chain)
-	let { blockNumber, cid } = getChainBlockNumber(chain)
+	let { startBlockFromConfig, cid } = getChainStartBlock(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -142,11 +144,12 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 		}),
 	})
 	const data = await response.json()
-	const latestBlockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
-
+	const latestBlockNumber = hexToNumber(data.result)
 	const parent = getParentManifest(latestBlockNumber, cid)
-	if (!blockNumber) {
-		blockNumber = latestBlockNumber
+
+	let blockNumber = startBlockFromConfig
+	if (!startBlockFromConfig) {
+		blockNumber = (currentEnv === "local") ? latestBlockNumber : config.startBlock
 	}
 
 	const templateData = {

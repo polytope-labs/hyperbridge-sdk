@@ -77,9 +77,10 @@ run_query() {
 }
 
 ENV=${1:-local}
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env.$ENV"
-CHAINS_FILE="$(dirname "${BASH_SOURCE[0]}")/../chains-block-number.json"
+CHAINS_FILE="$SCRIPT_DIR/../chains-block-number.json"
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ Environment file not found: $ENV_FILE"
@@ -90,6 +91,7 @@ set -a
 source "$ENV_FILE"
 set +a
 
+echo "Update _metadata_*.deployments = *update_value*"
 echo "Using environment: $ENV"
 echo "Environment file: $ENV_FILE"
 
@@ -99,7 +101,7 @@ if [ ! -f "$CHAINS_FILE" ]; then
 fi
 
 CHAINS_DATA=$(cat "$CHAINS_FILE")
-
+echo "Loaded chains data from: $CHAINS_FILE"
 echo "Updating deployments for environment: $ENV"
 
 tables=$(run_query "SELECT tablename FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'")
@@ -112,6 +114,7 @@ echo "$tables" | while read -r table; do
     table=$(echo "$table" | tr -d '[:space:]')
     [ -z "$table" ] && continue
 
+    echo ""
     echo "Processing: app.$table"
 
     chain_value=$(run_query "SELECT value::text FROM app.$table WHERE key = 'chain'" | tr -d '[:space:]"')
@@ -144,8 +147,9 @@ echo "$tables" | while read -r table; do
     if run_query "UPDATE app.$table SET value = '$deployment_json'::jsonb WHERE key = 'deployments'" >/dev/null; then
         echo "Updated $chain_name (block: $block_number, cid: $cid)"
     else
-        echo "X Failed to update $chain_name"
+        echo "❌ Failed to update $chain_name"
     fi
 done
 
+echo ""
 echo "Deployment updates completed!"

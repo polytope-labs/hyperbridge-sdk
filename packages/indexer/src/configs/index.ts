@@ -128,12 +128,12 @@ export const getChainEndpoints = (chain: string) => {
 	return process.env[envKey]?.split(",") || []
 }
 
-interface ChainBlockNumber {
+interface StartBlockConfig {
 	blockNumber: number | null
 	cid: string | null
 }
 
-const getChainBlockNumberConfig = (): Map<string, ChainBlockNumber> => {
+const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
 	try {
 		const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
 		if (!fs.existsSync(configFilePath)) {
@@ -151,17 +151,26 @@ const getChainBlockNumberConfig = (): Map<string, ChainBlockNumber> => {
 	}
 }
 
-const chainsBlockNumber = getChainBlockNumberConfig()
+const chainsStartBlockConfig = getChainStartBlockConfig()
+
+interface ChainStartBlock {
+  startBlockFromConfig: number | null,
+  cid: string | null
+}
 
 /**
  * get the previously published blockNumber and cid
  * @param chain
  * @returns
  */
-export const getChainBlockNumber = (chain: string): ChainBlockNumber => {
-	if (!chainsBlockNumber.has(chain)) {
-		return { blockNumber: null, cid: null }
+export const getChainStartBlock = (chain: string): ChainStartBlock => {
+	if (!chainsStartBlockConfig.has(chain)) {
+		return { startBlockFromConfig: null, cid: null }
 	}
 
-	return chainsBlockNumber.get(chain)!
+	const { blockNumber, cid }  = chainsStartBlockConfig.get(chain)!
+	return {
+	  startBlockFromConfig: blockNumber,
+		cid,
+	}
 }

@@ -90,3 +90,5 @@ chains-by-ismp-host.ts
 chains-block-number.*
 
 packages/filler/src/config/chain.ts
+
+artifact.zip
