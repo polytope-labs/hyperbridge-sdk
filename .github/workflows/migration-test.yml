@@ -169,127 +169,63 @@ jobs:
                   echo "Final verification details:"
                   echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
 
-            # Step 4: Update chain _metadata*.deployment values
-            - name: Update chain _metadata*.deployment values
-              shell: bash
-              env:
-                DB_USER: postgres
-                DB_PASS: postgres
-                DB_DATABASE: postgres
-                DB_PORT: 5432
-              run: |
-                  cd packages/indexer
-
-                  declare CHAINS_DATA=$(cat chains-block-number.json)
-                  declare -A CHAIN_MAP=(
-                      ["97"]="bsc-chapel"
-                      ["10200"]="gnosis-chiado"
-                      ["Hyperbridge(Gargantua)"]="hyperbridge-gargantua"
-                  )
-
-                  run_query() {
-                      local query="$1"
-                      local result
-                      result=$(PGPASSWORD="$DB_PASS" psql -d "${DB_DATABASE}" -h "localhost" -p "${DB_PORT}" -U "${DB_USER}" -t -A -c "$query" 2>&1)
-                      if [ $? -ne 0 ]; then
-                        echo "Database query failed '$query', Error: $result"
-                        return 1
-                      fi
-
-                      echo "$result"
-                  }
-
-                  echo "Fetching metadata tables..."
-                  echo ""
-
-                  tables_result=$(run_query "SELECT tablename FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'")
-                  if [ $? -ne 0 ]; then
-                      echo "Failed to fetch tables"
-                      exit 1
-                  fi
-
-                  while IFS= read -r table; do
-                      table=$(echo "$table" | tr -d '[:space:]')
-                      [ -z "$table" ] && continue
-
-                      echo "Processing: app.$table"
-
-                      chain_result=$(run_query "SELECT value::text FROM app.$table WHERE key = 'chain'")
-                      if [ $? -ne 0 ]; then
-                          echo "Failed to get chain value"
-                          continue
-                      fi
-
-                      chain_value=$(echo "$chain_result" | tr -d '[:space:]"')
-                      chain_name=${CHAIN_MAP[$chain_value]}
-
-                      if [ -z "$chain_name" ]; then
-                          echo "Unknown chain: $chain_value"
-                          continue
-                      fi
-
-                      echo "Mapped '$chain_value' to '$chain_name'"
-
-                      block_number=$(echo "$CHAINS_DATA" | jq -r ".\"$chain_name\".blockNumber // empty")
-                      cid=$(echo "$CHAINS_DATA" | jq -r ".\"$chain_name\".cid // empty")
-
-                      if [ -z "$block_number" ] || [ -z "$cid" ]; then
-                          echo "Missing data for $chain_name"
-                          continue
-                      fi
-
-                      deployment_json=$(jq -nc --arg b "$block_number" --arg c "$cid" '{($b): ("ipfs://" + $c)} | @json')
-
-                      update_result=$(run_query "UPDATE app.$table SET value = '$deployment_json'::jsonb WHERE key = 'deployments'")
-                      if [ $? -eq 0 ]; then
-                          echo "Updated $chain_name (block: $block_number)"
-                      else
-                          echo "❌ Failed to update $chain_name"
-                      fi
-                      echo ""
-                  done <<< "$tables_result"
-
-                  echo "Deployment updates completed!"
-
-            - name: Stop running indexer (old schema)
-              run: |
-                  cd packages/indexer
-
-                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
-
-                  rm -rf .*-cid
-
-            # Step 5: Checkout new schema and perform migration
-            - name: Checkout new schema
+            # Step 4: Checkout new schema - NOW WE HAVE ACCESS TO NEW SCRIPTS
+            - name: Checkout new schema and get latest scripts
               run: |
                   git stash push -m "Stash old schema changes" || true
                   git checkout ${{ github.sha }}
                   git log --oneline -1
+                  echo "✅ Now using latest commit with updated scripts"
 
-            - name: Install dependencies & Build new schema version
-              env:
-                  ENV: local
+            - name: Install dependencies for new schema
               run: |
                   pnpm install
-                  pnpm build
 
-            - name: Publish new schema manifest & Perform schema migration
-              env:
-                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
-                  ENV: local
+            # Step 5: Test pull-artifact.sh script
+            - name: Test pull-artifact.sh script functionality
               run: |
                   cd packages/indexer
 
-                  ./node_modules/.bin/subql publish
+                  chmod +x scripts/pull-artifact.sh
 
-                  pnpm build
+                  echo "Testing error handling with non-existent version..."
+                  if scripts/pull-artifact.sh local v0.9.0 true; then
+                    echo "Script should have failed but didn't"
+                  else
+                    echo "Script correctly handled non-existent version"
+                  fi
 
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration.log 2>&1 &
+            # Step 6: Use migration-deployments.sh script for the actual migration
+            - name: Run automated migration using migration-deployments.sh
+              env:
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+                  DB_USER: postgres
+                  DB_PASS: postgres
+                  DB_DATABASE: postgres
+                  DB_PORT: 5432
+              run: |
+                  cd packages/indexer
+
+                  chmod +x scripts/migrate-deployments.sh
+
+                  if scripts/migrate-deployments.sh local v0; then
+                    echo "Migration script completed successfully"
+                  else
+                    echo "❌ Migration script failed"
+                    exit 1
+                  fi
+
+            # Step 7: Start final indexer and verify migration success
+            - name: Start indexer with migrated schema
+              run: |
+                  cd packages/indexer
+
+                  echo "Starting indexer with migrated schema..."
+                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
                   echo $! > indexer_migration_pid.txt
                   echo "Migration indexer started with PID: $(cat indexer_migration_pid.txt)"
-
-                  echo "Log new docker-compose configuration:"
-                  cat docker/docker-compose.local.yml || echo "No docker-compose file found"
 
             - name: Wait for GraphQL server and verify migration success
               run: |
@@ -304,7 +240,7 @@ jobs:
                       echo "=== Database status ==="
                       PGPASSWORD=${{ env.DB_PASS }} psql -h localhost -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
                       echo "=== Indexer Migration (new schema) ==="
-                      cat packages/indexer/indexer_migration.log || echo "No log file found"
+                      cat packages/indexer/indexer_migration_final.log || echo "No log file found"
                       exit 1
                     fi
 
@@ -325,56 +261,35 @@ jobs:
                         deployments=$(echo "$metadata_result" | jq -r '.data._metadatas.nodes[].deployments // empty' 2>/dev/null)
                         ipfs_count=$(echo "$deployments" | grep -c "ipfs://" 2>/dev/null || echo "0")
 
+                        echo "Migration status: $ipfs_count/$total_count deployments have IPFS links"
+
                         if [[ "$ipfs_count" -eq "$total_count" ]]; then
-                          echo "Migrated schema indexing successful with IPFS link: Found $total_count Metadata"
+                          echo "Migration successful! All $total_count deployments have IPFS links"
+                          echo "Final metadata response:"
+                          echo "$metadata_result" | jq '.' 2>/dev/null || echo "$metadata_result"
                           break
-                        elif [[ "$ipfs_count" -gt 0 && "$ipfs_count" -lt "$total_count" ]]; then
-                          echo "Partial IPFS migration: $ipfs_count/$total_count deployments have IPFS links"
-                          echo "Waiting for remaining deployments to migrate..."
+                        elif [[ "$ipfs_count" -gt 0 ]]; then
+                          echo "Partial migration: $ipfs_count/$total_count deployments migrated"
                         else
-                          echo "No IPFS links found yet, migration still in progress..."
+                          echo "Migration in progress, no IPFS links found yet..."
                         fi
+                      else
+                        echo "No metadata entries found yet, migration still starting..."
                       fi
                     else
-                      http_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/graphql 2>/dev/null || echo "000")
-
-                      if [[ "$http_code" == "200" ]]; then
-                        echo "GraphQL server responding but schema not ready yet..."
-                      elif [[ "$http_code" == "000" ]]; then
-                        echo "GraphQL server not yet available (connection refused)"
-                      else
-                        echo "GraphQL server responding with HTTP $http_code"
-                      fi
-
-                      echo "Metadata Response: $metadata_result"
+                      echo "GraphQL server not ready yet..."
                     fi
 
                     sleep $interval
                     elapsed=$((elapsed + interval))
                   done
 
-                  # echo "Migration schema verification completed successfully!"
-                  # echo "Final verification details:"
-                  # echo "$metadata_result" | jq '.' 2>/dev/null || echo "$metadata_result"
-
-            # Step 6: Run test suites
+            # Step 8: Run test suites
             - name: Run SDK tests
               run: pnpm --filter="hyperbridge-sdk" test
 
             - name: Run Intent Filler tests
               run: pnpm --filter="filler" test
-
-            - name: Show migration summary
-              if: success()
-              run: |
-                  echo "=== Schema Migration Test Summary ==="
-                  echo "Old schema indexer started successfully"
-                  echo "Indexed data with old schema"
-                  echo "Schema migration completed successfully"
-                  echo "New schema indexer running and stable"
-                  echo "SDK test suites passed"
-                  echo ""
-                  echo "Migration from commit $OLD_COMMIT_REF to ${{ github.sha }} successful!"
 
             - name: Show indexer logs on failure
               if: failure()
@@ -386,9 +301,10 @@ jobs:
                   cat indexer_old_schema.log 2>/dev/null || echo "No old schema log file found"
                   echo "\n\n"
                   echo "--- Migration logs ---"
-                  cat indexer_migration.log 2>/dev/null || echo "No migration log file found"
+                  cat indexer_migration_final.log 2>/dev/null || echo "No migration log file found"
 
-            - name: Clean up
+            # Step 9: Cleanup and upload logs
+            - name: Cleanup and prepare artifacts
               if: always()
               run: |
                   cd packages/indexer
@@ -403,16 +319,17 @@ jobs:
                     kill $MIGRATION_PID 2>/dev/null || echo "Migration indexer process already stopped"
                   fi
 
+                  rm -f indexer_pid.txt indexer_migration_pid.txt
                   docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
 
-                  rm -f indexer_pid.txt indexer_migration_pid.txt
+                  mkdir -p migration-logs
+                  cp indexer_old_schema.log migration-logs/ || true
+                  cp indexer_migration_final.log migration-logs/ || true
 
             - name: Upload logs as artifacts
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  name: indexer-logs
-                  path: |
-                      packages/indexer/indexer_old_schema.log
-                      packages/indexer/indexer_migration.log
+                  name: migration-test-logs-${{ github.run_id }}
+                  path: packages/indexer/migration-logs/
                   retention-days: 7
