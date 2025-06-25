@@ -194,10 +194,12 @@ echo ""
 echo "Starting migration process..."
 echo ""
 
-# Step 1: Pull parent data (always needed for parent references)
-if ! pull_parent_data; then
-    echo "❌ Failed to pull parent data"
-    exit 1
+# Step 1 (optional): Pull parent data (always needed for parent references)
+if [[ "$ENV" != "local" ]]; then
+    if ! pull_parent_data; then
+        echo "❌ Failed to pull parent data"
+        exit 1
+    fi
 fi
 
 # Step 2: Update database deployments (skip if already done)
