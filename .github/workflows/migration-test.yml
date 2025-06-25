@@ -140,7 +140,7 @@ jobs:
                         # Query Metadata
                         metadata_result=$(curl -s -X POST http://localhost:3100/graphql \
                           -H "Content-Type: application/json" \
-                          -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments } } }"}' 2>/dev/null || echo "failed")
+                          -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments lastProcessedHeight startHeight targetHeight } } }"}' 2>/dev/null || echo "failed")
 
                         echo "Metadata Response: $metadata_result"
                         echo "Old schema indexing successful: Found $total_count StateMachineUpdateEvents"
@@ -256,7 +256,7 @@ jobs:
                     # Query Metadata
                     metadata_result=$(curl -s -X POST http://localhost:3100/graphql \
                       -H "Content-Type: application/json" \
-                      -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments } } }"}' 2>/dev/null || echo "failed")
+                      -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments lastProcessedHeight startHeight targetHeight } } }"}' 2>/dev/null || echo "failed")
 
                     if [[ "$metadata_result" == *"_metadatas"* ]]; then
                       echo "GraphQL server is responding with valid schema structure"
