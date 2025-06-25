@@ -47,9 +47,6 @@ services:
             - --store-cache-async=false
             - --store-cache-threshold=1
             - --allow-schema-migration
-        {{#unless isSubstrate}}
-            - --unfinalizedBlocks
-        {{/unless}}
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s

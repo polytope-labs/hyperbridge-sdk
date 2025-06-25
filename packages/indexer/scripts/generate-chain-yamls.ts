@@ -77,7 +77,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
 	const latestBlockNumber = hexToNumber(header.number)
-	const blockNumberDelay = currentEnv === "local" ? 200 : getMigrationDelay(config)
+	const blockNumberDelay = getMigrationDelay(config, currentEnv === "local" ? 5 : 60)
 	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
@@ -152,7 +152,7 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 	})
 	const data = await response.json()
 	const latestBlockNumber = hexToNumber(data.result)
-	const blockNumberDelay = currentEnv === "local" ? 200 : getMigrationDelay(config)
+	const blockNumberDelay = getMigrationDelay(config, currentEnv === "local" ? 5 : 60)
 	const parent = getParentManifest(latestBlockNumber + blockNumberDelay, cid)
 
 	let blockNumber = startBlockFromConfig
