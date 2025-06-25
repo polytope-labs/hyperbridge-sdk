@@ -155,8 +155,8 @@ const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
 const chainsStartBlockConfig = getChainStartBlockConfig()
 
 interface ChainStartBlock {
-  startBlockFromConfig: number | null,
-  cid: string | null
+	startBlockFromConfig: number | null
+	cid: string | null
 }
 
 /**
@@ -169,14 +169,20 @@ export const getChainStartBlock = (chain: string): ChainStartBlock => {
 		return { startBlockFromConfig: null, cid: null }
 	}
 
-	const { blockNumber, cid }  = chainsStartBlockConfig.get(chain)!
+	const { blockNumber, cid } = chainsStartBlockConfig.get(chain)!
 	return {
-	  startBlockFromConfig: blockNumber,
+		startBlockFromConfig: blockNumber,
 		cid,
 	}
 }
 
-
-export const getMigrationDelay = (config: Configuration): number => {
-  return ((config?.blockTime || 0) / 60) * 60
+/**
+ * get the migration delay in seconds.
+ * Total mins in seconds: 60 mins = 3600s / blockTime i.e 6 => 600 blocks added within 60 mins
+ * @param config
+ * @param mins
+ * @returns
+ */
+export const getMigrationDelay = (config: Configuration, mins = 60): number => {
+	return (mins * 60) / (config?.blockTime || 0)
 }
