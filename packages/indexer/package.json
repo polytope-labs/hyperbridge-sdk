@@ -43,6 +43,7 @@
 		"migration:update": "chmod +x scripts/update-deployments.sh && ./scripts/update-deployments.sh",
 		"migration:build": "tsx scripts/build-migration-config.ts",
 		"migration:wait": "tsx scripts/wait-migration-finality.ts",
+		"migrate": "pnpm migration:pull && pnpm migration:update && pnpm migration:build && pnpm migration:wait",
 		"start": "./scripts/up.sh ./docker/$ENV",
 		"down": "./scripts/down.sh ./docker/$ENV",
 		"start:local": "ENV=local npm run build && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans && docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local rm -fsv",
