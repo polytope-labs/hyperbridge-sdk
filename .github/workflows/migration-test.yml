@@ -216,6 +216,14 @@ jobs:
 
                   pnpm migration:build
 
+            # Step 7: Restart Indexer
+            - run: |
+                  cd packages/indexer
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
+
             - name: Wait for GraphQL server and verify migration success
               run: |
                   echo "Waiting for GraphQL server and verifying migration success..."
