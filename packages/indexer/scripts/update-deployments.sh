@@ -1,9 +1,18 @@
 #!/bin/bash
 
 # Script to update database schema app._metadata_*.deployments
-# Usage: ./update-deployments.sh [ENV]
+# Usage: ENV=local ./update-deployments.sh
 
 set -e
+
+# Read ENVIRONMENT from ENV environment variable
+if [[ -z "$ENV" ]]; then
+    echo "❌ ERROR: ENV environment variable is not set"
+    echo "Please set ENV to specify the environment (e.g., export ENV=local)"
+    exit 1
+fi
+
+ENVIRONMENT="$ENV"
 
 # Function to get the chain name from chain ID/identifier
 get_chain_name() {
@@ -76,10 +85,9 @@ run_query() {
     PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c "$query" 2>/dev/null
 }
 
-ENV=${1:-local}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-ENV_FILE="$ROOT_DIR/.env.$ENV"
+ENV_FILE="$ROOT_DIR/.env.$ENVIRONMENT"
 CHAINS_FILE="$SCRIPT_DIR/../chains-block-number.json"
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -92,7 +100,7 @@ source "$ENV_FILE"
 set +a
 
 echo "Update _metadata_*.deployments = *update_value*"
-echo "Using environment: $ENV"
+echo "Using environment: $ENVIRONMENT"
 echo "Environment file: $ENV_FILE"
 
 if [ ! -f "$CHAINS_FILE" ]; then
@@ -102,7 +110,7 @@ fi
 
 CHAINS_DATA=$(cat "$CHAINS_FILE")
 echo "Loaded chains data from: $CHAINS_FILE"
-echo "Updating deployments for environment: $ENV"
+echo "Updating deployments for environment: $ENVIRONMENT"
 
 tables=$(run_query "SELECT tablename FROM pg_tables WHERE tablename LIKE '_metadata_%' AND schemaname = 'app'")
 if [ -z "$tables" ]; then

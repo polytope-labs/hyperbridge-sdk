@@ -1,9 +1,20 @@
 #!/bin/bash
 
-# Simple parameters - can be passed as environment variables or use defaults
-ENVIRONMENT="${1:-local}"
-TARGET_VERSION="${2:-v0}"
-CLEANUP_ARTIFACT="${3:-false}"
+# Script to pull artifact from github release
+# Usage: ENV=local ./pull-artifact.sh v0 true
+
+set -e
+
+# Read ENVIRONMENT from ENV environment variable
+if [[ -z "$ENV" ]]; then
+    echo "❌ ERROR: ENV environment variable is not set"
+    echo "Please set ENV to specify the environment (e.g., export ENV=local)"
+    exit 1
+fi
+
+ENVIRONMENT="$ENV"
+TARGET_VERSION="${1:-v0}"
+CLEANUP_ARTIFACT="${2:-true}"
 
 echo "Pulling artifact for environment: $ENVIRONMENT"
 echo "Target version: $TARGET_VERSION"
