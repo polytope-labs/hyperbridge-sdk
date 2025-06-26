@@ -43,7 +43,12 @@ jobs:
             - name: Install system dependencies
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y containerd docker.io docker-compose-v2 netcat-openbsd curl jq unzip postgresql-client
+                  sudo apt-get install -y netcat-openbsd curl jq unzip postgresql-client
+
+                  curl -SL https://github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+                  chmod +x /usr/local/bin/docker-compose
+                  sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+
                   docker-compose version
 
             - name: Set up environment variables
