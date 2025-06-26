@@ -73,7 +73,7 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up postgres graphql-engine --force-recreate --remove-orphans > indexer_old_schema.log 2>&1 &
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up postgres graphql-engine --force-recreate --remove-orphans > indexer_setup.log 2>&1 &
 
             # Step 2: Checkout old schema commit and start indexer
             - name: Checkout old schema commit
@@ -120,6 +120,8 @@ jobs:
                       echo "❌ Timed out waiting for GraphQL server and old schema indexing"
                       echo "=== Database status ==="
                       PGPASSWORD=${{ env.DB_PASS }} psql -h localhost -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
+                      echo "=== Indexer Setup logs ==="
+                      cat packages/indexer/indexer_setup.log || echo "No log file found"
                       echo "=== Indexer logs (old schema) ==="
                       cat packages/indexer/indexer_old_schema.log || echo "No log file found"
                       exit 1
@@ -252,6 +254,7 @@ jobs:
                   ENV=local pnpm down
 
                   mkdir -p migration-logs
+                  cp indexer_setup.log migration-logs/ || true
                   cp indexer_old_schema.log migration-logs/ || true
                   cp indexer_migration_final.log migration-logs/ || true
 
