@@ -182,30 +182,16 @@ jobs:
                   git stash push -m "Stash old schema changes" || true
                   git checkout ${{ github.sha }}
                   git log --oneline -1
-                  echo "✅ Now using latest commit with updated scripts"
+                  echo "Now using latest commit with updated scripts"
 
             - name: Install dependencies for new schema
               run: |
                   pnpm install
 
-            # Step 5: Test pull-artifact.sh script
-            - name: Test pull-artifact.sh script functionality
-              run: |
-                  cd packages/indexer
-
-                  chmod +x scripts/pull-artifact.sh
-
-                  echo "Testing error handling with non-existent version..."
-                  if scripts/pull-artifact.sh local v0.9.0 true; then
-                    echo "Script should have failed but didn't"
-                  else
-                    echo "Script correctly handled non-existent version"
-                  fi
-
-            # Step 6: Use migration-deployments.sh script for the actual migration
-            - name: Run automated migration using migration-deployments.sh
+            # Step 5: Use migration-deployments.sh script for the actual migration
+            - name: Update _metadata_*.deployments using update-deployments.sh
               env:
-                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+                  ENV: local
                   DB_USER: postgres
                   DB_PASS: postgres
                   DB_DATABASE: postgres
@@ -213,26 +199,22 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  chmod +x scripts/migrate-deployments.sh
-
-                  if scripts/migrate-deployments.sh local v0; then
-                    echo "Migration script completed successfully"
+                  if pnpm migration:update; then
+                    echo "Deployments updated successfully"
                   else
-                    echo "❌ Migration script failed"
+                    echo "❌ update-deployments.sh script failed"
                     exit 1
                   fi
 
-            # Step 7: Start final indexer and verify migration success
-            - name: Start indexer with migrated schema
+            # Step 6: Construct chain configuration & rebuild manifests
+            - name: Build configuration
+              env:
+                  ENV: local
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
               run: |
-                  cd packages/indexer
+                  cd  packages/indexer
 
-                  echo "Starting indexer with migrated schema..."
-                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
-
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
-                  echo $! > indexer_migration_pid.txt
-                  echo "Migration indexer started with PID: $(cat indexer_migration_pid.txt)"
+                  pnpm migration:build
 
             - name: Wait for GraphQL server and verify migration success
               run: |
@@ -310,7 +292,6 @@ jobs:
                   echo "--- Migration logs ---"
                   cat indexer_migration_final.log 2>/dev/null || echo "No migration log file found"
 
-            # Step 9: Cleanup and upload logs
             - name: Cleanup and prepare artifacts
               if: always()
               run: |
