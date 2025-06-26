@@ -86,7 +86,7 @@ const stopIndexer = (): void => {
 const startIndexer = (): void => {
 	console.debug("Starting indexer...")
 	try {
-		execSync(`ENV=${currentEnv} pnpm start`, { stdio: "inherit" })
+		execSync(`ENV=${currentEnv} pnpm start > indexer_migration_final.log 2>&1 &`, { stdio: "inherit" })
 		console.debug("Indexer started")
 	} catch (e) {
 		console.warn("Failed to start indexer:", e instanceof Error ? e.message : e)
@@ -238,7 +238,7 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 }
 
 async function main() {
-	// startIndexer()
+	startIndexer()
 
 	try {
 		await waitForMigrationCompletion()
@@ -247,7 +247,7 @@ async function main() {
 	} catch (e) {
 		console.error("Migration failed: ", e instanceof Error ? e.message : e)
 	} finally {
-		// stopIndexer()
+		stopIndexer()
 	}
 }
 
