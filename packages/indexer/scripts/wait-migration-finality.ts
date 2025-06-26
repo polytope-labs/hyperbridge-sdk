@@ -29,7 +29,6 @@ interface MigrationProcessResponse {
 	ipfsCount: number
 }
 
-const root = process.cwd()
 const currentEnv = getEnv()
 
 const CHAIN_MAPPING = new Map<string, string>(
@@ -73,6 +72,11 @@ const metadataQuery = `
 `
 
 const stopIndexer = (): void => {
+	if (currentEnv === "local") {
+		console.debug("Skipping indexer stop in local environment")
+		return
+	}
+
 	console.debug("Stopping indexer...")
 
 	try {
@@ -84,7 +88,13 @@ const stopIndexer = (): void => {
 }
 
 const startIndexer = (): void => {
+	if (currentEnv === "local") {
+		console.debug("Skipping indexer start in local environment")
+		return
+	}
+
 	console.debug("Starting indexer...")
+
 	try {
 		execSync(`ENV=${currentEnv} pnpm start > indexer_migration_final.log 2>&1 &`, { stdio: "inherit" })
 		console.debug("Indexer started")
