@@ -133,7 +133,11 @@ const queryGraphQLEngine = async <R>(query: string): Promise<R> => {
  * get available chains
  */
 const getAvailableChains = async (): Promise<string[]> => {
-	const validChains = getValidChains()
+	let validChains = getValidChains()
+
+	if (currentEnv === "local") {
+		validChains.delete("cere-local")
+	}
 
 	const data = await queryGraphQLEngine<MetadataResponse>(metadataQuery)
 
@@ -165,37 +169,21 @@ const checkMigrationProgress = async (supportedChains: string[]): Promise<Migrat
 
 	let ipfsCount = 0
 	let completed = false
-	let chainIpfsCount = new Map<string, number>()
 
 	for (const node of supportedNodes) {
-		const deploymentBlockNumbers = Object.keys(node.deployments)
+		const deploymentKeys = Object.keys(node.deployments)
+		if (deploymentKeys.length < 2) {
+			console.warn(`Skipping node ${node.chain} as it has no deployments`)
+			return { completed: false, totalCount: 0, ipfsCount: 0 }
+		}
+
+		const latestBlockNumber = deploymentKeys
 			.map((blockNumber) => parseInt(blockNumber))
 			.filter((blockNumber) => !isNaN(blockNumber))
-			.sort((a, b) => b - a)
+			.sort((a, b) => b - a)[0]
 
-		if (!deploymentBlockNumbers.length) {
-			console.warn(`Skipping node ${node.chain} as it has no deployments`)
-			continue
-		}
-
-		if (node.lastProcessedHeight < deploymentBlockNumbers[0] + 10) {
-			console.warn(`Skipping node ${node.chain} as it is not up to date `, node)
-			continue
-		}
-
-		if (currentEnv !== "local") {
-			for (const blockNumber of deploymentBlockNumbers) {
-				const possiblyCid = node.deployments[blockNumber]
-
-				if (possiblyCid.includes("ipfs://")) {
-					chainIpfsCount.set(node.chain, (chainIpfsCount.get(node.chain) ?? 0) + 1)
-					if (chainIpfsCount.get(node.chain) && chainIpfsCount.get(node.chain)! >= 2) {
-						ipfsCount += 1
-					}
-
-					break
-				}
-			}
+		if (node.lastProcessedHeight > latestBlockNumber + 10) {
+			ipfsCount += 1
 		}
 	}
 
