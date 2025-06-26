@@ -13,14 +13,17 @@ services:
             DB_HOST: {{#if networkMode}}0.0.0.0{{else}}${DB_HOST}{{/if}}
             DB_PORT: ${DB_PORT}
 
+{{#unless ../hasProvisionDatabase}}
         depends_on:
             postgres:
                 condition: service_healthy
 
+{{/unless}}
         volumes:
         {{#unless hasCid}}
             - ../{{@key}}.yaml:/app/{{@key}}.yaml
         {{/unless}}
+            - ../chaintypes:/app/chaintypes
             - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
@@ -43,7 +46,13 @@ services:
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
+        {{#if migrating}}
             - --allow-schema-migration
+        {{else}}
+            {{#unless isSubstrate}}
+            - --unfinalizedBlocks
+            {{/unless}}
+        {{/if}}
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s
@@ -66,6 +75,7 @@ services:
             - --name=app
             - --playground
             - --query-timeout=0
+{{#unless hasProvisionDatabase}}
 
     postgres:
         image: postgres:14-alpine
@@ -102,3 +112,4 @@ services:
               # Keep container running by waiting for the PostgreSQL process
               wait
             '
+{{/unless}}

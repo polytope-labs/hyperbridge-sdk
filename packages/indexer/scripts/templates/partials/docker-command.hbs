@@ -14,7 +14,13 @@
 - --unsafe
 - --log-level=info
 - --historical=timestamp
+{{#if migrating}}
 - --allow-schema-migration
+{{else}}
+    {{#if unfinalizedBlocks}}
+- --unfinalizedBlocks
+    {{/if}}
+{{/if}}
 {{#if unfinalizedBlocks}}
 - --block-confirmations=0
 {{/if}}

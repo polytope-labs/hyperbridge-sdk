@@ -87,5 +87,8 @@ evm-ws.json
 substrate-ws.json
 chain-ids-by-genesis.ts
 chains-by-ismp-host.ts
+chains-block-number.*
 
 packages/filler/src/config/chain.ts
+
+artifact.zip

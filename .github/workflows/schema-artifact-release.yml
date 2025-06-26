@@ -1,0 +1,161 @@
+name: Indexer Schema Release - Upload Artifact
+
+on:
+    push:
+        tags:
+            - "v*"
+    # pull_request:
+    #     branches: [main]
+
+jobs:
+    build-and-publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            packages: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: "7"
+
+            - name: Get version from tag
+              id: get_version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+            - name: Install dependencies
+              run: pnpm install
+
+            - name: Set up environment variables
+              run: |
+                  # Set up environment variables from secrets
+                  cat > .env.local << EOF
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
+                  HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  PASEO_RPC_URL=${{ secrets.PASEO_RPC_URL }}
+                  BIFROST_PASEO=${{ secrets.BIFROST_PASEO }}
+                  CERE_LOCAL=${{ secrets.CERE_RPC_URL }}
+                  INDEXER_URL=${{ secrets.INDEXER_URL }}
+                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+                  SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
+                  PING_MODULE_ADDRESS=0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35
+                  TOKEN_GATEWAY_ADDRESS=0xFcDa26cA021d5535C3059547390E6cCd8De7acA6
+                  EOF
+
+                  # Set up testnet environment
+                  cat > .env.testnet << EOF
+                  HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  BIFROST_PASEO=${{ secrets.BIFROST_PASEO }}
+                  SEPOLIA=${{ secrets.SEPOLIA }}
+                  ARBITRUM_SEPOLIA=${{ secrets.ARBITRUM_SEPOLIA }}
+                  OPTIMISM_SEPOLIA=${{ secrets.OPTIMISM_SEPOLIA }}
+                  BASE_SEPOLIA=${{ secrets.BASE_SEPOLIA }}
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
+                  EOF
+
+                  # Set up mainnet environment
+                  cat > .env.mainnet << EOF
+                  HYPERBRIDGE_NEXUS=${{ secrets.HYPERBRIDGE_NEXUS }}
+                  BIFROST_MAINNET=${{ secrets.BIFROST_MAINNET }}
+                  CERE_MAINNET=${{ secrets.CERE_MAINNET }}
+                  ARGON_MAINNET=${{ secrets.ARGON_MAINNET }}
+                  ETHEREUM_MAINNET=${{ secrets.ETHEREUM_MAINNET }}
+                  ARBITRUM_MAINNET=${{ secrets.ARBITRUM_MAINNET }}
+                  OPTIMISM_MAINNET=${{ secrets.OPTIMISM_MAINNET }}
+                  BASE_MAINNET=${{ secrets.BASE_MAINNET }}
+                  BSC_MAINNET=${{ secrets.BSC_MAINNET }}
+                  GNOSIS_MAINNET=${{ secrets.GNOSIS_MAINNET }}
+                  SONEIUM_MAINNET=${{ secrets.SONEIUM_MAINNET }}
+                  EOF
+
+            - name: Prepare Artifacts using script
+              env:
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+              run: |
+                  chmod +x packages/indexer/scripts/prepare-artifact.sh
+                  packages/indexer/scripts/prepare-artifact.sh
+
+            - name: Upload Artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: indexer-artifacts-${{ steps.get_version.outputs.VERSION }}
+                  path: packages/indexer/artifact.zip
+                  retention-days: 30
+                  if-no-files-found: error
+
+    create-release:
+        needs: build-and-publish
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Get version from tag
+              id: get_version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+            - name: Get previous tag
+              id: get_previous_tag
+              run: |
+                  PREVIOUS_TAG=$(git describe --tags --abbrev=0 ${{ steps.get_version.outputs.VERSION }}^ 2>/dev/null || echo "")
+                  echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+
+            - name: Generate changelog
+              id: changelog
+              run: |
+                  if [ -n "${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}" ]; then
+                    echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+                    echo "## Changes since ${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}" >> $GITHUB_OUTPUT
+                    git log --pretty=format:"* %s (%h)" ${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}..${{ steps.get_version.outputs.VERSION }} >> $GITHUB_OUTPUT
+                    echo "EOF" >> $GITHUB_OUTPUT
+                  else
+                    echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+                    echo "## Initial Release" >> $GITHUB_OUTPUT
+                    git log --pretty=format:"* %s (%h)" >> $GITHUB_OUTPUT
+                    echo "EOF" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Download artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: indexer-artifacts-${{ steps.get_version.outputs.VERSION }}
+                  path: ./artifacts
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: hyperbridge-indexer-schema-${{ steps.get_version.outputs.VERSION }}
+                  name: Hyperbridge Indexer Schema ${{ steps.get_version.outputs.VERSION }}
+                  body: |
+                      # Hyperbridge Indexer Schema Release ${{ steps.get_version.outputs.VERSION }}
+
+                      This release contains the compiled indexer artifacts for all supported environments.
+
+                      ## Artifacts Included
+                      - Configuration files for local, testnet, and mainnet environments
+                      - CID files for deployed contracts
+                      - YAML configuration files
+                      - Chain block number mappings
+
+                      ## Usage
+                      Download `artifact.zip` and extract to get environment-specific configuration files.
+
+                      ${{ steps.changelog.outputs.CHANGELOG }}
+                  files: ./artifacts/artifact.zip
+                  draft: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
