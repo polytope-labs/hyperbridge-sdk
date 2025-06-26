@@ -73,7 +73,7 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up postgres graphql-engine --force-recreate --remove-orphans > indexer_setup.log 2>&1 &
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up postgres graphql-engine > indexer_setup.log 2>&1 &
 
             # Step 2: Checkout old schema commit and start indexer
             - name: Checkout old schema commit
