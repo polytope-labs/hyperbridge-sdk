@@ -189,8 +189,11 @@ jobs:
                   echo "Now using latest commit with updated scripts"
 
             - name: Install dependencies for new schema
+              env:
+                  ENV: local
               run: |
                   pnpm install
+                  pnpm build
 
             # Step 5: Use migration-deployments.sh script for the actual migration
             - name: Update _metadata_*.deployments using update-deployments.sh
