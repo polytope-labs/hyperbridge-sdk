@@ -230,6 +230,31 @@ const rebuildProject = async (): Promise<void> => {
 	}
 }
 
+/**
+ * Publish subql project
+ */
+const publishToIpfs = async (): Promise<void> => {
+	console.log("Publishing to IPFS")
+
+	try {
+		const publishCommand = `node_modules/.bin/subql publish`
+		console.debug(`Executing: ${publishCommand}`)
+
+		execSync(publishCommand, {
+			stdio: "inherit",
+			env: {
+				...process.env,
+				ENV: currentEnv,
+			},
+		})
+
+		console.log("SubQL Publish completed successfully")
+	} catch (error) {
+		console.error("❌ SubQL Publish failed:", error instanceof Error ? error.message : error)
+		throw error
+	}
+}
+
 async function main() {
 	console.log(`Starting migrate-schema build process for environment: ${currentEnv}`)
 
@@ -237,7 +262,13 @@ async function main() {
 		// Step 1: Fetch latest deployments and prepare chains-block-number.json
 		await fetchAndPrepareDeployments()
 
-		// Step 2: Rebuild project with MIGRATING=true
+		// Step 2: Build project with MIGRATING=true
+		await rebuildProject()
+
+		// Step 3: Publish subql project
+		await publishToIpfs()
+
+		// Step 4: Rebuild project with MIGRATING=true
 		await rebuildProject()
 
 		console.log("Migrate-schema build process completed successfully!")
