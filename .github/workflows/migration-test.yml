@@ -43,7 +43,7 @@ jobs:
             - name: Install system dependencies
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y docker-compose netcat-openbsd curl jq unzip postgresql-client
+                  sudo apt-get install -y docker-compose-v2 netcat-openbsd curl jq unzip postgresql-client
                   docker-compose version
 
             - name: Set up environment variables
@@ -173,7 +173,7 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans subquery-node-bsc-chapel-local subquery-node-gnosis-chiado-local subquery-node-hyperbridge-gargantua-local || true
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans subquery-node-hyperbridge-gargantua-local subquery-node-bsc-chapel-local subquery-node-gnosis-chiado-local || true
 
             # Step 4: Checkout new schema - NOW WE HAVE ACCESS TO NEW SCRIPTS
             - name: Checkout new schema and get latest scripts
