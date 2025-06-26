@@ -225,7 +225,65 @@ jobs:
 
                   nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
 
-            - name: Wait for GraphQL server and verify migration success
+            - name: Wait for GraphQL Server
+              run: |
+                  echo "Waiting for GraphQL server and verifying migration success..."
+
+                  timeout=900  # 15 minutes timeout
+                  elapsed=0
+                  interval=10
+
+                  while true; do
+                    if [ "$elapsed" -ge "$timeout" ]; then
+                      echo "❌ Timed out waiting for GraphQL server and verifying migration success"
+                      echo "=== Database status ==="
+                      PGPASSWORD= psql -h localhost -p 5432 -U  -d  -c "\dt" || echo "Could not connect to database"
+                      echo "=== Indexer Migration (new schema) ==="
+                      cat packages/indexer/indexer_migration_final.log || echo "No log file found"
+                      exit 1
+                    fi
+
+                    echo "Attempting to query Metadata (elapsed: ${elapsed}s)..."
+
+                    # Query Metadata
+                    metadata_result=$(curl -s -X POST ***/graphql \
+                      -H "Content-Type: application/json" \
+                      -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments lastProcessedHeight startHeight targetHeight } } }"}' 2>/dev/null || echo "failed")
+
+                    if [[ "$metadata_result" == *"_metadatas"* ]]; then
+                      echo "GraphQL server is responding with valid schema structure"
+                      echo "Metadata Response: $metadata_result"
+
+                      total_count=$(echo "$metadata_result" | jq -r '.data._metadatas.totalCount // 0' 2>/dev/null)
+
+                      if [[ "$total_count" -gt 0 ]]; then
+                        deployments=$(echo "$metadata_result" | jq -r '.data._metadatas.nodes[].deployments // empty' 2>/dev/null)
+                        ipfs_count=$(echo "$deployments" | grep -c "ipfs://" 2>/dev/null || echo "0")
+
+                        echo "Migration status: $ipfs_count/$total_count deployments have IPFS links"
+
+                        if [[ "$ipfs_count" -eq "$total_count" ]]; then
+                          echo "Migration successful! All $total_count deployments have IPFS links"
+                          echo "Final metadata response:"
+                          echo "$metadata_result" | jq '.' 2>/dev/null || echo "$metadata_result"
+                          break
+                        elif [[ "$ipfs_count" -gt 0 ]]; then
+                          echo "Partial migration: $ipfs_count/$total_count deployments migrated"
+                        else
+                          echo "Migration in progress, no IPFS links found yet..."
+                        fi
+                      else
+                        echo "No metadata entries found yet, migration still starting..."
+                      fi
+                    else
+                      echo "GraphQL server not ready yet..."
+                    fi
+
+                    sleep $interval
+                    elapsed=$((elapsed + interval))
+                  done
+
+            - name: Verify migration finality
               env:
                   ENV: local
               run: |
