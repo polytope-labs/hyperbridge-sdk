@@ -159,22 +159,22 @@ const getAvailableChains = async (): Promise<string[]> => {
 const checkMigrationProgress = async (supportedChains: string[]): Promise<MigrationProcessResponse> => {
 	const data = await queryGraphQLEngine<MetadataResponse>(metadataQuery)
 
+	let ipfsCount = 0
+	let completed = false
+
 	const metadata = data?.data?._metadatas
 	if (!metadata) {
-		return { completed: false, totalCount: 0, ipfsCount: 0 }
+		return { completed, ipfsCount, totalCount: 0 }
 	}
 
 	const supportedNodes = metadata.nodes.filter((node) => supportedChains.includes(node.chain))
 	const totalCount = supportedNodes.length
 
-	let ipfsCount = 0
-	let completed = false
-
 	for (const node of supportedNodes) {
 		const deploymentKeys = Object.keys(node.deployments)
 		if (deploymentKeys.length < 2) {
 			console.warn(`Skipping node ${node.chain} as it has no deployments`)
-			return { completed: false, totalCount: 0, ipfsCount: 0 }
+			return { completed, ipfsCount, totalCount }
 		}
 
 		const latestBlockNumber = deploymentKeys
@@ -185,6 +185,10 @@ const checkMigrationProgress = async (supportedChains: string[]): Promise<Migrat
 		if (node.lastProcessedHeight > latestBlockNumber + 10) {
 			ipfsCount += 1
 		}
+
+		console.debug(
+			`chain: ${node.chain}, latestBlockNumber: ${latestBlockNumber} / lastProcessedHeight: ${node.lastProcessedHeight}`,
+		)
 	}
 
 	if (ipfsCount === totalCount && totalCount > 0) {
@@ -205,9 +209,8 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 	console.log("Waiting for migration completion...")
 
 	const interval = 10 * 1000 // 10 seconds
-	const maxWaitTime = 5 * 60 * 1000
+	const maxWaitTime = 10 * 60 * 1000 // 10 mins
 	const startTime = Date.now()
-
 	const availableChains = await getAvailableChains()
 
 	while (true) {
@@ -215,22 +218,18 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 			throw new Error("Migration verification timed out after 15 minutes")
 		}
 
-		try {
-			const { completed, totalCount, ipfsCount } = await checkMigrationProgress(availableChains)
+		const { completed, totalCount, ipfsCount } = await checkMigrationProgress(availableChains)
 
-			if (completed) {
-				console.log("Migration completed successfully!")
-				console.debug(`All ${totalCount} deployments have IPFS links`)
-				break
-			}
+		if (completed) {
+			console.log("Migration completed successfully!")
+			console.debug(`All ${totalCount} deployments have IPFS links`)
+			break
+		}
 
-			if (totalCount > 0) {
-				console.debug(`Migration progress: ${ipfsCount}/${totalCount} deployments have IPFS links`)
-			} else {
-				console.debug("No metadata entries found yet, migration still starting...")
-			}
-		} catch {
-			console.debug("GraphQL server not ready yet, waiting...")
+		if (totalCount > 0) {
+			console.debug(`Migration progress: ${ipfsCount}/${totalCount} deployments have IPFS links`)
+		} else {
+			console.debug("No metadata entries found yet, migration still starting...")
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, interval))
