@@ -186,3 +186,7 @@ export const getChainStartBlock = (chain: string): ChainStartBlock => {
 export const getMigrationDelay = (config: Configuration, mins = 60): number => {
 	return (mins * 60) / (config?.blockTime || 0)
 }
+
+export const isMigrating = (): boolean => {
+	return process.env?.MIGRATING === "true"
+}

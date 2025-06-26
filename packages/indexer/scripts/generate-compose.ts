@@ -4,7 +4,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import Handlebars from "handlebars"
-import { getChainCid, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
+import { getChainCid, getChainEndpoints, getEnv, getValidChains, isMigrating } from "../src/configs"
 
 const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
@@ -13,6 +13,7 @@ const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 const root = process.cwd()
 const currentEnv = getEnv()
 const validChains = getValidChains()
+const migrating = isMigrating()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -52,6 +53,7 @@ const generateNodeServices = () => {
 			hasCid: typeof cid === "string",
 			cid,
 			endpoints,
+			migrating,
 		}
 
 		const yaml = serviceTemplate(serviceData)
@@ -89,6 +91,7 @@ const generateDockerComposeLocal = () => {
 			hasCid: typeof cid === "string",
 			cid,
 			endpoints,
+			migrating,
 		}
 	})
 
