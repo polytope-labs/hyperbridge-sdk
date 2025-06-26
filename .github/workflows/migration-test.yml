@@ -82,6 +82,11 @@ jobs:
                   git checkout $OLD_COMMIT_REF
                   git log --oneline -1
 
+            - run: |
+                  cd packages/indexer
+
+                  pnpm clean
+
             - name: Install dependencies & Build old schema version
               env:
                   ENV: local

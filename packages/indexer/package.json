@@ -35,7 +35,7 @@
 		"prepack": "rm -rf dist && npm run build",
 		"test": "jest --runInBand --detectOpenHandles",
 		"format": "prettier --write \"**/*.ts\"",
-		"clean": "rm -rf dist node_modules",
+		"clean": "rm -rf dist node_modules docker/local",
 		"server": "docker run -d --name graphql-server -p 3000:3000 --restart always --env-file ../../.env.$ENV subquerynetwork/subql-query:latest --name=app --playground",
 		"codegen:subql": "subql codegen -f .",
 		"codegen:yamls": "tsx scripts/generate-chain-yamls.ts && tsx scripts/generate-compose.ts",
