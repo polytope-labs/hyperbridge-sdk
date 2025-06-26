@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync, spawn } from "node:child_process"
+import { execSync } from "node:child_process"
 
 import fetch from "node-fetch"
 
@@ -183,16 +183,18 @@ const checkMigrationProgress = async (supportedChains: string[]): Promise<Migrat
 			continue
 		}
 
-		for (const blockNumber of deploymentBlockNumbers) {
-			const possiblyCid = node.deployments[blockNumber]
+		if (currentEnv !== "local") {
+			for (const blockNumber of deploymentBlockNumbers) {
+				const possiblyCid = node.deployments[blockNumber]
 
-			if (possiblyCid.includes("ipfs://")) {
-				chainIpfsCount.set(node.chain, (chainIpfsCount.get(node.chain) ?? 0) + 1)
-				if (chainIpfsCount.get(node.chain) && chainIpfsCount.get(node.chain)! >= 2) {
-					ipfsCount += 1
+				if (possiblyCid.includes("ipfs://")) {
+					chainIpfsCount.set(node.chain, (chainIpfsCount.get(node.chain) ?? 0) + 1)
+					if (chainIpfsCount.get(node.chain) && chainIpfsCount.get(node.chain)! >= 2) {
+						ipfsCount += 1
+					}
+
+					break
 				}
-
-				break
 			}
 		}
 	}

@@ -104,7 +104,7 @@ jobs:
               run: |
                   cd packages/indexer
 
-                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
 
                   nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_old_schema.log 2>&1 &
                   echo $! > indexer_pid.txt
@@ -240,8 +240,6 @@ jobs:
                   while true; do
                     if [ "$elapsed" -ge "$timeout" ]; then
                       echo "❌ Timed out waiting for GraphQL server and verifying migration success"
-                      echo "=== Database status ==="
-                      PGPASSWORD= psql -h localhost -p 5432 -U  -d  -c "\dt" || echo "Could not connect to database"
                       echo "=== Indexer Migration (new schema) ==="
                       cat packages/indexer/indexer_migration_final.log || echo "No log file found"
                       exit 1
@@ -250,7 +248,7 @@ jobs:
                     echo "Attempting to query Metadata (elapsed: ${elapsed}s)..."
 
                     # Query Metadata
-                    metadata_result=$(curl -s -X POST ***/graphql \
+                    metadata_result=$(curl -s -X POST http://localhost:3100/graphql \
                       -H "Content-Type: application/json" \
                       -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments lastProcessedHeight startHeight targetHeight } } }"}' 2>/dev/null || echo "failed")
 
