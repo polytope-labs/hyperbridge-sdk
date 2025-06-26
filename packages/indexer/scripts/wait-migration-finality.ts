@@ -209,7 +209,7 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 	console.log("Waiting for migration completion...")
 
 	const interval = 10 * 1000 // 10 seconds
-	const maxWaitTime = 10 * 60 * 1000 // 10 mins
+	const maxWaitTime = 30 * 60 * 1000 // 30 mins
 	const startTime = Date.now()
 	const availableChains = await getAvailableChains()
 
@@ -231,6 +231,8 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 		} else {
 			console.debug("No metadata entries found yet, migration still starting...")
 		}
+
+		console.debug(`Timeout: ${Math.floor((maxWaitTime - (Date.now() - startTime)) / 1000)} seconds remaining`)
 
 		await new Promise((resolve) => setTimeout(resolve, interval))
 	}
