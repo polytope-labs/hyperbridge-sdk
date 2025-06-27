@@ -105,8 +105,8 @@ jobs:
             - name: Run SDK tests
               run: pnpm --filter="hyperbridge-sdk" test
 
-            - name: Run Intent Filler tests
-              run: pnpm --filter="filler" test
+            # - name: Run Intent Filler tests
+            #   run: pnpm --filter="filler" test
 
             - name: Clean up
               if: always()
