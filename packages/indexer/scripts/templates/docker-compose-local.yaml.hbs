@@ -10,7 +10,7 @@ services:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
             DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: {{#if networkMode}}0.0.0.0{{else}}${DB_HOST}{{/if}}
+            DB_HOST: {{#if networkMode}}0.0.0.0{{else}}postgres{{/if}}
             DB_PORT: ${DB_PORT}
 
 {{#unless ../hasProvisionDatabase}}

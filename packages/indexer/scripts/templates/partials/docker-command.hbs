@@ -1,6 +1,6 @@
 - ${SUB_COMMAND:-}
 {{#if hasCid}}
-- -f={{cid}}
+- -f=ipfs://{{cid}}
 {{#each endpoints}}
 - --network-endpoint='{{this}}'
 {{/each}}

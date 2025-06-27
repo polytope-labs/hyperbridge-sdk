@@ -22,9 +22,9 @@ get_chain_name() {
         "CereTestnet") echo "cere-local" ;;
 
         # Mainnet
-        "Hyperbridge (Nexus)") echo "hyperbridge-nexus" ;;
-        "Bifrost Polkadot") echo "bifrost-mainnet" ;;
-        "Cere Mainnet Beta") echo "cere-mainnet" ;;
+        "Hyperbridge(Nexus)") echo "hyperbridge-nexus" ;;
+        "BifrostPolkadot") echo "bifrost-mainnet" ;;
+        "CereMainnetBeta") echo "cere-mainnet" ;;
         "Argon") echo "argon-mainnet" ;;
         "1") echo "ethereum-mainnet" ;;
         "42161") echo "arbitrum-mainnet" ;;
@@ -37,7 +37,7 @@ get_chain_name() {
 
         # Testnet
         "Hyperbridge(Gargantua)") echo "hyperbridge-gargantua" ;;
-        "Bifrost Paseo") echo "bifrost-paseo" ;;
+        "BifrostPaseo") echo "bifrost-paseo" ;;
         "11155111") echo "sepolia" ;;
         "421614") echo "arbitrum-sepolia" ;;
         "11155420") echo "optimism-sepolia" ;;
@@ -75,14 +75,14 @@ get_chain_endpoint() {
 run_query() {
     local query="$1"
 
-    for var in DB_PASS DB_DATABASE DB_PORT DB_USER; do
+    for var in DB_PASS DB_DATABASE DB_HOST DB_PORT DB_USER; do
         if [ -z "${!var}" ]; then
             echo "❌ Missing database variable: $var"
             exit 1
         fi
     done
 
-    PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "localhost" -p "$DB_PORT" -U "$DB_USER" -t -A -c "$query" 2>/dev/null
+    PGPASSWORD="$DB_PASS" psql -d "$DB_DATABASE" -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -t -A -c "$query" 2>/dev/null
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
