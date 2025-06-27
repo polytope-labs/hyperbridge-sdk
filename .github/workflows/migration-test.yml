@@ -6,6 +6,12 @@ concurrency:
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
+    push:
+        branches:
+            - "chore/schema-migration"
+        paths:
+            - "packages/indexer/src/configs/schema.graphql"
+            - ".github/workflows/migration-test.yml"
     workflow_dispatch:
 
 env:
