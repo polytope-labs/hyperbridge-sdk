@@ -54,12 +54,13 @@ export const SONEMIUM = {
 	mainnet: "EVM-1868",
 } as const
 
-export const EVM_RPC_URL = require("./evm-ws.json")
-export const SUBSTRATE_RPC_URL = require("./substrate-ws.json")
+import EVM_RPC_URL from "~/evm-ws.json"
+import SUBSTRATE_RPC_URL from "~/substrate-ws.json"
 
-import { CHAIN_IDS_BY_GENESIS } from "./chain-ids-by-genesis"
-import { CHAINS_BY_ISMP_HOST } from "./chains-by-ismp-host"
-export { CHAIN_IDS_BY_GENESIS, CHAINS_BY_ISMP_HOST }
+import { CHAIN_IDS_BY_GENESIS } from "~/chain-ids-by-genesis"
+import { CHAINS_BY_ISMP_HOST } from "~/chains-by-ismp-host"
+
+export { CHAIN_IDS_BY_GENESIS, CHAINS_BY_ISMP_HOST, EVM_RPC_URL, SUBSTRATE_RPC_URL }
 
 // Replaced by auto-generated version
 

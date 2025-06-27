@@ -9,7 +9,6 @@ const evmContractsSchema = z.object({
 	ethereumHost: z.string().min(3, "Invalid Ethereum address"),
 	handlerV1: z.string().min(3, "Invalid Ethereum address"),
 	erc6160ext20: z.string().min(3, "Invalid Ethereum address"),
-	intentGateway: z.string(),
 	tokenGateway: z.string(),
 })
 
@@ -17,6 +16,7 @@ const evmContractsSchema = z.object({
 const baseChainConfigSchema = z.object({
 	chainId: z.string(),
 	startBlock: z.number().int().min(0),
+	blockTime: z.number(),
 	stateMachineId: z.string().min(3, "Invalid state machine ID format"),
 })
 
@@ -102,7 +102,7 @@ export function getValidChains(): Map<string, Configuration> {
 		const endpoint = process.env[envKey]
 
 		if (!endpoint) {
-			console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`)
+			console.log(`Skipping ${chain}.yaml - No '${envKey}' endpoint configured in environment`)
 			continue
 		}
 
@@ -110,4 +110,82 @@ export function getValidChains(): Map<string, Configuration> {
 	}
 
 	return validChains
+}
+
+export function getChainCid(chain: string): string | null {
+	const filePath = path.resolve(process.cwd(), `.${chain}-cid`)
+
+	if (!fs.existsSync(filePath)) {
+		return null
+	}
+
+	return fs.readFileSync(filePath, { encoding: "utf8" }).trim()
+}
+
+export const getChainEndpoints = (chain: string) => {
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	// Expect comma-separated endpoints in env var
+	return process.env[envKey]?.split(",") || []
+}
+
+interface StartBlockConfig {
+	blockNumber: number | null
+	cid: string | null
+}
+
+const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
+	try {
+		const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
+		if (!fs.existsSync(configFilePath)) {
+			throw new Error(`Configuration file: '${configFilePath}' not found`)
+		}
+
+		const configurations = JSON.parse(fs.readFileSync(configFilePath, { encoding: "utf8" }).trim())
+		if (!configurations) {
+			throw new Error(`Configuration not found`)
+		}
+
+		return new Map(Object.entries(configurations))
+	} catch (error) {
+		return new Map()
+	}
+}
+
+const chainsStartBlockConfig = getChainStartBlockConfig()
+
+interface ChainStartBlock {
+	startBlockFromConfig: number | null
+	cid: string | null
+}
+
+/**
+ * get the previously published blockNumber and cid
+ * @param chain
+ * @returns
+ */
+export const getChainStartBlock = (chain: string): ChainStartBlock => {
+	if (!chainsStartBlockConfig.has(chain)) {
+		return { startBlockFromConfig: null, cid: null }
+	}
+
+	const { blockNumber, cid } = chainsStartBlockConfig.get(chain)!
+	return {
+		startBlockFromConfig: blockNumber,
+		cid,
+	}
+}
+
+/**
+ * get the migration delay in seconds.
+ * Total mins in seconds: 60 mins = 3600s / blockTime i.e 6 => 600 blocks added within 60 mins
+ * @param config
+ * @param mins
+ * @returns
+ */
+export const getMigrationDelay = (config: Configuration, mins = 60): number => {
+	return (mins * 60) / (config?.blockTime || 0)
+}
+
+export const isMigrating = (): boolean => {
+	return process.env?.MIGRATING === "true"
 }

@@ -1,0 +1,304 @@
+name: Schema Migration Test (Indexer)
+
+# Cancel running workflows from the same PR
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+on:
+    push:
+        branches: [staging]
+        paths:
+            - "packages/indexer/**"
+            - ".github/workflows/migration-test.yml"
+    workflow_dispatch:
+
+env:
+    OLD_COMMIT_REF: "fcee4b2cdd8224ccab618f8afd1f7fc09e5060e8"
+
+jobs:
+    schema-migration-test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 180
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0 # Fetch all history for git operations
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: "7"
+
+            - name: Install system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y netcat-openbsd curl jq unzip postgresql-client
+
+                  curl -SL https://github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+                  chmod +x /usr/local/bin/docker-compose
+                  sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+
+                  docker-compose version
+
+            - name: Set up environment variables
+              run: |
+                  cat > .env.local << EOF
+                  BSC_CHAPEL=${{ secrets.BSC_CHAPEL }}
+                  GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
+                  HYPERBRIDGE_GARGANTUA=${{ secrets.HYPERBRIDGE_GARGANTUA }}
+                  PASEO_RPC_URL=${{ secrets.PASEO_RPC_URL }}
+                  BIFROST_PASEO=${{ secrets.BIFROST_PASEO }}
+                  CERE_LOCAL=${{ secrets.CERE_RPC_URL }}
+                  INDEXER_URL=${{ secrets.INDEXER_URL }}
+                  PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+                  SECRET_PHRASE="${{ secrets.SECRET_PHRASE }}"
+                  PING_MODULE_ADDRESS="0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
+                  TOKEN_GATEWAY_ADDRESS="0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
+                  DB_USER=postgres
+                  DB_PASS=postgres
+                  DB_DATABASE=postgres
+                  DB_HOST=localhost
+                  DB_PORT=5432
+                  DB_PATH="./local/db/"
+                  EOF
+
+            # Step 1: Checkout old schema commit and start indexer
+            - name: Checkout old schema commit
+              run: |
+                  git stash push -m "Stash current changes"
+                  git checkout $OLD_COMMIT_REF
+                  git log --oneline -1
+
+            - name: Install dependencies and Build old schema version
+              env:
+                  ENV: local
+              run: |
+                  pnpm install
+                  pnpm build
+
+            # Step 2: Publish old schema manifest
+            - name: Publish old schema manifest
+              env:
+                  ENV: local
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+              run: |
+                  cd packages/indexer
+
+                  ./node_modules/.bin/subql publish
+
+                  pnpm build
+
+            # Step 3: Start indexer with old schema
+            - name: Start indexer with old schema
+              run: |
+                  cd packages/indexer
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_old_schema.log 2>&1 &
+                  echo $! > indexer_pid.txt
+                  echo "Indexer started with PID: $(cat indexer_pid.txt)"
+
+            - name: Wait for GraphQL server and verify old schema indexing
+              run: |
+                  echo "Waiting for GraphQL server and verifying old schema is indexing data..."
+                  timeout=300  # 5 minutes timeout
+                  elapsed=0
+                  interval=10
+
+                  while true; do
+                    if [ "$elapsed" -ge "$timeout" ]; then
+                      echo "❌ Timed out waiting for GraphQL server and old schema indexing"
+                      echo "=== Database status ==="
+                      PGPASSWORD=${{ env.DB_PASS }} psql -h localhost -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
+                      echo "=== Indexer logs (old schema) ==="
+                      cat packages/indexer/indexer_old_schema.log || echo "No log file found"
+                      exit 1
+                    fi
+
+                    echo "Attempting to query StateMachineUpdateEvents (elapsed: ${elapsed}s)..."
+
+                    # Query StateMachineUpdateEvents
+                    state_machine_result=$(curl -s -X POST http://localhost:3100/graphql \
+                      -H "Content-Type: application/json" \
+                      -d '{"query": "query StateMachineUpdateEvents { stateMachineUpdateEvents { totalCount } }"}' 2>/dev/null || echo "failed")
+
+                    if [[ "$state_machine_result" == *"stateMachineUpdateEvents"* ]]; then
+                      echo "GraphQL server is responding with valid schema structure"
+                      echo "StateMachineUpdateEvents Response: $state_machine_result"
+
+                      total_count=$(echo "$state_machine_result" | jq -r '.data.stateMachineUpdateEvents.totalCount // 0' 2>/dev/null)
+
+                      if [[ "$total_count" -gt 1 ]]; then
+
+                        # Query Metadata
+                        metadata_result=$(curl -s -X POST http://localhost:3100/graphql \
+                          -H "Content-Type: application/json" \
+                          -d '{"query": "query Metadata { _metadatas { totalCount nodes { chain deployments lastProcessedHeight startHeight targetHeight } } }"}' 2>/dev/null || echo "failed")
+
+                        echo "Metadata Response: $metadata_result"
+                        echo "Old schema indexing successful: Found $total_count StateMachineUpdateEvents"
+
+                        break
+                      fi
+                    else
+                      http_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/graphql 2>/dev/null || echo "000")
+
+                      if [[ "$http_code" == "200" ]]; then
+                        echo "GraphQL server responding but schema not ready yet..."
+                      elif [[ "$http_code" == "000" ]]; then
+                        echo "GraphQL server not yet available (connection refused)"
+                      else
+                        echo "GraphQL server responding with HTTP $http_code"
+                      fi
+
+                      echo "StateMachineUpdateEvents Response: $state_machine_result"
+                    fi
+
+                    sleep $interval
+                    elapsed=$((elapsed + interval))
+                  done
+
+                  echo "Old schema verification completed successfully!"
+                  echo "Final verification details:"
+                  echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
+
+            - name: Keep database running for schema update
+              run: |
+                  cd packages/indexer
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans subquery-node-hyperbridge-gargantua-local subquery-node-bsc-chapel-local subquery-node-gnosis-chiado-local || true
+
+            # Step 4: Checkout new schema - NOW WE HAVE ACCESS TO NEW SCRIPTS
+            - name: Checkout new schema and get latest scripts
+              run: |
+                  git stash push -m "Stash old schema changes" || true
+                  git checkout ${{ github.sha }}
+                  git log --oneline -1
+                  echo "Now using latest commit with updated scripts"
+
+            - name: Install dependencies for new schema
+              env:
+                  ENV: local
+              run: |
+                  pnpm install
+                  pnpm build
+
+            # Step 5: Use migration-deployments.sh script for the actual migration
+            - name: Update _metadata_*.deployments using update-deployments.sh
+              env:
+                  ENV: local
+                  DB_USER: postgres
+                  DB_PASS: postgres
+                  DB_DATABASE: postgres
+                  DB_PORT: 5432
+              run: |
+                  cd packages/indexer
+
+                  if pnpm migration:update; then
+                    echo "Deployments updated successfully"
+                  else
+                    echo "❌ update-deployments.sh script failed"
+                    exit 1
+                  fi
+
+            # Step 6: Construct chain configuration & rebuild manifests
+            - name: Build configuration
+              env:
+                  ENV: local
+                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
+              run: |
+                  cd  packages/indexer
+
+                  pnpm migration:build
+
+            # Step 7: Restart Indexer
+            - name: Restart Indexer for Migration
+              run: |
+                  cd packages/indexer
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
+
+            - name: Wait for GraphQL Server and Verify migration finality
+              env:
+                  ENV: local
+              run: |
+                  cd packages/indexer
+
+                  if pnpm migration:wait; then
+                    echo "Waiting migration finality"
+                  else
+                    echo "❌ migration failed to finalize"
+                    exit 1
+                  fi
+
+            - name: Rebuild and Restart
+              env:
+                  ENV: local
+              run: |
+                  cd packages/indexer
+
+                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
+
+                  pnpm build
+
+                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans >> indexer_migration_final.log 2>&1 &
+
+            # Step 8: Run test suites
+            - name: Run SDK tests
+              run: pnpm --filter="hyperbridge-sdk" test
+
+            # - name: Run Intent Filler tests
+            #   run: pnpm --filter="filler" test
+
+            - name: Show indexer logs on failure
+              if: failure()
+              run: |
+                  cd packages/indexer
+
+                  echo "=== Schema Migration Test Failed ==="
+                  echo "--- Old schema logs ---"
+                  cat indexer_old_schema.log 2>/dev/null || echo "No old schema log file found"
+                  echo "\n\n"
+                  echo "--- Migration logs ---"
+                  cat indexer_migration_final.log 2>/dev/null || echo "No migration log file found"
+
+            - name: Cleanup and prepare artifacts
+              if: always()
+              run: |
+                  cd packages/indexer
+
+                  if [ -f indexer_pid.txt ]; then
+                    OLD_PID=$(cat indexer_pid.txt)
+                    kill $OLD_PID 2>/dev/null || echo "Old indexer process already stopped"
+                  fi
+
+                  if [ -f indexer_migration_pid.txt ]; then
+                    MIGRATION_PID=$(cat indexer_migration_pid.txt)
+                    kill $MIGRATION_PID 2>/dev/null || echo "Migration indexer process already stopped"
+                  fi
+
+                  rm -f indexer_pid.txt indexer_migration_pid.txt
+                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
+
+                  mkdir -p migration-logs
+                  cp indexer_old_schema.log migration-logs/ || true
+                  cp indexer_migration_final.log migration-logs/ || true
+
+            - name: Upload logs as artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: migration-test-logs-${{ github.run_id }}
+                  path: packages/indexer/migration-logs/
+                  retention-days: 7

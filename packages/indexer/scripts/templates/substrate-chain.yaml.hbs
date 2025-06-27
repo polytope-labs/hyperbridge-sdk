@@ -1,8 +1,9 @@
 {{> metadata}}
 {{> network-config}}
-{{#if chainTypesConfig}}
-  chaintypes:
-    file: {{chainTypesConfig}}
+{{#if parent}}
+parent:
+  untilBlock: {{parent.untilBlock}}
+  reference: '{{parent.reference}}'
 {{/if}}
 dataSources:
   - kind: substrate/Runtime

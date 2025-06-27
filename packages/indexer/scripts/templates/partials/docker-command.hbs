@@ -1,14 +1,27 @@
 - ${SUB_COMMAND:-}
+{{#if hasCid}}
+- -f=ipfs://{{cid}}
+{{#each endpoints}}
+- --network-endpoint='{{this}}'
+{{/each}}
+{{else}}
 - -f=/app/{{chainName}}.yaml
+{{/if}}
 - --db-schema=app
 - --workers=${SUBQL_WORKERS:-16}
 - --batch-size=${SUBQL_BATCH_SIZE:-100}
 - --multi-chain
 - --unsafe
 - --log-level=info
-{{#if unfinalizedBlocks}}
 - --historical=timestamp
+{{#if migrating}}
+- --allow-schema-migration
+{{else}}
+    {{#if unfinalizedBlocks}}
+- --unfinalizedBlocks
+    {{/if}}
+{{/if}}
+{{#if unfinalizedBlocks}}
 - --block-confirmations=0
-- --unfinalized-blocks
 {{/if}}
 - --store-cache-async=true

@@ -3,7 +3,7 @@ import fetch from "node-fetch"
 import { bytesToHex, hexToBytes, toHex } from "viem"
 
 import { RequestService } from "@/services/request.service"
-import { RequestStatusMetadata, Status } from "@/configs/src/types"
+import { RequestStatusMetadata, Status } from "@/types"
 import { formatChain, getHostStateMachine, isHyperbridge, isSubstrateChain } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
 import { RequestMetadata } from "@/utils/state-machine.helper"

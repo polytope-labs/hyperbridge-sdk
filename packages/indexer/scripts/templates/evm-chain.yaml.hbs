@@ -1,5 +1,10 @@
 {{> metadata}}
 {{> network-config}}
+{{#if parent}}
+parent:
+  untilBlock: {{parent.untilBlock}}
+  reference: '{{parent.reference}}'
+{{/if}}
 dataSources:
   - kind: ethereum/Runtime
     startBlock: {{blockNumber}}
@@ -8,9 +13,9 @@ dataSources:
       address: '{{config.contracts.ethereumHost}}'
     assets:
       ethereumHost:
-        file: ./abis/EthereumHost.abi.json
+        file: ./src/configs/abis/EthereumHost.abi.json
       chainLinkAggregatorV3:
-        file: ./abis/ChainLinkAggregatorV3.abi.json
+        file: ./src/configs/abis/ChainLinkAggregatorV3.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -22,7 +27,7 @@ dataSources:
       address: '{{config.contracts.erc6160ext20}}'
     assets:
       erc6160ext20:
-        file: ./abis/ERC6160Ext20.abi.json
+        file: ./src/configs/abis/ERC6160Ext20.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -31,37 +36,37 @@ dataSources:
           filter:
             topics:
               - 'Transfer(address indexed from, address indexed to, uint256 amount)'
-  - kind: ethereum/Runtime
-    startBlock: {{blockNumber}}
-    options:
-      abi: intentGateway
-      address: '{{config.contracts.intentGateway}}'
-    assets:
-      intentGateway:
-        file: ./abis/IntentGateway.abi.json
-    mapping:
-      file: ./dist/index.js
-      handlers:
-        - kind: ethereum/LogHandler
-          handler: handleOrderPlacedEvent
-          filter:
-            topics:
-              - 'OrderPlaced(bytes32,bytes,bytes,uint256,uint256,uint256,(bytes32,uint256,bytes32)[],(bytes32,uint256)[],bytes)'
-        - kind: ethereum/LogHandler
-          handler: handleOrderFilledEvent
-          filter:
-            topics:
-              - 'OrderFilled(bytes32,address)'
-        - kind: ethereum/LogHandler
-          handler: handleEscrowReleasedEvent
-          filter:
-            topics:
-              - 'EscrowReleased(bytes32)'
-        - kind: ethereum/LogHandler
-          handler: handleEscrowRefundedEvent
-          filter:
-            topics:
-              - 'EscrowRefunded(bytes32)'
+  # - kind: ethereum/Runtime
+  #   startBlock: {{blockNumber}}
+  #   options:
+  #     abi: intentGateway
+  #     address: '{{config.contracts.intentGateway}}'
+  #   assets:
+  #     intentGateway:
+  #       file: ./src/configs/abis/IntentGateway.abi.json
+  #   mapping:
+  #     file: ./dist/index.js
+  #     handlers:
+  #       - kind: ethereum/LogHandler
+  #         handler: handleOrderPlacedEvent
+  #         filter:
+  #           topics:
+  #             - 'OrderPlaced(bytes32,bytes,bytes,uint256,uint256,uint256,(bytes32,uint256,bytes32)[],(bytes32,uint256)[],bytes)'
+  #       - kind: ethereum/LogHandler
+  #         handler: handleOrderFilledEvent
+  #         filter:
+  #           topics:
+  #             - 'OrderFilled(bytes32,address)'
+  #       - kind: ethereum/LogHandler
+  #         handler: handleEscrowReleasedEvent
+  #         filter:
+  #           topics:
+  #             - 'EscrowReleased(bytes32)'
+  #       - kind: ethereum/LogHandler
+  #         handler: handleEscrowRefundedEvent
+  #         filter:
+  #           topics:
+  #             - 'EscrowRefunded(bytes32)'
   - kind: ethereum/Runtime
     startBlock: {{blockNumber}}
     options:
@@ -69,7 +74,7 @@ dataSources:
       address: '{{config.contracts.tokenGateway}}'
     assets:
       tokenGateway:
-        file: ./abis/TokenGateway.abi.json
+        file: ./src/configs/abis/TokenGateway.abi.json
     mapping:
       file: ./dist/index.js
       handlers:
@@ -95,7 +100,7 @@ dataSources:
   #     address: '0xA801da100bF16D07F668F4A49E1f71fc54D05177'
   #   assets:
   #     handlerV1:
-  #       file: ./abis/HandlerV1.abi.json
+  #       file: ./src/configs/abis/HandlerV1.abi.json
   #   mapping:
   #     file: ./dist/index.js
   #     handlers:

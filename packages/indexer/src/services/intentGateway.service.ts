@@ -1,14 +1,8 @@
-import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
-import {
-	CumulativeVolumeUSD,
-	OrderStatus,
-	OrderStatusMetadata,
-	ProtocolParticipant,
-	RewardPointsActivityType,
-} from "@/configs/src/types"
+import { OrderPlaced } from "@/types/models/OrderPlaced"
+import { CumulativeVolumeUSD, OrderStatus, OrderStatusMetadata, ProtocolParticipant, PointsType } from "@/types"
 import PriceHelper from "@/utils/price.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
-import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
+import { ERC6160Ext20Abi__factory } from "@/types/contracts"
 import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters } from "viem"
 import type { Hex } from "viem"
 import Decimal from "decimal.js"
@@ -87,7 +81,7 @@ export class IntentGatewayService {
 				ethers.utils.toUtf8String(order.sourceChain),
 				BigInt(pointsToAward),
 				ProtocolParticipant.USER,
-				RewardPointsActivityType.ORDER_PLACED_POINTS,
+				PointsType.ORDER_PLACED_POINTS,
 				transactionHash,
 				`Points awarded for placing order ${order.id} with value ${inputUSD} USD`,
 				timestamp,
@@ -193,7 +187,7 @@ export class IntentGatewayService {
 					ethers.utils.toUtf8String(orderPlaced.destChain),
 					BigInt(pointsToAward),
 					ProtocolParticipant.FILLER,
-					RewardPointsActivityType.ORDER_FILLED_POINTS,
+					PointsType.ORDER_FILLED_POINTS,
 					transactionHash,
 					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 					timestamp,
@@ -233,7 +227,7 @@ export class IntentGatewayService {
 					orderPlaced.sourceChain,
 					BigInt(pointsToDeduct),
 					ProtocolParticipant.USER,
-					RewardPointsActivityType.ORDER_PLACED_POINTS,
+					PointsType.ORDER_PLACED_POINTS,
 					transactionHash,
 					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 					timestamp,

@@ -4,3 +4,7 @@ network:
 {{#each endpoints}}
     - '{{this}}'
 {{/each}}
+{{#if chainTypesConfig}}
+  chaintypes:
+    file: {{chainTypesConfig}}
+{{/if}}

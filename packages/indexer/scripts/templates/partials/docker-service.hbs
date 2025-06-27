@@ -8,7 +8,10 @@ subquery-{{chainName}}:
     DB_HOST: ${DB_HOST}
     DB_PORT: ${DB_PORT}
   volumes:
-    - {{volumesPath}}src/configs:/app
+  {{#unless hasCid}}
+    - {{volumesPath}}{{chainName}}.yaml:/app/{{chainName}}.yaml
+  {{/unless}}
+    - {{volumesPath}}src/configs:/app/src/configs
     - {{volumesPath}}dist:/app/dist
   command:
     {{> docker-command}}

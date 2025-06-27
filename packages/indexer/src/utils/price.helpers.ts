@@ -1,6 +1,6 @@
 import { CHAINLINK_PRICE_FEED_CONTRACT_ADDRESSES } from "@/addresses/chainlink-price-feeds.addresses"
 import { ITokenPriceFeedDetails } from "@/constants"
-import { ChainLinkAggregatorV3Abi__factory } from "@/configs/src/types/contracts"
+import { ChainLinkAggregatorV3Abi__factory } from "@/types/contracts"
 import { ethers } from "ethers"
 import { UNISWAP_ADDRESSES } from "@/addresses/uniswap.addresses"
 import uniswapV2Abi from "@/configs/abis/UniswapV2.abi.json"

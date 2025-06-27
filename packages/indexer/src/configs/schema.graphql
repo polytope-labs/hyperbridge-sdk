@@ -40,8 +40,7 @@ enum ProtocolParticipant {
 """
 System activity types related to reward points
 """
-enum RewardPointsActivityType {
-	REWARD_POINTS_EARNED
+enum PointsType {
 	ORDER_PLACED_POINTS
 	ORDER_FILLED_POINTS
 	TOKEN_TELEPORTED_POINTS
@@ -537,7 +536,7 @@ type RewardPoints @entity @compositeIndexes(fields: [["address", "chain"], ["ear
 	earnerType: ProtocolParticipant!
 }
 
-type RewardPointsActivityLog
+type PointsLog
 	@entity
 	@compositeIndexes(fields: [["earnerAddress", "chain"], ["earnerType", "chain"], ["activityType", "chain"]]) {
 	id: ID!
@@ -546,7 +545,7 @@ type RewardPointsActivityLog
 	transactionHash: String! @index
 	earnerAddress: String! @index
 	earnerType: ProtocolParticipant!
-	activityType: RewardPointsActivityType!
+	activityType: PointsType!
 	description: String!
 	createdAt: Date! @index
 }
