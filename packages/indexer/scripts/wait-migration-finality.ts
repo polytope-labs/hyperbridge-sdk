@@ -214,7 +214,7 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 	console.log("Waiting for migration completion...")
 
 	const interval = 10 * 1000 // 10 seconds
-	const maxWaitTime = currentEnv === "local" ? 30 * 60 * 1000 : 120 * 60 * 1000 // 30 mins for local, 2 hrs default.
+	const maxWaitTime = currentEnv === "local" ? 30 * 60 * 1000 : 6 * 60 * 60 * 1000 // 30 mins for local, 6 hrs default.
 	const startTime = Date.now()
 	const availableChains = await getAvailableChains()
 
