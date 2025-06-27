@@ -118,7 +118,7 @@ jobs:
                     if [ "$elapsed" -ge "$timeout" ]; then
                       echo "❌ Timed out waiting for GraphQL server and old schema indexing"
                       echo "=== Database status ==="
-                      PGPASSWORD=${{ env.DB_PASS }} psql -h localhost -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
+                      PGPASSWORD=${{ env.DB_PASS }} psql -h ${{ env.DB_HOST }} -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
                       echo "=== Indexer logs (old schema) ==="
                       cat packages/indexer/indexer_old_schema.log || echo "No log file found"
                       exit 1
