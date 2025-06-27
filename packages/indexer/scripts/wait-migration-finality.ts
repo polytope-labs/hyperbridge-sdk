@@ -73,7 +73,7 @@ const metadataQuery = `
 
 const stopIndexer = (): void => {
 	if (currentEnv === "local") {
-		console.debug("Skipping indexer stop in local environment")
+		console.debug("Skipping indexer stop in local environment \n")
 		return
 	}
 
@@ -89,7 +89,7 @@ const stopIndexer = (): void => {
 
 const startIndexer = (): void => {
 	if (currentEnv === "local") {
-		console.debug("Skipping indexer start in local environment")
+		console.debug("Skipping indexer start in local environment \n")
 		return
 	}
 
@@ -157,48 +157,53 @@ const getAvailableChains = async (): Promise<string[]> => {
  * check migration progress
  */
 const checkMigrationProgress = async (supportedChains: string[]): Promise<MigrationProcessResponse> => {
-	const data = await queryGraphQLEngine<MetadataResponse>(metadataQuery)
-
 	let ipfsCount = 0
 	let completed = false
 
-	const metadata = data?.data?._metadatas
-	if (!metadata) {
+	try {
+		const data = await queryGraphQLEngine<MetadataResponse>(metadataQuery)
+
+		const metadata = data?.data?._metadatas
+		if (!metadata) {
+			throw new Error("Metadata not found")
+		}
+
+		const supportedNodes = metadata.nodes.filter((node) => supportedChains.includes(node.chain))
+		const totalCount = supportedNodes.length
+
+		for (const node of supportedNodes) {
+			const deploymentKeys = Object.keys(node.deployments)
+			if (deploymentKeys.length < 2) {
+				throw new Error(`Node ${node.chain} has no deployments`)
+			}
+
+			const [latestBlockNumber] = deploymentKeys
+				.map((blockNumber) => parseInt(blockNumber))
+				.filter((blockNumber) => !isNaN(blockNumber))
+				.sort((a, b) => b - a)
+			console.debug(`latestBlockNumber: ${latestBlockNumber}`)
+
+			if (node.lastProcessedHeight > latestBlockNumber + 10) {
+				ipfsCount += 1
+			}
+
+			console.debug(
+				`chain: ${node.chain}, latestBlockNumber: ${latestBlockNumber} / lastProcessedHeight: ${node.lastProcessedHeight}`,
+			)
+		}
+
+		if (ipfsCount === totalCount && totalCount > 0) {
+			completed = true
+		}
+
+		return {
+			completed,
+			totalCount,
+			ipfsCount,
+		}
+	} catch (e) {
+		console.warn(`Error checking migration progress: ${e.message}`)
 		return { completed, ipfsCount, totalCount: 0 }
-	}
-
-	const supportedNodes = metadata.nodes.filter((node) => supportedChains.includes(node.chain))
-	const totalCount = supportedNodes.length
-
-	for (const node of supportedNodes) {
-		const deploymentKeys = Object.keys(node.deployments)
-		if (deploymentKeys.length < 2) {
-			console.warn(`Skipping node ${node.chain} as it has no deployments`)
-			return { completed, ipfsCount, totalCount }
-		}
-
-		const latestBlockNumber = deploymentKeys
-			.map((blockNumber) => parseInt(blockNumber))
-			.filter((blockNumber) => !isNaN(blockNumber))
-			.sort((a, b) => b - a)[0]
-
-		if (node.lastProcessedHeight > latestBlockNumber + 10) {
-			ipfsCount += 1
-		}
-
-		console.debug(
-			`chain: ${node.chain}, latestBlockNumber: ${latestBlockNumber} / lastProcessedHeight: ${node.lastProcessedHeight}`,
-		)
-	}
-
-	if (ipfsCount === totalCount && totalCount > 0) {
-		completed = true
-	}
-
-	return {
-		completed,
-		totalCount,
-		ipfsCount,
 	}
 }
 
@@ -232,7 +237,7 @@ const waitForMigrationCompletion = async (): Promise<void> => {
 			console.debug("No metadata entries found yet, migration still starting...")
 		}
 
-		console.debug(`Timeout: ${Math.floor((maxWaitTime - (Date.now() - startTime)) / 1000)} seconds remaining`)
+		console.debug(`Timeout: ${Math.floor((maxWaitTime - (Date.now() - startTime)) / 1000)} seconds remaining \n`)
 
 		await new Promise((resolve) => setTimeout(resolve, interval))
 	}
