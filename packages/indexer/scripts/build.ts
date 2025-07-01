@@ -196,7 +196,6 @@ const fetchAndPrepareDeployments = async (): Promise<void> => {
 		console.log(jsonContent)
 	} catch (error) {
 		console.error("❌ Failed to fetch deployments:", error instanceof Error ? error.message : error)
-		throw error
 	}
 }
 
