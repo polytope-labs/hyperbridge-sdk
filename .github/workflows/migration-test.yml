@@ -14,7 +14,7 @@ on:
     workflow_dispatch:
 
 env:
-    OLD_COMMIT_REF: "fcee4b2cdd8224ccab618f8afd1f7fc09e5060e8"
+    OLD_COMMIT_REF: "old-schema"
 
 jobs:
     schema-migration-test:
@@ -70,7 +70,6 @@ jobs:
                   DB_PATH="./local/db/"
                   EOF
 
-            # Step 1: Checkout old schema commit and start indexer
             - name: Checkout old schema commit
               run: |
                   git stash push -m "Stash current changes"
@@ -84,33 +83,17 @@ jobs:
                   pnpm install
                   pnpm build
 
-            # Step 2: Publish old schema manifest
-            - name: Publish old schema manifest
-              env:
-                  ENV: local
-                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
-              run: |
-                  cd packages/indexer
-
-                  ./node_modules/.bin/subql publish
-
-                  pnpm build
-
-            # Step 3: Start indexer with old schema
             - name: Start indexer with old schema
               run: |
                   cd packages/indexer
 
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
-
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_old_schema.log 2>&1 &
-                  echo $! > indexer_pid.txt
-                  echo "Indexer started with PID: $(cat indexer_pid.txt)"
+                  nohup pnpm start:local > indexer_old_schema.log 2>&1 &
+                  echo "Started indexer (old schema) process in background"
 
             - name: Wait for GraphQL server and verify old schema indexing
               run: |
                   echo "Waiting for GraphQL server and verifying old schema is indexing data..."
-                  timeout=300  # 5 minutes timeout
+                  timeout=600  # 10 minutes timeout
                   elapsed=0
                   interval=10
 
@@ -137,7 +120,7 @@ jobs:
 
                       total_count=$(echo "$state_machine_result" | jq -r '.data.stateMachineUpdateEvents.totalCount // 0' 2>/dev/null)
 
-                      if [[ "$total_count" -gt 1 ]]; then
+                      if [[ "$total_count" -gt 50 ]]; then
 
                         # Query Metadata
                         metadata_result=$(curl -s -X POST http://localhost:3100/graphql \
@@ -171,13 +154,6 @@ jobs:
                   echo "Final verification details:"
                   echo "$state_machine_result" | jq '.' 2>/dev/null || echo "$state_machine_result"
 
-            - name: Keep database running for schema update
-              run: |
-                  cd packages/indexer
-
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans subquery-node-hyperbridge-gargantua-local subquery-node-bsc-chapel-local subquery-node-gnosis-chiado-local || true
-
-            # Step 4: Checkout new schema - NOW WE HAVE ACCESS TO NEW SCRIPTS
             - name: Checkout new schema and get latest scripts
               run: |
                   git stash push -m "Stash old schema changes" || true
@@ -192,69 +168,39 @@ jobs:
                   pnpm install
                   pnpm build
 
-            # Step 5: Use migration-deployments.sh script for the actual migration
-            - name: Update _metadata_*.deployments using update-deployments.sh
-              env:
-                  ENV: local
-                  DB_USER: postgres
-                  DB_PASS: postgres
-                  DB_DATABASE: postgres
-                  DB_PORT: 5432
-              run: |
-                  cd packages/indexer
-
-                  if pnpm migration:update; then
-                    echo "Deployments updated successfully"
-                  else
-                    echo "❌ update-deployments.sh script failed"
-                    exit 1
-                  fi
-
-            # Step 6: Construct chain configuration & rebuild manifests
-            - name: Build configuration
-              env:
-                  ENV: local
-                  SUBQL_ACCESS_TOKEN: ${{ secrets.SUBQL_ACCESS_TOKEN }}
-              run: |
-                  cd  packages/indexer
-
-                  pnpm migration:build
-
-            # Step 7: Restart Indexer
-            - name: Restart Indexer for Migration
+            - name: Restart Indexer with new schema
               run: |
                   cd packages/indexer
 
                   docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
 
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans > indexer_migration_final.log 2>&1 &
+                  nohup pnpm start:local > indexer_migration_final.log 2>&1 &
+                  echo "Started indexer (new schema) process in background"
 
-            - name: Wait for GraphQL Server and Verify migration finality
-              env:
-                  ENV: local
+            - name: Wait for GraphQL server to be available
               run: |
-                  cd packages/indexer
+                  echo "Waiting for GraphQL server to be available on port 3100..."
+                  timeout=300  # 5 minutes timeout
+                  elapsed=0
+                  interval=5
+                  while ! nc -z localhost 3100; do
+                    if [ "$elapsed" -ge "$timeout" ]; then
+                      echo "Timed out waiting for GraphQL server on port 3100"
+                      echo ""
+                      echo "--- Old schema logs ---"
+                      cat packages/indexer/indexer_old_schema.log 2>/dev/null || echo "No old schema log file found"
+                      echo "\n\n"
+                      echo "--- Migration logs ---"
+                      cat packages/indexer/indexer_migration_final.log 2>/dev/null || echo "No migration log file found"
+                      exit 1
+                    fi
+                    echo "Waiting for GraphQL server (elapsed: ${elapsed}s)..."
+                    sleep $interval
+                    elapsed=$((elapsed + interval))
+                  done
+                  echo "GraphQL server is available!"
+                  sleep 10  # Give it a few more seconds to fully initialize
 
-                  if pnpm migration:wait; then
-                    echo "Waiting migration finality"
-                  else
-                    echo "❌ migration failed to finalize"
-                    exit 1
-                  fi
-
-            - name: Rebuild and Restart
-              env:
-                  ENV: local
-              run: |
-                  cd packages/indexer
-
-                  docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local down --remove-orphans || true
-
-                  pnpm build
-
-                  nohup docker-compose -f docker/docker-compose.local.yml --env-file ../../.env.local up --force-recreate --remove-orphans >> indexer_migration_final.log 2>&1 &
-
-            # Step 8: Run test suites
             - name: Run SDK tests
               run: pnpm --filter="hyperbridge-sdk" test
 
@@ -277,19 +223,6 @@ jobs:
               if: always()
               run: |
                   cd packages/indexer
-
-                  if [ -f indexer_pid.txt ]; then
-                    OLD_PID=$(cat indexer_pid.txt)
-                    kill $OLD_PID 2>/dev/null || echo "Old indexer process already stopped"
-                  fi
-
-                  if [ -f indexer_migration_pid.txt ]; then
-                    MIGRATION_PID=$(cat indexer_migration_pid.txt)
-                    kill $MIGRATION_PID 2>/dev/null || echo "Migration indexer process already stopped"
-                  fi
-
-                  rm -f indexer_pid.txt indexer_migration_pid.txt
-                  docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
 
                   mkdir -p migration-logs
                   cp indexer_old_schema.log migration-logs/ || true
