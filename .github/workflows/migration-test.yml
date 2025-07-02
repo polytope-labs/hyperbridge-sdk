@@ -62,12 +62,6 @@ jobs:
                   SECRET_PHRASE="${{ secrets.SECRET_PHRASE }}"
                   PING_MODULE_ADDRESS="0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
                   TOKEN_GATEWAY_ADDRESS="0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
-                  DB_USER=postgres
-                  DB_PASS=postgres
-                  DB_DATABASE=postgres
-                  DB_HOST=localhost
-                  DB_PORT=5432
-                  DB_PATH="./local/db/"
                   EOF
 
             - name: Checkout old schema commit
@@ -84,6 +78,13 @@ jobs:
                   pnpm build
 
             - name: Start indexer with old schema
+              env:
+                  DB_USER: postgres
+                  DB_PASS: postgres
+                  DB_DATABASE: postgres
+                  DB_HOST: postgres
+                  DB_PORT: 5432
+                  DB_PATH: "./.indexer"
               run: |
                   cd packages/indexer
 
@@ -91,6 +92,12 @@ jobs:
                   echo "Started indexer (old schema) process in background"
 
             - name: Wait for GraphQL server and verify old schema indexing
+              env:
+                  DB_USER: postgres
+                  DB_PASS: postgres
+                  DB_DATABASE: postgres
+                  DB_HOST: localhost
+                  DB_PORT: 5432
               run: |
                   echo "Waiting for GraphQL server and verifying old schema is indexing data..."
                   timeout=600  # 10 minutes timeout
@@ -101,7 +108,7 @@ jobs:
                     if [ "$elapsed" -ge "$timeout" ]; then
                       echo "❌ Timed out waiting for GraphQL server and old schema indexing"
                       echo "=== Database status ==="
-                      PGPASSWORD=${{ env.DB_PASS }} psql -h ${{ env.DB_HOST }} -p 5432 -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
+                      PGPASSWORD=${{ env.DB_PASS }} psql -h ${{ env.DB_HOST }} -p ${{ env.DB_PORT }} -U ${{ env.DB_USER }} -d ${{ env.DB_DATABASE }} -c "\dt" || echo "Could not connect to database"
                       echo "=== Indexer logs (old schema) ==="
                       cat packages/indexer/indexer_old_schema.log || echo "No log file found"
                       exit 1
@@ -169,6 +176,13 @@ jobs:
                   pnpm build
 
             - name: Restart Indexer with new schema
+              env:
+                  DB_USER: postgres
+                  DB_PASS: postgres
+                  DB_DATABASE: postgres
+                  DB_HOST: postgres
+                  DB_PORT: 5432
+                  DB_PATH: "./.indexer"
               run: |
                   cd packages/indexer
 
