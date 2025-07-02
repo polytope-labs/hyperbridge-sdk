@@ -18,6 +18,7 @@ services:
             - ../dist:/app/dist
             - ../src/configs:/app/src/configs
             - ../hyperbridge-gargantua.yaml:/app/hyperbridge-gargantua.yaml
+            - ../chaintypes:/app/chaintypes
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/hyperbridge-gargantua.yaml
@@ -54,6 +55,7 @@ services:
             - ../dist:/app/dist
             - ../src/configs:/app/src/configs
             - ../bsc-chapel.yaml:/app/bsc-chapel.yaml
+            - ../chaintypes:/app/chaintypes
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/bsc-chapel.yaml
@@ -92,6 +94,7 @@ services:
             - ../dist:/app/dist
             - ../src/configs:/app/src/configs
             - ../gnosis-chiado.yaml:/app/gnosis-chiado.yaml
+            - ../chaintypes:/app/chaintypes
         command:
             - ${SUB_COMMAND:-}
             - -f=/app/gnosis-chiado.yaml
