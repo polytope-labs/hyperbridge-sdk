@@ -285,7 +285,8 @@ jobs:
                   pkill -f "pnpm start:local" || true
                   docker-compose -f docker/docker-compose.local.yml down --remove-orphans || true
 
-                  mkdir -p migration-logs/docker
+                  mkdir -p migration-logs/manifest migration-logs/docker
+                  find . -maxdepth 1 -name "*.yaml" -not -name "pnpm-lock.yaml" -exec cp {} migration-logs/manifest/ \;
                   if [ -d docker/local ]; then
                       cp -R docker/local/ migration-logs/docker/
                   fi
