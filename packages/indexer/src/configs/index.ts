@@ -134,6 +134,8 @@ const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
 			throw new Error(`Configuration not found`)
 		}
 
+		console.debug(`Loaded ${Object.keys(configurations).length} chains-block-number configurations`)
+
 		return new Map(Object.entries(configurations))
 	} catch (error) {
 		return new Map()
