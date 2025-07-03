@@ -10,12 +10,13 @@
 		"noImplicitAny": false,
 		"baseUrl": ".",
 		"paths": {
+		  "~/*": ["./*"],
 			"@/*": ["./src/*"]
 		}
 	},
 	"include": [
+	  "chaintypes/**/*",
 		"src/**/*",
-		"src/substrate-chaintypes/**/*",
 		"src/types/global.d.ts",
 		"node_modules/@subql/types-core/dist/global.d.ts",
 		"node_modules/@subql/types-ethereum/dist/global.d.ts",

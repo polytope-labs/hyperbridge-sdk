@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -35,7 +35,7 @@ const multichainTemplate = Handlebars.compile(fs.readFileSync(path.join(template
 const getChainTypesPath = (chain: string) => {
 	// Extract base chain name before the hyphen
 	const baseChainName = chain.split("-")[0]
-	const potentialPath = `./dist/substrate-chaintypes/${baseChainName}.js`
+	const potentialPath = `./chaintypes/${baseChainName}.json`
 
 	// Check if file exists
 	if (fs.existsSync(potentialPath)) {
@@ -44,19 +44,12 @@ const getChainTypesPath = (chain: string) => {
 	return null
 }
 
-const generateEndpoints = (chain: string) => {
-	const envKey = chain.replace(/-/g, "_").toUpperCase()
-	// Expect comma-separated endpoints in env var
-	return process.env[envKey]?.split(",") || []
-}
-
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
-	const endpoints = generateEndpoints(chain)
+	const endpoints = getChainEndpoints(chain)
 
-	// Expect comma-separated endpoints in env var
-	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
+	const rpcUrl = endpoints[0]
 	const rpc = new RpcWebSocketClient()
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
@@ -75,9 +68,9 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 			},
 		},
 		config,
-		endpoints,
 		chainTypesConfig,
 		blockNumber,
+		endpoints,
 		isHyperbridgeChain,
 		handlerKind: "substrate/EventHandler",
 		handlers: [
@@ -109,7 +102,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 }
 
 const generateEvmYaml = async (chain: string, config: Configuration) => {
-	const endpoints = generateEndpoints(chain)
+	const endpoints = getChainEndpoints(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -138,8 +131,8 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 			},
 		},
 		config,
-		endpoints,
 		blockNumber,
+		endpoints,
 		handlerKind: "ethereum/LogHandler",
 		handlers: [
 			{ handler: "handleStateMachineUpdatedEvent", topics: ["StateMachineUpdated(string,uint256)"] },
@@ -177,8 +170,8 @@ async function generateAllChainYamls() {
 				? await generateSubstrateYaml(chain, config)
 				: await generateEvmYaml(chain, config)
 
-		fs.writeFileSync(root + `/src/configs/${chain}.yaml`, yaml)
-		console.log(`Generated ${root}/src/configs/${chain}.yaml`)
+		fs.writeFileSync(root + `/${chain}.yaml`, yaml)
+		console.log(`Generated ${root}/${chain}.yaml`)
 	}
 }
 
@@ -190,7 +183,7 @@ const generateMultichainYaml = () => {
 	}
 
 	const yaml = multichainTemplate(templateData)
-	fs.writeFileSync(root + "/src/configs/subquery-multichain.yaml", yaml)
+	fs.writeFileSync(root + "/subquery-multichain.yaml", yaml)
 	console.log("Generated subquery-multichain.yaml")
 }
 
@@ -208,7 +201,7 @@ const generateSubstrateWsJson = () => {
 		}
 	})
 
-	fs.writeFileSync(root + "/src/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
+	fs.writeFileSync(root + "/substrate-ws.json", JSON.stringify(substrateWsConfig, null, 2))
 	console.log("Generated substrate-ws.json")
 }
 
@@ -226,7 +219,7 @@ const generateEvmWsJson = () => {
 		}
 	})
 
-	fs.writeFileSync(root + "/src/evm-ws.json", JSON.stringify(evmWsConfig, null, 2))
+	fs.writeFileSync(root + "/evm-ws.json", JSON.stringify(evmWsConfig, null, 2))
 	console.log("Generated evm-ws.json")
 }
 
@@ -241,7 +234,7 @@ const generateChainIdsByGenesis = () => {
 
 	const chainIdsByGenesisContent = `// Auto-generated, DO NOT EDIT \nexport const CHAIN_IDS_BY_GENESIS = ${JSON.stringify(chainIdsByGenesis, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
+	fs.writeFileSync(root + "/chain-ids-by-genesis.ts", chainIdsByGenesisContent)
 	console.log("Generated chain-ids-by-genesis.ts")
 }
 
@@ -257,7 +250,7 @@ const generateChainsByIsmpHost = () => {
 
 	const chainsByIsmpHostContent = `// Auto-generated, DO NOT EDIT \nexport const CHAINS_BY_ISMP_HOST = ${JSON.stringify(chainsByIsmpHost, null, 2)}`
 
-	fs.writeFileSync(root + "/src/chains-by-ismp-host.ts", chainsByIsmpHostContent)
+	fs.writeFileSync(root + "/chains-by-ismp-host.ts", chainsByIsmpHostContent)
 	console.log("Generated chains-by-ismp-host.ts")
 }
 

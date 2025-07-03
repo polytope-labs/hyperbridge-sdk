@@ -1,5 +1,5 @@
-import { Status, Request } from "@/configs/src/types"
-import { PostResponseEventLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
+import { Status, Request } from "@/types"
+import { PostResponseEventLog } from "@/types/abi-interfaces/EthereumHostAbi"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { ResponseService } from "@/services/response.service"
 import { RequestService } from "@/services/request.service"

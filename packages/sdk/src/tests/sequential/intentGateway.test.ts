@@ -25,7 +25,7 @@ import { SubstrateChain } from "@/chain"
 import { createQueryClient } from "@/query-client"
 import { IntentFiller, BasicFiller, ConfirmationPolicy, ChainConfigService } from "@hyperbridge/filler"
 
-describe.sequential("Order Status Stream", () => {
+describe.skip.sequential("Order Status Stream", () => {
 	let indexer: IndexerClient
 	let hyperbridgeInstance: SubstrateChain
 

@@ -1,6 +1,6 @@
 import { solidityKeccak256 } from "ethers/lib/utils"
-import { Status } from "@/configs/src/types/enums"
-import { Request, RequestStatusMetadata } from "@/configs/src/types/models"
+import { Status } from "@/types/enums"
+import { Request, RequestStatusMetadata } from "@/types/models"
 import { ethers } from "ethers"
 import { timestampToDate } from "@/utils/date.helpers"
 

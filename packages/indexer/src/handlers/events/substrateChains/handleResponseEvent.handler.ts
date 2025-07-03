@@ -4,7 +4,7 @@ import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { SUBSTRATE_RPC_URL } from "@/constants"
 import { Get } from "@/utils/substrate.helpers"
 import { GetResponseService } from "@/services/getResponse.service"
-import { Status } from "@/configs/src/types"
+import { Status } from "@/types"
 import { getBlockTimestamp, replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 

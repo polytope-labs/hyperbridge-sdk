@@ -14,11 +14,11 @@ export { handleGetRequestEvent } from "@/handlers/events/evmHost/getRequest.even
 export { handleGetRequestHandledEvent } from "@/handlers/events/evmHost/getRequestHandled.event.handler"
 export { handleGetRequestTimeoutHandled } from "@/handlers/events/evmHost/getRequestTimeoutHandled.event.handler"
 
-// Intent Gateway Handlers
-export { handleOrderPlacedEvent } from "@/handlers/events/intentGateway/orderPlaced.event.handler"
-export { handleOrderFilledEvent } from "@/handlers/events/intentGateway/orderFilled.event.handler"
-export { handleEscrowReleasedEvent } from "@/handlers/events/intentGateway/escrowReleased.event.handler"
-export { handleEscrowRefundedEvent } from "@/handlers/events/intentGateway/escrowRefunded.event.handler"
+// // Intent Gateway Handlers
+// export { handleOrderPlacedEvent } from "@/handlers/events/intentGateway/orderPlaced.event.handler"
+// export { handleOrderFilledEvent } from "@/handlers/events/intentGateway/orderFilled.event.handler"
+// export { handleEscrowReleasedEvent } from "@/handlers/events/intentGateway/escrowReleased.event.handler"
+// export { handleEscrowRefundedEvent } from "@/handlers/events/intentGateway/escrowRefunded.event.handler"
 
 // Token Gateway Handlers
 export { handleAssetTeleportedEvent } from "@/handlers/events/tokenGateway/assetTeleported.event.handler"

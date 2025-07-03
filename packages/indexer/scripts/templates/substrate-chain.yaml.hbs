@@ -1,9 +1,5 @@
 {{> metadata}}
 {{> network-config}}
-{{#if chainTypesConfig}}
-  chaintypes:
-    file: {{chainTypesConfig}}
-{{/if}}
 dataSources:
   - kind: substrate/Runtime
     startBlock: {{blockNumber}}

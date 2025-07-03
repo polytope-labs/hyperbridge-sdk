@@ -29,6 +29,9 @@ Handlebars.registerPartial("docker-service", fs.readFileSync(path.join(partialsD
 const serviceTemplate = Handlebars.compile(
 	fs.readFileSync(path.join(templatesDir, "docker-compose-service.yaml.hbs"), "utf8"),
 )
+const dockerComposeLocalTemplate = Handlebars.compile(
+	fs.readFileSync(path.join(templatesDir, "docker-compose-local.yaml.hbs"), "utf8"),
+)
 
 const generateNodeServices = () => {
 	const dockerDir = path.join(root, "docker", currentEnv)
@@ -49,13 +52,46 @@ const generateNodeServices = () => {
 
 		const filePath = path.join(dockerDir, `${chainName}.yml`)
 
-		if (!fs.existsSync(filePath)) {
-			fs.writeFileSync(filePath, yaml)
-			console.log(`Generated ${filePath}`)
-		} else {
-			console.log(`Skipping ${filePath} - File already exists`)
-		}
+		fs.writeFileSync(filePath, yaml)
+		console.log(`Generated ${filePath}`)
 	})
 }
 
-generateNodeServices()
+const generateDockerComposeLocal = () => {
+	if (!dockerComposeLocalTemplate) {
+		console.log("Docker compose local template not found, skipping...")
+		return
+	}
+
+	const chainsData: Record<string, any> = {}
+	validChains.forEach((config, chainName) => {
+		chainsData[chainName] = {
+			image: config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE,
+			isEvm: config.type === "evm",
+			isSubstrate: config.type === "substrate",
+			networkMode: config.type === "substrate" ? "host" : undefined,
+			config,
+		}
+	})
+
+	const dockerDir = path.join(root, "docker")
+	const filePath = path.join(dockerDir, "docker-compose.local.yml")
+
+	const hasProvisionDatabase = Boolean(process.env.HAS_PROVISIONED_DB)
+	const yaml = dockerComposeLocalTemplate({ chains: chainsData, hasProvisionDatabase })
+	fs.writeFileSync(filePath, yaml)
+	console.log(`Generated ${filePath}`)
+}
+
+const main = () => {
+	console.log(`Generating Docker Compose files for environment: ${currentEnv}`)
+	console.log(`Valid chains: ${Array.from(validChains.keys()).join(", ")}`)
+
+	generateNodeServices()
+
+	if (currentEnv === "local") {
+		generateDockerComposeLocal()
+	}
+}
+
+main()
