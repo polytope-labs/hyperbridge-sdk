@@ -1,4 +1,4 @@
-import { Transfer } from "@/configs/src/types/models"
+import { Transfer } from "@/types/models"
 
 // Argument for storing transfer events
 export interface IStoreTranferArgs {

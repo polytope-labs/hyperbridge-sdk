@@ -1,10 +1,10 @@
 import stringify from "safe-stable-stringify"
 
-import { TeleportStatus } from "@/configs/src/types"
-import { AssetReceivedLog } from "@/configs/src/types/abi-interfaces/TokenGatewayAbi"
+import { Request, TeleportStatus } from "@/types"
+import { AssetReceivedLog } from "@/types/abi-interfaces/TokenGatewayAbi"
 import { TokenGatewayService } from "@/services/tokenGateway.service"
 import { VolumeService } from "@/services/volume.service"
-import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 import PriceHelper from "@/utils/price.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { wrap } from "@/utils/event.utils"
@@ -38,6 +38,27 @@ export const handleAssetReceivedEvent = wrap(async (event: AssetReceivedLog): Pr
 		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, amount.toBigInt(), decimals)
 
 		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
+	}
+
+	const request = await Request.get(commitment)
+
+	if (request && request.source && isSubstrateChain(request.source)) {
+		await TokenGatewayService.getOrCreate(
+			{
+				to: beneficiary,
+				dest: chain,
+				amount: amount.toBigInt(),
+				commitment,
+				from,
+				assetId,
+				redeem: false,
+			},
+			{
+				transactionHash,
+				blockNumber,
+				timestamp,
+			},
+		)
 	}
 
 	await TokenGatewayService.updateTeleportStatus(commitment, TeleportStatus.RECEIVED, {

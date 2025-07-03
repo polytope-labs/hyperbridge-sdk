@@ -15,7 +15,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
+            - ../hyperbridge-gargantua.yaml:/app/hyperbridge-gargantua.yaml
+            - ../chaintypes:/app/chaintypes
+            - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -26,47 +28,12 @@ services:
             - --multi-chain
             - --unsafe
             - --log-level=info
+            - --historical=timestamp
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
         healthcheck:
             test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
-            interval: 3s
-            timeout: 5s
-            retries: 10
-
-    subquery-node-cere-local:
-        image: subquerynetwork/subql-node-substrate:v5.9.1
-        restart: unless-stopped
-        network_mode: host
-        environment:
-            DB_USER: ${DB_USER}
-            DB_PASS: ${DB_PASS}
-            DB_DATABASE: ${DB_DATABASE}
-            DB_HOST: 0.0.0.0
-            DB_PORT: ${DB_PORT}
-
-        depends_on:
-            postgres:
-                condition: service_healthy
-
-        volumes:
-            - ../src/configs:/app
-            - ../dist:/app/dist
-        command:
-            - ${SUB_COMMAND:-}
-            - -f=/app/cere-local.yaml
-            - --db-schema=app
-            - --workers=${SUBQL_WORKERS:-6}
-            - --batch-size=${SUBQL_BATCH_SIZE:-10}
-            - --multi-chain
-            - --unsafe
-            - --log-level=info
-            - --block-confirmations=0
-            - --store-cache-async=false
-            - --store-cache-threshold=1
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://subquery-node-cere-local:3000/ready"]
             interval: 3s
             timeout: 5s
             retries: 10
@@ -86,7 +53,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
+            - ../bsc-chapel.yaml:/app/bsc-chapel.yaml
+            - ../chaintypes:/app/chaintypes
+            - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -98,12 +67,12 @@ services:
             - --unsafe
             - --log-level=info
             - --historical=timestamp
-            - --unfinalized-blocks
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
+            - --unfinalizedBlocks
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://subquery-node-bsc-chapel-local:3000/ready"]
+            test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s
             timeout: 5s
             retries: 10
@@ -123,7 +92,9 @@ services:
                 condition: service_healthy
 
         volumes:
-            - ../src/configs:/app
+            - ../gnosis-chiado.yaml:/app/gnosis-chiado.yaml
+            - ../chaintypes:/app/chaintypes
+            - ../src/configs:/app/src/configs
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
@@ -135,12 +106,51 @@ services:
             - --unsafe
             - --log-level=info
             - --historical=timestamp
-            - --unfinalized-blocks
+            - --block-confirmations=0
+            - --store-cache-async=false
+            - --store-cache-threshold=1
+            - --unfinalizedBlocks
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
+            interval: 3s
+            timeout: 5s
+            retries: 10
+
+    subquery-node-cere-local-local:
+        image: subquerynetwork/subql-node-substrate:v5.9.1
+        restart: unless-stopped
+        network_mode: host
+        environment:
+            DB_USER: ${DB_USER}
+            DB_PASS: ${DB_PASS}
+            DB_DATABASE: ${DB_DATABASE}
+            DB_HOST: 0.0.0.0
+            DB_PORT: ${DB_PORT}
+
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+        volumes:
+            - ../cere-local.yaml:/app/cere-local.yaml
+            - ../chaintypes:/app/chaintypes
+            - ../src/configs:/app/src/configs
+            - ../dist:/app/dist
+        command:
+            - ${SUB_COMMAND:-}
+            - -f=/app/cere-local.yaml
+            - --db-schema=app
+            - --workers=${SUBQL_WORKERS:-6}
+            - --batch-size=${SUBQL_BATCH_SIZE:-10}
+            - --multi-chain
+            - --unsafe
+            - --log-level=info
+            - --historical=timestamp
             - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://subquery-node-gnosis-chiado-local:3000/ready"]
+            test: ["CMD", "curl", "-f", "http://subquery-node-hyperbridge-gargantua-local:3000/ready"]
             interval: 3s
             timeout: 5s
             retries: 10

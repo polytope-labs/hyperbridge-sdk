@@ -1,6 +1,6 @@
 import { EthereumResult, EthereumLog } from "@subql/types-ethereum"
 
-import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
+import { ERC6160Ext20Abi__factory } from "@/types/contracts"
 import PriceHelper from "./price.helpers"
 
 // ERC20 Transfer event signature: Transfer(address indexed from, address indexed to, uint256 value)

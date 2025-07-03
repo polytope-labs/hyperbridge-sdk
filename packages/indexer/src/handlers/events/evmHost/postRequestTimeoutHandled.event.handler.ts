@@ -1,5 +1,5 @@
-import { Status, Transfer } from "@/configs/src/types"
-import { PostRequestTimeoutHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
+import { Status, Transfer } from "@/types"
+import { PostRequestTimeoutHandledLog } from "@/types/abi-interfaces/EthereumHostAbi"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { RequestService } from "@/services/request.service"
 import { wrap } from "@/utils/event.utils"
