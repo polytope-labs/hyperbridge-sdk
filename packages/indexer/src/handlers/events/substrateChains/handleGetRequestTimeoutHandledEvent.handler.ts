@@ -1,6 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
-import { Status } from "@/configs/src/types"
-import { GetRequest } from "@/configs/src/types/models"
+import { Status } from "@/types"
+import { GetRequest } from "@/types/models"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { GetRequestService } from "@/services/getRequest.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"

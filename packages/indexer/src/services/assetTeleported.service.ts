@@ -1,4 +1,4 @@
-import { AssetTeleported } from "@/configs/src/types/models"
+import { AssetTeleported } from "@/types/models"
 import { timestampToDate } from "@/utils/date.helpers"
 
 // Arguments for creating AssetTeleported records

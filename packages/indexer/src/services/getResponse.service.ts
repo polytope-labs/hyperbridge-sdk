@@ -1,4 +1,4 @@
-import { GetResponse, Status } from "@/configs/src/types"
+import { GetResponse, Status } from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
 
 export interface ICreateGetResponseArgs {

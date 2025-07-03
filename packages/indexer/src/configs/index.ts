@@ -9,7 +9,6 @@ const evmContractsSchema = z.object({
 	ethereumHost: z.string().min(3, "Invalid Ethereum address"),
 	handlerV1: z.string().min(3, "Invalid Ethereum address"),
 	erc6160ext20: z.string().min(3, "Invalid Ethereum address"),
-	intentGateway: z.string(),
 	tokenGateway: z.string(),
 })
 
@@ -102,7 +101,7 @@ export function getValidChains(): Map<string, Configuration> {
 		const endpoint = process.env[envKey]
 
 		if (!endpoint) {
-			console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`)
+			console.log(`Skipping ${chain}.yaml - No '${envKey}' endpoint configured in environment`)
 			continue
 		}
 
@@ -110,4 +109,10 @@ export function getValidChains(): Map<string, Configuration> {
 	}
 
 	return validChains
+}
+
+export const getChainEndpoints = (chain: string) => {
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	// Expect comma-separated endpoints in env var
+	return process.env[envKey]?.split(",") || []
 }
