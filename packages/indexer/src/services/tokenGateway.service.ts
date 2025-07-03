@@ -1,14 +1,14 @@
 import Decimal from "decimal.js"
 
-import { ERC6160Ext20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
+import { ERC6160Ext20Abi__factory, TokenGatewayAbi__factory } from "@/types/contracts"
 import PriceHelper from "@/utils/price.helpers"
 import {
 	TeleportStatus,
 	TeleportStatusMetadata,
 	TokenGatewayAssetTeleported,
+	PointsType,
 	ProtocolParticipant,
-	RewardPointsActivityType,
-} from "@/configs/src/types"
+} from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
 import { PointsService } from "./points.service"
@@ -102,7 +102,7 @@ export class TokenGatewayService {
 				chainId,
 				BigInt(pointsToAward),
 				ProtocolParticipant.USER,
-				RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+				PointsType.TOKEN_TELEPORTED_POINTS,
 				transactionHash,
 				`Points awarded for teleporting token ${teleportParams.assetId} with value ${usdValue.amountValueInUSD} USD`,
 				timestamp,
@@ -150,7 +150,7 @@ export class TokenGatewayService {
 					teleport.sourceChain,
 					BigInt(pointsToDeduct),
 					ProtocolParticipant.USER,
-					RewardPointsActivityType.TOKEN_TELEPORTED_POINTS,
+					PointsType.TOKEN_TELEPORTED_POINTS,
 					transactionHash,
 					`Points deducted for refunded teleport ${commitment} with value ${teleport.usdValue} USD`,
 					timestamp,

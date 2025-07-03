@@ -1,5 +1,5 @@
-import { RewardPoints, RewardPointsActivityLog } from "@/configs/src/types"
-import { ProtocolParticipant, RewardPointsActivityType } from "@/configs/src/types"
+import { RewardPoints, PointsLog } from "@/types"
+import { ProtocolParticipant, PointsType } from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
 
 export class PointsService {
@@ -29,7 +29,7 @@ export class PointsService {
 		chain: string,
 		points: bigint,
 		earnerType: ProtocolParticipant,
-		activityType: RewardPointsActivityType,
+		activityType: PointsType,
 		transactionHash: string,
 		description: string,
 		timestamp: bigint,
@@ -39,7 +39,7 @@ export class PointsService {
 		rewardPoints.points = rewardPoints.points + points
 		await rewardPoints.save()
 
-		const activityLog = await RewardPointsActivityLog.create({
+		const activityLog = await PointsLog.create({
 			id: `${address}-${earnerType}-${transactionHash}`,
 			chain,
 			points,
@@ -58,7 +58,7 @@ export class PointsService {
 		chain: string,
 		points: bigint,
 		earnerType: ProtocolParticipant,
-		activityType: RewardPointsActivityType,
+		activityType: PointsType,
 		transactionHash: string,
 		description: string,
 		timestamp: bigint,
@@ -68,7 +68,7 @@ export class PointsService {
 		rewardPoints.points = rewardPoints.points - points
 		await rewardPoints.save()
 
-		const activityLog = await RewardPointsActivityLog.create({
+		const activityLog = await PointsLog.create({
 			id: `${address}-${earnerType}-${transactionHash}`,
 			chain,
 			points: -points, // Store as negative in activity log
