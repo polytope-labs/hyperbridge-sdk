@@ -7,7 +7,7 @@ import Handlebars from "handlebars"
 import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Hex, hexToNumber } from "viem"
 
-import { type Configuration, getChainEndpoints, getEnv, getValidChains } from "../src/configs"
+import { type Configuration, getChainEndpoints, getChainStartBlock, getEnv, getValidChains } from "../src/configs"
 
 const root = process.cwd()
 const currentEnv = getEnv()
@@ -53,12 +53,18 @@ const getChainTypesPath = (chain: string) => {
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
 	const endpoints = getChainEndpoints(chain)
+	const startBlockFromConfig = getChainStartBlock(chain)
 
 	const rpcUrl = endpoints[0]
 	const rpc = new RpcWebSocketClient()
 	await rpc.connect(rpcUrl as string)
 	const header = (await rpc.call("chain_getHeader", [])) as { number: Hex }
-	const blockNumber = currentEnv === "local" ? hexToNumber(header.number) : config.startBlock
+	const latestBlockNumber = hexToNumber(header.number)
+
+	let blockNumber = startBlockFromConfig
+	if (!startBlockFromConfig) {
+		blockNumber = currentEnv === "local" ? latestBlockNumber : config.startBlock
+	}
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
@@ -108,6 +114,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 
 const generateEvmYaml = async (chain: string, config: Configuration) => {
 	const endpoints = getChainEndpoints(chain)
+	const startBlockFromConfig = getChainStartBlock(chain)
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]
@@ -124,7 +131,12 @@ const generateEvmYaml = async (chain: string, config: Configuration) => {
 		}),
 	})
 	const data = await response.json()
-	const blockNumber = currentEnv === "local" ? hexToNumber(data.result) : config.startBlock
+	const latestBlockNumber = hexToNumber(data.result)
+
+	let blockNumber = startBlockFromConfig
+	if (!startBlockFromConfig) {
+		blockNumber = currentEnv === "local" ? latestBlockNumber : config.startBlock
+	}
 
 	const templateData = {
 		name: chain,

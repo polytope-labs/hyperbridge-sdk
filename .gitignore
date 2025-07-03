@@ -85,5 +85,6 @@ Thumbs.db
 env-config.json
 chain-ids-by-genesis.ts
 chains-by-ismp-host.ts
+chains-block-number.*
 
 packages/filler/src/config/chain.ts
