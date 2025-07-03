@@ -116,3 +116,46 @@ export const getChainEndpoints = (chain: string) => {
 	// Expect comma-separated endpoints in env var
 	return process.env[envKey]?.split(",") || []
 }
+
+interface StartBlockConfig {
+	blockNumber: number | null
+	cid: string | null
+}
+
+const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
+	try {
+		const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
+		if (!fs.existsSync(configFilePath)) {
+			throw new Error(`Configuration file: '${configFilePath}' not found`)
+		}
+
+		const configurations = JSON.parse(fs.readFileSync(configFilePath, { encoding: "utf8" }).trim())
+		if (!configurations) {
+			throw new Error(`Configuration not found`)
+		}
+
+		return new Map(Object.entries(configurations))
+	} catch (error) {
+		return new Map()
+	}
+}
+
+const chainsStartBlockConfig = getChainStartBlockConfig()
+
+export const isMigrating = (): boolean => {
+	return process.env?.MIGRATING === "true"
+}
+
+/**
+ * get the previously published blockNumber and cid
+ * @param chain
+ * @returns
+ */
+export const getChainStartBlock = (chain: string): number | null => {
+	if (!chainsStartBlockConfig.has(chain) || !isMigrating()) {
+		return null
+	}
+
+	const { blockNumber } = chainsStartBlockConfig.get(chain)!
+	return blockNumber
+}
