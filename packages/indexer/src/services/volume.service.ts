@@ -1,6 +1,6 @@
 import Decimal from "decimal.js"
 
-import { CumulativeVolumeUSD, DailyVolumeUSD } from "@/configs/src/types"
+import { CumulativeVolumeUSD, DailyVolumeUSD } from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 
