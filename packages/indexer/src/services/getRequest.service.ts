@@ -1,4 +1,4 @@
-import { GetRequest, GetRequestStatusMetadata, Status } from "@/configs/src/types"
+import { GetRequest, GetRequestStatusMetadata, Status } from "@/types"
 import { ethers } from "ethers"
 import { solidityKeccak256 } from "ethers/lib/utils"
 import { timestampToDate } from "@/utils/date.helpers"

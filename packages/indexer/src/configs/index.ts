@@ -9,7 +9,6 @@ const evmContractsSchema = z.object({
 	ethereumHost: z.string().min(3, "Invalid Ethereum address"),
 	handlerV1: z.string().min(3, "Invalid Ethereum address"),
 	erc6160ext20: z.string().min(3, "Invalid Ethereum address"),
-	intentGateway: z.string(),
 	tokenGateway: z.string(),
 })
 
@@ -102,7 +101,7 @@ export function getValidChains(): Map<string, Configuration> {
 		const endpoint = process.env[envKey]
 
 		if (!endpoint) {
-			console.log(`Skipping ${chain}.yaml - No endpoint configured in environment`)
+			console.log(`Skipping ${chain}.yaml - No '${envKey}' endpoint configured in environment`)
 			continue
 		}
 
@@ -110,4 +109,55 @@ export function getValidChains(): Map<string, Configuration> {
 	}
 
 	return validChains
+}
+
+export const getChainEndpoints = (chain: string) => {
+	const envKey = chain.replace(/-/g, "_").toUpperCase()
+	// Expect comma-separated endpoints in env var
+	return process.env[envKey]?.split(",") || []
+}
+
+interface StartBlockConfig {
+	blockNumber: number | null
+	cid: string | null
+}
+
+const getChainStartBlockConfig = (): Map<string, StartBlockConfig> => {
+	try {
+		const configFilePath = path.resolve(process.cwd(), "chains-block-number.json")
+		if (!fs.existsSync(configFilePath)) {
+			throw new Error(`Configuration file: '${configFilePath}' not found`)
+		}
+
+		const configurations = JSON.parse(fs.readFileSync(configFilePath, { encoding: "utf8" }).trim())
+		if (!configurations) {
+			throw new Error(`Configuration not found`)
+		}
+
+		console.debug(`Loaded ${Object.keys(configurations).length} chains-block-number configurations`)
+
+		return new Map(Object.entries(configurations))
+	} catch (error) {
+		return new Map()
+	}
+}
+
+const chainsStartBlockConfig = getChainStartBlockConfig()
+
+export const isMigrating = (): boolean => {
+	return process.env?.MIGRATING === "true"
+}
+
+/**
+ * get the previously published blockNumber and cid
+ * @param chain
+ * @returns
+ */
+export const getChainStartBlock = (chain: string): number | null => {
+	if (!chainsStartBlockConfig.has(chain) || !isMigrating()) {
+		return null
+	}
+
+	const { blockNumber } = chainsStartBlockConfig.get(chain)!
+	return blockNumber
 }

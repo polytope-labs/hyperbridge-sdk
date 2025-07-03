@@ -1,6 +1,6 @@
 import Decimal from "decimal.js"
 
-import { CumulativeVolumeUSD, DailyVolumeUSD } from "@/configs/src/types"
+import { CumulativeVolumeUSD, DailyVolumeUSD } from "@/types"
 import { timestampToDate } from "@/utils/date.helpers"
 
 import { VolumeService } from "../volume.service"
@@ -26,7 +26,7 @@ const mockStore = new Map<string, any>()
 }
 
 // Mock the model classes
-jest.mock("@/configs/src/types", () => ({
+jest.mock("@/types", () => ({
 	CumulativeVolumeUSD: {
 		get: jest.fn().mockImplementation((id: string) => {
 			const key = `CumulativeVolumeUSD:${id}`
