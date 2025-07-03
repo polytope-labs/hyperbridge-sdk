@@ -1,5 +1,5 @@
 import { subqlTest } from "@subql/testing"
-import { Relayer, Transfer } from "@/configs/src/types"
+import { Relayer, Transfer } from "@/types"
 
 const existingEntities = [
 	Relayer.create({

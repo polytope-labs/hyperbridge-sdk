@@ -72,7 +72,8 @@ export function isSubstrateChain(stateMachineId: string): boolean {
 	return (
 		stateMachineId.startsWith("POLKADOT") ||
 		stateMachineId.startsWith("KUSAMA") ||
-		stateMachineId.startsWith("SUBSTRATE")
+		stateMachineId.startsWith("SUBSTRATE") ||
+		stateMachineId.startsWith("RELAY")
 	)
 }
 
