@@ -73,7 +73,7 @@ export class TokenGatewayService {
 		const tokenContract = ERC6160Ext20Abi__factory.connect(tokenAddress, api)
 		const decimals = tokenDetails.is_erc20 || tokenDetails.is_erc6160 ? await tokenContract.decimals() : 18
 
-		const usdValue = await PriceHelper.getTokenPriceInUSDUniswap(tokenAddress, teleportParams.amount, decimals)
+		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(tokenAddress, teleportParams.amount, decimals)
 
 		if (!teleport) {
 			teleport = await TokenGatewayAssetTeleported.create({

@@ -151,7 +151,7 @@ export class IntentGatewayService {
 					decimals = await tokenContract.decimals()
 				}
 
-				return PriceHelper.getTokenPriceInUSDUniswap(tokenAddress, token.amount, decimals)
+				return PriceHelper.getTokenPriceInUSDCoingecko(tokenAddress, token.amount, decimals)
 			}),
 		)
 
