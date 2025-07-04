@@ -1,4 +1,10 @@
+import Decimal from "decimal.js"
+import fetch from "node-fetch"
+import type { Hex } from "viem"
+
 import { CHAINLINK_PRICE_FEED_CONTRACT_ADDRESSES } from "@/addresses/chainlink-price-feeds.addresses"
+import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
+import { INTENT_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/intentGateway.addresses"
 import { ITokenPriceFeedDetails } from "@/constants"
 import { ChainLinkAggregatorV3Abi__factory } from "@/configs/src/types/contracts"
 import { ethers } from "ethers"
@@ -8,15 +14,14 @@ import uniswapV3FactoryAbi from "@/configs/abis/UniswapV3Factory.abi.json"
 import uniswapV3PoolAbi from "@/configs/abis/UniswapV3Pool.abi.json"
 import uniswapV3QuoterV2Abi from "@/configs/abis/UniswapV3QuoterV2.abi.json"
 import uniswapV4QuoterAbi from "@/configs/abis/UniswapV4Quoter.abi.json"
-import Decimal from "decimal.js"
-import type { Hex } from "viem"
 
 export default class PriceHelper {
 	static async getNativeCurrencyPrice(stateMachineId: string): Promise<bigint> {
 		const priceFeedAddress = CHAINLINK_PRICE_FEED_CONTRACT_ADDRESSES[stateMachineId]
 
 		if (!priceFeedAddress) {
-			throw new Error(`Price feed address not found for state machine id: ${stateMachineId}`)
+			console.warn(`Price feed address not found for state machine id: ${stateMachineId}`)
+			return BigInt(0)
 		}
 
 		const priceFeedContract = ChainLinkAggregatorV3Abi__factory.connect(priceFeedAddress, api)
@@ -292,4 +297,88 @@ export default class PriceHelper {
 			throw error
 		}
 	}
+
+	/**
+	 * Get token price in USD using CoinGecko API
+	 * @param tokenAddress - The token contract address
+	 * @param amount - Amount in token's smallest unit (e.g., wei for ETH)
+	 * @param decimals - Token decimals
+	 * @returns Price per token and total value in USD
+	 */
+	static async getTokenPriceInUSDCoingecko(
+		tokenAddress: string,
+		amount: bigint,
+		decimals: number,
+	): Promise<{ priceInUSD: string; amountValueInUSD: string }> {
+		try {
+			let symbol: string | null = "eth"
+
+			const isNativeToken = tokenAddress.endsWith("0000000000000000000000000000000000000000")
+			if (!isNativeToken) {
+				symbol = CONTRACT_ADDRESSES_NATIVE_TOKEN?.[tokenAddress.toLowerCase()] || null
+			}
+
+			if (!symbol) {
+				console.warn(`No symbol found for token address: ${tokenAddress.toLowerCase()}`)
+				return { priceInUSD: "0", amountValueInUSD: "0" }
+			}
+
+			const headers = {
+				accept: "application/json",
+				"content-type": "application/json",
+			} as Record<string, string>
+
+			if (process.env.COIN_GECKGO_API_KEY) {
+				headers["x-cg-pro-api-key"] = process.env.COIN_GECKGO_API_KEY
+			}
+
+			const baseUrl = process.env.COIN_GECKGO_API_KEY
+				? "https://pro-api.coingecko.com"
+				: "https://api.coingecko.com"
+
+			const response = await fetch(`${baseUrl}/api/v3/simple/price?symbols=${symbol}&vs_currencies=usd`, {
+				method: "GET",
+				headers,
+			})
+
+			if (!response.ok) {
+				throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
+			}
+
+			const data = (await response.json()) as Record<string, { usd: number }>
+			const priceUsd = data[symbol]?.usd
+
+			if (!priceUsd || priceUsd <= 0) {
+				throw new Error(`Price not found for symbol: ${symbol}`)
+			}
+
+			const priceInUSD = new Decimal(priceUsd.toString()).toFixed(18)
+			const amountValueInUSD = new Decimal(amount.toString())
+				.dividedBy(new Decimal(10).pow(decimals))
+				.times(new Decimal(priceInUSD))
+				.toFixed(18)
+
+			return {
+				priceInUSD,
+				amountValueInUSD,
+			}
+		} catch (error) {
+			console.error(`Error fetching token price for ${tokenAddress}: ${error}`)
+			return {
+				priceInUSD: "0",
+				amountValueInUSD: "0",
+			}
+		}
+	}
+}
+
+export const CONTRACT_ADDRESSES_NATIVE_TOKEN: {
+	[key: string]: string
+} = {
+	// Token Gateway Contract Address
+	[TOKEN_GATEWAY_CONTRACT_ADDRESSES["EVM-1"].toLowerCase()]: "eth",
+	[TOKEN_GATEWAY_CONTRACT_ADDRESSES["EVM-97"].toLowerCase()]: "eth",
+	[TOKEN_GATEWAY_CONTRACT_ADDRESSES["EVM-1868"].toLowerCase()]: "xdai",
+	// Intent Gateway Contract Address
+	[INTENT_GATEWAY_CONTRACT_ADDRESSES["EVM-97"].toLowerCase()]: "eth",
 }
