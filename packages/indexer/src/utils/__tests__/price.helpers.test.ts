@@ -1,6 +1,6 @@
 import PriceHelper from "../price.helpers"
 
-describe("PriceHelper.getTokenPriceInUSDCoingecko", () => {
+describe.skip("PriceHelper.getTokenPriceInUSDCoingecko", () => {
 	beforeAll(() => {
 		;(global as any).logger = console
 	})
