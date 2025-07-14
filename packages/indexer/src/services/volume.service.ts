@@ -105,7 +105,7 @@ export class VolumeService {
 	 * @returns True if within 24 hours, false otherwise
 	 */
 	private static isWithin24Hours(createdAt: Date, currentTimestamp: bigint): boolean {
-		const timestampDate = new Date(Number(currentTimestamp)).toISOString().split("T")[0]
+		const timestampDate = timestampToDate(currentTimestamp).toISOString().split("T")[0]
 		const createdDate = createdAt.toISOString().split("T")[0]
 		return timestampDate <= createdDate
 	}
