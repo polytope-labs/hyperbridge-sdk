@@ -2,6 +2,7 @@ import Decimal from "decimal.js"
 
 import { CumulativeVolumeUSD, DailyVolumeUSD } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 export class VolumeService {
 	/**
@@ -78,11 +79,11 @@ export class VolumeService {
 
 	/**
 	 * Generate a entity record ID base on the base ID (getDailyRecordId inclusive) and chainId
-	 * @param baseId
-	 * @returns
+	 * @param baseId - The identifier for the volume record
 	 */
 	static getChainTypeId(baseId: string): string {
-		return `${baseId}.${chainId}`
+		const stateMachineId = getHostStateMachine(chainId)
+		return `${baseId}.${stateMachineId}`
 	}
 
 	/**
