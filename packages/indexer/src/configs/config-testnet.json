@@ -17,6 +17,12 @@
   	"startBlock": 1,
   	"stateMachineId": "KUSAMA-zkv_"
 	},
+	"kilt-paseo": {
+  	"type": "substrate",
+  	"chainId": "0xa0c6e3bac382b316a68bca7141af1fba507207594c761076847ce358aeedcc21",
+  	"startBlock": 8430884,
+  	"stateMachineId": "KUSAMA-2086"
+	},
 	"sepolia": {
 		"type": "evm",
 		"chainId": "11155111",
