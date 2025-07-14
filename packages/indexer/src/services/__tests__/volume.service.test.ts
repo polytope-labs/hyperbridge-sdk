@@ -96,6 +96,10 @@ jest.mock("@/configs/src/types", () => ({
 }))
 
 describe("VolumeService", () => {
+	beforeAll(() => {
+		;(global as any).chainId = "97"
+	})
+
 	beforeEach(() => {
 		// Clear the mock store before each test
 		mockStore.clear()
@@ -115,9 +119,9 @@ describe("VolumeService", () => {
 
 			await VolumeService.updateCumulativeVolume(id, volume, timestamp)
 
-			expect(CumulativeVolumeUSD.get).toHaveBeenCalledWith(id)
+			expect(CumulativeVolumeUSD.get).toHaveBeenCalledWith(VolumeService.getChainTypeId(id))
 			expect(CumulativeVolumeUSD.create).toHaveBeenCalledWith({
-				id,
+				id: VolumeService.getChainTypeId(id),
 				volumeUSD: new Decimal(volume).toFixed(18),
 				lastUpdatedAt: timestamp,
 			})
@@ -133,7 +137,7 @@ describe("VolumeService", () => {
 			await VolumeService.updateCumulativeVolume(id, volume, timestamp)
 			await VolumeService.updateCumulativeVolume(id, additionalVolume, updatedTimestamp)
 
-			const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+			const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 			expect(stored).toBeDefined()
 			expect(stored.volumeUSD).toBe("701.000000000000000000")
 			expect(stored.lastUpdatedAt).toBe(updatedTimestamp)
@@ -143,7 +147,7 @@ describe("VolumeService", () => {
 			const id = "TokenGateway"
 			await VolumeService.updateCumulativeVolume(id, "0.123456789012345678", BigInt(1700000000))
 
-			const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+			const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 			expect(stored).toBeDefined()
 			expect(stored.volumeUSD).toBe("0.123456789012345678")
 		})
@@ -157,7 +161,7 @@ describe("VolumeService", () => {
 
 			await VolumeService.updateDailyVolume(id, volume, timestamp)
 
-			const expectedId = `${id}.2025-07-10`
+			const expectedId = `${VolumeService.getChainTypeId(id)}.2025-07-10`
 			expect(DailyVolumeUSD.get).toHaveBeenCalledWith(expectedId)
 			expect(DailyVolumeUSD.create).toHaveBeenCalledWith({
 				id: expectedId,
@@ -177,11 +181,9 @@ describe("VolumeService", () => {
 			await VolumeService.updateDailyVolume(id, volume, timestamp)
 			await VolumeService.updateDailyVolume(id, additionalVolume, updatedTimestamp)
 
-			const stored = mockStore.get(`DailyVolumeUSD:${id}.2025-07-10`)
+			const stored = mockStore.get(`DailyVolumeUSD:${VolumeService.getChainTypeId(id)}.2025-07-10`)
 			expect(stored).toBeDefined()
-			expect(stored.last24HoursVolumeUSD).toBe(
-				new Decimal(volume).plus(additionalVolume).toFixed(18),
-			)
+			expect(stored.last24HoursVolumeUSD).toBe(new Decimal(volume).plus(additionalVolume).toFixed(18))
 			expect(stored.lastUpdatedAt).toBe(updatedTimestamp)
 		})
 
@@ -195,11 +197,11 @@ describe("VolumeService", () => {
 			await VolumeService.updateDailyVolume(id, volume, firstDayTimestamp)
 			await VolumeService.updateDailyVolume(id, additionalVolume, secondDayTimestamp)
 
-			const firstDayStored = mockStore.get(`DailyVolumeUSD:${id}.2025-07-14`)
+			const firstDayStored = mockStore.get(`DailyVolumeUSD:${VolumeService.getChainTypeId(id)}.2025-07-14`)
 			expect(firstDayStored).toBeDefined()
 			expect(firstDayStored.last24HoursVolumeUSD).toBe(new Decimal(volume).toFixed(18))
 
-			const secondDayStored = mockStore.get(`DailyVolumeUSD:${id}.2025-07-15`)
+			const secondDayStored = mockStore.get(`DailyVolumeUSD:${VolumeService.getChainTypeId(id)}.2025-07-15`)
 			expect(secondDayStored).toBeDefined()
 			expect(secondDayStored.last24HoursVolumeUSD).toBe(new Decimal(additionalVolume).toFixed(18))
 		})
@@ -207,7 +209,7 @@ describe("VolumeService", () => {
 		it("should generate correct daily record ID based on timestamp", async () => {
 			const id = "TokenGateway"
 			await VolumeService.updateDailyVolume(id, "1000.50", BigInt(1752145126274))
-			expect(DailyVolumeUSD.get).toHaveBeenCalledWith(`${id}.2025-07-10`)
+			expect(DailyVolumeUSD.get).toHaveBeenCalledWith(`${VolumeService.getChainTypeId(id)}.2025-07-10`)
 		})
 	})
 
@@ -219,14 +221,14 @@ describe("VolumeService", () => {
 
 			await VolumeService.updateVolume(id, volume, timestamp)
 
-			expect(CumulativeVolumeUSD.get).toHaveBeenCalledWith(id)
+			expect(CumulativeVolumeUSD.get).toHaveBeenCalledWith(VolumeService.getChainTypeId(id))
 			expect(CumulativeVolumeUSD.create).toHaveBeenCalledWith({
-				id,
+				id: VolumeService.getChainTypeId(id),
 				volumeUSD: new Decimal(volume).toFixed(18),
 				lastUpdatedAt: timestamp,
 			})
 
-			const expectedDailyId = `${id}.2025-07-14`
+			const expectedDailyId = `${VolumeService.getChainTypeId(id)}.2025-07-14`
 			expect(DailyVolumeUSD.get).toHaveBeenCalledWith(expectedDailyId)
 			expect(DailyVolumeUSD.create).toHaveBeenCalledWith({
 				id: expectedDailyId,
@@ -261,7 +263,7 @@ describe("VolumeService", () => {
 			const timestamp = BigInt(1700000000)
 
 			await VolumeService.updateCumulativeVolume(id, volume, timestamp)
-			const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+			const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 
 			expect(stored).toBeDefined()
 			expect(stored.volumeUSD).toBe(new Decimal(volume).toFixed(18))
@@ -273,7 +275,7 @@ describe("VolumeService", () => {
 			const timestamp = BigInt(1700000000)
 
 			await VolumeService.updateCumulativeVolume(id, volume, timestamp)
-			const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+			const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 
 			expect(stored).toBeDefined()
 			expect(stored.volumeUSD).toBe("0.000000000000000000")
@@ -281,10 +283,10 @@ describe("VolumeService", () => {
 
 		it("should handle very small volume amounts", async () => {
 			const id = "TokenGateway"
-      const volume = "0.000000000000000001"
+			const volume = "0.000000000000000001"
 
 			await VolumeService.updateCumulativeVolume(id, volume, BigInt(1700000000))
-			const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+			const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 
 			expect(stored).toBeDefined()
 			expect(stored.volumeUSD).toBe(new Decimal(volume).toFixed(18))
@@ -297,7 +299,7 @@ describe("VolumeService", () => {
 
 			for (const id of ids) {
 				await VolumeService.updateCumulativeVolume(id, volume, BigInt(1700000000))
-				const stored = mockStore.get(`CumulativeVolumeUSD:${id}`)
+				const stored = mockStore.get(`CumulativeVolumeUSD:${VolumeService.getChainTypeId(id)}`)
 
 				expect(stored).toBeDefined()
 				expect(stored.volumeUSD).toBe(new Decimal(volume).toFixed(18))

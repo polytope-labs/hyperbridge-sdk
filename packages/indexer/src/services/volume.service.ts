@@ -6,11 +6,12 @@ import { timestampToDate } from "@/utils/date.helpers"
 export class VolumeService {
 	/**
 	 * Update cumulative volume for a given identifier
-	 * @param id - The identifier for the cumulative volume record
+	 * @param baseId - The identifier for the cumulative volume record
 	 * @param volumeUSD - The volume in USD to add
 	 * @param timestamp - The timestamp of the transaction
 	 */
-	static async updateCumulativeVolume(id: string, volumeUSD: string, timestamp: bigint): Promise<void> {
+	static async updateCumulativeVolume(baseId: string, volumeUSD: string, timestamp: bigint): Promise<void> {
+		const id = this.getChainTypeId(baseId)
 		let cumulativeVolumeUSD = await CumulativeVolumeUSD.get(id)
 
 		if (!cumulativeVolumeUSD) {
@@ -34,11 +35,12 @@ export class VolumeService {
 	/**
 	 * Update daily volume for a given identifier
 	 * Creates a new record every 24 hours
-	 * @param id - The base identifier for the daily volume record
+	 * @param baseId - The base identifier for the daily volume record
 	 * @param volumeUSD - The volume in USD to add
 	 * @param timestamp - The timestamp of the transaction
 	 */
-	static async updateDailyVolume(id: string, volumeUSD: string, timestamp: bigint): Promise<void> {
+	static async updateDailyVolume(baseId: string, volumeUSD: string, timestamp: bigint): Promise<void> {
+		const id = this.getChainTypeId(baseId)
 		const dailyRecordId = this.getDailyRecordId(id, timestamp)
 		let dailyVolumeUSD = await DailyVolumeUSD.get(dailyRecordId)
 
@@ -72,6 +74,15 @@ export class VolumeService {
 			this.updateCumulativeVolume(id, volumeUSD, timestamp),
 			this.updateDailyVolume(id, volumeUSD, timestamp),
 		])
+	}
+
+	/**
+	 * Generate a entity record ID base on the base ID (getDailyRecordId inclusive) and chainId
+	 * @param baseId
+	 * @returns
+	 */
+	static getChainTypeId(baseId: string): string {
+		return `${baseId}.${chainId}`
 	}
 
 	/**
