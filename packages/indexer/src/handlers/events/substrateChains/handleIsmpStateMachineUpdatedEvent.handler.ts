@@ -69,89 +69,93 @@ export function extractConsensusStateIdFromEvent(event: SubstrateEvent): string 
 }
 
 export async function handleIsmpStateMachineUpdatedEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw Ismp.StateMachineUpdated Event on ${getHostStateMachine(chainId)}`)
-
-	const stateMachineId = extractStateMachineIdFromSubstrateEventData(event.event.data.toString())
-	const consensusStateId = extractConsensusStateIdFromEvent(event)
-
-	const host = getHostStateMachine(chainId)
-
-	if (typeof stateMachineId === "undefined") {
-		logger.error("Failed to extract stateMachineId from event data")
-		return
-	}
-
-	if (typeof consensusStateId === "undefined") {
-		logger.error("Failed to extract consensusStateId from event data")
-		return
-	}
-
 	try {
-		if (!SubstrateEventValidator.validateChainMetadata(host, stateMachineId)) {
-			throw new StateMachineError("Invalid chain metadata", host, event.block.block.header.number.toNumber())
-		}
+		logger.info(`Saw Ismp.StateMachineUpdated Event on ${getHostStateMachine(chainId)}`)
 
-		if (!SubstrateEventValidator.validateStateMachineEvent(event)) {
-			logger.error(`Invalid state machine event data: ${stringify(event.event)}`)
-			throw new StateMachineError(
-				"Invalid state machine event data",
-				host,
-				event.block.block.header.number.toNumber(),
-			)
-		}
+		const stateMachineId = extractStateMachineIdFromSubstrateEventData(event.event.data.toString())
+		const consensusStateId = extractConsensusStateIdFromEvent(event)
 
-		logger.info(
-			`Handling ISMP StateMachineUpdatedEvent. Block Number: ${event.block.block.header.number.toNumber()}`,
-		)
+		const host = getHostStateMachine(chainId)
 
-		const { method, data } = event.event
-
-		const height = Number(data[1].toString())
-		const blockNumber = event.block.block.header.number.toNumber()
-		const blockHash = event.block.block.header.hash.toString()
-		const transactionHash = event.extrinsic?.extrinsic?.hash?.toString() || ""
-		const transactionIndex = event.extrinsic?.idx || 0
-
-		if (isNaN(height)) {
-			logger.error(`Invalid height value in event data: ${data[1].toString()}`)
+		if (typeof stateMachineId === "undefined") {
+			logger.error("Failed to extract stateMachineId from event data")
 			return
 		}
 
-		const timestamp = await getBlockTimestamp(blockHash, host)
+		if (typeof consensusStateId === "undefined") {
+			logger.error("Failed to extract consensusStateId from event data")
+			return
+		}
 
-		switch (method) {
-			case "StateMachineUpdated":
-				await StateMachineService.createSubstrateStateMachineUpdatedEvent(
-					{
-						blockHash,
-						blockNumber,
-						transactionHash,
-						transactionIndex,
-						timestamp: Number(timestamp),
-						stateMachineId,
-						height,
-						consensusStateId,
-					},
-					host,
-				)
-				break
+		try {
+			if (!SubstrateEventValidator.validateChainMetadata(host, stateMachineId)) {
+				throw new StateMachineError("Invalid chain metadata", host, event.block.block.header.number.toNumber())
+			}
 
-			default:
+			if (!SubstrateEventValidator.validateStateMachineEvent(event)) {
+				logger.error(`Invalid state machine event data: ${stringify(event.event)}`)
 				throw new StateMachineError(
-					`Unsupported method: ${method}`,
+					"Invalid state machine event data",
 					host,
 					event.block.block.header.number.toNumber(),
 				)
+			}
+
+			logger.info(
+				`Handling ISMP StateMachineUpdatedEvent. Block Number: ${event.block.block.header.number.toNumber()}`,
+			)
+
+			const { method, data } = event.event
+
+			const height = Number(data[1].toString())
+			const blockNumber = event.block.block.header.number.toNumber()
+			const blockHash = event.block.block.header.hash.toString()
+			const transactionHash = event.extrinsic?.extrinsic?.hash?.toString() || ""
+			const transactionIndex = event.extrinsic?.idx || 0
+
+			if (isNaN(height)) {
+				logger.error(`Invalid height value in event data: ${data[1].toString()}`)
+				return
+			}
+
+			const timestamp = await getBlockTimestamp(blockHash, host)
+
+			switch (method) {
+				case "StateMachineUpdated":
+					await StateMachineService.createSubstrateStateMachineUpdatedEvent(
+						{
+							blockHash,
+							blockNumber,
+							transactionHash,
+							transactionIndex,
+							timestamp: Number(timestamp),
+							stateMachineId,
+							height,
+							consensusStateId,
+						},
+						host,
+					)
+					break
+
+				default:
+					throw new StateMachineError(
+						`Unsupported method: ${method}`,
+						host,
+						event.block.block.header.number.toNumber(),
+					)
+			}
+		} catch (error) {
+			logger.error("State machine event processing failed", {
+				error: error instanceof Error ? error.message : "Unknown error",
+				host,
+				blockNumber: event.block.block.header.number.toNumber(),
+				method: event.event.method,
+			})
+
+			// Re-throw to maintain indexer state
+			throw error
 		}
 	} catch (error) {
-		logger.error("State machine event processing failed", {
-			error: error instanceof Error ? error.message : "Unknown error",
-			host,
-			blockNumber: event.block.block.header.number.toNumber(),
-			method: event.event.method,
-		})
-
-		// Re-throw to maintain indexer state
-		throw error
+		logger.error(`Error updating handling IsmpStateMachineUpdated Event: ${stringify(error)}`)
 	}
 }
