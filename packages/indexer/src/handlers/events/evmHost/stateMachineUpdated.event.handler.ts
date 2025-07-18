@@ -8,40 +8,44 @@ import stringify from "safe-stable-stringify"
  * Handle the StateMachineUpdated event
  */
 export async function handleStateMachineUpdatedEvent(event: StateMachineUpdatedLog): Promise<void> {
-	if (!event.args) return
+	try {
+		if (!event.args) return
 
-	const { blockHash, blockNumber, transactionHash, transactionIndex, block, args } = event
-	const { stateMachineId, height } = args
+		const { blockHash, blockNumber, transactionHash, transactionIndex, block, args } = event
+		const { stateMachineId, height } = args
 
-	logger.info(
-		`Handling StateMachineUpdated Event: ${stringify({
-			blockNumber,
-			transactionHash,
-		})}`,
-	)
+		logger.info(
+			`Handling StateMachineUpdated Event: ${stringify({
+				blockNumber,
+				transactionHash,
+			})}`,
+		)
 
-	const chain: string = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(blockHash, chain)
+		const chain: string = getHostStateMachine(chainId)
+		const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	// Determine if we're on testnet or mainnet based on stateMachineId
-	const isTestnet = stateMachineId.includes("KUSAMA")
+		// Determine if we're on testnet or mainnet based on stateMachineId
+		const isTestnet = stateMachineId.includes("KUSAMA")
 
-	// Set consensusStateId to PAS0 for testnet, DOT0 for mainnet
-	const consensusStateId = isTestnet ? "PAS0" : "DOT0"
+		// Set consensusStateId to PAS0 for testnet, DOT0 for mainnet
+		const consensusStateId = isTestnet ? "PAS0" : "DOT0"
 
-	logger.info(`Using consensusStateId: ${consensusStateId} for stateMachineId: ${stateMachineId}`)
+		logger.info(`Using consensusStateId: ${consensusStateId} for stateMachineId: ${stateMachineId}`)
 
-	await StateMachineService.createEvmStateMachineUpdatedEvent(
-		{
-			transactionHash,
-			transactionIndex,
-			blockHash,
-			blockNumber,
-			timestamp: Number(timestamp),
-			stateMachineId: stateMachineId,
-			height: height.toNumber(),
-			consensusStateId,
-		},
-		chain,
-	)
+		await StateMachineService.createEvmStateMachineUpdatedEvent(
+			{
+				transactionHash,
+				transactionIndex,
+				blockHash,
+				blockNumber,
+				timestamp: Number(timestamp),
+				stateMachineId: stateMachineId,
+				height: height.toNumber(),
+				consensusStateId,
+			},
+			chain,
+		)
+	} catch (error) {
+		logger.error(`Error updating handling StateMachineUpdated Event: ${stringify(error)}`)
+	}
 }

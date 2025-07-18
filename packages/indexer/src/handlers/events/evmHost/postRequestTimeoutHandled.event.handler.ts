@@ -10,22 +10,22 @@ import stringify from "safe-stable-stringify"
  * Handles the PostRequestTimeoutHandled event
  */
 export async function handlePostRequestTimeoutHandledEvent(event: PostRequestTimeoutHandledLog): Promise<void> {
-	if (!event.args) return
-
-	const { args, block, transaction, transactionHash, transactionIndex, blockHash, blockNumber, data } = event
-	const { commitment, dest } = args
-
-	logger.info(
-		`Handling PostRequestTimeoutHandled Event: ${stringify({
-			blockNumber,
-			transactionHash,
-		})}`,
-	)
-
-	const chain: string = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
-
 	try {
+		if (!event.args) return
+
+		const { args, block, transaction, transactionHash, transactionIndex, blockHash, blockNumber, data } = event
+		const { commitment, dest } = args
+
+		logger.info(
+			`Handling PostRequestTimeoutHandled Event: ${stringify({
+				blockNumber,
+				transactionHash,
+			})}`,
+		)
+
+		const chain: string = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash, chain)
+
 		await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
 
 		await RequestService.updateStatus({
@@ -38,6 +38,6 @@ export async function handlePostRequestTimeoutHandledEvent(event: PostRequestTim
 			transactionHash,
 		})
 	} catch (error) {
-		logger.error(`Error updating handling post request timeout: ${stringify(error)}`)
+		logger.error(`Error updating handling PostRequestTimeoutHandled Event: ${stringify(error)}`)
 	}
 }

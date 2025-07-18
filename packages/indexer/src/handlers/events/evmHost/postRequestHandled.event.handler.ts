@@ -10,22 +10,22 @@ import stringify from "safe-stable-stringify"
  * Handles the PostRequestHandled event from Hyperbridge
  */
 export async function handlePostRequestHandledEvent(event: PostRequestHandledLog): Promise<void> {
-	if (!event.args) return
-
-	const { args, block, transaction, transactionHash, transactionIndex, blockHash, blockNumber, data } = event
-	const { relayer: relayer_id, commitment } = args
-
-	logger.info(
-		`Handling PostRequestHandled Event: ${stringify({
-			blockNumber,
-			transactionHash,
-		})}`,
-	)
-
-	const chain = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
-
 	try {
+		if (!event.args) return
+
+		const { args, block, transaction, transactionHash, transactionIndex, blockHash, blockNumber, data } = event
+		const { relayer: relayer_id, commitment } = args
+
+		logger.info(
+			`Handling PostRequestHandled Event: ${stringify({
+				blockNumber,
+				transactionHash,
+			})}`,
+		)
+
+		const chain = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash, chain)
+
 		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, chain)
 
 		await RequestService.updateStatus({
@@ -38,6 +38,6 @@ export async function handlePostRequestHandledEvent(event: PostRequestHandledLog
 			transactionHash,
 		})
 	} catch (error) {
-		console.error(`Error handling PostRequestHandled event: ${stringify(error)}`)
+		logger.error(`Error handling PostRequestHandled Event: ${stringify({ error })}`)
 	}
 }

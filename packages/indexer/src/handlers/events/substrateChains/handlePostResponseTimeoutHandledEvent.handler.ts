@@ -4,41 +4,46 @@ import { ResponseService } from "@/services/response.service"
 import { Status } from "@/configs/src/types"
 import { getHostStateMachine, isHyperbridge } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import stringify from "safe-stable-stringify"
 
 export async function handleSubstratePostResponseTimeoutHandledEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw Ismp.PostResponseTimeoutHandled Event on ${getHostStateMachine(chainId)}`)
+	try {
+		logger.info(`Saw Ismp.PostResponseTimeoutHandled Event on ${getHostStateMachine(chainId)}`)
 
-	if (!event.extrinsic && event.event.data) return
+		if (!event.extrinsic && event.event.data) return
 
-	const {
-		event: { data },
-		extrinsic,
-		block: {
+		const {
+			event: { data },
+			extrinsic,
 			block: {
-				header: { number: blockNumber, hash: blockHash },
+				block: {
+					header: { number: blockNumber, hash: blockHash },
+				},
 			},
-		},
-	} = event
+		} = event
 
-	const host = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
+		const host = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
 
-	const timeoutStatus = isHyperbridge(host) ? Status.HYPERBRIDGE_TIMED_OUT : Status.TIMED_OUT
+		const timeoutStatus = isHyperbridge(host) ? Status.HYPERBRIDGE_TIMED_OUT : Status.TIMED_OUT
 
-	const eventData = data.toJSON()
-	const timeoutData = Array.isArray(eventData)
-		? (eventData[0] as { commitment: any; source: any; dest: any })
-		: undefined
+		const eventData = data.toJSON()
+		const timeoutData = Array.isArray(eventData)
+			? (eventData[0] as { commitment: any; source: any; dest: any })
+			: undefined
 
-	if (!timeoutData) return
+		if (!timeoutData) return
 
-	await ResponseService.updateStatus({
-		commitment: timeoutData.commitment.toString(),
-		chain: host,
-		blockNumber: blockNumber.toString(),
-		blockHash: blockHash.toString(),
-		blockTimestamp,
-		status: timeoutStatus,
-		transactionHash: extrinsic!.extrinsic.hash.toString(),
-	})
+		await ResponseService.updateStatus({
+			commitment: timeoutData.commitment.toString(),
+			chain: host,
+			blockNumber: blockNumber.toString(),
+			blockHash: blockHash.toString(),
+			blockTimestamp,
+			status: timeoutStatus,
+			transactionHash: extrinsic!.extrinsic.hash.toString(),
+		})
+	} catch (error) {
+		logger.error(`Error updating handling SubstratePostResponseTimeoutHandled Event: ${stringify(error)}`)
+	}
 }

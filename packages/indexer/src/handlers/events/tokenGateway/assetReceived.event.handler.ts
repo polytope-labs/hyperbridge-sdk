@@ -9,35 +9,39 @@ import PriceHelper from "@/utils/price.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 export async function handleAssetReceivedEvent(event: AssetReceivedLog): Promise<void> {
-	logger.info(`Asset Received Event: ${stringify(event)}`)
+	try {
+		logger.info(`Asset Received Event: ${stringify(event)}`)
 
-	const { blockNumber, transactionHash, args, blockHash } = event
-	const { amount, commitment, from, beneficiary, assetId } = args!
+		const { blockNumber, transactionHash, args, blockHash } = event
+		const { amount, commitment, from, beneficiary, assetId } = args!
 
-	const chain = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(blockHash, chain)
+		const chain = getHostStateMachine(chainId)
+		const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	logger.info(
-		`Asset Received Event: ${stringify({
-			amount,
-			commitment,
-			from,
-			beneficiary,
-			assetId,
-		})}`,
-	)
+		logger.info(
+			`Asset Received Event: ${stringify({
+				amount,
+				commitment,
+				from,
+				beneficiary,
+				assetId,
+			})}`,
+		)
 
-	const tokenContract = await TokenGatewayService.getAssetTokenContract(assetId.toString())
-	const decimals = await tokenContract.decimals()
-	const symbol = await tokenContract.symbol()
+		const tokenContract = await TokenGatewayService.getAssetTokenContract(assetId.toString())
+		const decimals = await tokenContract.decimals()
+		const symbol = await tokenContract.symbol()
 
-	const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, amount.toBigInt(), decimals)
+		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, amount.toBigInt(), decimals)
 
-	await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
+		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
 
-	await TokenGatewayService.updateTeleportStatus(commitment, TeleportStatus.RECEIVED, {
-		transactionHash,
-		blockNumber,
-		timestamp,
-	})
+		await TokenGatewayService.updateTeleportStatus(commitment, TeleportStatus.RECEIVED, {
+			transactionHash,
+			blockNumber,
+			timestamp,
+		})
+	} catch (error) {
+		logger.error(`Error updating handling AssetReceived Event: ${stringify(error)}`)
+	}
 }

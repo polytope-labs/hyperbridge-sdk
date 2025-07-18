@@ -11,86 +11,90 @@ import stringify from "safe-stable-stringify"
  * Handles the GetRequest event from Evm Hosts
  */
 export async function handleGetRequestEvent(event: GetRequestEventLog): Promise<void> {
-	logger.info(
-		`Handling GetRequest Event: ${stringify({
-			event,
-		})}`,
-	)
-	if (!event.args) return
+	try {
+		logger.info(
+			`Handling GetRequest Event: ${stringify({
+				event,
+			})}`,
+		)
+		if (!event.args) return
 
-	const { blockNumber, transactionHash, args, block, blockHash } = event
-	let { source, dest, from, nonce, height, context, timeoutTimestamp, fee } = args
-	let keys = args[3]
+		const { blockNumber, transactionHash, args, block, blockHash } = event
+		let { source, dest, from, nonce, height, context, timeoutTimestamp, fee } = args
+		let keys = args[3]
 
-	const chain: string = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(blockHash, chain)
+		const chain: string = getHostStateMachine(chainId)
+		const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	// Update HyperBridge stats
-	await HyperBridgeService.incrementNumberOfSentMessages(chain)
+		// Update HyperBridge stats
+		await HyperBridgeService.incrementNumberOfSentMessages(chain)
 
-	logger.info(
-		`Processing GetRequest Event: ${stringify({
+		logger.info(
+			`Processing GetRequest Event: ${stringify({
+				source,
+				dest,
+				from,
+				keys,
+				nonce,
+				height,
+				context,
+				timeoutTimestamp,
+				fee,
+			})}`,
+		)
+
+		let get_request_commitment = GetRequestService.computeRequestCommitment(
+			source,
+			dest,
+			BigInt(nonce.toString()),
+			BigInt(height.toString()),
+			BigInt(timeoutTimestamp.toString()),
+			from,
+			keys,
+			context,
+		)
+
+		logger.info(
+			`Get Request Commitment: ${stringify({
+				commitment: get_request_commitment,
+			})}`,
+		)
+
+		const blockTimestamp = block.timestamp
+
+		await GetRequestService.createOrUpdate({
+			id: get_request_commitment,
 			source,
 			dest,
 			from,
 			keys,
-			nonce,
-			height,
+			nonce: BigInt(nonce.toString()),
+			height: BigInt(height.toString()),
 			context,
-			timeoutTimestamp,
-			fee,
-		})}`,
-	)
+			timeoutTimestamp: BigInt(timeoutTimestamp.toString()),
+			fee: BigInt(fee.toString()),
+			transactionHash,
+			blockNumber: blockNumber.toString(),
+			blockHash,
+			blockTimestamp,
+			status: Status.SOURCE,
+			chain,
+		})
 
-	let get_request_commitment = GetRequestService.computeRequestCommitment(
-		source,
-		dest,
-		BigInt(nonce.toString()),
-		BigInt(height.toString()),
-		BigInt(timeoutTimestamp.toString()),
-		from,
-		keys,
-		context,
-	)
+		const getRequestStatusMetadata = GetRequestStatusMetadata.create({
+			id: `${get_request_commitment}.${Status.SOURCE}`,
+			requestId: get_request_commitment,
+			status: Status.SOURCE,
+			chain,
+			timestamp: blockTimestamp,
+			blockNumber: blockNumber.toString(),
+			blockHash,
+			transactionHash,
+			createdAt: timestampToDate(timestamp),
+		})
 
-	logger.info(
-		`Get Request Commitment: ${stringify({
-			commitment: get_request_commitment,
-		})}`,
-	)
-
-	const blockTimestamp = block.timestamp
-
-	await GetRequestService.createOrUpdate({
-		id: get_request_commitment,
-		source,
-		dest,
-		from,
-		keys,
-		nonce: BigInt(nonce.toString()),
-		height: BigInt(height.toString()),
-		context,
-		timeoutTimestamp: BigInt(timeoutTimestamp.toString()),
-		fee: BigInt(fee.toString()),
-		transactionHash,
-		blockNumber: blockNumber.toString(),
-		blockHash,
-		blockTimestamp,
-		status: Status.SOURCE,
-		chain,
-	})
-
-	const getRequestStatusMetadata = GetRequestStatusMetadata.create({
-		id: `${get_request_commitment}.${Status.SOURCE}`,
-		requestId: get_request_commitment,
-		status: Status.SOURCE,
-		chain,
-		timestamp: blockTimestamp,
-		blockNumber: blockNumber.toString(),
-		blockHash,
-		transactionHash,
-		createdAt: timestampToDate(timestamp),
-	})
-
-	await getRequestStatusMetadata.save()
+		await getRequestStatusMetadata.save()
+	} catch (error) {
+		logger.error(`Error handling GetRequest Event: ${stringify({ error })}`)
+	}
 }

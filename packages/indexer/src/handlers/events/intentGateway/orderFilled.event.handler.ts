@@ -6,30 +6,34 @@ import { OrderStatus } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 export async function handleOrderFilledEvent(event: OrderFilledLog): Promise<void> {
-	logger.info(`Order Filled Event: ${stringify(event)}`)
+	try {
+		logger.info(`Order Filled Event: ${stringify(event)}`)
 
-	const { blockNumber, transactionHash, args, block, blockHash } = event
-	const { commitment, filler } = args!
+		const { blockNumber, transactionHash, args, block, blockHash } = event
+		const { commitment, filler } = args!
 
-	if (!args) return
+		if (!args) return
 
-	const chain = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(blockHash, chain)
+		const chain = getHostStateMachine(chainId)
+		const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	logger.info(
-		`Order Filled: ${stringify({
+		logger.info(
+			`Order Filled: ${stringify({
+				commitment,
+			})} by ${filler}`,
+		)
+
+		await IntentGatewayService.updateOrderStatus(
 			commitment,
-		})} by ${filler}`,
-	)
-
-	await IntentGatewayService.updateOrderStatus(
-		commitment,
-		OrderStatus.FILLED,
-		{
-			transactionHash,
-			blockNumber,
-			timestamp,
-		},
-		filler,
-	)
+			OrderStatus.FILLED,
+			{
+				transactionHash,
+				blockNumber,
+				timestamp,
+			},
+			filler,
+		)
+	} catch (error) {
+		logger.error(`Error updating handling OrderFilled Event: ${stringify(error)}`)
+	}
 }

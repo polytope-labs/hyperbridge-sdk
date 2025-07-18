@@ -10,30 +10,34 @@ import stringify from "safe-stable-stringify"
  * Handles the GetRequestTimeoutHandled event from EVMHost
  */
 export async function handleGetRequestTimeoutHandled(event: GetRequestTimeoutHandledLog): Promise<void> {
-	if (!event.args) return
+	try {
+		if (!event.args) return
 
-	const { args, block, transactionHash, blockNumber, blockHash } = event
-	const { commitment } = args
+		const { args, block, transactionHash, blockNumber, blockHash } = event
+		const { commitment } = args
 
-	logger.info(
-		`Handling GetRequestTimeoutHandled Event: ${stringify({
-			blockNumber,
+		logger.info(
+			`Handling GetRequestTimeoutHandled Event: ${stringify({
+				blockNumber,
+				transactionHash,
+			})}`,
+		)
+
+		const chain = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash, chain)
+
+		await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
+
+		await GetRequestService.updateStatus({
+			commitment,
+			chain,
+			blockNumber: blockNumber.toString(),
+			blockHash: block.hash,
+			blockTimestamp,
+			status: Status.TIMED_OUT,
 			transactionHash,
-		})}`,
-	)
-
-	const chain = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
-
-	await HyperBridgeService.incrementNumberOfTimedOutMessagesSent(chain)
-
-	await GetRequestService.updateStatus({
-		commitment,
-		chain,
-		blockNumber: blockNumber.toString(),
-		blockHash: block.hash,
-		blockTimestamp,
-		status: Status.TIMED_OUT,
-		transactionHash,
-	})
+		})
+	} catch (error) {
+		logger.error(`Error handling GetRequestTimeoutHandled Event: ${stringify({ error })}`)
+	}
 }

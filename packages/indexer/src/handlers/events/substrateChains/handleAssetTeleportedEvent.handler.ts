@@ -7,51 +7,55 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 
 export async function handleSubstrateAssetTeleportedEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw XcmGateway.AssetTeleported Event on ${getHostStateMachine(chainId)}`)
-
-	if (!event.event.data) return
-
-	const [from, to, amount, dest, commitment] = event.event.data
-
-	// Convert the SS58 address to hex format
-	let fromHex: string
 	try {
-		// Decode SS58 address to get the public key as Uint8Array
-		const publicKey = decodeAddress(from.toString())
-		// Convert the public key to hex format with 0x prefix
-		fromHex = u8aToHex(publicKey)
+		logger.info(`Saw XcmGateway.AssetTeleported Event on ${getHostStateMachine(chainId)}`)
 
-		logger.info(`Decoded SS58 address ${from.toString()} to hex ${fromHex}`)
-	} catch (error) {
-		logger.error(`Failed to decode SS58 address ${from.toString()}: ${error}`)
-		// Fall back to the original address if decoding fails
-		fromHex = from.toString()
-	}
+		if (!event.event.data) return
 
-	logger.info(
-		`Handling AssetTeleported Event: ${stringify({
+		const [from, to, amount, dest, commitment] = event.event.data
+
+		// Convert the SS58 address to hex format
+		let fromHex: string
+		try {
+			// Decode SS58 address to get the public key as Uint8Array
+			const publicKey = decodeAddress(from.toString())
+			// Convert the public key to hex format with 0x prefix
+			fromHex = u8aToHex(publicKey)
+
+			logger.info(`Decoded SS58 address ${from.toString()} to hex ${fromHex}`)
+		} catch (error) {
+			logger.error(`Failed to decode SS58 address ${from.toString()}: ${error}`)
+			// Fall back to the original address if decoding fails
+			fromHex = from.toString()
+		}
+
+		logger.info(
+			`Handling AssetTeleported Event: ${stringify({
+				from: fromHex,
+				to: to.toString(),
+				amount: amount.toString(),
+				dest: dest.toString(),
+				commitment: commitment.toString(),
+			})}`,
+		)
+
+		const destId = formatChain(dest.toString())
+		const host = getHostStateMachine(chainId)
+
+		const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
+
+		await AssetTeleportedService.createOrUpdate({
 			from: fromHex,
 			to: to.toString(),
-			amount: amount.toString(),
-			dest: dest.toString(),
+			amount: BigInt(amount.toString()),
+			dest: destId,
 			commitment: commitment.toString(),
-		})}`,
-	)
-
-	const destId = formatChain(dest.toString())
-	const host = getHostStateMachine(chainId)
-
-	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
-
-	await AssetTeleportedService.createOrUpdate({
-		from: fromHex,
-		to: to.toString(),
-		amount: BigInt(amount.toString()),
-		dest: destId,
-		commitment: commitment.toString(),
-		chain: host,
-		blockNumber: event.block.block.header.number.toString(),
-		blockHash: event.block.block.header.hash.toString(),
-		blockTimestamp,
-	})
+			chain: host,
+			blockNumber: event.block.block.header.number.toString(),
+			blockHash: event.block.block.header.hash.toString(),
+			blockTimestamp,
+		})
+	} catch (error) {
+		logger.error(`Error updating handling SubstrateAssetTeleported Event: ${stringify(error)}`)
+	}
 }

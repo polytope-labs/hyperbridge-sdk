@@ -11,52 +11,56 @@ type EventData = {
 	relayer: string
 }
 export async function handleSubstrateGetRequestHandledEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw Ismp.GetRequestHandled Event on ${getHostStateMachine(chainId)}`)
+	try {
+		logger.info(`Saw Ismp.GetRequestHandled Event on ${getHostStateMachine(chainId)}`)
 
-	if (!event.extrinsic && event.event.data) return
+		if (!event.extrinsic && event.event.data) return
 
-	const {
-		extrinsic,
-		block: {
+		const {
+			extrinsic,
 			block: {
-				header: { number: blockNumber, hash: blockHash },
+				block: {
+					header: { number: blockNumber, hash: blockHash },
+				},
 			},
-		},
-	} = event
+		} = event
 
-	const eventData = event.event.data[0] as unknown as EventData
-	const relayer_id = eventData.relayer.toString()
+		const eventData = event.event.data[0] as unknown as EventData
+		const relayer_id = eventData.relayer.toString()
 
-	logger.info(
-		`Handling ISMP GetRequestHandled Event: ${stringify({
-			data: event.event.data,
-		})}`,
-	)
+		logger.info(
+			`Handling ISMP GetRequestHandled Event: ${stringify({
+				data: event.event.data,
+			})}`,
+		)
 
-	const host = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
+		const host = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
 
-	const request = await GetRequestService.createOrUpdate({
-		id: eventData.commitment.toString(),
-	})
+		const request = await GetRequestService.createOrUpdate({
+			id: eventData.commitment.toString(),
+		})
 
-	let status: Status
-	if (request.source === host) {
-		status = Status.DESTINATION
-	} else {
-		status = Status.HYPERBRIDGE_DELIVERED
+		let status: Status
+		if (request.source === host) {
+			status = Status.DESTINATION
+		} else {
+			status = Status.HYPERBRIDGE_DELIVERED
+		}
+
+		logger.info(`Updating Hyperbridge chain stats for ${host}`)
+		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
+
+		await GetRequestService.updateStatus({
+			commitment: eventData.commitment.toString(),
+			chain: host,
+			blockNumber: blockNumber.toString(),
+			blockHash: blockHash.toString(),
+			blockTimestamp,
+			status,
+			transactionHash: extrinsic?.extrinsic.hash.toString() || "",
+		})
+	} catch (error) {
+		logger.error(`Error updating handling SubstrateGetRequestHandled Event: ${stringify(error)}`)
 	}
-
-	logger.info(`Updating Hyperbridge chain stats for ${host}`)
-	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
-
-	await GetRequestService.updateStatus({
-		commitment: eventData.commitment.toString(),
-		chain: host,
-		blockNumber: blockNumber.toString(),
-		blockHash: blockHash.toString(),
-		blockTimestamp,
-		status,
-		transactionHash: extrinsic?.extrinsic.hash.toString() || "",
-	})
 }

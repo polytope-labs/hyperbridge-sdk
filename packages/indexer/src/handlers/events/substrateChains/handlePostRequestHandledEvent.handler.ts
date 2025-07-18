@@ -12,63 +12,67 @@ type EventData = {
 	relayer: string
 }
 export async function handleSubstratePostRequestHandledEvent(event: SubstrateEvent): Promise<void> {
-	logger.info(`Saw Ismp.PostRequestHandled Event on ${getHostStateMachine(chainId)}`)
+	try {
+		logger.info(`Saw Ismp.PostRequestHandled Event on ${getHostStateMachine(chainId)}`)
 
-	if (!event.extrinsic && event.event.data) return
+		if (!event.extrinsic && event.event.data) return
 
-	const {
-		extrinsic,
-		block: {
+		const {
+			extrinsic,
 			block: {
-				header: { number: blockNumber, hash: blockHash },
+				block: {
+					header: { number: blockNumber, hash: blockHash },
+				},
 			},
-		},
-	} = event
+		} = event
 
-	const eventData = event.event.data[0] as unknown as EventData
-	const relayer_id = eventData.relayer.toString()
+		const eventData = event.event.data[0] as unknown as EventData
+		const relayer_id = eventData.relayer.toString()
 
-	logger.info(`Handling ISMP PostRequestHandled Event Data: ${stringify({ eventData })}`)
+		logger.info(`Handling ISMP PostRequestHandled Event Data: ${stringify({ eventData })}`)
 
-	const host = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
+		const host = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
 
-	const request = await Request.get(eventData.commitment.toString())
+		const request = await Request.get(eventData.commitment.toString())
 
-	if (!request) {
-		logger.error(`Request not found for commitment ${eventData.commitment.toString()}`)
-		return
-	}
+		if (!request) {
+			logger.error(`Request not found for commitment ${eventData.commitment.toString()}`)
+			return
+		}
 
-	let status: Status
-	if (request.dest === host) {
-		status = Status.DESTINATION
-	} else {
-		status = Status.HYPERBRIDGE_DELIVERED
-	}
+		let status: Status
+		if (request.dest === host) {
+			status = Status.DESTINATION
+		} else {
+			status = Status.HYPERBRIDGE_DELIVERED
+		}
 
-	logger.info(`Updating Hyperbridge chain stats for ${host}`)
-	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
+		logger.info(`Updating Hyperbridge chain stats for ${host}`)
+		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host)
 
-	logger.info(
-		`Handling ISMP PostRequestHandled Event: ${stringify({
+		logger.info(
+			`Handling ISMP PostRequestHandled Event: ${stringify({
+				commitment: eventData.commitment.toString(),
+				chain: host,
+				blockNumber: blockNumber,
+				blockHash: blockHash,
+				blockTimestamp,
+				status,
+				transactionHash: extrinsic?.extrinsic.hash || "",
+			})}`,
+		)
+
+		await RequestService.updateStatus({
 			commitment: eventData.commitment.toString(),
 			chain: host,
-			blockNumber: blockNumber,
-			blockHash: blockHash,
+			blockNumber: blockNumber.toString(),
+			blockHash: blockHash.toString(),
 			blockTimestamp,
 			status,
-			transactionHash: extrinsic?.extrinsic.hash || "",
-		})}`,
-	)
-
-	await RequestService.updateStatus({
-		commitment: eventData.commitment.toString(),
-		chain: host,
-		blockNumber: blockNumber.toString(),
-		blockHash: blockHash.toString(),
-		blockTimestamp,
-		status,
-		transactionHash: extrinsic?.extrinsic.hash.toString() || "",
-	})
+			transactionHash: extrinsic?.extrinsic.hash.toString() || "",
+		})
+	} catch (error) {
+		logger.error(`Error updating handling SubstratePostRequestHandled Event: ${stringify(error)}`)
+	}
 }

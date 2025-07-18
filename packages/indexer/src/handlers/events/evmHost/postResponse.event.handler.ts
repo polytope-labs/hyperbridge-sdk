@@ -11,84 +11,88 @@ import stringify from "safe-stable-stringify"
  * Handles the PostResponse event from Evm Hosts
  */
 export async function handlePostResponseEvent(event: PostResponseEventLog): Promise<void> {
-	logger.info(
-		`Handling PostRequest Event: ${stringify({
-			event,
-		})}`,
-	)
-	if (!event.args) return
+	try {
+		logger.info(
+			`Handling PostRequest Event: ${stringify({
+				event,
+			})}`,
+		)
+		if (!event.args) return
 
-	const { transaction, blockNumber, transactionHash, args, block, blockHash } = event
-	let { body, dest, fee, from, nonce, source, timeoutTimestamp, to, response, responseTimeoutTimestamp } = args
+		const { transaction, blockNumber, transactionHash, args, block, blockHash } = event
+		let { body, dest, fee, from, nonce, source, timeoutTimestamp, to, response, responseTimeoutTimestamp } = args
 
-	const chain: string = getHostStateMachine(chainId)
-	const blockTimestamp = await getBlockTimestamp(blockHash, chain)
+		const chain: string = getHostStateMachine(chainId)
+		const blockTimestamp = await getBlockTimestamp(blockHash, chain)
 
-	await HyperBridgeService.handlePostRequestOrResponseEvent(chain, event)
+		await HyperBridgeService.handlePostRequestOrResponseEvent(chain, event)
 
-	logger.info(
-		`Computing Response Commitment Event: ${stringify({
-			dest,
-			fee,
-			from,
-			nonce,
+		logger.info(
+			`Computing Response Commitment Event: ${stringify({
+				dest,
+				fee,
+				from,
+				nonce,
+				source,
+				timeoutTimestamp,
+				to,
+				body,
+			})}`,
+		)
+
+		// Compute the response commitment
+		let response_commitment = ResponseService.computeResponseCommitment(
 			source,
-			timeoutTimestamp,
+			dest,
+			BigInt(nonce.toString()),
+			BigInt(timeoutTimestamp.toString()),
+			from,
 			to,
 			body,
-		})}`,
-	)
-
-	// Compute the response commitment
-	let response_commitment = ResponseService.computeResponseCommitment(
-		source,
-		dest,
-		BigInt(nonce.toString()),
-		BigInt(timeoutTimestamp.toString()),
-		from,
-		to,
-		body,
-		response,
-		BigInt(responseTimeoutTimestamp.toString()),
-	)
-
-	logger.info(
-		`Response Commitment: ${stringify({
-			commitment: response_commitment,
-		})}`,
-	)
-
-	// Compute the request commitment
-	let request_commitment = RequestService.computeRequestCommitment(
-		source,
-		dest,
-		BigInt(nonce.toString()),
-		BigInt(timeoutTimestamp.toString()),
-		from,
-		to,
-		body,
-	)
-
-	let request = await Request.get(request_commitment)
-
-	if (typeof request === "undefined") {
-		logger.error(
-			`Error handling PostResponseEvent because request with commitment: ${request_commitment} was not found`,
+			response,
+			BigInt(responseTimeoutTimestamp.toString()),
 		)
-		return
-	}
 
-	// Create the response entity
-	await ResponseService.findOrCreate({
-		chain,
-		commitment: response_commitment,
-		responseTimeoutTimestamp: BigInt(responseTimeoutTimestamp.toString()),
-		response_message: response,
-		status: Status.SOURCE,
-		request,
-		blockNumber: blockNumber.toString(),
-		blockHash: block.hash,
-		transactionHash,
-		blockTimestamp,
-	})
+		logger.info(
+			`Response Commitment: ${stringify({
+				commitment: response_commitment,
+			})}`,
+		)
+
+		// Compute the request commitment
+		let request_commitment = RequestService.computeRequestCommitment(
+			source,
+			dest,
+			BigInt(nonce.toString()),
+			BigInt(timeoutTimestamp.toString()),
+			from,
+			to,
+			body,
+		)
+
+		let request = await Request.get(request_commitment)
+
+		if (typeof request === "undefined") {
+			logger.error(
+				`Error handling PostResponseEvent because request with commitment: ${request_commitment} was not found`,
+			)
+			return
+		}
+
+		// Create the response entity
+		await ResponseService.findOrCreate({
+			chain,
+			commitment: response_commitment,
+			responseTimeoutTimestamp: BigInt(responseTimeoutTimestamp.toString()),
+			response_message: response,
+			status: Status.SOURCE,
+			request,
+			blockNumber: blockNumber.toString(),
+			blockHash: block.hash,
+			transactionHash,
+			blockTimestamp,
+		})
+	} catch (error) {
+		logger.error(`Error updating handling handlePostResponseEvent: ${stringify(error)}`)
+	}
 }
