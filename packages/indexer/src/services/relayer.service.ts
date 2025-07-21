@@ -42,6 +42,23 @@ export class RelayerService {
 		}
 	}
 
+	/**
+	 * Update message delivered by the relayer
+	 * @param relayer_id The relayer address
+	 * @param chain The chain identifier
+	 */
+	static async updateMessageDelivered(relayer_id: string, chain: string): Promise<void> {
+		let relayer = await this.findOrCreate(relayer_id, chain)
+		if (relayer) {
+			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
+
+			relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
+
+			await relayer.save()
+			await relayer_chain_stats.save()
+		}
+	}
+
 	//  /**
 	//   * Computes relayer specific stats from the handlePostRequest/handlePostResponse transactions on the handlerV1 contract
 	//   */

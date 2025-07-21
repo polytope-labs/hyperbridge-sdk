@@ -3,6 +3,7 @@ import { Relayer, Transfer } from "@/configs/src/types/models"
 import { HyperBridgeChainStatsService } from "@/services/hyperbridgeChainStats.service"
 import { isHexString } from "ethers/lib/utils"
 import { EthereumHostAbi__factory } from "@/configs/src/types/contracts"
+import { RelayerService } from "./relayer.service"
 // import {
 //  HandlePostRequestsTransaction,
 //  HandlePostResponsesTransaction,
@@ -40,8 +41,9 @@ export class HyperBridgeService {
 	/**
 	 * Perform the necessary actions related to Hyperbridge stats when a PostRequestHandled/PostResponseHandled event is indexed
 	 */
-	static async handlePostRequestOrResponseHandledEvent(_relayer_id: string, chain: string): Promise<void> {
+	static async handlePostRequestOrResponseHandledEvent(relayer_id: string, chain: string): Promise<void> {
 		await this.incrementNumberOfDeliveredMessages(chain)
+		await RelayerService.updateMessageDelivered(relayer_id, chain)
 	}
 
 	//  /**
