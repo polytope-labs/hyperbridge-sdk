@@ -18,6 +18,7 @@ export class RelayerService {
 		if (typeof relayer === "undefined") {
 			relayer = Relayer.create({
 				id: relayer_id,
+				lastUpdatedAt: BigInt(0),
 			})
 
 			await relayer.save()
@@ -30,12 +31,13 @@ export class RelayerService {
 	 * Update the total fees earned by a relayer
 	 * Fees earned by a relayer == Sum of all transfers to the relayer from the hyperbridge host address
 	 */
-	static async updateFeesEarned(transfer: Transfer): Promise<void> {
+	static async updateFeesEarned(transfer: Transfer, timestamp: bigint): Promise<void> {
 		let relayer = await Relayer.get(transfer.to)
 		if (relayer) {
 			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, transfer.chain)
 
 			relayer_chain_stats.feesEarned += transfer.amount
+			relayer.lastUpdatedAt = timestamp
 
 			relayer.save()
 			relayer_chain_stats.save()
@@ -47,12 +49,13 @@ export class RelayerService {
 	 * @param relayer_id The relayer address
 	 * @param chain The chain identifier
 	 */
-	static async updateMessageDelivered(relayer_id: string, chain: string): Promise<void> {
+	static async updateMessageDelivered(relayer_id: string, chain: string, timestamp: bigint): Promise<void> {
 		let relayer = await this.findOrCreate(relayer_id, chain)
 		if (relayer) {
 			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
 
 			relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
+			relayer.lastUpdatedAt = timestamp
 
 			await relayer.save()
 			await relayer_chain_stats.save()

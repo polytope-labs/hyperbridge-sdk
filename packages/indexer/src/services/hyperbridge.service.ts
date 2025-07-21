@@ -41,9 +41,13 @@ export class HyperBridgeService {
 	/**
 	 * Perform the necessary actions related to Hyperbridge stats when a PostRequestHandled/PostResponseHandled event is indexed
 	 */
-	static async handlePostRequestOrResponseHandledEvent(relayer_id: string, chain: string): Promise<void> {
+	static async handlePostRequestOrResponseHandledEvent(
+		relayer_id: string,
+		chain: string,
+		timestamp: bigint,
+	): Promise<void> {
 		await this.incrementNumberOfDeliveredMessages(chain)
-		await RelayerService.updateMessageDelivered(relayer_id, chain)
+		await RelayerService.updateMessageDelivered(relayer_id, chain, timestamp)
 	}
 
 	//  /**
