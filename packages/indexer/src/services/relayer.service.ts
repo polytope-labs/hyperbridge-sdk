@@ -12,13 +12,13 @@ export class RelayerService {
 	/**
 	 * Find a relayer by its id or create a new one if it doesn't exist
 	 */
-	static async findOrCreate(relayer_id: string, chain: string): Promise<Relayer> {
+	static async findOrCreate(relayer_id: string, chain: string, timestamp: bigint): Promise<Relayer> {
 		let relayer = await Relayer.get(relayer_id)
 
 		if (typeof relayer === "undefined") {
 			relayer = Relayer.create({
 				id: relayer_id,
-				lastUpdatedAt: BigInt(0),
+				lastUpdatedAt: timestamp,
 			})
 
 			await relayer.save()
@@ -32,16 +32,14 @@ export class RelayerService {
 	 * Fees earned by a relayer == Sum of all transfers to the relayer from the hyperbridge host address
 	 */
 	static async updateFeesEarned(transfer: Transfer, timestamp: bigint): Promise<void> {
-		let relayer = await Relayer.get(transfer.to)
-		if (relayer) {
-			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, transfer.chain)
+		const relayer = await this.findOrCreate(transfer.to, transfer.chain, timestamp)
+		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, transfer.chain)
 
-			relayer_chain_stats.feesEarned += transfer.amount
-			relayer.lastUpdatedAt = timestamp
+		relayer_chain_stats.feesEarned += transfer.amount
+		relayer.lastUpdatedAt = timestamp
 
-			relayer.save()
-			relayer_chain_stats.save()
-		}
+		relayer.save()
+		relayer_chain_stats.save()
 	}
 
 	/**
@@ -50,16 +48,14 @@ export class RelayerService {
 	 * @param chain The chain identifier
 	 */
 	static async updateMessageDelivered(relayer_id: string, chain: string, timestamp: bigint): Promise<void> {
-		let relayer = await this.findOrCreate(relayer_id, chain)
-		if (relayer) {
-			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
+		const relayer = await this.findOrCreate(relayer_id, chain, timestamp)
+		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
 
-			relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
-			relayer.lastUpdatedAt = timestamp
+		relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
+		relayer.lastUpdatedAt = timestamp
 
-			await relayer.save()
-			await relayer_chain_stats.save()
-		}
+		await relayer.save()
+		await relayer_chain_stats.save()
 	}
 
 	//  /**
