@@ -4,7 +4,6 @@ import { Relayer, Transfer } from "@/configs/src/types"
 const existingEntities = [
 	Relayer.create({
 		id: "0xbC50b90751bfCccbFa4c7220261909d0f528b00f",
-		lastUpdatedAt: BigInt(0),
 	}),
 ]
 
@@ -19,10 +18,6 @@ subqlTest(
 			amount: BigInt("24000000000000000000000"),
 			from: "0x92F217a5e965EAa2aD356678D537A0A9ccC0AF41",
 			to: "0xbC50b90751bfCccbFa4c7220261909d0f528b00f",
-		}),
-		Relayer.create({
-			id: "0xbC50b90751bfCccbFa4c7220261909d0f528b00f",
-			lastUpdatedAt: BigInt(0),
 		}),
 	],
 	"handleTransferEvent",

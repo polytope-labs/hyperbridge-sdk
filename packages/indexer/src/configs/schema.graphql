@@ -214,7 +214,7 @@ type Relayer @entity {
 	"""
 	Last updated at
 	"""
-	lastUpdatedAt: BigInt!
+	lastUpdatedAt: BigInt
 }
 
 """
