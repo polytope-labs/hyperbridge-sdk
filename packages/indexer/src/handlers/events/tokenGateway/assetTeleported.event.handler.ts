@@ -26,7 +26,6 @@ export const handleAssetTeleportedEvent = wrap(async (event: AssetTeleportedLog)
 
 		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
 
-		logger.info(`Skipping teleport to substrate chain: ${dest}`)
 		return
 	}
 
