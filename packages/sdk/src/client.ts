@@ -1554,8 +1554,11 @@ export class IndexerClient {
 	/**
 	 * Aggregate transactions with commitment.
 	 * @param commitment
+	 * @returns an object containing the transaction hash, block hash, block number, timestamp.
 	 */
-	async aggregateTransactionWithCommitment(commitment: HexString) {
+	async aggregateTransactionWithCommitment(
+		commitment: HexString,
+	): Promise<Awaited<ReturnType<SubstrateChain["submitUnsigned"]>>> {
 		const logger = this.logger.withTag("aggregateTransactionWithCommitment")
 
 		const { stateMachineId, consensusStateId } = this.config.source
