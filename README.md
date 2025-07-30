@@ -77,7 +77,7 @@ The indexer supports a wide range of blockchain networks including:
 ### hyperbridge-sdk (Main SDK) [@hyperbridge/sdk](https://www.npmjs.com/package/@hyperbridge/sdk)
 
 **Purpose:** TypeScript/JavaScript SDK for cross-chain interaction
-**Version:** 1.1.9
+**Version:** 1.1.10
 
 The main SDK provides developers with a comprehensive toolkit for building cross-chain applications. It abstracts complex cryptographic operations and provides high-level interfaces for common cross-chain operations.
 
@@ -414,7 +414,7 @@ const indexer = new IndexerClient({
   hyperbridge: {
     consensusStateId: "PAS0",
     stateMachineId: "KUSAMA-4009",
-    wsUrl: "wss://gargantua.polytope.technology"
+    wsUrl: "wss://hyperbridge-paseo-rpc.blockops.network"
   }
 })
 ```
@@ -603,8 +603,8 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 - **Documentation**: https://docs.hyperbridge.network
 - **GitHub Issues**: https://github.com/polytope-labs/hyperbridge-sdk/issues
-- **Discord**: https://discord.gg/hyperbridge
-- **Telegram**: https://t.me/hyperbridge
+- **Discord**: https://discord.gg/WYTUQrTR9y
+- **Telegram**: https://t.me/hyper_bridge
 - **Twitter**: https://twitter.com/hyperbridge
 
 ---
