@@ -12,7 +12,7 @@ export const handleSubstrateAssetReceivedEvent = wrap(async (event: SubstrateEve
 	if (!event.event.data) return
 
 	// TODO: fix codec type interface
-	const [_, beneficiary, amount, source ] = event.event.data
+	const [beneficiary, amount, source ] = event.event.data
 
 	const host = getHostStateMachine(chainId)
 	const toHex = getHexFromSS58Address(beneficiary.toString())
