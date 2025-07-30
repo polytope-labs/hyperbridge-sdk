@@ -602,6 +602,46 @@ type AssetTeleported @entity {
 }
 
 """
+Record of assets received via the XCM Gateway
+"""
+type AssetReceived @entity {
+	"""
+	Unique identifier of the received asset
+	"""
+	id: ID!
+
+	"""
+	The chain on which the received event occurred
+	"""
+	chain: String!
+
+	"""
+	Beneficiary account on destination
+	"""
+	to: String! @index
+
+	"""
+	Amount received
+	"""
+	amount: BigInt! @index
+
+	"""
+	Source chain
+	"""
+	source: String! @index
+
+	"""
+	The timestamp of the event
+	"""
+	createdAt: Date! @index
+
+	"""
+	The block in which the event occurred
+	"""
+	blockNumber: Int!
+}
+
+"""
 Represents a cross-chain get request event
 This entity stores information about requests to fetch data from a source chain to a destination chain
 """

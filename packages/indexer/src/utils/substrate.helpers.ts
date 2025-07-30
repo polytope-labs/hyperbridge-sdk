@@ -1,6 +1,8 @@
 import { SubstrateEvent } from "@subql/types"
 import { CHAIN_IDS_BY_GENESIS, HYPERBRIDGE } from "@/constants"
 import { StateMachineId } from "@/types/network.types"
+import { decodeAddress } from "@polkadot/util-crypto"
+import { u8aToHex } from "@polkadot/util"
 
 /**
  * Get the StateMachineID parsing the stringified object which substrate provides
@@ -206,4 +208,22 @@ export interface Get {
 		key: string
 		value: string
 	}[]
+}
+
+/**
+ * Get Hex Address (Ox) from SS58 Address
+ * @param address
+ * @returns
+ */
+export function getHexFromSS58Address(address: string): `Ox${string}` | string {
+	// Default to original address
+	let addressHex: string = String(address)
+
+	// Decode SS58 address to get the public key as Uint8Array
+	try {
+		// Convert the public key to hex format with 0x prefix
+		addressHex = u8aToHex(decodeAddress(address))
+	} catch (error) {}
+
+	return addressHex
 }
