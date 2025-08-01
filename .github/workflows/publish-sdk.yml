@@ -84,8 +84,8 @@ jobs:
             - name: Create GitHub Release
               uses: softprops/action-gh-release@v1
               with:
-                  tag_name: ${{ steps.get_version.outputs.VERSION }}
-                  name: Release ${{ steps.get_version.outputs.VERSION }}
+                  tag_name: hyperbridge-sdk-${{ steps.get_version.outputs.VERSION }}
+                  name: Hyperbridge SDK ${{ steps.get_version.outputs.VERSION }}
                   body: ${{ steps.changelog.outputs.CHANGELOG }}
                   draft: true
               env:
