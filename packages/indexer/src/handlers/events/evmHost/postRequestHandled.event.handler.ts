@@ -1,11 +1,14 @@
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Status } from "@/configs/src/types"
+import { Status, Transfer } from "@/configs/src/types"
 import { PostRequestHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { RequestService } from "@/services/request.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
+import { VolumeService } from "@/services/volume.service"
+import { getPriceDataFromEthereumLog, isERC20TransferEvent } from "@/utils/transfer.helpers"
+import { TransferService } from "@/services/transfer.service"
 
 /**
  * Handles the PostRequestHandled event from Hyperbridge
@@ -38,6 +41,33 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			status: Status.DESTINATION,
 			transactionHash,
 		})
+
+		if (transaction && transaction.logs) {
+			for (const log of transaction.logs) {
+				if (!isERC20TransferEvent(log)) {
+					continue
+				}
+
+				const transfer = await Transfer.get(log.transactionHash)
+
+				if (!transfer) {
+					const [_, from, to] = log.topics
+					await TransferService.storeTransfer({
+						transactionHash: log.transactionHash,
+						chain,
+						value: BigInt(log.data),
+						from,
+						to,
+					})
+
+					const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(
+						log.address,
+						BigInt(log.data),
+					)
+					await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+				}
+			}
+		}
 	} catch (error) {
 		console.error(`Error handling PostRequestHandled event: ${stringify(error)}`)
 	}
