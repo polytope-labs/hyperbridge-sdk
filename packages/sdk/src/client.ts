@@ -741,15 +741,17 @@ export class IndexerClient {
 				// the request has been verified and aggregated on Hyperbridge
 				case RequestStatus.HYPERBRIDGE_DELIVERED: {
 					// Get the latest state machine update for hyperbridge on the destination chain
-					const index = request.source === this.config.hyperbridge.stateMachineId ? 0 : 1
 					let hyperbridgeFinalized = await this.waitOrAbort({
 						signal,
-						promise: () =>
-							this.queryStateMachineUpdateByHeight({
-								statemachineId: this.config.hyperbridge.stateMachineId,
+						promise: () => {
+							const stateMachineId = this.config.hyperbridge.stateMachineId
+							const index = request.source === stateMachineId ? 0 : 1
+							return this.queryStateMachineUpdateByHeight({
+								statemachineId: stateMachineId,
 								height: request.statuses[index].metadata.blockNumber,
 								chain: request.dest,
-							}),
+							})
+						},
 					})
 
 					const destChain = await getChain(this.config.dest)
@@ -1050,7 +1052,7 @@ export class IndexerClient {
 						signal,
 						promise: () => this.queryGetRequest(hash),
 						predicate: (request) =>
-							!request || !request?.statuses.find((s) => s.status === RequestStatus.DESTINATION),
+							!request || !request.statuses.find((s) => s.status === RequestStatus.DESTINATION),
 					})
 
 					yield {
@@ -1098,17 +1100,25 @@ export class IndexerClient {
 	 */
 	async *postRequestTimeoutStream(hash: HexString): AsyncGenerator<PostRequestTimeoutStatus, void> {
 		const controller = new AbortController()
-		const request = await this.queryPostRequest(hash)
-		if (!request) throw new Error("Request not found")
+		const logger = this.logger.withTag("[postRequestTimeoutStream]")
 
 		try {
-			const stream = this.postRequestTimeoutStreamInternal(hash, controller.signal)
+			const request = await this.queryPostRequest(hash)
+			if (!request) throw new Error("Request not found")
 
-			let item = await stream.next()
+			logger.trace("`Request` found")
+			const timeoutStream = this.postRequestTimeoutStreamInternal(hash, controller.signal)
+
+			logger.trace("Listening for timeout events")
+			let item = await timeoutStream.next()
 			while (!item.done) {
+				logger.trace(`Yielding Timeout Event(${item.value.status})`)
+
 				yield item.value
-				item = await stream.next()
+				item = await timeoutStream.next()
 			}
+
+			logger.trace("Streaming complete")
 		} catch (error) {
 			if (!AbortSignalInternal.isError(error)) {
 				throw error
@@ -1127,14 +1137,11 @@ export class IndexerClient {
 		hash: HexString,
 		signal: AbortSignal,
 	): AsyncGenerator<PostRequestTimeoutStatus, void> {
-		const logger = this.logger.withTag("PostRequestTimeoutStreamInternal")
-
 		const request = await this.waitOrAbort({
 			signal,
 			promise: () => this.queryPostRequest(hash),
 		})
 
-		logger.trace("Reading destination chain")
 		const destChain = await getChain(this.config.dest)
 
 		// if the destination is hyperbridge, then just wait for hyperbridge finality
@@ -1155,10 +1162,7 @@ export class IndexerClient {
 			(item) => TIMEOUT_STATUS_WEIGHTS[item],
 		)
 
-		logger.trace(`Reading lastest request: ${latest_request}`)
-
 		if (!latest_request) {
-			logger.trace("Ending stream. Latest request not found")
 			return
 		}
 
