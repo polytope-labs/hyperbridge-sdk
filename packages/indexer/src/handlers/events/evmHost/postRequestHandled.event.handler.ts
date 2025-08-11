@@ -9,6 +9,7 @@ import { wrap } from "@/utils/event.utils"
 import { VolumeService } from "@/services/volume.service"
 import { getPriceDataFromEthereumLog, isERC20TransferEvent } from "@/utils/transfer.helpers"
 import { TransferService } from "@/services/transfer.service"
+import { safeArray } from "@/utils/data.helper"
 
 /**
  * Handles the PostRequestHandled event from Hyperbridge
@@ -42,30 +43,25 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			transactionHash,
 		})
 
-		if (transaction && transaction.logs) {
-			for (const log of transaction.logs) {
-				if (!isERC20TransferEvent(log)) {
-					continue
-				}
+		for (const log of safeArray(transaction.logs)) {
+			if (!isERC20TransferEvent(log)) {
+				continue
+			}
 
-				const transfer = await Transfer.get(log.transactionHash)
+			const transfer = await Transfer.get(log.transactionHash)
 
-				if (!transfer) {
-					const [_, from, to] = log.topics
-					await TransferService.storeTransfer({
-						transactionHash: log.transactionHash,
-						chain,
-						value: BigInt(log.data),
-						from,
-						to,
-					})
+			if (!transfer) {
+				const [_, from, to] = log.topics
+				await TransferService.storeTransfer({
+					transactionHash: log.transactionHash,
+					chain,
+					value: BigInt(log.data),
+					from,
+					to,
+				})
 
-					const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(
-						log.address,
-						BigInt(log.data),
-					)
-					await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
-				}
+				const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, BigInt(log.data))
+				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 			}
 		}
 	} catch (error) {
