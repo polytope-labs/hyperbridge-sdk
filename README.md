@@ -6,41 +6,9 @@
 
 The Hyperbridge SDK is a comprehensive developer toolkit that enables secure, trust-free cross-chain interoperability through cryptographic proofs. Built by Polytope Labs, this SDK provides the essential infrastructure for developers to build mission-critical cross-chain applications that leverage Hyperbridge's coprocessor model for expensive cryptographic operations.
 
-Unlike traditional cross-chain solutions that rely on multi-signature committees (which have resulted in over $2 billion in losses), Hyperbridge SDK implements a **crypto-economic coprocessor** that uses consensus proofs to attest to the correctness of computations performed onchain, enabling truly trustless cross-chain communication.
-
 ## Architecture
 
-The Hyperbridge SDK is organized as a monorepo containing three core packages that work together to provide complete cross-chain messaging infrastructure:
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│    @hyperbridge/│    │  hyperbridge-   │    │  @hyperbridge/  │
-│     indexer     │───▶│      sdk        │───▶│     filler      │
-│                 │    │                 │    │                 │
-│ SubQuery-based  │    │ JavaScript/     │    │ Intent          │
-│ indexing &      │    │ TypeScript SDK  │    │ processing &    │
-│ GraphQL API     │    │ & utilities     │    │ fulfillment     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-### Data Flow Architecture
-
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   Chains    │───▶│   Indexer    │───▶│     SDK     │
-│             │    │              │    │             │
-│ EVM/        │    │ SubQuery +   │    │ Client +    │
-│ Substrate   │    │ GraphQL      │    │ Utilities   │
-└─────────────┘    └──────────────┘    └─────────────┘
-                           │
-                           ▼
-                   ┌──────────────┐
-                   │    Filler    │
-                   │              │
-                   │ Intent       │
-                   │ Processing   │
-                   └──────────────┘
-```
+The Hyperbridge SDK is organized as a monorepo containing three core packages that work together to provide complete cross-chain messaging infrastructure.
 
 ## Package Overview
 
@@ -72,7 +40,6 @@ The indexer serves as the backbone of the Hyperbridge SDK ecosystem, providing c
 The indexer supports a wide range of blockchain networks including:
 - **EVM Chains**: Ethereum, Binance Smart Chain, Polygon, Arbitrum, Optimism
 - **Substrate Chains**: Polkadot, Kusama, and parachains
-- **Layer 2 Solutions**: Various rollups and sidechains
 
 ### hyperbridge-sdk (Main SDK) [@hyperbridge/sdk](https://www.npmjs.com/package/@hyperbridge/sdk)
 
@@ -148,7 +115,7 @@ The SDK provides separate builds optimized for different environments:
 **Purpose:** Intent fulfillment and processing engine
 **Version:** 0.1.0
 
-The filler package provides sophisticated intent processing capabilities, enabling automated fulfillment of cross-chain requests with configurable strategies and policies.
+The filler package provides sophisticated intent processing capabilities, enabling automated fulfillment of cross-chain intents with configurable strategies and policies.
 
 #### Core Components
 
@@ -181,8 +148,6 @@ The filler supports multiple strategies for different use cases:
 
 1. **Professional Relayers**: Run automated filling services for profit
 2. **Protocol Integration**: Integrate intent filling into existing protocols
-3. **Market Making**: Automated market making for cross-chain assets
-4. **Arbitrage Services**: Automated arbitrage opportunities across chains
 
 ## Getting Started
 
@@ -520,10 +485,9 @@ const config = {
 The Hyperbridge SDK follows security best practices:
 
 1. **Cryptographic Verification**: All cross-chain messages are verified using cryptographic proofs
-2. **No Trust Assumptions**: The system doesn't rely on trusted validators or multi-sig committees
-3. **Consensus Integration**: Leverages native blockchain consensus mechanisms
-4. **Timeout Mechanisms**: Built-in timeout handling prevents stuck transactions
-5. **Formal Verification**: Core cryptographic components are formally verified
+2. **Consensus Integration**: Leverages native blockchain consensus mechanisms
+3. **Timeout Mechanisms**: Built-in timeout handling prevents stuck transactions
+4. **Formal Verification**: Core cryptographic components are formally verified
 
 ## FAQ
 
