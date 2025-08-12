@@ -211,10 +211,10 @@ type Relayer @entity {
 	"""
 	perChainStats: [RelayerStatsPerChain]! @derivedFrom(field: "relayer")
 
-	"""
-	Last updated at
-	"""
-	lastUpdatedAt: BigInt
+	# """
+	# Last updated at
+	# """
+	# lastUpdatedAt: BigInt
 }
 
 """

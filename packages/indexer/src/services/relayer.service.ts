@@ -18,7 +18,7 @@ export class RelayerService {
 		if (typeof relayer === "undefined") {
 			relayer = Relayer.create({
 				id: relayer_id,
-				lastUpdatedAt: timestamp,
+				// lastUpdatedAt: timestamp,
 			})
 
 			await relayer.save()
@@ -36,7 +36,7 @@ export class RelayerService {
 		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, transfer.chain)
 
 		relayer_chain_stats.feesEarned += transfer.amount
-		relayer.lastUpdatedAt = timestamp
+		// relayer.lastUpdatedAt = timestamp
 
 		relayer.save()
 		relayer_chain_stats.save()
@@ -52,7 +52,7 @@ export class RelayerService {
 		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
 
 		relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
-		relayer.lastUpdatedAt = timestamp
+		// relayer.lastUpdatedAt = timestamp
 
 		await relayer.save()
 		await relayer_chain_stats.save()
