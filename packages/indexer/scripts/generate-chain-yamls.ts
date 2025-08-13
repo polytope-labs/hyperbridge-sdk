@@ -58,7 +58,7 @@ const generateEndpoints = (chain: string) => {
 // Generate chain-specific YAML files
 const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 	const chainTypesConfig = getChainTypesPath(chain)
-	const endpoints = generateEndpoints(chain)
+	const endpoints = [...generateEndpoints(chain), ...generateEndpoints("hyperbridge-gargantua")]
 
 	// Expect comma-separated endpoints in env var
 	const rpcUrl = process.env[chain.replace(/-/g, "_").toUpperCase()]?.split(",")[0]

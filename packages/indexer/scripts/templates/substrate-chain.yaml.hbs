@@ -17,6 +17,11 @@ dataSources:
           filter:
             module: xcmGateway
             method: AssetTeleported
+        - handler: handleSubstrateAssetReceivedEvent
+          kind: substrate/EventHandler
+          filter:
+            module: xcmGateway
+            method: AssetReceived
 {{/if}}
 
 repository: 'https://github.com/polytope-labs/hyperbridge'
