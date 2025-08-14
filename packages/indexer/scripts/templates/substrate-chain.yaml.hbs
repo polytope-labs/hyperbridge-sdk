@@ -17,6 +17,8 @@ dataSources:
           filter:
             module: xcmGateway
             method: AssetTeleported
+        - handler: handlePriceIndexing
+          kind: substrate/BlockHandler
 {{/if}}
 
 repository: 'https://github.com/polytope-labs/hyperbridge'

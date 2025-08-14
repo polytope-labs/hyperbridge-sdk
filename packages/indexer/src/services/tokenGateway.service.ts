@@ -1,7 +1,6 @@
 import Decimal from "decimal.js"
 
 import { ERC6160Ext20Abi__factory, TokenGatewayAbi__factory } from "@/configs/src/types/contracts"
-import PriceHelper from "@/utils/price.helpers"
 import {
 	TeleportStatus,
 	TeleportStatusMetadata,
@@ -12,6 +11,7 @@ import {
 import { timestampToDate } from "@/utils/date.helpers"
 import { TOKEN_GATEWAY_CONTRACT_ADDRESSES } from "@/addresses/tokenGateway.addresses"
 import { PointsService } from "./points.service"
+import { PriceFeedsService } from "./priceFeeds.service"
 
 export interface IAssetDetails {
 	erc20_address: string
@@ -71,7 +71,7 @@ export class TokenGatewayService {
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, teleportParams.amount, decimals)
+		const usdValue = await PriceFeedsService.getPrice(symbol, teleportParams.amount, decimals, tokenAddress)
 
 		if (!teleport) {
 			teleport = await TokenGatewayAssetTeleported.create({

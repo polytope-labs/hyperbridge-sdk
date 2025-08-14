@@ -6,7 +6,7 @@ import { TeleportStatus } from "@/configs/src/types"
 import { getHostStateMachine, isSubstrateChain } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 import { VolumeService } from "@/services/volume.service"
-import PriceHelper from "@/utils/price.helpers"
+import { PriceFeedsService } from "@/services/priceFeeds.service"
 
 export const handleAssetTeleportedEvent = wrap(async (event: AssetTeleportedLog): Promise<void> => {
 	logger.info(`Asset Teleported Event: ${stringify(event)}`)
@@ -22,7 +22,7 @@ export const handleAssetTeleportedEvent = wrap(async (event: AssetTeleportedLog)
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, amount.toBigInt(), decimals)
+		const usdValue = await PriceFeedsService.getPrice(symbol, amount.toBigInt(), decimals, tokenContract.address)
 
 		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
 		return
