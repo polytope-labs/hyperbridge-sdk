@@ -31,6 +31,11 @@ dataSources:
           filter:
             topics:
               - 'Transfer(address indexed from, address indexed to, uint256 amount)'
+        - handler: handlePriceIndexing
+          kind: ethereum/LogHandler
+          filter:
+            topics:
+              - 'Transfer(address indexed from, address indexed to, uint256 amount)'
   - kind: ethereum/Runtime
     startBlock: {{blockNumber}}
     options:
