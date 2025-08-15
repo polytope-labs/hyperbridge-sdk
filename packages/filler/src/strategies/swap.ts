@@ -146,6 +146,24 @@ export class StableSwapFiller implements FillerStrategy {
 				authorizationList: [authorization],
 			})
 
+			// Clear delegation after filling the order
+
+			const revertAuthorization = await walletClient.signAuthorization({
+				contractAddress: ADDRESS_ZERO,
+				account: walletClient.account!,
+				executor: "self",
+			})
+
+			const resetAuthTx = await walletClient.sendTransaction({
+				account: walletClient.account!,
+				chain: destClient.chain,
+				to: walletClient.account!.address,
+				data: "0x",
+				authorizationList: [revertAuthorization],
+			})
+
+			console.log("Auth reset tx:", resetAuthTx)
+
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
 
