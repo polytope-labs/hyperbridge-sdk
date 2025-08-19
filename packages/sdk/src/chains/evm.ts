@@ -33,8 +33,16 @@ import { match } from "ts-pattern"
 import EvmHost from "@/abis/evmHost"
 import type { IChain, IIsmpMessage } from "@/chain"
 import HandlerV1 from "@/abis/handler"
-import { calculateMMRSize, EvmStateProof, mmrPositionToKIndex, MmrProof, SubstrateStateProof } from "@/utils"
-import type { HexString, IMessage, StateMachineHeight, StateMachineIdParams } from "@/types"
+import {
+	calculateMMRSize,
+	EvmStateProof,
+	generateRootWithProof,
+	mmrPositionToKIndex,
+	MmrProof,
+	SubstrateStateProof,
+	transformPostRequestForContract,
+} from "@/utils"
+import type { HexString, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -391,6 +399,67 @@ export class EvmChain implements IChain {
 			.exhaustive()
 
 		return encoded
+	}
+
+	/**
+	 * Estimates the gas required for a post request execution on this chain.
+	 * This function generates mock proofs for the post request, and estimates
+	 * the gas cost for executing the transaction on this chain.
+	 */
+	async estimateGasForPost(request: IPostRequest, paraId: bigint): Promise<bigint> {
+		const hostParams = await this.publicClient.readContract({
+			address: this.params.host,
+			abi: EvmHost.ABI,
+			functionName: "hostParams",
+		})
+
+		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(request, 2n ** 10n)
+		const latestStateMachineHeight = 100n
+		const overlayRootSlot = getStateCommitmentFieldSlot(
+			paraId, // Hyperbridge chain id
+			latestStateMachineHeight, // Hyperbridge chain height
+			1, // For overlayRoot
+		)
+		const postParams = {
+			height: {
+				stateMachineId: BigInt(paraId),
+				height: latestStateMachineHeight,
+			},
+			multiproof: proof,
+			leafCount: treeSize,
+		}
+
+		const gas = await this.publicClient.estimateContractGas({
+			address: hostParams.handler,
+			abi: HandlerV1.ABI,
+			functionName: "handlePostRequests",
+			args: [
+				this.params.host,
+				{
+					proof: postParams,
+					requests: [
+						{
+							request: transformPostRequestForContract(request),
+							index,
+							kIndex,
+						},
+					],
+				},
+			],
+			stateOverride: [
+				{
+					address: this.params.host,
+					stateDiff: [
+						{
+							slot: overlayRootSlot,
+							value: root,
+						},
+					],
+				},
+			],
+		})
+
+		return gas
 	}
 }
 
