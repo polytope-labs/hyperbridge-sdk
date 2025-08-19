@@ -40,7 +40,6 @@ import {
 	mmrPositionToKIndex,
 	MmrProof,
 	SubstrateStateProof,
-	transformPostRequestForContract,
 } from "@/utils"
 import type { HexString, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
 
