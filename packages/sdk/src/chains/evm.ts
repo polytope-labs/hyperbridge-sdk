@@ -464,7 +464,11 @@ export class EvmChain implements IChain {
 					proof: postParams,
 					requests: [
 						{
-							request: transformPostRequestForContract(request),
+							request: {
+								...params.postRequest,
+								source: toHex(params.postRequest.source),
+								dest: toHex(params.postRequest.dest),
+							},
 							index,
 							kIndex,
 						},
