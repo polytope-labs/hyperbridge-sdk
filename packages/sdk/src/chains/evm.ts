@@ -430,7 +430,7 @@ export class EvmChain implements IChain {
 	 * @param paraId - The ID of the parachain (Hyperbridge) that will process the request
 	 * @returns The estimated gas amount in gas units
 	 */
-	async estimateGasForPost(request: IPostRequest): Promise<bigint> {
+	async estimateGas(request: IPostRequest): Promise<bigint> {
 		const hostParams = await this.publicClient.readContract({
 			address: this.params.host,
 			abi: EvmHost.ABI,
