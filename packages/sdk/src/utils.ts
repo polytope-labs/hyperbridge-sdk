@@ -523,3 +523,49 @@ export function calculateBalanceMappingLocation(slot: bigint, holder: string, la
 		)
 	}
 }
+
+/**
+ * Calculates the allowance mapping location for a given slot, owner, and spender address.
+ * This function handles the different encoding formats used by Solidity and Vyper for nested mappings.
+ * For allowances: mapping(address => mapping(address => uint256)) _allowances
+ * Storage calculation: keccak256(spender . keccak256(owner . allowanceSlot))
+ *
+ * @param slot - The slot number where the allowances mapping is stored.
+ * @param owner - The address of the token owner (who granted the allowance).
+ * @param spender - The address of the spender (who can spend the tokens).
+ * @param language - The language of the contract (Solidity or Vyper).
+ * @returns The allowance mapping location as a HexString.
+ */
+export function calculateAllowanceMappingLocation(
+	slot: bigint,
+	owner: string,
+	spender: string,
+	language: EvmLanguage,
+): HexString {
+	const ownerBytes = bytes20ToBytes32(owner)
+	const spenderBytes = bytes20ToBytes32(spender)
+	const slotBytes = `0x${slot.toString(16).padStart(64, "0")}` as HexString
+
+	if (language === EvmLanguage.Solidity) {
+		// First hash: keccak256(owner . allowanceSlot)
+		const firstHash = keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [ownerBytes, slotBytes]) as HexString,
+		)
+
+		// Second hash: keccak256(spender . firstHash)
+		return keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [spenderBytes, firstHash]) as HexString,
+		)
+	} else {
+		// Vyper uses reverse order for both levels
+		// First hash: keccak256(allowanceSlot . owner)
+		const firstHash = keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [slotBytes, ownerBytes]) as HexString,
+		)
+
+		// Second hash: keccak256(firstHash . spender)
+		return keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [firstHash, spenderBytes]) as HexString,
+		)
+	}
+}
