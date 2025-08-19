@@ -402,19 +402,44 @@ export class EvmChain implements IChain {
 	}
 
 	/**
-	 * Estimates the gas required for a post request execution on this chain.
-	 * This function generates mock proofs for the post request, and estimates
-	 * the gas cost for executing the transaction on this chain.
+	 * Calculates the fee required to send a post request to the destination chain.
+	 * The fee is calculated based on the per-byte fee for the destination chain
+	 * multiplied by the size of the request body.
+	 *
+	 * @param request - The post request to calculate the fee for
+	 * @returns The total fee in wei required to send the post request
 	 */
-	async estimateGasForPost(request: IPostRequest, paraId: bigint): Promise<bigint> {
+	async quote(request: IPostRequest): Promise<bigint> {
+		const perByteFee = await this.publicClient.readContract({
+			address: this.params.host,
+			abi: EvmHost.ABI,
+			functionName: "perByteFee",
+			args: [toHex(request.dest)],
+		})
+
+		return perByteFee * BigInt(request.body.length)
+	}
+
+	/**
+	 * Estimates the gas required for a post request execution on this chain.
+	 * This function generates mock proofs for the post request, creates a state override
+	 * with the necessary overlay root, and estimates the gas cost for executing the
+	 * handlePostRequests transaction on the handler contract.
+	 *
+	 * @param request - The post request to estimate gas for
+	 * @param paraId - The ID of the parachain (Hyperbridge) that will process the request
+	 * @returns The estimated gas amount in gas units
+	 */
+	async estimateGasForPost(request: IPostRequest): Promise<bigint> {
 		const hostParams = await this.publicClient.readContract({
 			address: this.params.host,
 			abi: EvmHost.ABI,
 			functionName: "hostParams",
 		})
 
-		const { root, proof, index, kIndex, treeSize } = generateRootWithProof(request, 2n ** 10n)
+		const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(request, 2n ** 10n)
 		const latestStateMachineHeight = 100n
+		const paraId = 4009n
 		const overlayRootSlot = getStateCommitmentFieldSlot(
 			paraId, // Hyperbridge chain id
 			latestStateMachineHeight, // Hyperbridge chain height
