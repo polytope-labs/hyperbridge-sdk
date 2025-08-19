@@ -10,6 +10,10 @@ import {
 	keccak256,
 	toBytes,
 	pad,
+	erc20Abi,
+	encodePacked,
+	encodeAbiParameters,
+	maxUint256,
 } from "viem"
 import {
 	mainnet,
@@ -33,16 +37,34 @@ import { match } from "ts-pattern"
 import EvmHost from "@/abis/evmHost"
 import type { IChain, IIsmpMessage } from "@/chain"
 import HandlerV1 from "@/abis/handler"
+import UniversalRouter from "@/abis/universalRouter"
+import UniswapV2Factory from "@/abis/uniswapV2Factory"
+import UniswapRouterV2 from "@/abis/uniswapRouterV2"
+import UniswapV3Factory from "@/abis/uniswapV3Factory"
+import UniswapV3Pool from "@/abis/uniswapV3Pool"
+import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
+import IntentGateway from "@/abis/IntentGateway"
 import {
+	ADDRESS_ZERO,
+	bytes32ToBytes20,
+	calculateBalanceMappingLocation,
 	calculateMMRSize,
 	EvmStateProof,
 	generateRootWithProof,
 	mmrPositionToKIndex,
 	MmrProof,
 	SubstrateStateProof,
-	transformPostRequestForContract,
 } from "@/utils"
-import type { HexString, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
+import {
+	EvmLanguage,
+	type FillOptions,
+	type HexString,
+	type IMessage,
+	type IPostRequest,
+	type Order,
+	type StateMachineHeight,
+	type StateMachineIdParams,
+} from "@/types"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -465,9 +487,9 @@ export class EvmChain implements IChain {
 					requests: [
 						{
 							request: {
-								...params.postRequest,
-								source: toHex(params.postRequest.source),
-								dest: toHex(params.postRequest.dest),
+								...request,
+								source: toHex(request.source),
+								dest: toHex(request.dest),
 							},
 							index,
 							kIndex,
@@ -489,6 +511,562 @@ export class EvmChain implements IChain {
 		})
 
 		return gas
+	}
+
+	/**
+	 * Estimates the gas required to fill an order on the destination chain.
+	 * This function estimates the gas required to fill the order, including the gas required to post the request
+	 * and the gas required to swap the tokens.
+	 *
+	 * @param order - The order to estimate gas for
+	 * @param venues - The venues to use for the swap
+	 * @param fillerWalletAddress - The address of the wallet to use for the swap
+	 * @param postRequest - The post request to fill the order
+	 * @param intentGatewayAddress - The address of the intent gateway
+	 * @param availableAssets - The assets available on the destination chain
+	 * @param universalRouterAddress - The address of the universal router
+	 * @returns The estimated gas amount in gas units
+	 */
+	async estimateFillOrderGas(
+		order: Order,
+		venues: {
+			v2Router: HexString
+			v2Factory: HexString
+			v3Factory: HexString
+			v3Quoter: HexString
+		},
+		fillerWalletAddress: HexString,
+		postRequest: IPostRequest,
+		intentGatewayAddress: HexString,
+		availableAssets: {
+			address: HexString
+			decimals: number
+		}[],
+		universalRouterAddress: HexString,
+	): Promise<bigint> {
+		const postGasEstimate = await this.estimateGas(postRequest)
+
+		const fillOptions: FillOptions = {
+			relayerFee: postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100),
+		}
+
+		let totalEthValue = 0n
+
+		for (const output of order.outputs) {
+			const tokenAddress = bytes32ToBytes20(output.token)
+			if (tokenAddress === ADDRESS_ZERO) {
+				totalEthValue += output.amount
+			}
+		}
+
+		// For each output token, generate the storage slot of the token balance
+		// Balance slot depends upon implementation of the token contract
+		const overrides = (
+			await Promise.all(
+				order.outputs.map(async (output) => {
+					const tokenAddress = bytes32ToBytes20(output.token)
+					if (tokenAddress === ADDRESS_ZERO) return null
+
+					const userAddress = fillerWalletAddress
+					const testValue = toHex(maxUint256)
+
+					// Try both Solidity and Vyper implementations, both have different storage slot implementations
+					for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
+						// Check common slots first (0, 1, 3, 51, 140, 151)
+						const commonSlots = [0n, 1n, 3n, 51n, 140n, 151n]
+
+						for (const slot of commonSlots) {
+							const storageSlot = calculateBalanceMappingLocation(slot, userAddress, language)
+
+							try {
+								const balance = await this.publicClient.readContract({
+									abi: erc20Abi,
+									address: tokenAddress,
+									functionName: "balanceOf",
+									args: [userAddress],
+									stateOverride: [
+										{
+											address: tokenAddress,
+											stateDiff: [{ slot: storageSlot, value: testValue }],
+										},
+									],
+								})
+
+								if (toHex(balance) === testValue) {
+									return {
+										address: tokenAddress,
+										stateDiff: [{ slot: storageSlot, value: testValue }],
+									}
+								}
+							} catch (error) {
+								continue
+							}
+						}
+					}
+
+					// Start from slot 0 and go up to 200, but skip already checked slots
+					const checkedSlots = new Set([0n, 1n, 3n, 51n, 140n, 151n])
+
+					for (let i = 0n; i < 200n; i++) {
+						if (checkedSlots.has(i)) continue
+
+						for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
+							const storageSlot = calculateBalanceMappingLocation(i, userAddress, language)
+
+							try {
+								const balance = await this.publicClient.readContract({
+									abi: erc20Abi,
+									address: tokenAddress,
+									functionName: "balanceOf",
+									args: [userAddress],
+									stateOverride: [
+										{
+											address: tokenAddress,
+											stateDiff: [{ slot: storageSlot, value: testValue }],
+										},
+									],
+								})
+
+								if (toHex(balance) === testValue) {
+									return {
+										address: tokenAddress,
+										stateDiff: [{ slot: storageSlot, value: testValue }],
+									}
+								}
+							} catch (error) {
+								continue
+							}
+						}
+					}
+
+					console.warn(`Could not find balance slot for token ${tokenAddress}`)
+					return null
+				}),
+			)
+		).filter(Boolean)
+
+		const fillGas = await this.publicClient.estimateContractGas({
+			abi: IntentGateway.ABI,
+			address: intentGatewayAddress,
+			functionName: "fillOrder",
+			args: [transformOrderForContract(order), fillOptions as any],
+			account: fillerWalletAddress,
+			value: totalEthValue,
+			stateOverride: overrides as any,
+		})
+
+		const swapOperations = await this.calculateSwapOperations({
+			order,
+			fillerWalletAddress,
+			availableAssets,
+			universalRouterAddress,
+			venues,
+		})
+
+		const relayerFeeEth = postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000)
+
+		const totalGasEstimate = fillGas + swapOperations.totalGasEstimate + relayerFeeEth
+
+		return totalGasEstimate
+	}
+
+	/**
+	 * Calculates the swap operations required to fill an order.
+	 * This function calculates the swap operations required to fill the order, including the gas required to swap the tokens.
+	 *
+	 * @param params - The parameters for the swap operations
+	 * @returns The swap operations required to fill the order
+	 */
+	async calculateSwapOperations(params: {
+		order: Order
+		fillerWalletAddress: HexString
+		availableAssets: {
+			address: HexString
+			decimals: number
+		}[]
+		universalRouterAddress: HexString
+		venues: {
+			v2Router: HexString
+			v2Factory: HexString
+			v3Factory: HexString
+			v3Quoter: HexString
+		}
+	}): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[]; totalGasEstimate: bigint }> {
+		const { order, fillerWalletAddress, availableAssets, universalRouterAddress, venues } = params
+		const destClient = this.publicClient
+
+		const calls: { to: HexString; data: HexString; value: bigint }[] = []
+		let totalGasEstimate = BigInt(0)
+
+		const { address: daiAssetAddress, decimals: daiAssetDecimals } = availableAssets[0]
+		const { address: usdtAssetAddress, decimals: usdtAssetDecimals } = availableAssets[1]
+		const { address: usdcAssetAddress, decimals: usdcAssetDecimals } = availableAssets[2]
+
+		const V2_SWAP_EXACT_OUT = 0x09
+		const V3_SWAP_EXACT_OUT = 0x01
+
+		for (const token of order.outputs) {
+			const tokenAddress = bytes32ToBytes20(token.token)
+			const nativeTokenBalance = await destClient.getBalance({
+				address: fillerWalletAddress,
+			})
+
+			const daiBalance = await destClient.readContract({
+				address: daiAssetAddress,
+				abi: erc20Abi,
+				functionName: "balanceOf",
+				args: [fillerWalletAddress],
+			})
+
+			const usdtBalance = await destClient.readContract({
+				address: usdtAssetAddress,
+				abi: erc20Abi,
+				functionName: "balanceOf",
+				args: [fillerWalletAddress],
+			})
+
+			const usdcBalance = await destClient.readContract({
+				address: usdcAssetAddress,
+				abi: erc20Abi,
+				functionName: "balanceOf",
+				args: [fillerWalletAddress],
+			})
+
+			const currentBalance =
+				tokenAddress == daiAssetAddress
+					? daiBalance
+					: tokenAddress == usdtAssetAddress
+						? usdtBalance
+						: tokenAddress == usdcAssetAddress
+							? usdcBalance
+							: nativeTokenBalance
+
+			const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
+
+			if (balanceNeeded > BigInt(0)) {
+				const normalizedBalances = {
+					dai: daiBalance / BigInt(10 ** daiAssetDecimals),
+					usdt: usdtBalance / BigInt(10 ** usdtAssetDecimals),
+					usdc: usdcBalance / BigInt(10 ** usdcAssetDecimals),
+					native: nativeTokenBalance / BigInt(10 ** 18),
+				}
+
+				const sortedBalances = Object.entries(normalizedBalances).sort(([, a], [, b]) => Number(b - a))
+
+				// Try to fulfill the requirement using the highest balance first
+				let remainingNeeded = balanceNeeded
+
+				for (const [tokenType, normalizedBalance] of sortedBalances) {
+					if (remainingNeeded <= BigInt(0)) break
+
+					// Skip if this is the same token we're trying to get
+					if (
+						(tokenType === "dai" && tokenAddress === daiAssetAddress) ||
+						(tokenType === "usdt" && tokenAddress === usdtAssetAddress) ||
+						(tokenType === "usdc" && tokenAddress === usdcAssetAddress) ||
+						(tokenType === "native" && tokenAddress === ADDRESS_ZERO)
+					) {
+						continue
+					}
+
+					// Get the actual balance with decimals
+					const actualBalance =
+						tokenType === "dai"
+							? daiBalance
+							: tokenType === "usdt"
+								? usdtBalance
+								: tokenType === "usdc"
+									? usdcBalance
+									: nativeTokenBalance
+
+					// Calculate how much we can swap from this token (in actual uint256 with decimals)
+					const swapAmount = actualBalance > remainingNeeded ? remainingNeeded : actualBalance
+
+					if (swapAmount > BigInt(0)) {
+						const tokenToSwap =
+							tokenType === "dai"
+								? daiAssetAddress
+								: tokenType === "usdt"
+									? usdtAssetAddress
+									: tokenType === "usdc"
+										? usdcAssetAddress
+										: ADDRESS_ZERO
+
+						const bestProtocol = await this.findBestProtocol(tokenToSwap, tokenAddress, swapAmount, venues)
+
+						if (bestProtocol.protocol === null) {
+							console.warn(`No liquidity available for swap ${tokenToSwap} -> ${tokenAddress}`)
+							continue
+						}
+
+						const amountIn = bestProtocol.amountIn
+
+						// Transfer tokens directly to Universal Router (no approval needed)
+						const transferData = encodeFunctionData({
+							abi: erc20Abi,
+							functionName: "transfer",
+							args: [universalRouterAddress, amountIn],
+						})
+
+						const transferCall = {
+							to: tokenToSwap,
+							data: transferData,
+							value: BigInt(0),
+						}
+
+						// Universal Router swap call based on protocol
+						let commands: HexString
+						let inputs: HexString[]
+						const isPermit2 = false
+
+						if (bestProtocol.protocol === "v2") {
+							// V2 swap
+							const path = [tokenToSwap, tokenAddress]
+							commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
+
+							// Inputs for V2_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+							inputs = [
+								encodeAbiParameters(
+									[
+										{ type: "address", name: "recipient" },
+										{ type: "uint256", name: "amountOut" },
+										{ type: "uint256", name: "amountInMax" },
+										{ type: "address[]", name: "path" },
+										{ type: "bool", name: "isPermit2" },
+									],
+									[fillerWalletAddress, swapAmount, amountIn, path, isPermit2],
+								),
+							]
+						} else {
+							// V3 swap
+							// Encode path with fee: tokenIn + fee + tokenOut
+							const pathV3 = encodePacked(
+								["address", "uint24", "address"],
+								[tokenToSwap, bestProtocol.fee!, tokenAddress],
+							)
+
+							commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
+
+							// Inputs for V3_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
+							inputs = [
+								encodeAbiParameters(
+									[
+										{ type: "address", name: "recipient" },
+										{ type: "uint256", name: "amountOut" },
+										{ type: "uint256", name: "amountInMax" },
+										{ type: "bytes", name: "path" },
+										{ type: "bool", name: "isPermit2" },
+									],
+									[fillerWalletAddress, swapAmount, amountIn, pathV3, isPermit2],
+								),
+							]
+						}
+
+						const swapData = encodeFunctionData({
+							abi: UniversalRouter.ABI,
+							functionName: "execute",
+							args: [commands, inputs, order.deadline],
+						})
+
+						const call = {
+							to: params.universalRouterAddress,
+							data: swapData,
+							value: BigInt(0),
+						}
+
+						try {
+							const { results } = await destClient.simulateCalls({
+								account: fillerWalletAddress,
+								calls: [transferCall, call],
+							})
+
+							const operationGasEstimate = results.reduce(
+								(acc, result) => acc + result.gasUsed,
+								BigInt(0),
+							)
+
+							calls.push(transferCall, call)
+							totalGasEstimate += operationGasEstimate
+							remainingNeeded -= swapAmount
+
+							console.log(
+								`Using ${bestProtocol.protocol.toUpperCase()} for swap ${tokenToSwap} -> ${tokenAddress}, amountIn: ${amountIn}${bestProtocol.fee ? `, fee: ${bestProtocol.fee}` : ""}`,
+							)
+						} catch (simulationError) {
+							console.error(
+								`Swap simulation failed for ${tokenType} using ${bestProtocol.protocol}:`,
+								simulationError,
+							)
+							continue
+						}
+					}
+				}
+
+				// If we still need more tokens after trying all balances
+				if (remainingNeeded > BigInt(0)) {
+					throw new Error(`Insufficient balance to fulfill token requirement for ${tokenAddress}`)
+				}
+			}
+		}
+
+		return { calls, totalGasEstimate }
+	}
+
+	/**
+	 * Finds the best protocol to use for a swap.
+	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
+	 *
+	 * @param tokenIn - The address of the input token
+	 * @param tokenOut - The address of the output token
+	 * @param amountOut - The amount of output tokens to swap
+	 * @param venues - The venues to use for the swap
+	 * @returns The best protocol to use for the swap
+	 */
+	async findBestProtocol(
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		venues: {
+			v2Router: HexString
+			v2Factory: HexString
+			v3Factory: HexString
+			v3Quoter: HexString
+		},
+	): Promise<{
+		protocol: "v2" | "v3" | null
+		amountIn: bigint
+		fee?: number // For V3
+		gasEstimate?: bigint // For V3
+	}> {
+		const destClient = this.publicClient
+		let amountInV2 = maxUint256
+		let amountInV3 = maxUint256
+		let bestV3Fee = 0
+		let v3GasEstimate = BigInt(0)
+
+		const v2Router = venues.v2Router
+		const v2Factory = venues.v2Factory
+		const v3Factory = venues.v3Factory
+		const v3Quoter = venues.v3Quoter
+
+		try {
+			const v2PairExists = (await destClient.readContract({
+				address: v2Factory,
+				abi: UniswapV2Factory.ABI,
+				functionName: "getPair",
+				args: [tokenIn, tokenOut],
+			})) as HexString
+
+			if (v2PairExists !== ADDRESS_ZERO) {
+				const v2AmountIn = (await destClient.readContract({
+					address: v2Router,
+					abi: UniswapRouterV2.ABI,
+					functionName: "getAmountsIn",
+					args: [amountOut, [tokenIn, tokenOut]],
+				})) as bigint[]
+
+				amountInV2 = v2AmountIn[0]
+			}
+		} catch (error) {
+			console.warn("V2 quote failed:", error)
+		}
+
+		// Find the best pool in v3 with best quote
+		let bestV3AmountIn = maxUint256
+		const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
+
+		for (const fee of fees) {
+			try {
+				const pool = await destClient.readContract({
+					address: v3Factory,
+					abi: UniswapV3Factory.ABI,
+					functionName: "getPool",
+					args: [tokenIn, tokenOut, fee],
+				})
+
+				if (pool !== ADDRESS_ZERO) {
+					const liquidity = await destClient.readContract({
+						address: pool,
+						abi: UniswapV3Pool.ABI,
+						functionName: "liquidity",
+					})
+
+					if (liquidity > BigInt(0)) {
+						// Get quote from quoter
+						const quoteResult = (await destClient.readContract({
+							address: v3Quoter,
+							abi: UniswapV3Quoter.ABI,
+							functionName: "quoteExactOutputSingle",
+							args: [
+								{
+									tokenIn: tokenIn,
+									tokenOut: tokenOut,
+									fee: fee,
+									amount: amountOut,
+									sqrtPriceLimitX96: BigInt(0),
+								},
+							],
+						})) as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+
+						const [amountIn, , , gasEstimate] = quoteResult
+
+						if (amountIn < bestV3AmountIn) {
+							bestV3AmountIn = amountIn
+							bestV3Fee = fee
+							v3GasEstimate = gasEstimate
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
+				// Continue to next fee tier
+			}
+		}
+
+		amountInV3 = bestV3AmountIn
+
+		if (amountInV2 === maxUint256 && amountInV3 === maxUint256) {
+			// No liquidity in either protocol
+			return {
+				protocol: null,
+				amountIn: maxUint256,
+			}
+		}
+
+		if (amountInV2 <= amountInV3) {
+			return {
+				protocol: "v2",
+				amountIn: amountInV2,
+			}
+		} else {
+			return {
+				protocol: "v3",
+				amountIn: amountInV3,
+				fee: bestV3Fee,
+				gasEstimate: v3GasEstimate,
+			}
+		}
+	}
+}
+
+function transformOrderForContract(order: Order) {
+	return {
+		sourceChain: toHex(order.sourceChain),
+		destChain: toHex(order.destChain),
+		fees: order.fees,
+		callData: order.callData,
+		deadline: order.deadline,
+		nonce: order.nonce,
+		inputs: order.inputs.map((input) => ({
+			token: input.token,
+			amount: input.amount,
+		})),
+		outputs: order.outputs.map((output) => ({
+			token: output.token,
+			amount: output.amount,
+			beneficiary: output.beneficiary,
+		})),
+		user: order.user,
 	}
 }
 
