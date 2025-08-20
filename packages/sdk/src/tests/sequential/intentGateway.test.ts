@@ -37,159 +37,158 @@ describe.sequential(
 		let indexer: IndexerClient
 		let hyperbridgeInstance: SubstrateChain
 
-		// beforeAll(async () => {
-		// 	const { gnosisChiadoIsmpHost, bscIsmpHost, hyperbridge } = await setUp()
+		beforeAll(async () => {
+			const { gnosisChiadoIsmpHost, bscIsmpHost, hyperbridge } = await setUp()
 
-		// 	const query_client = createQueryClient({
-		// 		url: process.env.INDEXER_URL!,
-		// 	})
+			const query_client = createQueryClient({
+				url: process.env.INDEXER_URL!,
+			})
 
-		// 	indexer = new IndexerClient({
-		// 		source: {
-		// 			consensusStateId: "BSC0",
-		// 			rpcUrl: process.env.BSC_CHAPEL!,
-		// 			stateMachineId: "EVM-97",
-		// 			host: bscIsmpHost.address,
-		// 		},
-		// 		dest: {
-		// 			consensusStateId: "GNO0",
-		// 			rpcUrl: process.env.GNOSIS_CHIADO!,
-		// 			stateMachineId: "EVM-10200",
-		// 			host: gnosisChiadoIsmpHost.address,
-		// 		},
-		// 		hyperbridge: {
-		// 			consensusStateId: "PAS0",
-		// 			stateMachineId: "KUSAMA-4009",
-		// 			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-		// 		},
-		// 		queryClient: query_client,
-		// 		pollInterval: 1_000,
-		// 	})
+			indexer = new IndexerClient({
+				source: {
+					consensusStateId: "BSC0",
+					rpcUrl: process.env.BSC_CHAPEL!,
+					stateMachineId: "EVM-97",
+					host: bscIsmpHost.address,
+				},
+				dest: {
+					consensusStateId: "GNO0",
+					rpcUrl: process.env.GNOSIS_CHIADO!,
+					stateMachineId: "EVM-10200",
+					host: gnosisChiadoIsmpHost.address,
+				},
+				hyperbridge: {
+					consensusStateId: "PAS0",
+					stateMachineId: "KUSAMA-4009",
+					wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+				},
+				queryClient: query_client,
+				pollInterval: 1_000,
+			})
 
-		// 	await hyperbridge.connect()
-		// 	hyperbridgeInstance = hyperbridge
-		// })
+			await hyperbridge.connect()
+			hyperbridgeInstance = hyperbridge
+		})
 
-		// afterAll(async () => {
-		// 	await hyperbridgeInstance.disconnect()
-		// })
+		it.skip("should successfully stream and query the order status", async () => {
+			const {
+				bscIntentGateway,
+				bscWalletClient,
+				bscPublicClient,
+				bscIsmpHost,
+				gnosisChiadoIsmpHost,
+				bscFeeToken,
+				chainConfigs,
+				fillerConfig,
+				chainConfigService,
+				bscChapelId,
+			} = await setUp()
 
-		// it.skip("should successfully stream and query the order status", async () => {
-		// 	const {
-		// 		bscIntentGateway,
-		// 		bscWalletClient,
-		// 		bscPublicClient,
-		// 		bscIsmpHost,
-		// 		gnosisChiadoIsmpHost,
-		// 		bscFeeToken,
-		// 		chainConfigs,
-		// 		fillerConfig,
-		// 		chainConfigService,
-		// 		bscChapelId,
-		// 	} = await setUp()
+			const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
+			const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+			intentFiller.start()
 
-		// 	const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
-		// 	const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
-		// 	intentFiller.start()
+			const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
+			const inputs = [
+				{
+					token: bytes20ToBytes32(daiAsset),
+					amount: 100n,
+				},
+			]
+			const outputs = [
+				{
+					token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+					amount: 100n,
+					beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+				},
+			]
 
-		// 	const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
-		// 	const inputs = [
-		// 		{
-		// 			token: bytes20ToBytes32(daiAsset),
-		// 			amount: 100n,
-		// 		},
-		// 	]
-		// 	const outputs = [
-		// 		{
-		// 			token: "0x0000000000000000000000000000000000000000000000000000000000000000",
-		// 			amount: 100n,
-		// 			beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
-		// 		},
-		// 	]
+			const order = {
+				user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
+				sourceChain: await bscIsmpHost.read.host(),
+				destChain: await gnosisChiadoIsmpHost.read.host(),
+				deadline: 65337297n,
+				nonce: 0n,
+				fees: 1000000n,
+				outputs,
+				inputs,
+				callData: "0x" as HexString,
+			}
 
-		// 	const order = {
-		// 		user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
-		// 		sourceChain: await bscIsmpHost.read.host(),
-		// 		destChain: await gnosisChiadoIsmpHost.read.host(),
-		// 		deadline: 65337297n,
-		// 		nonce: 0n,
-		// 		fees: 1000000n,
-		// 		outputs,
-		// 		inputs,
-		// 		callData: "0x" as HexString,
-		// 	}
+			await approveTokens(bscWalletClient, bscPublicClient, bscFeeToken.address, bscIntentGateway.address)
 
-		// 	await approveTokens(bscWalletClient, bscPublicClient, bscFeeToken.address, bscIntentGateway.address)
+			const hash = await bscIntentGateway.write.placeOrder([order as any], {
+				account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+				chain: bscTestnet,
+			})
 
-		// 	const hash = await bscIntentGateway.write.placeOrder([order as any], {
-		// 		account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-		// 		chain: bscTestnet,
-		// 	})
+			const receipt = await bscPublicClient.waitForTransactionReceipt({
+				hash,
+				confirmations: 1,
+			})
 
-		// 	const receipt = await bscPublicClient.waitForTransactionReceipt({
-		// 		hash,
-		// 		confirmations: 1,
-		// 	})
+			console.log("Order placed on BSC:", receipt.transactionHash)
 
-		// 	console.log("Order placed on BSC:", receipt.transactionHash)
+			const orderPlaceEvent = parseEventLogs({
+				abi: INTENT_GATEWAY_ABI.ABI,
+				logs: receipt.logs,
+				strict: false,
+			})[0] as { eventName: "OrderPlaced"; args: any }
 
-		// 	const orderPlaceEvent = parseEventLogs({
-		// 		abi: INTENT_GATEWAY_ABI.ABI,
-		// 		logs: receipt.logs,
-		// 		strict: false,
-		// 	})[0] as { eventName: "OrderPlaced"; args: any }
+			if (orderPlaceEvent.eventName !== "OrderPlaced") {
+				throw new Error("Unexpected Event type")
+			}
 
-		// 	if (orderPlaceEvent.eventName !== "OrderPlaced") {
-		// 		throw new Error("Unexpected Event type")
-		// 	}
+			const orderPlaced = orderPlaceEvent.args
+			const commitment = orderCommitment({
+				...orderPlaced,
+				sourceChain: hexToString(orderPlaced.sourceChain),
+				destChain: hexToString(orderPlaced.destChain),
+				outputs: orderPlaced.outputs,
+				inputs: orderPlaced.inputs,
+			})
 
-		// 	const orderPlaced = orderPlaceEvent.args
-		// 	const commitment = orderCommitment({
-		// 		...orderPlaced,
-		// 		sourceChain: hexToString(orderPlaced.sourceChain),
-		// 		destChain: hexToString(orderPlaced.destChain),
-		// 		outputs: orderPlaced.outputs,
-		// 		inputs: orderPlaced.inputs,
-		// 	})
+			console.log("Order Commitment:", commitment)
 
-		// 	console.log("Order Commitment:", commitment)
+			for await (const status of indexer.orderStatusStream(commitment)) {
+				console.log(
+					JSON.stringify(status, (_, value) => (typeof value === "bigint" ? value.toString() : value), 4),
+				)
+				switch (status.status) {
+					case OrderStatus.PLACED: {
+						console.log(
+							`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
+						)
+						break
+					}
+					case OrderStatus.FILLED: {
+						console.log(
+							`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
+						)
+						console.log("Filled by:", status.metadata.filler)
+						break
+					}
+					case OrderStatus.REDEEMED: {
+						console.log(
+							`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
+						)
+						break
+					}
+					case OrderStatus.REFUNDED: {
+						console.log(
+							`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
+						)
+						break
+					}
+				}
+			}
 
-		// 	for await (const status of indexer.orderStatusStream(commitment)) {
-		// 		console.log(JSON.stringify(status, (_, value) => (typeof value === "bigint" ? value.toString() : value), 4))
-		// 		switch (status.status) {
-		// 			case OrderStatus.PLACED: {
-		// 				console.log(
-		// 					`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
-		// 				)
-		// 				break
-		// 			}
-		// 			case OrderStatus.FILLED: {
-		// 				console.log(
-		// 					`Status ${status.status}, Transaction: https://gnosis-chiado.blockscout.com/tx/${status.metadata.transactionHash}`,
-		// 				)
-		// 				console.log("Filled by:", status.metadata.filler)
-		// 				break
-		// 			}
-		// 			case OrderStatus.REDEEMED: {
-		// 				console.log(
-		// 					`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
-		// 				)
-		// 				break
-		// 			}
-		// 			case OrderStatus.REFUNDED: {
-		// 				console.log(
-		// 					`Status ${status.status}, Transaction: https://testnet.bscscan.com/tx/${status.metadata.transactionHash}`,
-		// 				)
-		// 				break
-		// 			}
-		// 		}
-		// 	}
+			const orderStatus = await indexer.queryOrder(commitment)
+			expect(orderStatus?.statuses.length).toBe(2)
 
-		// 	const orderStatus = await indexer.queryOrder(commitment)
-		// 	expect(orderStatus?.statuses.length).toBe(2)
-
-		// 	intentFiller.stop()
-		// }, 1_000_000)
+			intentFiller.stop()
+			await hyperbridgeInstance.disconnect()
+		}, 1_000_000)
 
 		it("should successfully get the quotes and swap estimates", async () => {
 			const { bscIsmpHost, gnosisChiadoIsmpHost, chainConfigService, bscChapelId, bscPublicClient } =
