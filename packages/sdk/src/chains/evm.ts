@@ -547,8 +547,9 @@ export class EvmChain implements IChain {
 		}[],
 		universalRouterAddress: HexString,
 		postGasEstimate: bigint,
+		wrappedNativeTokenSourceChain: HexString,
 	): Promise<bigint> {
-		const nativeTokenPriceUsd = await fetchTokenUsdPrice(availableAssets[0].address)
+		const nativeTokenPriceUsd = await fetchTokenUsdPrice(wrappedNativeTokenSourceChain)
 		const postGasEstimateUsd = (postGasEstimate * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
 		const fillOptions: FillOptions = {
@@ -915,7 +916,12 @@ export class EvmChain implements IChain {
 										? usdcAssetAddress
 										: ADDRESS_ZERO
 
-						const bestProtocol = await this.findBestProtocol(tokenToSwap, tokenAddress, swapAmount, venues)
+						const bestProtocol = await this.findBestProtocolWithAmountOut(
+							tokenToSwap,
+							tokenAddress,
+							swapAmount,
+							venues,
+						)
 
 						if (bestProtocol.protocol === null) {
 							console.warn(`No liquidity available for swap ${tokenToSwap} -> ${tokenAddress}`)
@@ -1045,7 +1051,7 @@ export class EvmChain implements IChain {
 	 * @param venues - The venues to use for the swap
 	 * @returns The best protocol to use for the swap
 	 */
-	async findBestProtocol(
+	async findBestProtocolWithAmountOut(
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
@@ -1171,6 +1177,142 @@ export class EvmChain implements IChain {
 		}
 	}
 
+	/**
+	 * Finds the best protocol to use for a swap.
+	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
+	 *
+	 * @param tokenIn - The address of the input token
+	 * @param tokenOut - The address of the output token
+	 * @param amountIn - The amount of input tokens to swap
+	 * @param venues - The venues to use for the swap
+	 * @returns The best protocol to use for the swap
+	 */
+	async findBestProtocolWithAmountIn(
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		venues: {
+			v2Router: HexString
+			v2Factory: HexString
+			v3Factory: HexString
+			v3Quoter: HexString
+		},
+	): Promise<{
+		protocol: "v2" | "v3" | null
+		amountOut: bigint
+		fee?: number // For V3
+		gasEstimate?: bigint // For V3
+	}> {
+		const destClient = this.publicClient
+		let amountOutV2 = BigInt(0)
+		let amountOutV3 = BigInt(0)
+		let bestV3Fee = 0
+		let v3GasEstimate = BigInt(0)
+
+		const v2Router = venues.v2Router
+		const v2Factory = venues.v2Factory
+		const v3Factory = venues.v3Factory
+		const v3Quoter = venues.v3Quoter
+
+		try {
+			const v2PairExists = (await destClient.readContract({
+				address: v2Factory,
+				abi: UniswapV2Factory.ABI,
+				functionName: "getPair",
+				args: [tokenIn, tokenOut],
+			})) as HexString
+
+			if (v2PairExists !== ADDRESS_ZERO) {
+				const v2AmountOut = (await destClient.readContract({
+					address: v2Router,
+					abi: UniswapRouterV2.ABI,
+					functionName: "getAmountsOut",
+					args: [amountIn, [tokenIn, tokenOut]],
+				})) as bigint[]
+
+				amountOutV2 = v2AmountOut[1] // Second element is the output amount
+			}
+		} catch (error) {
+			console.warn("V2 quote failed:", error)
+		}
+
+		// Find the best pool in v3 with best quote
+		let bestV3AmountOut = BigInt(0)
+		const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
+
+		for (const fee of fees) {
+			try {
+				const pool = await destClient.readContract({
+					address: v3Factory,
+					abi: UniswapV3Factory.ABI,
+					functionName: "getPool",
+					args: [tokenIn, tokenOut, fee],
+				})
+
+				if (pool !== ADDRESS_ZERO) {
+					const liquidity = await destClient.readContract({
+						address: pool,
+						abi: UniswapV3Pool.ABI,
+						functionName: "liquidity",
+					})
+
+					if (liquidity > BigInt(0)) {
+						// Get quote from quoter
+						const quoteResult = (await destClient.readContract({
+							address: v3Quoter,
+							abi: UniswapV3Quoter.ABI,
+							functionName: "quoteExactInputSingle",
+							args: [
+								{
+									tokenIn: tokenIn,
+									tokenOut: tokenOut,
+									fee: fee,
+									amountIn: amountIn,
+									sqrtPriceLimitX96: BigInt(0),
+								},
+							],
+						})) as [bigint, bigint, number, bigint] // [amountOut, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+
+						const [amountOut, , , gasEstimate] = quoteResult
+
+						if (amountOut > bestV3AmountOut) {
+							bestV3AmountOut = amountOut
+							bestV3Fee = fee
+							v3GasEstimate = gasEstimate
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
+				// Continue to next fee tier
+			}
+		}
+
+		amountOutV3 = bestV3AmountOut
+
+		if (amountOutV2 === BigInt(0) && amountOutV3 === BigInt(0)) {
+			// No liquidity in either protocol
+			return {
+				protocol: null,
+				amountOut: BigInt(0),
+			}
+		}
+
+		if (amountOutV2 >= amountOutV3) {
+			return {
+				protocol: "v2",
+				amountOut: amountOutV2,
+			}
+		} else {
+			return {
+				protocol: "v3",
+				amountOut: amountOutV3,
+				fee: bestV3Fee,
+				gasEstimate: v3GasEstimate,
+			}
+		}
+	}
+
 	async getHostNonce(): Promise<bigint> {
 		const nonce = await this.publicClient.readContract({
 			abi: evmHost.ABI,
@@ -1179,6 +1321,21 @@ export class EvmChain implements IChain {
 		})
 
 		return nonce
+	}
+
+	async isOrderFilled(orderCommitment: HexString, intentGatewayAddress: HexString): Promise<boolean> {
+		let filledSlot = await this.publicClient.readContract({
+			abi: IntentGateway.ABI,
+			address: intentGatewayAddress,
+			functionName: "calculateCommitmentSlotHash",
+			args: [orderCommitment],
+		})
+
+		const filledStatus = await this.publicClient.getStorageAt({
+			address: intentGatewayAddress,
+			slot: filledSlot,
+		})
+		return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 	}
 }
 

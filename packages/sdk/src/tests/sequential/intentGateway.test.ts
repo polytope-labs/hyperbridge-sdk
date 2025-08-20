@@ -68,7 +68,7 @@ describe.sequential(
 
 			await hyperbridge.connect()
 			hyperbridgeInstance = hyperbridge
-		})
+		}, 10_000)
 
 		it.skip("should successfully stream and query the order status", async () => {
 			const {
@@ -191,8 +191,14 @@ describe.sequential(
 		}, 1_000_000)
 
 		it("should successfully get the quotes and swap estimates", async () => {
-			const { bscIsmpHost, gnosisChiadoIsmpHost, chainConfigService, bscChapelId, bscPublicClient } =
-				await setUp()
+			const {
+				bscIsmpHost,
+				gnosisChiadoIsmpHost,
+				chainConfigService,
+				bscChapelId,
+				bscPublicClient,
+				gnosisChiadoId,
+			} = await setUp()
 
 			let bscEvmStructParams: EvmChainParams = {
 				chainId: 97,
@@ -209,7 +215,8 @@ describe.sequential(
 			let gnosisChiadoEvmChain = new EvmChain(gnosisChiadoEvmStructParams) // Source Chain
 			let bscEvmChain = new EvmChain(bscEvmStructParams) // Destination Chain
 
-			let wrappedNativeTokenWithDecimals = chainConfigService.getWrappedNativeAssetWithDecimals(bscChapelId)
+			let wrappedNativeTokenSourceChain = chainConfigService.getWrappedNativeAssetWithDecimals(gnosisChiadoId)
+
 			let usdtAsset = chainConfigService.getUsdtAsset(bscChapelId)
 			let daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 			let usdcAsset = chainConfigService.getUsdcAsset(bscChapelId)
@@ -286,11 +293,6 @@ describe.sequential(
 			// Available Assets on Destination Chain
 			let availableAssets = [
 				{
-					name: "Wrapped Native Token",
-					address: wrappedNativeTokenWithDecimals.asset,
-					decimals: 18,
-				},
-				{
 					name: "DAI",
 					address: daiAsset,
 					decimals: decimalDai,
@@ -318,14 +320,39 @@ describe.sequential(
 				availableAssets,
 				universalRouterAddress,
 				postGasEstimate,
+				wrappedNativeTokenSourceChain.asset,
 			)
 
 			console.log("Fill gas estimate including fillOrder + swapEstimates + relayerFee:", gasEstimate)
 
 			assert(gasEstimate > 100000n)
+
+			let initialAmountIn = 100n
+
+			let bestQuoteWithAmountOut = await bscEvmChain.findBestProtocolWithAmountIn(
+				daiAsset,
+				usdtAsset,
+				initialAmountIn,
+				venues,
+			)
+
+			console.log("Best quote with amount out:", bestQuoteWithAmountOut)
+
+			assert(bestQuoteWithAmountOut.amountOut > 0n)
+
+			let bestQuoteWithAmountIn = await bscEvmChain.findBestProtocolWithAmountOut(
+				usdtAsset,
+				daiAsset,
+				bestQuoteWithAmountOut.amountOut,
+				venues,
+			)
+
+			console.log("Best quote with amount in:", bestQuoteWithAmountIn)
+
+			assert(bestQuoteWithAmountIn.amountIn === initialAmountIn)
 		})
 	},
-	1_000_00,
+	1_000_000,
 )
 
 async function setUp() {
@@ -449,6 +476,7 @@ async function setUp() {
 		chainConfigService,
 		bscChapelId,
 		bscWalletClient,
+		gnosisChiadoId,
 	}
 }
 
