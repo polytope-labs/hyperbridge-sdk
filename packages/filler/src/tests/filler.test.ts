@@ -503,6 +503,7 @@ describe.sequential("Basic", () => {
 			})
 		})
 
+		// Clear output token before placing the order (just in case)
 		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 
 		// Place the order
@@ -541,6 +542,9 @@ describe.sequential("Basic", () => {
 
 		const { orderId, hash: filledHash } = await orderFilledPromise
 		console.log("Order filled:", orderId, filledHash)
+
+		// Clear output token after the order is filled
+		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 
 		const filledReceipt = await bscPublicClient.waitForTransactionReceipt({
 			hash: filledHash as `0x${string}`,
