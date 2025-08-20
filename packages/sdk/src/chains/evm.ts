@@ -67,6 +67,7 @@ import {
 	type StateMachineHeight,
 	type StateMachineIdParams,
 } from "@/types"
+import evmHost from "@/abis/evmHost"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -538,16 +539,15 @@ export class EvmChain implements IChain {
 			v3Quoter: HexString
 		},
 		fillerWalletAddress: HexString,
-		postRequest: IPostRequest,
 		intentGatewayAddress: HexString,
 		availableAssets: {
+			name: string
 			address: HexString
 			decimals: number
 		}[],
 		universalRouterAddress: HexString,
+		postGasEstimate: bigint,
 	): Promise<bigint> {
-		const postGasEstimate = await this.estimateGas(postRequest)
-
 		const nativeTokenPriceUsd = await fetchTokenUsdPrice(availableAssets[0].address)
 		const postGasEstimateUsd = (postGasEstimate * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
@@ -781,6 +781,7 @@ export class EvmChain implements IChain {
 		order: Order
 		fillerWalletAddress: HexString
 		availableAssets: {
+			name: string
 			address: HexString
 			decimals: number
 		}[]
@@ -798,9 +799,31 @@ export class EvmChain implements IChain {
 		const calls: { to: HexString; data: HexString; value: bigint }[] = []
 		let totalGasEstimate = BigInt(0)
 
-		const { address: daiAssetAddress, decimals: daiAssetDecimals } = availableAssets[1]
-		const { address: usdtAssetAddress, decimals: usdtAssetDecimals } = availableAssets[2]
-		const { address: usdcAssetAddress, decimals: usdcAssetDecimals } = availableAssets[3]
+		let { address: daiAssetAddress, decimals: daiAssetDecimals } = {
+			address: ADDRESS_ZERO,
+			decimals: 0,
+		}
+		let { address: usdtAssetAddress, decimals: usdtAssetDecimals } = {
+			address: ADDRESS_ZERO,
+			decimals: 0,
+		}
+		let { address: usdcAssetAddress, decimals: usdcAssetDecimals } = {
+			address: ADDRESS_ZERO,
+			decimals: 0,
+		}
+
+		for (const asset of availableAssets) {
+			if (asset.name === "DAI") {
+				daiAssetAddress = asset.address
+				daiAssetDecimals = asset.decimals
+			} else if (asset.name === "USDT") {
+				usdtAssetAddress = asset.address
+				usdtAssetDecimals = asset.decimals
+			} else if (asset.name === "USDC") {
+				usdcAssetAddress = asset.address
+				usdcAssetDecimals = asset.decimals
+			}
+		}
 
 		const V2_SWAP_EXACT_OUT = 0x09
 		const V3_SWAP_EXACT_OUT = 0x01
@@ -1147,12 +1170,22 @@ export class EvmChain implements IChain {
 			}
 		}
 	}
+
+	async getHostNonce(): Promise<bigint> {
+		const nonce = await this.publicClient.readContract({
+			abi: evmHost.ABI,
+			address: this.params.host,
+			functionName: "nonce",
+		})
+
+		return nonce
+	}
 }
 
 function transformOrderForContract(order: Order) {
 	return {
-		sourceChain: toHex(order.sourceChain),
-		destChain: toHex(order.destChain),
+		sourceChain: order.sourceChain as HexString,
+		destChain: order.destChain as HexString,
 		fees: order.fees,
 		callData: order.callData,
 		deadline: order.deadline,
