@@ -503,6 +503,8 @@ describe.sequential("Basic", () => {
 			})
 		})
 
+		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
+
 		// Place the order
 		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
@@ -595,7 +597,6 @@ describe.sequential("Basic", () => {
 					)
 					expect(isFilled).toBe(true)
 
-					await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 					break
 				}
 			}

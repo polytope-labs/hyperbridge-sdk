@@ -14,6 +14,7 @@ export {
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
 	calculateBalanceMappingLocation,
+	calculateAllowanceMappingLocation,
 } from "@/utils"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"

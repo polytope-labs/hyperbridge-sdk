@@ -76,7 +76,7 @@ export class StableSwapFiller implements FillerStrategy {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
 			const { totalGasEstimate } = await this.calculateSwapOperations(order, order.destChain)
-			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
+			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order.destChain)
 
 			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
@@ -110,9 +110,9 @@ export class StableSwapFiller implements FillerStrategy {
 
 			const { calls } = await this.calculateSwapOperations(order, order.destChain)
 
-			const { postGas: postGasEstimate } = await this.contractService.estimateGasFillPost(order)
+			const { relayerFeeUSD } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
+				relayerFee: relayerFeeUSD,
 			}
 
 			await this.contractService.approveTokensIfNeeded(order)

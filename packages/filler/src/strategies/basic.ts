@@ -70,7 +70,7 @@ export class BasicFiller implements FillerStrategy {
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
-			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
+			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order.destChain)
 
 			// 2% on top of postGas
 			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
