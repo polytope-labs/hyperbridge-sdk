@@ -13,8 +13,7 @@ export {
 	hexToString,
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
-	calculateBalanceMappingLocation,
-	calculateAllowanceMappingLocation,
+	getStorageSlot,
 } from "@/utils"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"

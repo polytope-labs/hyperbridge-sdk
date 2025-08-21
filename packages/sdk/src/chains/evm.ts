@@ -47,12 +47,11 @@ import IntentGateway from "@/abis/IntentGateway"
 import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
-	calculateAllowanceMappingLocation,
-	calculateBalanceMappingLocation,
 	calculateMMRSize,
 	EvmStateProof,
 	fetchTokenUsdPrice,
 	generateRootWithProof,
+	getStorageSlot,
 	mmrPositionToKIndex,
 	MmrProof,
 	SubstrateStateProof,
@@ -516,20 +515,6 @@ export class EvmChain implements IChain {
 		return gas
 	}
 
-	/**
-	 * Estimates the gas required to fill an order on the destination chain.
-	 * This function estimates the gas required to fill the order, including the gas required to post the request
-	 * and the gas required to swap the tokens.
-	 *
-	 * @param order - The order to estimate gas for
-	 * @param venues - The venues to use for the swap
-	 * @param fillerWalletAddress - The address of the wallet to use for the swap
-	 * @param postRequest - The post request to fill the order
-	 * @param intentGatewayAddress - The address of the intent gateway
-	 * @param availableAssets - The assets available on the destination chain
-	 * @param universalRouterAddress - The address of the universal router
-	 * @returns The estimated gas amount in gas units
-	 */
 	async estimateFillOrderGas(
 		order: Order,
 		venues: {
@@ -565,8 +550,6 @@ export class EvmChain implements IChain {
 			}
 		}
 
-		// For each output token, generate the storage slot of the token balance and allowance
-		// Balance slot depends upon implementation of the token contract
 		const overrides = (
 			await Promise.all(
 				order.outputs.map(async (output) => {
@@ -576,171 +559,27 @@ export class EvmChain implements IChain {
 					const userAddress = fillerWalletAddress
 					const testValue = toHex(maxUint256)
 
-					let balanceSlot: HexString | null = null
-
-					// Find balance slot first
-					// Try both Solidity and Vyper implementations, both have different storage slot implementations
-					for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-						// Check common slots first (0, 1, 3, 51, 140, 151)
-						const commonSlots = [0n, 1n, 3n, 51n, 140n, 151n]
-
-						for (const slot of commonSlots) {
-							const storageSlot = calculateBalanceMappingLocation(slot, userAddress, language)
-
-							try {
-								const balance = await this.publicClient.readContract({
-									abi: erc20Abi,
-									address: tokenAddress,
-									functionName: "balanceOf",
-									args: [userAddress],
-									stateOverride: [
-										{
-											address: tokenAddress,
-											stateDiff: [{ slot: storageSlot, value: testValue }],
-										},
-									],
-								})
-
-								if (toHex(balance) === testValue) {
-									balanceSlot = storageSlot
-									break
-								}
-							} catch (error) {
-								continue
-							}
-						}
-
-						if (balanceSlot) break
-					}
-
-					// Start from slot 0 and go up to 200, but skip already checked slots
-					if (!balanceSlot) {
-						const checkedSlots = new Set([0n, 1n, 3n, 51n, 140n, 151n])
-
-						for (let i = 0n; i < 200n; i++) {
-							if (checkedSlots.has(i)) continue
-
-							for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-								const storageSlot = calculateBalanceMappingLocation(i, userAddress, language)
-
-								try {
-									const balance = await this.publicClient.readContract({
-										abi: erc20Abi,
-										address: tokenAddress,
-										functionName: "balanceOf",
-										args: [userAddress],
-										stateOverride: [
-											{
-												address: tokenAddress,
-												stateDiff: [{ slot: storageSlot, value: testValue }],
-											},
-										],
-									})
-
-									if (toHex(balance) === testValue) {
-										balanceSlot = storageSlot
-										break
-									}
-								} catch (error) {
-									continue
-								}
-							}
-
-							if (balanceSlot) break
-						}
-					}
-
-					if (!balanceSlot) {
-						console.warn(`Could not find balance slot for token ${tokenAddress}`)
-						return null
-					}
-
-					let allowanceSlot: HexString | null = null
-
-					// Slot 1 covers majority of tokens
-					for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-						const allowanceStorageSlot = calculateAllowanceMappingLocation(
-							1n,
-							userAddress,
-							intentGatewayAddress,
-							language,
-						)
+					try {
+						const balanceSlot = await getStorageSlot(this.publicClient, tokenAddress, 0, userAddress)
+						const stateDiffs = [{ slot: balanceSlot as HexString, value: testValue }]
 
 						try {
-							const allowance = await this.publicClient.readContract({
-								abi: erc20Abi,
-								address: tokenAddress,
-								functionName: "allowance",
-								args: [userAddress, intentGatewayAddress],
-								stateOverride: [
-									{
-										address: tokenAddress,
-										stateDiff: [{ slot: allowanceStorageSlot, value: testValue }],
-									},
-								],
-							})
-
-							if (toHex(allowance) === testValue) {
-								allowanceSlot = allowanceStorageSlot
-								break
-							}
-						} catch (error) {
-							continue
+							const allowanceSlot = await getStorageSlot(
+								this.publicClient,
+								tokenAddress,
+								1,
+								userAddress,
+								intentGatewayAddress,
+							)
+							stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
+						} catch {
+							console.warn(`Could not find allowance slot for token ${tokenAddress}`)
 						}
-					}
 
-					// If slot 1 didn't work, try from 0 to 200
-					if (!allowanceSlot) {
-						for (let i = 0n; i <= 200n; i++) {
-							if (i === 1n) continue // Already checked slot 1
-
-							for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-								const allowanceStorageSlot = calculateAllowanceMappingLocation(
-									i,
-									userAddress,
-									intentGatewayAddress,
-									language,
-								)
-
-								try {
-									const allowance = await this.publicClient.readContract({
-										abi: erc20Abi,
-										address: tokenAddress,
-										functionName: "allowance",
-										args: [userAddress, intentGatewayAddress],
-										stateOverride: [
-											{
-												address: tokenAddress,
-												stateDiff: [{ slot: allowanceStorageSlot, value: testValue }],
-											},
-										],
-									})
-
-									if (toHex(allowance) === testValue) {
-										allowanceSlot = allowanceStorageSlot
-										break
-									}
-								} catch (error) {
-									continue
-								}
-							}
-
-							if (allowanceSlot) break
-						}
-					}
-
-					if (!allowanceSlot) {
-						console.warn(`Could not find allowance slot for token ${tokenAddress}`)
-					}
-
-					const stateDiffs = [{ slot: balanceSlot, value: testValue }]
-					if (allowanceSlot) {
-						stateDiffs.push({ slot: allowanceSlot, value: testValue })
-					}
-
-					return {
-						address: tokenAddress,
-						stateDiff: stateDiffs,
+						return { address: tokenAddress, stateDiff: stateDiffs }
+					} catch {
+						console.warn(`Could not find balance slot for token ${tokenAddress}`)
+						return null
 					}
 				}),
 			)

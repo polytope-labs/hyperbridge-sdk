@@ -498,7 +498,7 @@ export class StableSwapFiller implements FillerStrategy {
 					}
 				}
 			} catch (error) {
-				console.warn(`V3 quote failed for fee ${fee}:`, error)
+				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
 				// Continue to next fee tier
 			}
 		}
