@@ -350,6 +350,18 @@ describe.sequential(
 			console.log("Best quote with amount in:", bestQuoteWithAmountIn)
 
 			assert(bestQuoteWithAmountIn.amountIn === initialAmountIn)
+
+			// Order filled checker
+			const unfilledOrderCommitment = order.id as HexString
+			const filledOrderCommitment =
+				"0x1dede1bc4939f194e8a06a9086377d1e64c5c1c77c055e4430ff7141c774528c" as HexString
+			let isFilled = await bscEvmChain.isOrderFilled(unfilledOrderCommitment, intentGatewayAddress)
+
+			assert(isFilled === false)
+
+			isFilled = await bscEvmChain.isOrderFilled(filledOrderCommitment, intentGatewayAddress)
+
+			assert(isFilled === true)
 		})
 	},
 	1_000_000,
