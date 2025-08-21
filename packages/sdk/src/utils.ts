@@ -18,6 +18,7 @@ import {
 	bytesToHex,
 	type PublicClient,
 	concatHex,
+	CallParameters,
 } from "viem"
 import { createConsola, LogLevels } from "consola"
 import { _queryRequestInternal } from "./query-client"
@@ -500,26 +501,74 @@ export const dateStringtoTimestamp = (date: string): number => {
 }
 
 /**
- * Calculates the balance mapping location for a given slot and holder address.
- * This function handles the different encoding formats used by Solidity and Vyper.
- *
- * @param slot - The slot number to calculate the mapping location for.
- * @param holder - The address of the holder to calculate the mapping location for.
- * @param language - The language of the contract.
- * @returns The balance mapping location as a HexString.
+ * Fetches the USD price of a token from CoinGecko
+ * @param address - The address of the token
+ * @returns The USD price of the token
  */
-export function calculateBalanceMappingLocation(slot: bigint, holder: string, language: EvmLanguage): HexString {
-	const holderBytes = bytes20ToBytes32(holder)
-	const slotBytes = `0x${slot.toString(16).padStart(64, "0")}` as HexString
+export async function fetchTokenUsdPrice(address: string): Promise<bigint> {
+	try {
+		const response = await fetch(
+			`https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${address}&vs_currencies=usd`,
+		)
+		const data = await response.json()
 
-	if (language === EvmLanguage.Solidity) {
-		return keccak256(
-			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [holderBytes, slotBytes]) as HexString,
-		)
-	} else {
-		// Vyper uses reverse order
-		return keccak256(
-			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [slotBytes, holderBytes]) as HexString,
-		)
+		if (!data[address.toLowerCase()]?.usd) {
+			throw new Error(`Price not found for token address: ${address}`)
+		}
+
+		return BigInt(Math.floor(data[address.toLowerCase()].usd))
+	} catch (error) {
+		console.log("Testnet token price not found, returning 1")
+		return BigInt(1)
 	}
+}
+
+export async function getStorageSlot(
+	client: PublicClient,
+	tokenAddress: HexString,
+	type: 0 | 1, // 0 = balanceOf, 1 = allowance
+	userAddress: HexString,
+	spenderAddress?: HexString,
+): Promise<string> {
+	const signatures = ["0x70a08231", "0xdd62ed3e"] // balanceOf, allowance
+	const errorMessages = ["Balance storage slot not found", "Allowance storage slot not found"]
+
+	const traceCallClient = client.extend((client) => ({
+		async traceCall(args: CallParameters) {
+			return client.request({
+				// @ts-ignore
+				method: "debug_traceCall",
+				// @ts-ignore
+				params: [args, "latest", {}],
+			})
+		},
+	}))
+
+	// Build payload based on type
+	const data =
+		type === 0
+			? signatures[0] + bytes20ToBytes32(userAddress).slice(2)
+			: signatures[1] + bytes20ToBytes32(userAddress).slice(2) + bytes20ToBytes32(spenderAddress!).slice(2)
+
+	// Make trace call
+	const response = await traceCallClient.traceCall({
+		to: tokenAddress,
+		data: data as HexString,
+	})
+
+	// @ts-ignore
+	const logs = response.structLogs
+	for (let i = logs.length - 1; i >= 0; i--) {
+		const log = logs[i]
+		if (log.op === "SLOAD" && log.stack?.length >= 3) {
+			const sigHash = log.stack[0]
+			const slotHex = log.stack[log.stack.length - 1]
+
+			if (sigHash === signatures[type] && slotHex.length === 66) {
+				return slotHex
+			}
+		}
+	}
+
+	throw new Error(errorMessages[type])
 }

@@ -76,13 +76,16 @@ export class StableSwapFiller implements FillerStrategy {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
 			const { totalGasEstimate } = await this.calculateSwapOperations(order, order.destChain)
-			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order)
+			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order.destChain)
+			const destClient = this.clientManager.getPublicClient(order.destChain)
+			const gasPrice = await destClient.getGasPrice()
 
-			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
+			const relayerFeeGas = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
-			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
+			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeGas)
 
-			const totalGasWei = fillGas + relayerFeeEth + totalGasEstimate
+			const totalGasUnits = fillGas + relayerFeeGas + totalGasEstimate
+			const totalGasWei = totalGasUnits * gasPrice
 
 			const gasCostUsd = (totalGasWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
@@ -110,9 +113,9 @@ export class StableSwapFiller implements FillerStrategy {
 
 			const { calls } = await this.calculateSwapOperations(order, order.destChain)
 
-			const { postGas: postGasEstimate } = await this.contractService.estimateGasFillPost(order)
+			const { relayerFeeUSD } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
+				relayerFee: relayerFeeUSD,
 			}
 
 			await this.contractService.approveTokensIfNeeded(order)
@@ -498,7 +501,7 @@ export class StableSwapFiller implements FillerStrategy {
 					}
 				}
 			} catch (error) {
-				console.warn(`V3 quote failed for fee ${fee}:`, error)
+				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
 				// Continue to next fee tier
 			}
 		}

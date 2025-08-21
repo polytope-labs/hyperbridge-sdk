@@ -1,4 +1,4 @@
-import { getContract, toHex, encodePacked, keccak256, maxUint256 } from "viem"
+import { getContract, toHex, encodePacked, keccak256, maxUint256, PublicClient } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -14,7 +14,7 @@ import {
 	IPostRequest,
 	bytes20ToBytes32,
 	EvmLanguage,
-	calculateBalanceMappingLocation,
+	getStorageSlot,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -26,7 +26,6 @@ import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { Chains } from "@/config/chain"
-import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { CacheService } from "./CacheService"
 /**
  * Handles contract interactions for tokens and other contracts
@@ -258,7 +257,7 @@ export class ContractInteractionService {
 	/**
 	 * Estimates gas for filling an order
 	 */
-	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint }> {
+	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeUSD: bigint }> {
 		try {
 			// Check cache first
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -286,8 +285,15 @@ export class ContractInteractionService {
 
 			console.log(`Post gas estimate for filling order ${order.id} on ${order.sourceChain} is ${postGasEstimate}`)
 
+			const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.sourceChain)
+			const gasPrice = await sourceClient.getGasPrice()
+			const gasCostInWei = postGasEstimate * gasPrice
+			let postGasEstimateUSD = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
+
+			let relayerFeeUSD = postGasEstimateUSD + (postGasEstimateUSD * BigInt(2)) / BigInt(100)
+
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimate + (postGasEstimate * BigInt(2)) / BigInt(100),
+				relayerFee: relayerFeeUSD,
 			}
 
 			const ethValue = this.calculateRequiredEthValue(order.outputs)
@@ -295,8 +301,6 @@ export class ContractInteractionService {
 			// Approve tokens if needed before estimating gas for failsafe
 			await this.approveTokensIfNeeded(order)
 
-			// For each output token, generate the storage slot of the token balance
-			// Balance slot depends upon implementation of the token contract
 			const overrides = (
 				await Promise.all(
 					order.outputs.map(async (output) => {
@@ -306,77 +310,28 @@ export class ContractInteractionService {
 						const userAddress = privateKeyToAddress(this.privateKey)
 						const testValue = toHex(maxUint256)
 
-						// Try both Solidity and Vyper implementations, both have different storage slot implementations
-						for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-							// Check common slots first (0, 1, 3, 51, 140, 151)
-							const commonSlots = [0n, 1n, 3n, 51n, 140n, 151n]
+						try {
+							const balanceSlot = await getStorageSlot(destClient as any, tokenAddress, 0, userAddress)
+							const stateDiffs = [{ slot: balanceSlot as HexString, value: testValue }]
 
-							for (const slot of commonSlots) {
-								const storageSlot = calculateBalanceMappingLocation(slot, userAddress, language)
-
-								try {
-									const balance = await destClient.readContract({
-										abi: ERC20_ABI,
-										address: tokenAddress,
-										functionName: "balanceOf",
-										args: [userAddress],
-										stateOverride: [
-											{
-												address: tokenAddress,
-												stateDiff: [{ slot: storageSlot, value: testValue }],
-											},
-										],
-									})
-
-									if (toHex(balance) === testValue) {
-										return {
-											address: tokenAddress,
-											stateDiff: [{ slot: storageSlot, value: testValue }],
-										}
-									}
-								} catch (error) {
-									continue
-								}
+							try {
+								const allowanceSlot = await getStorageSlot(
+									destClient as any,
+									tokenAddress,
+									1,
+									userAddress,
+									this.configService.getIntentGatewayAddress(order.destChain),
+								)
+								stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
+							} catch (e) {
+								console.warn(`Could not find allowance slot for token ${tokenAddress}`, e)
 							}
+
+							return { address: tokenAddress, stateDiff: stateDiffs }
+						} catch (e) {
+							console.warn(`Could not find balance slot for token ${tokenAddress}`, e)
+							return null
 						}
-
-						// Start from slot 0 and go up to 200, but skip already checked slots
-						const checkedSlots = new Set([0n, 1n, 3n, 51n, 140n, 151n])
-
-						for (let i = 0n; i < 200n; i++) {
-							if (checkedSlots.has(i)) continue
-
-							for (const language of [EvmLanguage.Solidity, EvmLanguage.Vyper]) {
-								const storageSlot = calculateBalanceMappingLocation(i, userAddress, language)
-
-								try {
-									const balance = await destClient.readContract({
-										abi: ERC20_ABI,
-										address: tokenAddress,
-										functionName: "balanceOf",
-										args: [userAddress],
-										stateOverride: [
-											{
-												address: tokenAddress,
-												stateDiff: [{ slot: storageSlot, value: testValue }],
-											},
-										],
-									})
-
-									if (toHex(balance) === testValue) {
-										return {
-											address: tokenAddress,
-											stateDiff: [{ slot: storageSlot, value: testValue }],
-										}
-									}
-								} catch (error) {
-									continue
-								}
-							}
-						}
-
-						console.warn(`Could not find balance slot for token ${tokenAddress}`)
-						return null
 					}),
 				)
 			).filter(Boolean)
@@ -394,21 +349,21 @@ export class ContractInteractionService {
 			console.log(`Gas estimate for filling order ${order.id} on ${order.destChain} is ${gas}`)
 
 			// Cache the results
-			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate)
+			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, relayerFeeUSD)
 
-			return { fillGas: gas, postGas: postGasEstimate }
+			return { fillGas: gas, postGas: postGasEstimate, relayerFeeUSD: relayerFeeUSD }
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return { fillGas: 3000000n, postGas: 270000n }
+			return { fillGas: 3000000n, postGas: 270000n, relayerFeeUSD: 10000000n }
 		}
 	}
 
 	/**
 	 * Gets the current Native token price in USD
 	 */
-	async getNativeTokenPriceUsd(order: Order): Promise<bigint> {
-		const { asset } = this.configService.getWrappedNativeAssetWithDecimals(order.destChain)
+	async getNativeTokenPriceUsd(chain: string): Promise<bigint> {
+		const { asset } = this.configService.getWrappedNativeAssetWithDecimals(chain)
 		const ethPriceUsd = await fetchTokenUsdPriceOnchain(asset)
 
 		return ethPriceUsd
@@ -551,7 +506,7 @@ export class ContractInteractionService {
 		const destClient = this.clientManager.getPublicClient(chain)
 
 		const nativeTokenBalance = await destClient.getBalance({ address: fillerWalletAddress })
-		const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order)
+		const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.destChain)
 		const nativeTokenUsdValue = (nativeTokenBalance / BigInt(10 ** 18)) * nativeTokenPriceUsd
 
 		// DAI balance
