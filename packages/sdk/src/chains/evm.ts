@@ -572,13 +572,13 @@ export class EvmChain implements IChain {
 								intentGatewayAddress,
 							)
 							stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
-						} catch {
-							console.warn(`Could not find allowance slot for token ${tokenAddress}`)
+						} catch (e) {
+							console.warn(`Could not find allowance slot for token ${tokenAddress}`, e)
 						}
 
 						return { address: tokenAddress, stateDiff: stateDiffs }
-					} catch {
-						console.warn(`Could not find balance slot for token ${tokenAddress}`)
+					} catch (e) {
+						console.warn(`Could not find balance slot for token ${tokenAddress}`, e)
 						return null
 					}
 				}),
