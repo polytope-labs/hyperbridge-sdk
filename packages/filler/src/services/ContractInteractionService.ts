@@ -286,8 +286,9 @@ export class ContractInteractionService {
 			console.log(`Post gas estimate for filling order ${order.id} on ${order.sourceChain} is ${postGasEstimate}`)
 
 			const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.sourceChain)
-
-			let postGasEstimateUSD = (postGasEstimate * nativeTokenPriceUsd) / BigInt(10 ** 18)
+			const gasPrice = await sourceClient.getGasPrice()
+			const gasCostInWei = postGasEstimate * gasPrice
+			let postGasEstimateUSD = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
 			let relayerFeeUSD = postGasEstimateUSD + (postGasEstimateUSD * BigInt(2)) / BigInt(100)
 

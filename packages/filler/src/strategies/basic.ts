@@ -71,15 +71,16 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { fillGas, postGas } = await this.contractService.estimateGasFillPost(order)
 			const nativeTokenPriceUsd = await this.contractService.getNativeTokenPriceUsd(order.destChain)
+			const destClient = this.clientManager.getPublicClient(order.destChain)
+			const gasPrice = await destClient.getGasPrice()
 
 			// 2% on top of postGas
-			const relayerFeeEth = postGas + (postGas * BigInt(200)) / BigInt(10000)
+			const relayerFeeGas = postGas + (postGas * BigInt(200)) / BigInt(10000)
 
-			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeEth)
+			const protocolFeeUSD = await this.contractService.getProtocolFeeUSD(order, relayerFeeGas)
 
-			// fillGas and relayerFeeEth are in wei (10^18)
-			// nativeTokenPriceUsd has 18 decimals
-			const totalGasWei = fillGas + relayerFeeEth
+			const totalGasUnits = fillGas + relayerFeeGas
+			const totalGasWei = totalGasUnits * gasPrice
 
 			// Converting gas cost from wei to USD using the formula:
 			// gasCostUsd = (gasWei * priceUsd) / 10^18
@@ -109,9 +110,9 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 
-			const { postGas: postGasEstimate } = await this.contractService.estimateGasFillPost(order)
+			const { relayerFeeUSD } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000),
+				relayerFee: relayerFeeUSD,
 			}
 
 			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)

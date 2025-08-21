@@ -535,7 +535,9 @@ export class EvmChain implements IChain {
 		wrappedNativeTokenSourceChain: HexString,
 	): Promise<bigint> {
 		const nativeTokenPriceUsd = await fetchTokenUsdPrice(wrappedNativeTokenSourceChain)
-		const postGasEstimateUsd = (postGasEstimate * nativeTokenPriceUsd) / BigInt(10 ** 18)
+		const gasPrice = await this.publicClient.getGasPrice()
+		const gasCostInWei = postGasEstimate * gasPrice
+		const postGasEstimateUsd = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
 
 		const fillOptions: FillOptions = {
 			relayerFee: postGasEstimateUsd + (postGasEstimateUsd * BigInt(2)) / BigInt(100),
@@ -571,6 +573,7 @@ export class EvmChain implements IChain {
 								userAddress,
 								intentGatewayAddress,
 							)
+
 							stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
 						} catch (e) {
 							console.warn(`Could not find allowance slot for token ${tokenAddress}`, e)
@@ -603,9 +606,9 @@ export class EvmChain implements IChain {
 			venues,
 		})
 
-		const relayerFeeEth = postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000)
+		const relayerFeeGas = postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000)
 
-		const totalGasEstimate = fillGas + swapOperations.totalGasEstimate + relayerFeeEth
+		const totalGasEstimate = fillGas + swapOperations.totalGasEstimate + relayerFeeGas
 
 		return totalGasEstimate
 	}
