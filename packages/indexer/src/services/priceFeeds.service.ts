@@ -43,7 +43,7 @@ export class PriceFeedsService {
 
 			await Promise.all(
 				tokensToUpdate
-					.filter((token) => !response[token.symbol.toLowerCase()].usd)
+					.filter((token) => response[token.symbol.toLowerCase()]?.usd > 0)
 					.map(async (token) =>
 						this.storePriceFeed(
 							token,
@@ -54,13 +54,15 @@ export class PriceFeedsService {
 						),
 					),
 			)
-		} catch {}
+		} catch (error) {
+			logger.error(`Failed to update prices for chain: ${error}`)
+		}
 	}
 
 	/**
 	 * Determine which tokens need price updates based on their update frequency
 	 */
-	private static async getTokensRequiringUpdate(currentTimestamp: bigint): Promise<TokenConfig[]> {
+	static async getTokensRequiringUpdate(currentTimestamp: bigint): Promise<TokenConfig[]> {
 		const tokensNeedingUpdate: TokenConfig[] = []
 		for (const token of safeArray(TOKEN_REGISTRY)) {
 			const shouldUpdate = await this.shouldUpdateTokenPrice(token, currentTimestamp)
@@ -75,7 +77,7 @@ export class PriceFeedsService {
 	/**
 	 * Check if a token price should be updated
 	 */
-	private static async shouldUpdateTokenPrice(token: TokenConfig, currentTimestamp: bigint): Promise<boolean> {
+	static async shouldUpdateTokenPrice(token: TokenConfig, currentTimestamp: bigint): Promise<boolean> {
 		const lastPrice = await PriceFeed.get(token.symbol)
 		if (!lastPrice) {
 			return true
@@ -97,20 +99,17 @@ export class PriceFeedsService {
 			priceFeed = PriceFeed.create({
 				id: token.symbol,
 				symbol: token.symbol,
-				price: BigInt(1) / BigInt(price),
 				priceUSD: price.toString(),
 				lastUpdatedAt: blockTimestamp,
 			})
 		}
 
-		priceFeed.price = BigInt(1 / price)
 		priceFeed.priceUSD = price.toString()
 		priceFeed.lastUpdatedAt = blockTimestamp
 
 		const priceFeedLog = PriceFeedLog.create({
 			id: `${token.symbol}-${blockTimestamp}`,
 			symbol: token.symbol,
-			price: priceFeed.price,
 			priceUSD: priceFeed.priceUSD,
 			provider: PROVIDER_COINGECKO,
 			timestamp: blockTimestamp,
