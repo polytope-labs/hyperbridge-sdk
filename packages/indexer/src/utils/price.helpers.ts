@@ -13,6 +13,17 @@ import uniswapV3PoolAbi from "@/configs/abis/UniswapV3Pool.abi.json"
 import uniswapV3QuoterV2Abi from "@/configs/abis/UniswapV3QuoterV2.abi.json"
 import uniswapV4QuoterAbi from "@/configs/abis/UniswapV4Quoter.abi.json"
 
+interface CoinGeckoResponse {
+	[key: string]: {
+		usd: number
+	}
+}
+
+interface PriceResponse {
+	priceInUSD: string
+	amountValueInUSD: string
+}
+
 export default class PriceHelper {
 	static async getNativeCurrencyPrice(stateMachineId: string): Promise<bigint> {
 		const priceFeedAddress = CHAINLINK_PRICE_FEED_CONTRACT_ADDRESSES[stateMachineId]
@@ -50,10 +61,7 @@ export default class PriceHelper {
 		tokenAddress: string,
 		amount: bigint,
 		decimals: number,
-	): Promise<{
-		priceInUSD: string
-		amountValueInUSD: string
-	}> {
+	): Promise<PriceResponse> {
 		try {
 			const isNativeToken = tokenAddress.endsWith("0000000000000000000000000000000000000000")
 
@@ -297,23 +305,13 @@ export default class PriceHelper {
 	}
 
 	/**
-	 * Get token price in USD using CoinGecko API
-	 * @param tokenAddress - The token contract address
+	 * Get Token Price From CoinGecko
+	 * @param symbols - The token contract address
 	 * @param amount - Amount in token's smallest unit (e.g., wei for ETH)
 	 * @param decimals - Token decimals
 	 * @returns Price per token and total value in USD
 	 */
-	static async getTokenPriceInUSDCoingecko(
-		symbol: string,
-		amount: bigint,
-		decimals: number,
-	): Promise<{ priceInUSD: string; amountValueInUSD: string }> {
-		logger.info(`getTokenPriceInUSDCoingecko(${symbol}, BitInt(${amount.toString()}), ${decimals})`)
-
-		if (!symbol) {
-			return { priceInUSD: "0", amountValueInUSD: "0" }
-		}
-
+	static async getTokenPriceFromCoinGecko(symbols: string): Promise<CoinGeckoResponse | Error> {
 		try {
 			const headers = {
 				accept: "application/json",
@@ -327,7 +325,7 @@ export default class PriceHelper {
 
 			const baseUrl = coingeckoApiKey ? "https://pro-api.coingecko.com" : "https://api.coingecko.com"
 
-			const response = await fetch(`${baseUrl}/api/v3/simple/price?symbols=${symbol}&vs_currencies=usd`, {
+			const response = await fetch(`${baseUrl}/api/v3/simple/price?symbols=${symbols}&vs_currencies=usd`, {
 				method: "GET",
 				headers,
 			})
@@ -336,18 +334,58 @@ export default class PriceHelper {
 				throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
 			}
 
-			const data = (await response.json()) as Record<string, { usd: number }>
-			const priceUsd = data[symbol.toLowerCase()]?.usd
+			const data = (await response.json()) as CoinGeckoResponse
 
-			if (!priceUsd || priceUsd <= 0) {
+			if (Object.keys(data).length === 0) {
+				throw new Error(`No data found for symbols: ${symbols}`)
+			}
+
+			return data
+		} catch (error) {
+			// @ts-ignore
+			return new Error(error.message)
+		}
+	}
+
+	static getAmountValueInUSD(amount: bigint, decimals: number, price: number): PriceResponse {
+		const priceInUSD = new Decimal(price.toString()).toFixed(18)
+		const amountValueInUSD = new Decimal(amount.toString())
+			.dividedBy(new Decimal(10).pow(decimals))
+			.times(new Decimal(priceInUSD))
+			.toFixed(18)
+
+		return {
+			priceInUSD,
+			amountValueInUSD,
+		}
+	}
+
+	/**
+	 * Get token price in USD using CoinGecko API
+	 * @param symbol - The token symbol
+	 * @param amount - Amount in token's smallest unit (e.g., wei for ETH)
+	 * @param decimals - Token decimals
+	 * @returns Price per token and total value in USD
+	 */
+	static async getTokenPriceInUSDCoingecko(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
+		logger.info(`getTokenPriceInUSDCoingecko(${symbol}, BitInt(${amount.toString()}), ${decimals})`)
+
+		if (!symbol) {
+			return { priceInUSD: "0", amountValueInUSD: "0" }
+		}
+
+		try {
+			const response = await this.getTokenPriceFromCoinGecko(symbol)
+			if (response instanceof Error) {
+				return { priceInUSD: "0", amountValueInUSD: "0" }
+			}
+
+			const price = response[symbol.toLowerCase()]?.usd
+			if (!price || price <= 0) {
 				throw new Error(`Price not found for symbol: ${symbol}`)
 			}
 
-			const priceInUSD = new Decimal(priceUsd.toString()).toFixed(18)
-			const amountValueInUSD = new Decimal(amount.toString())
-				.dividedBy(new Decimal(10).pow(decimals))
-				.times(new Decimal(priceInUSD))
-				.toFixed(18)
+			const { priceInUSD, amountValueInUSD } = this.getAmountValueInUSD(amount, decimals, price)
 
 			logger.info(
 				`getTokenPriceInUSDCoingecko(${symbol}, BitInt(${amount.toString()}), ${decimals}) => ${priceInUSD}, ${amountValueInUSD}`,

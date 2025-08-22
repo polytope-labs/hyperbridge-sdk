@@ -3,6 +3,7 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 import { TransferLog } from "@/configs/src/types/abi-interfaces/ERC6160Ext20Abi"
+import { PriceFeedsService } from "@/services/priceFeeds.service"
 
 /**
  * Handle Price Indexing for all registered tokens on a chain when significant events occur
@@ -15,6 +16,9 @@ export const handlePriceIndexing = wrap(async (transfer: TransferLog): Promise<v
 	const timestamp = await getBlockTimestamp(block.hash, chain)
 
 	logger.info(`Updating prices for chain: ${chain}, block: ${blockNumber}, timestamp: ${timestamp}`)
+
+	// Update prices for this chain
+	await PriceFeedsService.updatePricesForChain(timestamp, BigInt(blockNumber.toString()), transactionHash)
 
 	logger.info(`Price update completed for chain: ${chain}`)
 })
