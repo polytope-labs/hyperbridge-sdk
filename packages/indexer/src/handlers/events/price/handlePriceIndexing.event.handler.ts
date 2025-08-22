@@ -10,7 +10,6 @@ import { SubstrateBlock } from "@subql/types"
 export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
 	try {
 		const chain = getHostStateMachine(chainId)
-		if (!["KUSAMA-4009", "POLKADOT-3367"].includes(chain)) return
 
 		const {
 			block: {
