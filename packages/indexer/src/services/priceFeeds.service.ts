@@ -1,8 +1,9 @@
-import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
+import { PriceUpdateFrequency, TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
 import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
 import PriceHelper, { PriceResponse } from "@/utils/price.helpers"
+import stringify from "safe-stable-stringify"
 
 const PROVIDER_COINGECKO = "COINGECKO"
 
@@ -64,23 +65,30 @@ export class PriceFeedsService {
 		try {
 			const tokensToUpdate = await this.getTokensRequiringUpdate(blockTimestamp)
 			if (tokensToUpdate.length === 0) {
+				logger.info(`[PriceFeedsService.updatePricesForChain] No tokens requiring updates at ${blockTimestamp}`)
 				return
 			}
 
 			const symbols = tokensToUpdate.map((token) => token.symbol.toLowerCase()).join(",")
-			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols)
 
+			logger.info(
+				`[PriceFeedsService.updatePricesForChain] Tokens requiring updates ${blockTimestamp} -> ${symbols}`,
+			)
+
+			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols)
 			if (response instanceof Error) {
 				throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
 			}
 
+			logger.info(`[PriceFeedsService.updatePricesForChain] response ${stringify(response)}`)
+
 			await Promise.all(
 				tokensToUpdate
-					.filter((token) => response[token.symbol.toLowerCase()]?.usd > 0)
+					.filter(({ symbol }) => !!(response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd)
 					.map(async (token) =>
 						this.storePriceFeed(
 							token,
-							response[token.symbol.toLowerCase()].usd,
+							(response[token.symbol.toLowerCase()] || response[token.symbol.toUpperCase()])?.usd,
 							blockTimestamp,
 							blockNumber,
 							blockHash,
@@ -116,8 +124,14 @@ export class PriceFeedsService {
 			return true
 		}
 
-		const timeSinceUpdate = Number(normalizeTimestamp(currentTimestamp)) - Number(lastPrice.lastUpdatedAt)
-		return timeSinceUpdate >= token.updateFrequencySeconds
+		const timeSinceUpdateMs = Number(normalizeTimestamp(currentTimestamp)) - Number(lastPrice.lastUpdatedAt)
+		const frequencyMs = token.updateFrequencySeconds * 1000 // Convert to milliseconds
+		const needsUpdate = timeSinceUpdateMs >= frequencyMs
+
+		logger.info(
+			`[PriceFeedsService.shouldUpdateTokenPrice] Token ${token.symbol}: timeSinceUpdate=${timeSinceUpdateMs}ms, frequency=${frequencyMs}ms, needsUpdate=${needsUpdate}`,
+		)
+		return needsUpdate
 	}
 
 	static async storePriceFeed(

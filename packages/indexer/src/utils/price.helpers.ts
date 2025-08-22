@@ -380,7 +380,7 @@ export default class PriceHelper {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
 
-			const price = response[symbol.toLowerCase()]?.usd
+			const price = response[symbol.toLowerCase()]?.usd || response[symbol.toUpperCase()]?.usd
 			if (!price || price <= 0) {
 				throw new Error(`Price not found for symbol: ${symbol}`)
 			}

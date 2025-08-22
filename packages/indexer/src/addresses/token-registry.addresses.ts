@@ -13,9 +13,9 @@ export interface TokenConfig {
  * Update frequencies for different token types
  */
 export enum PriceUpdateFrequency {
-	HIGH = 120, // 2 minutes for major tokens (ETH, USDC, etc.)
-	MEDIUM = 300, // 5 minutes for common tokens
-	LOW = 1800, // 30 minutes for less common tokens
+	HIGH = 120, // 2 minutes
+	MEDIUM = 600, // 10 minutes
+	LOW = 1800, // 30 minutes
 }
 
 export const TOKEN_REGISTRY: TokenConfig[] = [
@@ -24,19 +24,19 @@ export const TOKEN_REGISTRY: TokenConfig[] = [
 		name: "ETH",
 		symbol: "ETH",
 		decimals: 18,
-		updateFrequencySeconds: PriceUpdateFrequency.HIGH,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	{
 		name: "Polkadot",
 		symbol: "DOT",
 		decimals: 18,
-		updateFrequencySeconds: PriceUpdateFrequency.HIGH,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	{
 		name: "Gnosis xDAI",
 		symbol: "XDAI",
 		decimals: 18,
-		updateFrequencySeconds: PriceUpdateFrequency.HIGH,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 
 	// Major stablecoins
@@ -44,19 +44,19 @@ export const TOKEN_REGISTRY: TokenConfig[] = [
 		name: "USD coin",
 		symbol: "USDC",
 		decimals: 6,
-		updateFrequencySeconds: PriceUpdateFrequency.LOW,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	{
 		name: "Tether USD",
 		symbol: "USDT",
 		decimals: 6,
-		updateFrequencySeconds: PriceUpdateFrequency.LOW,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	{
 		name: "Maker DAI",
 		symbol: "DAI",
 		decimals: 18,
-		updateFrequencySeconds: PriceUpdateFrequency.LOW,
+		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	// {
 	// 	name: "USDH",
@@ -69,12 +69,6 @@ export const TOKEN_REGISTRY: TokenConfig[] = [
 		name: "Bifrost",
 		symbol: "BNC",
 		decimals: 18,
-		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
-	},
-	{
-		name: "Cere Network",
-		symbol: "CERE",
-		decimals: 10,
 		updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 	},
 	{

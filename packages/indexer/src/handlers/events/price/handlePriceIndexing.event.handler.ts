@@ -3,7 +3,6 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 import { PriceFeedsService } from "@/services/priceFeeds.service"
 import { SubstrateBlock } from "@subql/types"
-import { stringify } from "@polkadot/util"
 
 /**
  * Handle Price Indexing for all registered tokens on a chain when significant events occur
