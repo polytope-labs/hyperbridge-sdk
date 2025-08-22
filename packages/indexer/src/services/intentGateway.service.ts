@@ -7,10 +7,10 @@ import { OrderStatus, OrderStatusMetadata, ProtocolParticipant, RewardPointsActi
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
 import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
 import { timestampToDate } from "@/utils/date.helpers"
-import PriceHelper from "@/utils/price.helpers"
 
 import { PointsService } from "./points.service"
 import { VolumeService } from "./volume.service"
+import { PriceFeedsService } from "./priceFeeds.service"
 
 export interface TokenInfo {
 	token: Hex
@@ -136,7 +136,7 @@ export class IntentGatewayService {
 					symbol = await tokenContract.symbol()
 				}
 
-				return PriceHelper.getTokenPriceInUSDCoingecko(symbol, token.amount, decimals)
+				return PriceFeedsService.getPrice(symbol, token.amount, decimals)
 			}),
 		)
 

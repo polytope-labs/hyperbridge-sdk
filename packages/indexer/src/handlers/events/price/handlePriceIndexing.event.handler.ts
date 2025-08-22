@@ -9,16 +9,20 @@ import { PriceFeedsService } from "@/services/priceFeeds.service"
  * Handle Price Indexing for all registered tokens on a chain when significant events occur
  */
 export const handlePriceIndexing = wrap(async (transfer: TransferLog): Promise<void> => {
-	logger.info(`Price Update Event triggered: ${stringify(transfer)}`)
+	try {
+		logger.info(`[handlePriceIndexing] Event triggered: ${stringify(transfer)}`)
 
-	const { blockNumber, block, transactionHash } = transfer
-	const chain = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(block.hash, chain)
+		const { blockNumber, block, transactionHash } = transfer
+		const chain = getHostStateMachine(chainId)
+		const timestamp = await getBlockTimestamp(block.hash, chain)
 
-	logger.info(`Updating prices for chain: ${chain}, block: ${blockNumber}, timestamp: ${timestamp}`)
+		logger.info(`[handlePriceIndexing] Updating prices ${timestamp} via ${chain}`)
 
-	// Update prices for this chain
-	await PriceFeedsService.updatePricesForChain(timestamp, BigInt(blockNumber.toString()), transactionHash)
+		// Update prices for this chain
+		await PriceFeedsService.updatePricesForChain(timestamp, BigInt(blockNumber.toString()), transactionHash)
 
-	logger.info(`Price update completed for chain: ${chain}`)
+		logger.info(`Price update completed for chain: ${chain}`)
+	} catch (error) {
+		logger.error(`[handlePriceIndexing] failed ${stringify(error)}`)
+	}
 })

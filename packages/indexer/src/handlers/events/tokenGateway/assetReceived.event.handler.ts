@@ -5,9 +5,9 @@ import { AssetReceivedLog } from "@/configs/src/types/abi-interfaces/TokenGatewa
 import { TokenGatewayService } from "@/services/tokenGateway.service"
 import { VolumeService } from "@/services/volume.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
-import PriceHelper from "@/utils/price.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { wrap } from "@/utils/event.utils"
+import { PriceFeedsService } from "@/services/priceFeeds.service"
 
 export const handleAssetReceivedEvent = wrap(async (event: AssetReceivedLog): Promise<void> => {
 	logger.info(`Asset Received Event: ${stringify(event)}`)
@@ -35,7 +35,7 @@ export const handleAssetReceivedEvent = wrap(async (event: AssetReceivedLog): Pr
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const usdValue = await PriceHelper.getTokenPriceInUSDCoingecko(symbol, amount.toBigInt(), decimals)
+		const usdValue = await PriceFeedsService.getPrice(symbol, amount.toBigInt(), decimals)
 
 		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
 	}

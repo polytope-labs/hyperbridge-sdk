@@ -9,34 +9,41 @@ const PROVIDER_COINGECKO = "COINGECKO"
  * Price Feeds Service fetches prices from CoinGecko adapter and stores them in the PriceFeed (current) and PriceFeedLog (historical).
  */
 export class PriceFeedsService {
+  /**
+   * getPrice is a static method that fetches the price of a token from CoinGecko and returns it as a PriceResponse object.
+   * @param symbol - The symbol of the token to fetch the price for.
+   * @param amount - The amount of the token to fetch the price for.
+   * @param decimals - The number of decimals of the token to fetch the price for.
+   * @returns A Promise that resolves to a PriceResponse object containing the price of the token in USD and the amount value in USD.
+   * @dev This method trigger a background price fees update for all supported tokens
+   */
+	static async getPrice(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
+		const token = TOKEN_REGISTRY.find((token) => token.symbol === symbol)
+		if (!token) return { priceInUSD: "0", amountValueInUSD: "0" }
 
-  static async getPrice(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
-    const token = TOKEN_REGISTRY.find(token => token.symbol === symbol)
-    if (!token) return {  priceInUSD: '0', amountValueInUSD: '0' }
+		const priceFeed = await PriceFeed.get(symbol)
+		const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
 
-    const priceFeed = await PriceFeed.get(symbol)
-    const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
+		if (!priceFeed || expired) {
+			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
+			if (response instanceof Error) {
+				return { priceInUSD: "0", amountValueInUSD: "0" }
+			}
 
-    if (!priceFeed || expired) {
-      const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
-      if (response instanceof Error) {
-        return { priceInUSD: '0', amountValueInUSD: '0' }
-      }
+			this.updatePricesForChain(BigInt(Date.now())).catch((error) =>
+				console.error("Background price update failed:", error),
+			)
 
-      this.updatePricesForChain(BigInt(Date.now())).catch(error =>
-        console.error('Background price update failed:', error)
-      )
+			const price = response[symbol.toLowerCase()]?.usd
+			if (!price || price <= 0) {
+				return { priceInUSD: "0", amountValueInUSD: "0" }
+			}
 
-      const price = response[symbol.toLowerCase()]?.usd
-      if (!price || price <= 0) {
-        return { priceInUSD: '0', amountValueInUSD: '0' }
-      }
+			return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
+		}
 
-      return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
-    }
-
-    return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
-  }
+		return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
+	}
 
 	/**
 	 * Main entry point: Update prices for a specific chain
