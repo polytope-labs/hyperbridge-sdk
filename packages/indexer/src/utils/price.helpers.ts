@@ -13,13 +13,13 @@ import uniswapV3PoolAbi from "@/configs/abis/UniswapV3Pool.abi.json"
 import uniswapV3QuoterV2Abi from "@/configs/abis/UniswapV3QuoterV2.abi.json"
 import uniswapV4QuoterAbi from "@/configs/abis/UniswapV4Quoter.abi.json"
 
-interface CoinGeckoResponse {
+export interface CoinGeckoResponse {
 	[key: string]: {
 		usd: number
 	}
 }
 
-interface PriceResponse {
+export interface PriceResponse {
 	priceInUSD: string
 	amountValueInUSD: string
 }
@@ -347,8 +347,8 @@ export default class PriceHelper {
 		}
 	}
 
-	static getAmountValueInUSD(amount: bigint, decimals: number, price: number): PriceResponse {
-		const priceInUSD = new Decimal(price.toString()).toFixed(18)
+	static getAmountValueInUSD(amount: bigint, decimals: number, price: string): PriceResponse {
+		const priceInUSD = new Decimal(price).toFixed(18)
 		const amountValueInUSD = new Decimal(amount.toString())
 			.dividedBy(new Decimal(10).pow(decimals))
 			.times(new Decimal(priceInUSD))
@@ -385,7 +385,7 @@ export default class PriceHelper {
 				throw new Error(`Price not found for symbol: ${symbol}`)
 			}
 
-			const { priceInUSD, amountValueInUSD } = this.getAmountValueInUSD(amount, decimals, price)
+			const { priceInUSD, amountValueInUSD } = this.getAmountValueInUSD(amount, decimals, price.toString())
 
 			logger.info(
 				`getTokenPriceInUSDCoingecko(${symbol}, BitInt(${amount.toString()}), ${decimals}) => ${priceInUSD}, ${amountValueInUSD}`,

@@ -1,14 +1,7 @@
 import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
 import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
-import PriceHelper from "@/utils/price.helpers"
-
-// CoinGecko API response interface
-interface CoinGeckoResponse {
-	[key: string]: {
-		usd: number
-	}
-}
+import PriceHelper, { PriceResponse } from "@/utils/price.helpers"
 
 const PROVIDER_COINGECKO = "COINGECKO"
 
@@ -16,8 +9,34 @@ const PROVIDER_COINGECKO = "COINGECKO"
  * Price Feeds Service fetches prices from CoinGecko adapter and stores them in the PriceFeed (current) and PriceFeedLog (historical).
  */
 export class PriceFeedsService {
-	private static lastApiCall: Map<string, number> = new Map<string, number>()
-	private static minCallInterval: number = 1200 // Free tier: 50 calls/min = 1200ms between calls
+
+  static async getPrice(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
+    const token = TOKEN_REGISTRY.find(token => token.symbol === symbol)
+    if (!token) return {  priceInUSD: '0', amountValueInUSD: '0' }
+
+    const priceFeed = await PriceFeed.get(symbol)
+    const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
+
+    if (!priceFeed || expired) {
+      const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
+      if (response instanceof Error) {
+        return { priceInUSD: '0', amountValueInUSD: '0' }
+      }
+
+      this.updatePricesForChain(BigInt(Date.now())).catch(error =>
+        console.error('Background price update failed:', error)
+      )
+
+      const price = response[symbol.toLowerCase()]?.usd
+      if (!price || price <= 0) {
+        return { priceInUSD: '0', amountValueInUSD: '0' }
+      }
+
+      return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
+    }
+
+    return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
+  }
 
 	/**
 	 * Main entry point: Update prices for a specific chain
