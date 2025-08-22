@@ -31,10 +31,12 @@ export class PriceFeedsService {
 				console.error("Background price update failed:", error),
 			)
 
-			const price = response[symbol.toLowerCase()]?.usd
+			const price = (response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd
 			if (!price || price <= 0) {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
+
+			await this.record(symbol, price, BigInt(Date.now()))
 
 			return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
 		}
@@ -167,5 +169,18 @@ export class PriceFeedsService {
 
 		await priceFeed.save()
 		await priceFeedLog.save()
+	}
+
+	static async record(symbol: string, price: number, timestamp: bigint) {
+		if (TOKEN_REGISTRY.find((token) => token.symbol === symbol)) return
+
+		const token = {
+			name: symbol,
+			symbol,
+			decimals: 18, // TODO: fetch decimal for given token
+			updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
+		} as TokenConfig
+
+		await this.storePriceFeed(token, price, timestamp)
 	}
 }
