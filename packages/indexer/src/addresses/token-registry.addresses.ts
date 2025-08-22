@@ -13,7 +13,7 @@ export interface TokenConfig {
  * Update frequencies for different token types
  */
 export enum PriceUpdateFrequency {
-	HIGH = 30, // 30 seconds for major tokens (ETH, USDC, etc.)
+	HIGH = 120, // 2 minutes for major tokens (ETH, USDC, etc.)
 	MEDIUM = 300, // 5 minutes for common tokens
 	LOW = 1800, // 30 minutes for less common tokens
 }
