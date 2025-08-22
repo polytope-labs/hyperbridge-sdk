@@ -1243,9 +1243,9 @@ type PriceFeedLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], ["
 	blockNumber: BigInt!
 
 	"""
-	Transaction hash that triggered price update
+	block hash that triggered price update
 	"""
-	transactionHash: String
+	blockHash: String
 
 	"""
 	Record creation timestamp
