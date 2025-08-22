@@ -5,10 +5,13 @@ import { PriceFeedsService } from "@/services/priceFeeds.service"
 import { SubstrateBlock } from "@subql/types"
 
 /**
- * Handle Price Indexing for all registered tokens on a chain when significant events occur
+ * Handle Price Indexing for all registered tokens on a supported chain
  */
 export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
 	try {
+		const chain = getHostStateMachine(chainId)
+		if (!["KUSAMA-4009", "POLKADOT-3367"].includes(chain)) return
+
 		const {
 			block: {
 				header: { number, hash },
@@ -18,7 +21,6 @@ export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<v
 		const blockHash = hash.toHex()
 		const blockNumber = number.toBigInt()
 
-		const chain = getHostStateMachine(chainId)
 		const timestamp = await getBlockTimestamp(blockHash, chain)
 
 		logger.info(`[handlePriceIndexing] Updating prices ${timestamp} via ${chain}`)
