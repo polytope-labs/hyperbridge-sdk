@@ -1,6 +1,7 @@
 import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
 import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
+import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
 import PriceHelper, { PriceResponse } from "@/utils/price.helpers"
 
 const PROVIDER_COINGECKO = "COINGECKO"
@@ -9,6 +10,8 @@ const PROVIDER_COINGECKO = "COINGECKO"
  * Price Feeds Service fetches prices from CoinGecko adapter and stores them in the PriceFeed (current) and PriceFeedLog (historical).
  */
 export class PriceFeedsService {
+
+
   /**
    * getPrice is a static method that fetches the price of a token from CoinGecko and returns it as a PriceResponse object.
    * @param symbol - The symbol of the token to fetch the price for.
@@ -18,13 +21,8 @@ export class PriceFeedsService {
    * @dev This method trigger a background price fees update for all supported tokens
    */
 	static async getPrice(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
-		const token = TOKEN_REGISTRY.find((token) => token.symbol === symbol)
-		if (!token) return { priceInUSD: "0", amountValueInUSD: "0" }
-
-		const priceFeed = await PriceFeed.get(symbol)
-		const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
-
-		if (!priceFeed || expired) {
+	  const priceFeed = await this.getLatestPrice(symbol)
+		if (!priceFeed) {
 			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
 			if (response instanceof Error) {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
@@ -44,6 +42,21 @@ export class PriceFeedsService {
 
 		return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
 	}
+
+ /**
+   * getLatestPrice is a static method that fetches the latest valid price feed.
+   * @param symbol - The symbol of the token to fetch the price for.
+   * @returns A Promise that resolves to a PriceFeed object containing the price of the token in USD.
+   */
+  static async getLatestPrice(symbol: string): ReturnType<typeof PriceFeed.get> {
+    const token = TOKEN_REGISTRY.find((token) => token.symbol === symbol)
+    if (!token) return undefined
+
+    const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
+    if (expired) return undefined
+
+    return PriceFeed.get(symbol)
+  }
 
 	/**
 	 * Main entry point: Update prices for a specific chain
@@ -109,7 +122,7 @@ export class PriceFeedsService {
 			return true
 		}
 
-		const timeSinceUpdate = Number(currentTimestamp) - Number(lastPrice.lastUpdatedAt)
+		const timeSinceUpdate = Number(normalizeTimestamp(currentTimestamp)) - Number(lastPrice.lastUpdatedAt)
 		return timeSinceUpdate >= token.updateFrequencySeconds
 	}
 
@@ -126,22 +139,22 @@ export class PriceFeedsService {
 				id: token.symbol,
 				symbol: token.symbol,
 				priceUSD: price.toString(),
-				lastUpdatedAt: blockTimestamp,
+				lastUpdatedAt: normalizeTimestamp(blockTimestamp),
 			})
 		}
 
 		priceFeed.priceUSD = price.toString()
-		priceFeed.lastUpdatedAt = blockTimestamp
+		priceFeed.lastUpdatedAt = normalizeTimestamp(blockTimestamp)
 
 		const priceFeedLog = PriceFeedLog.create({
 			id: `${token.symbol}-${blockTimestamp}`,
 			symbol: token.symbol,
 			priceUSD: priceFeed.priceUSD,
 			provider: PROVIDER_COINGECKO,
-			timestamp: blockTimestamp,
+			timestamp: normalizeTimestamp(blockTimestamp),
 			blockNumber: blockNumber || BigInt(0),
 			transactionHash: transactionHash,
-			createdAt: new Date(),
+			createdAt: timestampToDate(blockTimestamp),
 		})
 
 		await priceFeed.save()
