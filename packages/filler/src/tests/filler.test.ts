@@ -1,5 +1,5 @@
 import { IntentFiller } from "@/core/filler"
-import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
+import { ChainClientManager, ContractInteractionService } from "@/services"
 import { BasicFiller } from "@/strategies/basic"
 import { StableSwapFiller } from "@/strategies/swap"
 import {
@@ -16,7 +16,6 @@ import {
 	orderCommitment,
 	bytes20ToBytes32,
 	ADDRESS_ZERO,
-	bytes32ToBytes20,
 	postRequestCommitment,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
@@ -25,13 +24,11 @@ import {
 	decodeFunctionData,
 	encodePacked,
 	getContract,
-	hexToBigInt,
 	hexToString,
 	keccak256,
 	maxUint256,
 	parseEventLogs,
 	PublicClient,
-	toHex,
 	WalletClient,
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
@@ -43,6 +40,7 @@ import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
+import { ChainConfigService } from "@hyperbridge/sdk"
 describe.sequential("Basic", () => {
 	let indexer: IndexerClient
 

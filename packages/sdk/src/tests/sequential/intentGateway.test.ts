@@ -15,13 +15,7 @@ import { bscTestnet, gnosisChiado } from "viem/chains"
 
 import { IndexerClient } from "@/client"
 import { ChainConfig, FillerConfig, type HexString, IPostRequest, Order, OrderStatus } from "@/types"
-import {
-	orderCommitment,
-	hexToString,
-	bytes20ToBytes32,
-	constructRedeemEscrowRequestBody,
-	postRequestCommitment,
-} from "@/utils"
+import { orderCommitment, hexToString, bytes20ToBytes32, constructRedeemEscrowRequestBody } from "@/utils"
 
 import ERC6160 from "@/abis/erc6160"
 import INTENT_GATEWAY_ABI from "@/abis/IntentGateway"
@@ -29,7 +23,8 @@ import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
 import { EvmChain, EvmChainParams, SubstrateChain } from "@/chain"
 import { createQueryClient } from "@/query-client"
-import { IntentFiller, BasicFiller, ConfirmationPolicy, ChainConfigService } from "@hyperbridge/filler"
+import { IntentFiller, BasicFiller, ConfirmationPolicy } from "@hyperbridge/filler"
+import { ChainConfigService } from "@/configs/ChainConfigService"
 
 describe.sequential(
 	"Order Status Stream",
@@ -248,80 +243,27 @@ describe.sequential(
 
 			let commitment = orderCommitment(order)
 			order.id = commitment
-
-			let venues = {
-				v2Router: chainConfigService.getUniswapRouterV2Address(bscChapelId),
-				v2Factory: chainConfigService.getUniswapV2FactoryAddress(bscChapelId),
-				v3Factory: chainConfigService.getUniswapV3FactoryAddress(bscChapelId),
-				v3Quoter: chainConfigService.getUniswapV3QuoterAddress(bscChapelId),
-			}
+			order.destChain = hexToString(order.destChain)
+			order.sourceChain = hexToString(order.sourceChain)
 
 			let fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 
 			const postRequest: IPostRequest = {
-				source: hexToString(order.destChain), // Destination Chain
-				dest: hexToString(order.sourceChain), // Source Chain
+				source: order.destChain, // Destination Chain
+				dest: order.sourceChain, // Source Chain
 				body: constructRedeemEscrowRequestBody(order, fillerWalletAddress),
 				timeoutTimestamp: 0n,
 				nonce: await gnosisChiadoEvmChain.getHostNonce(),
-				from: chainConfigService.getIntentGatewayAddress(hexToString(order.destChain)),
-				to: chainConfigService.getIntentGatewayAddress(hexToString(order.sourceChain)),
+				from: chainConfigService.getIntentGatewayAddress(order.destChain),
+				to: chainConfigService.getIntentGatewayAddress(order.sourceChain),
 			}
 
 			let postGasEstimate = await gnosisChiadoEvmChain.estimateGas(postRequest) // Source Chain Post Estimate
 
 			assert(postGasEstimate > 0n)
 
-			let intentGatewayAddress = chainConfigService.getIntentGatewayAddress(hexToString(order.destChain))
-
-			let decimalUsdt = await bscPublicClient.readContract({
-				abi: ERC6160.ABI,
-				address: usdtAsset,
-				functionName: "decimals",
-			})
-			let decimalDai = await bscPublicClient.readContract({
-				abi: ERC6160.ABI,
-				address: daiAsset,
-				functionName: "decimals",
-			})
-			let decimalUsdc = await bscPublicClient.readContract({
-				abi: ERC6160.ABI,
-				address: usdcAsset,
-				functionName: "decimals",
-			})
-
-			// Available Assets on Destination Chain
-			let availableAssets = [
-				{
-					name: "DAI",
-					address: daiAsset,
-					decimals: decimalDai,
-				},
-				{
-					name: "USDT",
-					address: usdtAsset,
-					decimals: decimalUsdt,
-				},
-				{
-					name: "USDC",
-					address: usdcAsset,
-					decimals: decimalUsdc,
-				},
-			]
-
-			let universalRouterAddress = chainConfigService.getUniversalRouterAddress(bscChapelId)
-
 			// Gas Estimate for Destination Chain using postGasEstimate collected from Source Chain
-			let gasEstimate = await bscEvmChain.estimateFillOrderGas(
-				order,
-				venues,
-				fillerWalletAddress,
-				intentGatewayAddress,
-				availableAssets,
-				universalRouterAddress,
-				postGasEstimate,
-				wrappedNativeTokenSourceChain.asset,
-			)
+			let gasEstimate = await bscEvmChain.estimateFillOrderGas(order, fillerWalletAddress, gnosisChiadoEvmChain)
 
 			console.log("Fill gas estimate including fillOrder + swapEstimates + relayerFee:", gasEstimate)
 
@@ -330,10 +272,10 @@ describe.sequential(
 			let initialAmountIn = 100n
 
 			let bestQuoteWithAmountOut = await bscEvmChain.findBestProtocolWithAmountIn(
+				order.destChain,
 				daiAsset,
 				usdtAsset,
 				initialAmountIn,
-				venues,
 			)
 
 			console.log("Best quote with amount out:", bestQuoteWithAmountOut)
@@ -341,10 +283,10 @@ describe.sequential(
 			assert(bestQuoteWithAmountOut.amountOut > 0n)
 
 			let bestQuoteWithAmountIn = await bscEvmChain.findBestProtocolWithAmountOut(
+				order.destChain,
 				usdtAsset,
 				daiAsset,
 				bestQuoteWithAmountOut.amountOut,
-				venues,
 			)
 
 			console.log("Best quote with amount in:", bestQuoteWithAmountIn)
@@ -352,6 +294,7 @@ describe.sequential(
 			assert(bestQuoteWithAmountIn.amountIn === initialAmountIn)
 
 			// Order filled checker
+			let intentGatewayAddress = chainConfigService.getIntentGatewayAddress(order.destChain)
 			const unfilledOrderCommitment = order.id as HexString
 			const filledOrderCommitment =
 				"0x1dede1bc4939f194e8a06a9086377d1e64c5c1c77c055e4430ff7141c774528c" as HexString

@@ -14,6 +14,7 @@ import {
 	encodePacked,
 	encodeAbiParameters,
 	maxUint256,
+	hexToString,
 } from "viem"
 import {
 	mainnet,
@@ -48,6 +49,7 @@ import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
 	calculateMMRSize,
+	constructRedeemEscrowRequestBody,
 	EvmStateProof,
 	fetchTokenUsdPrice,
 	generateRootWithProof,
@@ -57,7 +59,6 @@ import {
 	SubstrateStateProof,
 } from "@/utils"
 import {
-	EvmLanguage,
 	type FillOptions,
 	type HexString,
 	type IMessage,
@@ -67,6 +68,7 @@ import {
 	type StateMachineIdParams,
 } from "@/types"
 import evmHost from "@/abis/evmHost"
+import { ChainConfigService } from "@/configs/ChainConfigService"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -112,6 +114,7 @@ export interface EvmChainParams {
  */
 export class EvmChain implements IChain {
 	private publicClient: PublicClient
+	private chainConfigService: ChainConfigService
 
 	constructor(private readonly params: EvmChainParams) {
 		// @ts-ignore
@@ -120,6 +123,7 @@ export class EvmChain implements IChain {
 			chain: chains[params.chainId],
 			transport: http(params.url),
 		})
+		this.chainConfigService = new ChainConfigService()
 	}
 
 	/**
@@ -515,29 +519,25 @@ export class EvmChain implements IChain {
 		return gas
 	}
 
-	async estimateFillOrderGas(
-		order: Order,
-		venues: {
-			v2Router: HexString
-			v2Factory: HexString
-			v3Factory: HexString
-			v3Quoter: HexString
-		},
-		fillerWalletAddress: HexString,
-		intentGatewayAddress: HexString,
-		availableAssets: {
-			name: string
-			address: HexString
-			decimals: number
-		}[],
-		universalRouterAddress: HexString,
-		postGasEstimate: bigint,
-		wrappedNativeTokenSourceChain: HexString,
-	): Promise<bigint> {
-		const nativeTokenPriceUsd = await fetchTokenUsdPrice(wrappedNativeTokenSourceChain)
-		const gasPrice = await this.publicClient.getGasPrice()
+	async estimateFillOrderGas(order: Order, fillerWalletAddress: HexString, sourceChain: EvmChain): Promise<bigint> {
+		const postRequest: IPostRequest = {
+			source: order.destChain, // Destination Chain
+			dest: order.sourceChain, // Source Chain
+			body: constructRedeemEscrowRequestBody(order, fillerWalletAddress),
+			timeoutTimestamp: 0n,
+			nonce: await sourceChain.getHostNonce(),
+			from: this.chainConfigService.getIntentGatewayAddress(order.destChain),
+			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
+		}
+		const postGasEstimate = await sourceChain.estimateGas(postRequest)
+		const nativeTokenTicker = sourceChain.publicClient.chain?.nativeCurrency.symbol!
+		const nativeTokenDecimals = sourceChain.publicClient.chain?.nativeCurrency.decimals!
+		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeTokenTicker)
+		const gasPrice = await sourceChain.publicClient.getGasPrice()
 		const gasCostInWei = postGasEstimate * gasPrice
-		const postGasEstimateUsd = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
+		const postGasEstimateUsd = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** nativeTokenDecimals)
+
+		const intentGatewayAddress = this.chainConfigService.getIntentGatewayAddress(order.destChain)
 
 		const fillOptions: FillOptions = {
 			relayerFee: postGasEstimateUsd + (postGasEstimateUsd * BigInt(2)) / BigInt(100),
@@ -601,9 +601,6 @@ export class EvmChain implements IChain {
 		const swapOperations = await this.calculateSwapOperations({
 			order,
 			fillerWalletAddress,
-			availableAssets,
-			universalRouterAddress,
-			venues,
 		})
 
 		const relayerFeeGas = postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000)
@@ -623,50 +620,35 @@ export class EvmChain implements IChain {
 	async calculateSwapOperations(params: {
 		order: Order
 		fillerWalletAddress: HexString
-		availableAssets: {
-			name: string
-			address: HexString
-			decimals: number
-		}[]
-		universalRouterAddress: HexString
-		venues: {
-			v2Router: HexString
-			v2Factory: HexString
-			v3Factory: HexString
-			v3Quoter: HexString
-		}
 	}): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[]; totalGasEstimate: bigint }> {
-		const { order, fillerWalletAddress, availableAssets, universalRouterAddress, venues } = params
+		const { order, fillerWalletAddress } = params
 		const destClient = this.publicClient
 
 		const calls: { to: HexString; data: HexString; value: bigint }[] = []
 		let totalGasEstimate = BigInt(0)
 
-		let { address: daiAssetAddress, decimals: daiAssetDecimals } = {
-			address: ADDRESS_ZERO,
-			decimals: 0,
-		}
-		let { address: usdtAssetAddress, decimals: usdtAssetDecimals } = {
-			address: ADDRESS_ZERO,
-			decimals: 0,
-		}
-		let { address: usdcAssetAddress, decimals: usdcAssetDecimals } = {
-			address: ADDRESS_ZERO,
-			decimals: 0,
-		}
+		// Default available assets
+		const daiAssetAddress = this.chainConfigService.getDaiAsset(order.destChain)
+		const usdtAssetAddress = this.chainConfigService.getUsdtAsset(order.destChain)
+		const usdcAssetAddress = this.chainConfigService.getUsdcAsset(order.destChain)
 
-		for (const asset of availableAssets) {
-			if (asset.name === "DAI") {
-				daiAssetAddress = asset.address
-				daiAssetDecimals = asset.decimals
-			} else if (asset.name === "USDT") {
-				usdtAssetAddress = asset.address
-				usdtAssetDecimals = asset.decimals
-			} else if (asset.name === "USDC") {
-				usdcAssetAddress = asset.address
-				usdcAssetDecimals = asset.decimals
-			}
-		}
+		const daiAssetDecimals = await this.publicClient.readContract({
+			address: daiAssetAddress,
+			abi: erc20Abi,
+			functionName: "decimals",
+		})
+		const usdtAssetDecimals = await this.publicClient.readContract({
+			address: usdtAssetAddress,
+			abi: erc20Abi,
+			functionName: "decimals",
+		})
+		const usdcAssetDecimals = await this.publicClient.readContract({
+			address: usdcAssetAddress,
+			abi: erc20Abi,
+			functionName: "decimals",
+		})
+
+		const universalRouterAddress = this.chainConfigService.getUniversalRouterAddress(order.destChain)
 
 		const V2_SWAP_EXACT_OUT = 0x09
 		const V3_SWAP_EXACT_OUT = 0x01
@@ -759,10 +741,10 @@ export class EvmChain implements IChain {
 										: ADDRESS_ZERO
 
 						const bestProtocol = await this.findBestProtocolWithAmountOut(
+							order.destChain,
 							tokenToSwap,
 							tokenAddress,
 							swapAmount,
-							venues,
 						)
 
 						if (bestProtocol.protocol === null) {
@@ -840,7 +822,7 @@ export class EvmChain implements IChain {
 						})
 
 						const call = {
-							to: params.universalRouterAddress,
+							to: universalRouterAddress,
 							data: swapData,
 							value: BigInt(0),
 						}
@@ -894,15 +876,10 @@ export class EvmChain implements IChain {
 	 * @returns The best protocol to use for the swap
 	 */
 	async findBestProtocolWithAmountOut(
+		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
-		venues: {
-			v2Router: HexString
-			v2Factory: HexString
-			v3Factory: HexString
-			v3Quoter: HexString
-		},
 	): Promise<{
 		protocol: "v2" | "v3" | null
 		amountIn: bigint
@@ -915,10 +892,10 @@ export class EvmChain implements IChain {
 		let bestV3Fee = 0
 		let v3GasEstimate = BigInt(0)
 
-		const v2Router = venues.v2Router
-		const v2Factory = venues.v2Factory
-		const v3Factory = venues.v3Factory
-		const v3Quoter = venues.v3Quoter
+		const v2Router = this.chainConfigService.getUniswapRouterV2Address(chain)
+		const v2Factory = this.chainConfigService.getUniswapV2FactoryAddress(chain)
+		const v3Factory = this.chainConfigService.getUniswapV3FactoryAddress(chain)
+		const v3Quoter = this.chainConfigService.getUniswapV3QuoterAddress(chain)
 
 		try {
 			const v2PairExists = (await destClient.readContract({
@@ -1030,15 +1007,10 @@ export class EvmChain implements IChain {
 	 * @returns The best protocol to use for the swap
 	 */
 	async findBestProtocolWithAmountIn(
+		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountIn: bigint,
-		venues: {
-			v2Router: HexString
-			v2Factory: HexString
-			v3Factory: HexString
-			v3Quoter: HexString
-		},
 	): Promise<{
 		protocol: "v2" | "v3" | null
 		amountOut: bigint
@@ -1051,10 +1023,10 @@ export class EvmChain implements IChain {
 		let bestV3Fee = 0
 		let v3GasEstimate = BigInt(0)
 
-		const v2Router = venues.v2Router
-		const v2Factory = venues.v2Factory
-		const v3Factory = venues.v3Factory
-		const v3Quoter = venues.v3Quoter
+		const v2Router = this.chainConfigService.getUniswapRouterV2Address(chain)
+		const v2Factory = this.chainConfigService.getUniswapV2FactoryAddress(chain)
+		const v3Factory = this.chainConfigService.getUniswapV3FactoryAddress(chain)
+		const v3Quoter = this.chainConfigService.getUniswapV3QuoterAddress(chain)
 
 		try {
 			const v2PairExists = (await destClient.readContract({
@@ -1183,8 +1155,8 @@ export class EvmChain implements IChain {
 
 function transformOrderForContract(order: Order) {
 	return {
-		sourceChain: order.sourceChain as HexString,
-		destChain: order.destChain as HexString,
+		sourceChain: toHex(order.sourceChain),
+		destChain: toHex(order.destChain),
 		fees: order.fees,
 		callData: order.callData,
 		deadline: order.deadline,

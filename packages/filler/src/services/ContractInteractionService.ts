@@ -12,20 +12,18 @@ import {
 	estimateGasForPost,
 	constructRedeemEscrowRequestBody,
 	IPostRequest,
-	bytes20ToBytes32,
-	EvmLanguage,
 	getStorageSlot,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
-import { ChainConfigService } from "./ChainConfigService"
+import { ChainConfigService } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { orderCommitment } from "@hyperbridge/sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { fetchTokenUsdPriceOnchain } from "@/utils"
 import { keccakAsU8a } from "@polkadot/util-crypto"
-import { Chains } from "@/config/chain"
+import { Chains } from "@hyperbridge/sdk"
 import { CacheService } from "./CacheService"
 /**
  * Handles contract interactions for tokens and other contracts
@@ -283,8 +281,6 @@ export class ContractInteractionService {
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 
-			console.log(`Post gas estimate for filling order ${order.id} on ${order.sourceChain} is ${postGasEstimate}`)
-
 			const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.sourceChain)
 			const gasPrice = await sourceClient.getGasPrice()
 			const gasCostInWei = postGasEstimate * gasPrice
@@ -345,8 +341,6 @@ export class ContractInteractionService {
 				value: ethValue,
 				stateOverride: overrides as any,
 			})
-
-			console.log(`Gas estimate for filling order ${order.id} on ${order.destChain} is ${gas}`)
 
 			// Cache the results
 			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, relayerFeeUSD)

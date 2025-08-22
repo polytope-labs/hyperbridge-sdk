@@ -6,7 +6,6 @@ import {
 	TimeoutStatus,
 	type StateMachineHeight,
 	RequestKind,
-	EvmLanguage,
 } from "@/types"
 import type { RequestStatusKey, TimeoutStatusKey, RetryConfig, Order } from "@/types"
 import {
@@ -502,23 +501,33 @@ export const dateStringtoTimestamp = (date: string): number => {
 
 /**
  * Fetches the USD price of a token from CoinGecko
- * @param address - The address of the token
- * @returns The USD price of the token
+ * @param symbol - The ticker symbol of the token (e.g., "BTC", "ETH", "USDC")
+ * @returns The USD price of the token as a bigint
  */
-export async function fetchTokenUsdPrice(address: string): Promise<bigint> {
+export async function fetchTokenUsdPrice(symbol: string): Promise<bigint> {
 	try {
-		const response = await fetch(
-			`https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${address}&vs_currencies=usd`,
-		)
-		const data = await response.json()
-
-		if (!data[address.toLowerCase()]?.usd) {
-			throw new Error(`Price not found for token address: ${address}`)
+		if (!symbol) {
+			console.log("No symbol provided, returning 1")
+			return BigInt(1)
 		}
 
-		return BigInt(Math.floor(data[address.toLowerCase()].usd))
+		const response = await fetch(
+			`https://api.coingecko.com/api/v3/simple/price?symbols=${symbol.toLowerCase()}&vs_currencies=usd`,
+		)
+
+		if (!response.ok) {
+			throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
+		}
+
+		const data = await response.json()
+
+		if (!data[symbol.toLowerCase()]?.usd) {
+			throw new Error(`Price not found for token symbol: ${symbol}`)
+		}
+
+		return BigInt(Math.floor(data[symbol.toLowerCase()].usd))
 	} catch (error) {
-		console.log("Testnet token price not found, returning 1")
+		console.log(`Error fetching price for ${symbol}: ${error}, returning 1`)
 		return BigInt(1)
 	}
 }

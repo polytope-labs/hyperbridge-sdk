@@ -1,16 +1,9 @@
 import { FillerStrategy } from "@/strategies/base"
-import {
-	Order,
-	ExecutionResult,
-	HexString,
-	FillOptions,
-	estimateGasForPost,
-	constructRedeemEscrowRequestBody,
-	IPostRequest,
-} from "@hyperbridge/sdk"
+import { Order, ExecutionResult, HexString, FillOptions } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
-import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
+import { ChainClientManager, ContractInteractionService } from "@/services"
+import { ChainConfigService } from "@hyperbridge/sdk"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
