@@ -262,8 +262,7 @@ describe.sequential(
 
 			assert(postGasEstimate > 0n)
 
-			// Gas Estimate for Destination Chain using postGasEstimate collected from Source Chain
-			let gasEstimate = await bscEvmChain.estimateFillOrderGas(order, fillerWalletAddress, gnosisChiadoEvmChain)
+			let gasEstimate = await gnosisChiadoEvmChain.estimateFillOrder(order, fillerWalletAddress, bscEvmChain)
 
 			console.log("Fill gas estimate including fillOrder + swapEstimates + relayerFee:", gasEstimate)
 

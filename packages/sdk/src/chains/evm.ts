@@ -519,76 +519,79 @@ export class EvmChain implements IChain {
 		return gas
 	}
 
-	async estimateFillOrderGas(order: Order, fillerWalletAddress: HexString, sourceChain: EvmChain): Promise<bigint> {
+	/**
+	 * Estimates the gas required to fill an order on the destination chain.
+	 * This function estimates the gas required to fill the order, including the gas required to post the request to the destination chain.
+	 *
+	 * @param order - The order to fill
+	 * @param fillerWalletAddress - The address of the wallet that will fill the order
+	 * @param destChain - The destination chain to fill the order on
+	 * @returns The estimated gas amount in fee token (DAI)
+	 */
+	async estimateFillOrder(order: Order, fillerWalletAddress: HexString, destChain: EvmChain): Promise<bigint> {
 		const postRequest: IPostRequest = {
-			source: order.destChain, // Destination Chain
-			dest: order.sourceChain, // Source Chain
+			source: order.destChain,
+			dest: order.sourceChain,
 			body: constructRedeemEscrowRequestBody(order, fillerWalletAddress),
 			timeoutTimestamp: 0n,
-			nonce: await sourceChain.getHostNonce(),
+			nonce: await this.getHostNonce(),
 			from: this.chainConfigService.getIntentGatewayAddress(order.destChain),
 			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
 		}
-		const postGasEstimate = await sourceChain.estimateGas(postRequest)
-		const nativeTokenTicker = sourceChain.publicClient.chain?.nativeCurrency.symbol!
-		const nativeTokenDecimals = sourceChain.publicClient.chain?.nativeCurrency.decimals!
-		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeTokenTicker)
-		const gasPrice = await sourceChain.publicClient.getGasPrice()
-		const gasCostInWei = postGasEstimate * gasPrice
-		const postGasEstimateUsd = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** nativeTokenDecimals)
+
+		const postGasEstimate = await this.estimateGas(postRequest)
+		const postGasEstimateUsd = await this.convertGasToUsd(postGasEstimate, this.publicClient)
+
+		// 2% markup
+		const RELAYER_FEE_BPS = 200n
+		const fillOptions: FillOptions = {
+			relayerFee: postGasEstimateUsd + (postGasEstimateUsd * RELAYER_FEE_BPS) / 10000n,
+		}
+
+		const totalEthValue = order.outputs
+			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
+			.reduce((sum, output) => sum + output.amount, 0n)
 
 		const intentGatewayAddress = this.chainConfigService.getIntentGatewayAddress(order.destChain)
+		const testValue = toHex(maxUint256)
 
-		const fillOptions: FillOptions = {
-			relayerFee: postGasEstimateUsd + (postGasEstimateUsd * BigInt(2)) / BigInt(100),
-		}
+		const overrides = await Promise.all(
+			order.outputs.map(async (output) => {
+				const tokenAddress = bytes32ToBytes20(output.token)
 
-		let totalEthValue = 0n
+				try {
+					const stateDiffs = []
 
-		for (const output of order.outputs) {
-			const tokenAddress = bytes32ToBytes20(output.token)
-			if (tokenAddress === ADDRESS_ZERO) {
-				totalEthValue += output.amount
-			}
-		}
-
-		const overrides = (
-			await Promise.all(
-				order.outputs.map(async (output) => {
-					const tokenAddress = bytes32ToBytes20(output.token)
-					if (tokenAddress === ADDRESS_ZERO) return null
-
-					const userAddress = fillerWalletAddress
-					const testValue = toHex(maxUint256)
+					const balanceSlot = await getStorageSlot(
+						destChain.publicClient,
+						tokenAddress,
+						0,
+						fillerWalletAddress,
+					)
+					stateDiffs.push({ slot: balanceSlot as HexString, value: testValue })
 
 					try {
-						const balanceSlot = await getStorageSlot(this.publicClient, tokenAddress, 0, userAddress)
-						const stateDiffs = [{ slot: balanceSlot as HexString, value: testValue }]
-
-						try {
-							const allowanceSlot = await getStorageSlot(
-								this.publicClient,
-								tokenAddress,
-								1,
-								userAddress,
-								intentGatewayAddress,
-							)
-
-							stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
-						} catch (e) {
-							console.warn(`Could not find allowance slot for token ${tokenAddress}`, e)
-						}
-
-						return { address: tokenAddress, stateDiff: stateDiffs }
+						const allowanceSlot = await getStorageSlot(
+							destChain.publicClient,
+							tokenAddress,
+							1,
+							fillerWalletAddress,
+							intentGatewayAddress,
+						)
+						stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
 					} catch (e) {
-						console.warn(`Could not find balance slot for token ${tokenAddress}`, e)
-						return null
+						console.warn(`Could not find allowance slot for token ${tokenAddress}:`, e)
 					}
-				}),
-			)
-		).filter(Boolean)
 
-		const fillGas = await this.publicClient.estimateContractGas({
+					return { address: tokenAddress, stateDiff: stateDiffs }
+				} catch (e) {
+					console.warn(`Could not find balance slot for token ${tokenAddress}:`, e)
+					return null
+				}
+			}),
+		).then((results) => results.filter(Boolean))
+
+		const fillGas = await destChain.publicClient.estimateContractGas({
 			abi: IntentGateway.ABI,
 			address: intentGatewayAddress,
 			functionName: "fillOrder",
@@ -598,16 +601,31 @@ export class EvmChain implements IChain {
 			stateOverride: overrides as any,
 		})
 
-		const swapOperations = await this.calculateSwapOperations({
+		const swapOperations = await destChain.calculateSwapOperations({
 			order,
 			fillerWalletAddress,
 		})
 
-		const relayerFeeGas = postGasEstimate + (postGasEstimate * BigInt(200)) / BigInt(10000)
-
+		const relayerFeeGas = postGasEstimate + (postGasEstimate * RELAYER_FEE_BPS) / 10000n
 		const totalGasEstimate = fillGas + swapOperations.totalGasEstimate + relayerFeeGas
 
-		return totalGasEstimate
+		return await this.convertGasToUsd(totalGasEstimate, destChain.publicClient)
+	}
+
+	private async convertGasToUsd(gasEstimate: bigint, publicClient: PublicClient): Promise<bigint> {
+		const gasPrice = await publicClient.getGasPrice()
+		const gasCostInWei = gasEstimate * gasPrice
+		const nativeToken = publicClient.chain?.nativeCurrency
+
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
+		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+		const gasCostUsd = gasCostInToken * tokenPriceUsd
+
+		return BigInt(Math.floor(gasCostUsd * Math.pow(10, 18)))
 	}
 
 	/**
@@ -869,10 +887,10 @@ export class EvmChain implements IChain {
 	 * Finds the best protocol to use for a swap.
 	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
 	 *
+	 * @param chain - The chain to use for the swap
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountOut - The amount of output tokens to swap
-	 * @param venues - The venues to use for the swap
 	 * @returns The best protocol to use for the swap
 	 */
 	async findBestProtocolWithAmountOut(
@@ -1000,10 +1018,10 @@ export class EvmChain implements IChain {
 	 * Finds the best protocol to use for a swap.
 	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
 	 *
+	 * @param chain - The chain to use for the swap
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountIn - The amount of input tokens to swap
-	 * @param venues - The venues to use for the swap
 	 * @returns The best protocol to use for the swap
 	 */
 	async findBestProtocolWithAmountIn(
@@ -1127,6 +1145,12 @@ export class EvmChain implements IChain {
 		}
 	}
 
+	/**
+	 * Gets the nonce of the host.
+	 * This function gets the nonce of the host.
+	 *
+	 * @returns The nonce of the host
+	 */
 	async getHostNonce(): Promise<bigint> {
 		const nonce = await this.publicClient.readContract({
 			abi: evmHost.ABI,
@@ -1137,6 +1161,14 @@ export class EvmChain implements IChain {
 		return nonce
 	}
 
+	/**
+	 * Checks if an order has been filled.
+	 * This function checks if an order has been filled by checking the filled status of the order commitment.
+	 *
+	 * @param orderCommitment - The commitment of the order
+	 * @param intentGatewayAddress - The address of the intent gateway
+	 * @returns True if the order has been filled, false otherwise
+	 */
 	async isOrderFilled(orderCommitment: HexString, intentGatewayAddress: HexString): Promise<boolean> {
 		let filledSlot = await this.publicClient.readContract({
 			abi: IntentGateway.ABI,

@@ -227,8 +227,12 @@ export function orderCommitment(order: Order): HexString {
 		[
 			{
 				user: order.user,
-				sourceChain: toHex(order.sourceChain),
-				destChain: toHex(order.destChain),
+				sourceChain: order.sourceChain.startsWith("0x")
+					? (order.sourceChain as `0x${string}`)
+					: toHex(order.sourceChain),
+				destChain: order.destChain.startsWith("0x")
+					? (order.destChain as `0x${string}`)
+					: toHex(order.destChain),
 				deadline: order.deadline,
 				nonce: order.nonce,
 				fees: order.fees,
@@ -502,13 +506,13 @@ export const dateStringtoTimestamp = (date: string): number => {
 /**
  * Fetches the USD price of a token from CoinGecko
  * @param symbol - The ticker symbol of the token (e.g., "BTC", "ETH", "USDC")
- * @returns The USD price of the token as a bigint
+ * @returns The USD price of the token as a number (preserves decimals)
  */
-export async function fetchTokenUsdPrice(symbol: string): Promise<bigint> {
+export async function fetchTokenUsdPrice(symbol: string): Promise<number> {
 	try {
-		if (!symbol) {
-			console.log("No symbol provided, returning 1")
-			return BigInt(1)
+		switch (symbol) {
+			case "tBNB":
+				symbol = "BNB"
 		}
 
 		const response = await fetch(
@@ -525,10 +529,10 @@ export async function fetchTokenUsdPrice(symbol: string): Promise<bigint> {
 			throw new Error(`Price not found for token symbol: ${symbol}`)
 		}
 
-		return BigInt(Math.floor(data[symbol.toLowerCase()].usd))
+		return data[symbol.toLowerCase()].usd
 	} catch (error) {
 		console.log(`Error fetching price for ${symbol}: ${error}, returning 1`)
-		return BigInt(1)
+		return 1
 	}
 }
 
