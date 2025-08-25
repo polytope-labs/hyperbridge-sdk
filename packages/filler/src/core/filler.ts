@@ -5,7 +5,7 @@ import { Order, FillerConfig, ChainConfig, DUMMY_PRIVATE_KEY, ADDRESS_ZERO, byte
 import pQueue from "p-queue"
 import { ChainClientManager, ContractInteractionService } from "@/services"
 import { ChainConfigService } from "@hyperbridge/sdk"
-import { fetchTokenUsdPriceOnchain } from "@/utils"
+
 import { PublicClient } from "viem"
 
 export class IntentFiller {
@@ -68,13 +68,13 @@ export class IntentFiller {
 		this.globalQueue.add(async () => {
 			try {
 				const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
-				const orderValue = await this.calculateOrderValue(order, sourceClient)
+				const orderValue = await this.contractService.getTokenUsdValue(order)
 				let currentConfirmations = await sourceClient.getTransactionConfirmations({
 					hash: order.transactionHash!,
 				})
 				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 					chainIds[order.sourceChain as keyof typeof chainIds],
-					orderValue,
+					orderValue.inputUsdValue,
 				)
 				console.log(
 					`For order ${order.id}, required confirmations: ${requiredConfirmations},
@@ -96,22 +96,6 @@ export class IntentFiller {
 				console.error(`Error processing order ${order.id}:`, error)
 			}
 		})
-	}
-
-	private async calculateOrderValue(order: Order, client: PublicClient): Promise<bigint> {
-		let totalUSDValue = BigInt(0)
-
-		for (const input of order.inputs) {
-			const tokenUsdPrice = await fetchTokenUsdPriceOnchain(
-				input.token == bytes20ToBytes32(ADDRESS_ZERO)
-					? this.configService.getWrappedNativeAssetWithDecimals(order.sourceChain).asset
-					: input.token,
-			)
-
-			totalUSDValue = totalUSDValue + BigInt(input.amount * BigInt(tokenUsdPrice))
-		}
-
-		return totalUSDValue
 	}
 
 	private evaluateAndExecuteOrder(order: Order): void {

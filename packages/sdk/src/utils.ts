@@ -31,6 +31,7 @@ export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
+export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890"
 export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
@@ -504,20 +505,46 @@ export const dateStringtoTimestamp = (date: string): number => {
 }
 
 /**
+ * Maps testnet identifiers to mainnet identifiers for price lookup
+ * @param identifier - The original token identifier (symbol or contract address)
+ * @returns The mapped mainnet identifier
+ */
+export function mapTestnetToMainnet(identifier: string): string {
+	identifier = identifier.toLowerCase()
+
+	switch (identifier) {
+		case "tbnb":
+			return "wbnb"
+		case "0xc043f483373072f7f27420d6e7d7ad269c018e18".toLowerCase():
+			return "usdt"
+		case "0xae13d989dac2f0debff460ac112a837c89baa7cd".toLowerCase():
+			return "WBNB"
+		case "0x1938165569A5463327fb206bE06d8D9253aa06b7".toLowerCase():
+			return "dai"
+		case "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92".toLowerCase():
+			return "usdc"
+		case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
+			return "dai"
+		default:
+			return identifier
+	}
+}
+
+/**
  * Fetches the USD price of a token from CoinGecko
  * @param symbol - The ticker symbol of the token (e.g., "BTC", "ETH", "USDC")
  * @returns The USD price of the token as a number (preserves decimals)
  */
-export async function fetchTokenUsdPrice(symbol: string): Promise<number> {
+export async function fetchTokenUsdPrice(identifier: string): Promise<number> {
 	try {
-		switch (symbol) {
-			case "tBNB":
-				symbol = "BNB"
-		}
+		// Map testnet identifiers to mainnet identifiers
+		const mappedIdentifier = mapTestnetToMainnet(identifier)
 
-		const response = await fetch(
-			`https://api.coingecko.com/api/v3/simple/price?symbols=${symbol.toLowerCase()}&vs_currencies=usd`,
-		)
+		const url = mappedIdentifier.startsWith("0x")
+			? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
+			: `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
+
+		const response = await fetch(url)
 
 		if (!response.ok) {
 			throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
@@ -525,13 +552,13 @@ export async function fetchTokenUsdPrice(symbol: string): Promise<number> {
 
 		const data = await response.json()
 
-		if (!data[symbol.toLowerCase()]?.usd) {
-			throw new Error(`Price not found for token symbol: ${symbol}`)
+		if (!data[mappedIdentifier.toLowerCase()]?.usd) {
+			throw new Error(`Price not found for token symbol: ${mappedIdentifier}`)
 		}
 
-		return data[symbol.toLowerCase()].usd
+		return data[mappedIdentifier.toLowerCase()].usd
 	} catch (error) {
-		console.log(`Error fetching price for ${symbol}: ${error}, returning 1`)
+		console.log(`Error fetching price for ${identifier}: ${error}, returning 1`)
 		return 1
 	}
 }

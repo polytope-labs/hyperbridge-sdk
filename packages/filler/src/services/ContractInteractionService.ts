@@ -21,7 +21,7 @@ import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { orderCommitment } from "@hyperbridge/sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { fetchTokenUsdPriceOnchain } from "@/utils"
+import { fetchTokenUsdPrice } from "@hyperbridge/sdk"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { Chains } from "@hyperbridge/sdk"
 import { CacheService } from "./CacheService"
@@ -122,12 +122,9 @@ export class ContractInteractionService {
 			if (totalNativeTokenNeeded > 0n) {
 				const nativeBalance = await destClient.getBalance({ address: fillerWalletAddress })
 
-				// Add some buffer for gas
-				const withGasBuffer = totalNativeTokenNeeded + 600000n // 600k gas buffer
-
-				if (BigInt(nativeBalance.toString()) < withGasBuffer) {
+				if (BigInt(nativeBalance.toString()) < totalNativeTokenNeeded) {
 					console.debug(
-						`Insufficient native token balance. Have ${nativeBalance.toString()}, need ${withGasBuffer.toString()}`,
+						`Insufficient native token balance. Have ${nativeBalance.toString()}, need ${totalNativeTokenNeeded.toString()}`,
 					)
 					return false
 				}
@@ -255,7 +252,9 @@ export class ContractInteractionService {
 	/**
 	 * Estimates gas for filling an order
 	 */
-	async estimateGasFillPost(order: Order): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeUSD: bigint }> {
+	async estimateGasFillPost(
+		order: Order,
+	): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint }> {
 		try {
 			// Check cache first
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -274,28 +273,23 @@ export class ContractInteractionService {
 				from: this.configService.getIntentGatewayAddress(order.sourceChain),
 				to: this.configService.getIntentGatewayAddress(order.destChain),
 			}
-			const postGasEstimate = await estimateGasForPost({
+			let postGasEstimate = await estimateGasForPost({
 				postRequest: postRequest,
 				sourceClient: sourceClient as any,
 				hostLatestStateMachineHeight: await this.getHostLatestStateMachineHeight(),
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 
-			const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.sourceChain)
-			const gasPrice = await sourceClient.getGasPrice()
-			const gasCostInWei = postGasEstimate * gasPrice
-			let postGasEstimateUSD = (gasCostInWei * nativeTokenPriceUsd) / BigInt(10 ** 18)
+			// Add 2% markup
+			postGasEstimate = (postGasEstimate * BigInt(200)) / BigInt(10000)
 
-			let relayerFeeUSD = postGasEstimateUSD + (postGasEstimateUSD * BigInt(2)) / BigInt(100)
+			const postGasEstimateFeeToken = await this.convertGasToFeeToken(postGasEstimate, order.sourceChain)
 
 			const fillOptions: FillOptions = {
-				relayerFee: relayerFeeUSD,
+				relayerFee: postGasEstimateFeeToken,
 			}
 
 			const ethValue = this.calculateRequiredEthValue(order.outputs)
-
-			// Approve tokens if needed before estimating gas for failsafe
-			await this.approveTokensIfNeeded(order)
 
 			const overrides = (
 				await Promise.all(
@@ -343,30 +337,73 @@ export class ContractInteractionService {
 			})
 
 			// Cache the results
-			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, relayerFeeUSD)
+			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, postGasEstimateFeeToken)
 
-			return { fillGas: gas, postGas: postGasEstimate, relayerFeeUSD: relayerFeeUSD }
+			return { fillGas: gas, postGas: postGasEstimate, relayerFeeInFeeToken: postGasEstimateFeeToken }
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return { fillGas: 3000000n, postGas: 270000n, relayerFeeUSD: 10000000n }
+			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n }
 		}
 	}
 
 	/**
-	 * Gets the current Native token price in USD
+	 * Gets the current Native token price (including Decimals)
 	 */
-	async getNativeTokenPriceUsd(chain: string): Promise<bigint> {
-		const { asset } = this.configService.getWrappedNativeAssetWithDecimals(chain)
-		const ethPriceUsd = await fetchTokenUsdPriceOnchain(asset)
+	async getNativeTokenPrice(chain: string): Promise<bigint> {
+		let client = this.clientManager.getPublicClient(chain)
+		const nativeToken = client.chain?.nativeCurrency
 
-		return ethPriceUsd
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+
+		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
+	}
+
+	async convertGasToFeeToken(gasEstimate: bigint, chain: string): Promise<bigint> {
+		const client = this.clientManager.getPublicClient(chain)
+		const gasPrice = await client.getGasPrice()
+		const gasCostInWei = gasEstimate * gasPrice
+		const nativeToken = client.chain?.nativeCurrency
+
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
+		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+		const gasCostUsd = gasCostInToken * tokenPriceUsd
+
+		const { address: feeTokenAddress, decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals(chain)
+		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI") // Using DAI as default
+		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, feeTokenDecimals)))
+	}
+
+	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
+		const client = this.clientManager.getPublicClient(chain)
+		const hostParams = await client.readContract({
+			abi: EVM_HOST,
+			address: this.configService.getHostAddress(chain),
+			functionName: "hostParams",
+		})
+		const feeTokenAddress = hostParams.feeToken
+		const feeTokenDecimals = await client.readContract({
+			address: feeTokenAddress,
+			abi: ERC20_ABI,
+			functionName: "decimals",
+		})
+		return { address: feeTokenAddress, decimals: feeTokenDecimals }
 	}
 
 	/**
-	 * Gets the HyperBridge protocol fee in USD (DAI)
+	 * Gets the HyperBridge protocol fee in fee token
 	 */
-	async getProtocolFeeUSD(order: Order, relayerFee: bigint): Promise<bigint> {
+	async getProtocolFee(order: Order, relayerFee: bigint): Promise<bigint> {
 		const destClient = this.clientManager.getPublicClient(order.destChain)
 		const intentFillerAddr = privateKeyToAddress(this.privateKey)
 		const requestBody = constructRedeemEscrowRequestBody(order, intentFillerAddr)
@@ -455,41 +492,61 @@ export class ContractInteractionService {
 	}
 
 	async getTokenUsdValue(order: Order): Promise<{ outputUsdValue: bigint; inputUsdValue: bigint }> {
+		const { destClient, sourceClient } = this.clientManager.getClientsForOrder(order)
 		let outputUsdValue = BigInt(0)
 		let inputUsdValue = BigInt(0)
 		const outputs = order.outputs
 		const inputs = order.inputs
 
 		for (const output of outputs) {
-			const tokenAddress = output.token
-			const amount = output.amount
-			const decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
-			const price = await this.getTokenPrice(tokenAddress)
-			const tokenUsdValue = (amount / BigInt(10 ** decimals)) * price
+			let tokenAddress = bytes32ToBytes20(output.token)
+			let decimals = 18
+			let amount = output.amount
+			let priceIdentifier: string
+
+			if (tokenAddress === ADDRESS_ZERO) {
+				priceIdentifier = destClient.chain?.nativeCurrency?.symbol!
+				decimals = destClient.chain?.nativeCurrency?.decimals!
+			} else {
+				decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
+				priceIdentifier = tokenAddress
+			}
+
+			// Always use 18 decimals for USD due to multiple token decimal inconsistencies
+			const pricePerToken = await this.getTokenPrice(priceIdentifier, 18)
+			const tokenUsdValue = (amount * pricePerToken) / BigInt(10 ** decimals)
 			outputUsdValue = outputUsdValue + tokenUsdValue
 		}
 
 		for (const input of inputs) {
-			const tokenAddress = input.token
-			const amount = input.amount
-			const decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
-			const price = await this.getTokenPrice(tokenAddress)
-			const tokenUsdValue = (amount / BigInt(10 ** decimals)) * price
+			let tokenAddress = bytes32ToBytes20(input.token)
+			let decimals = 18
+			let amount = input.amount
+			let priceIdentifier: string
+
+			if (tokenAddress === ADDRESS_ZERO) {
+				priceIdentifier = sourceClient.chain?.nativeCurrency?.symbol!
+				decimals = sourceClient.chain?.nativeCurrency?.decimals!
+			} else {
+				decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
+				priceIdentifier = tokenAddress
+			}
+
+			// Always use 18 decimals for USD due to multiple token decimal inconsistencies
+			const pricePerToken = await this.getTokenPrice(priceIdentifier, 18)
+			const tokenUsdValue = (amount * pricePerToken) / BigInt(10 ** decimals)
 			inputUsdValue = inputUsdValue + tokenUsdValue
 		}
 
 		return { outputUsdValue, inputUsdValue }
 	}
 
-	async getTokenPrice(tokenAddress: string): Promise<bigint> {
-		const usdValue = await fetchTokenUsdPriceOnchain(tokenAddress)
-		return usdValue
+	async getTokenPrice(tokenAddress: string, decimals: number): Promise<bigint> {
+		const usdValue = await fetchTokenUsdPrice(tokenAddress)
+		return BigInt(Math.floor(usdValue * Math.pow(10, decimals)))
 	}
 
-	async getFillerBalanceUSD(
-		order: Order,
-		chain: string,
-	): Promise<{
+	async getFillerBalanceUSD(chain: string): Promise<{
 		nativeTokenBalance: bigint
 		daiBalance: bigint
 		usdtBalance: bigint
@@ -500,10 +557,10 @@ export class ContractInteractionService {
 		const destClient = this.clientManager.getPublicClient(chain)
 
 		const nativeTokenBalance = await destClient.getBalance({ address: fillerWalletAddress })
-		const nativeTokenPriceUsd = await this.getNativeTokenPriceUsd(order.destChain)
-		const nativeTokenUsdValue = (nativeTokenBalance / BigInt(10 ** 18)) * nativeTokenPriceUsd
+		const nativeTokenPrice = await this.getNativeTokenPrice(chain)
+		const nativeDecimals = destClient.chain?.nativeCurrency?.decimals || 18
+		const nativeTokenUsdValue = (nativeTokenBalance * nativeTokenPrice) / BigInt(10 ** nativeDecimals)
 
-		// DAI balance
 		const daiAddress = this.configService.getDaiAsset(chain)
 		const daiBalance = await destClient.readContract({
 			abi: ERC20_ABI,
@@ -512,9 +569,9 @@ export class ContractInteractionService {
 			args: [fillerWalletAddress],
 		})
 		const daiDecimals = await this.getTokenDecimals(daiAddress, chain)
-		const daiBalanceUsd = daiBalance / BigInt(10 ** daiDecimals)
+		const daiPrice = await this.getTokenPrice(daiAddress, 18) // Normalize to 18 decimals
+		const daiBalanceUsd = (daiBalance * daiPrice) / BigInt(10 ** daiDecimals)
 
-		// USDT Balance
 		const usdtAddress = this.configService.getUsdtAsset(chain)
 		const usdtBalance = await destClient.readContract({
 			abi: ERC20_ABI,
@@ -523,9 +580,9 @@ export class ContractInteractionService {
 			args: [fillerWalletAddress],
 		})
 		const usdtDecimals = await this.getTokenDecimals(usdtAddress, chain)
-		const usdtBalanceUsd = usdtBalance / BigInt(10 ** usdtDecimals)
+		const usdtPrice = await this.getTokenPrice(usdtAddress, 18) // Normalize to 18 decimals
+		const usdtBalanceUsd = (usdtBalance * usdtPrice) / BigInt(10 ** usdtDecimals)
 
-		// USDC Balance
 		const usdcAddress = this.configService.getUsdcAsset(chain)
 		const usdcBalance = await destClient.readContract({
 			abi: ERC20_ABI,
@@ -534,10 +591,17 @@ export class ContractInteractionService {
 			args: [fillerWalletAddress],
 		})
 		const usdcDecimals = await this.getTokenDecimals(usdcAddress, chain)
-		const usdcBalanceUsd = usdcBalance / BigInt(10 ** usdcDecimals)
+		const usdcPrice = await this.getTokenPrice(usdcAddress, 18) // Normalize to 18 decimals
+		const usdcBalanceUsd = (usdcBalance * usdcPrice) / BigInt(10 ** usdcDecimals)
 
 		const totalBalanceUsd = nativeTokenUsdValue + daiBalanceUsd + usdtBalanceUsd + usdcBalanceUsd
 
-		return { nativeTokenBalance, daiBalance, usdtBalance, usdcBalance, totalBalanceUsd }
+		return {
+			nativeTokenBalance,
+			daiBalance,
+			usdtBalance,
+			usdcBalance,
+			totalBalanceUsd,
+		}
 	}
 }

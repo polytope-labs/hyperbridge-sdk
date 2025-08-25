@@ -620,14 +620,14 @@ async function setUp() {
 
 	const confirmationPolicy = new ConfirmationPolicy({
 		"97": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
+			minAmount: "1000000000000000000", // 1 USD with 18 decimals
+			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
 			minConfirmations: 1,
 			maxConfirmations: 5,
 		},
 		"10200": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
+			minAmount: "1000000000000000000", // 1 USD with 18 decimals
+			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
 			minConfirmations: 1,
 			maxConfirmations: 5,
 		},

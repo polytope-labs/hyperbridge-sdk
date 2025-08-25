@@ -18,6 +18,7 @@
 		"build": "tsup",
 		"prepublishOnly": "npm run build",
 		"test": "vitest --watch=false --maxConcurrency=1",
+		"test:services": "vitest --watch=false --maxConcurrency=1 --testTimeout=1000000 src/tests/services.test.ts",
 		"test:watch": "vitest",
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",

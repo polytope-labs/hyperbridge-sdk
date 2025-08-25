@@ -56,9 +56,12 @@ import {
 	getStorageSlot,
 	mmrPositionToKIndex,
 	MmrProof,
+	MOCK_ADDRESS,
 	SubstrateStateProof,
 } from "@/utils"
 import {
+	DispatchPost,
+	HostParams,
 	type FillOptions,
 	type HexString,
 	type IMessage,
@@ -528,11 +531,11 @@ export class EvmChain implements IChain {
 	 * @param destChain - The destination chain to fill the order on
 	 * @returns The estimated gas amount in fee token (DAI)
 	 */
-	async estimateFillOrder(order: Order, fillerWalletAddress: HexString, destChain: EvmChain): Promise<bigint> {
+	async estimateFillOrder(order: Order, destChain: EvmChain): Promise<bigint> {
 		const postRequest: IPostRequest = {
 			source: order.destChain,
 			dest: order.sourceChain,
-			body: constructRedeemEscrowRequestBody(order, fillerWalletAddress),
+			body: constructRedeemEscrowRequestBody(order, MOCK_ADDRESS),
 			timeoutTimestamp: 0n,
 			nonce: await this.getHostNonce(),
 			from: this.chainConfigService.getIntentGatewayAddress(order.destChain),
@@ -540,12 +543,13 @@ export class EvmChain implements IChain {
 		}
 
 		const postGasEstimate = await this.estimateGas(postRequest)
-		const postGasEstimateUsd = await this.convertGasToUsd(postGasEstimate, this.publicClient)
-
+		const postGasEstimateFeeToken = await this.convertGasToFeeToken(postGasEstimate, this.publicClient)
 		// 2% markup
 		const RELAYER_FEE_BPS = 200n
+		const relayerFeeInFeeToken = postGasEstimateFeeToken + (postGasEstimateFeeToken * RELAYER_FEE_BPS) / 10000n
+
 		const fillOptions: FillOptions = {
-			relayerFee: postGasEstimateUsd + (postGasEstimateUsd * RELAYER_FEE_BPS) / 10000n,
+			relayerFee: relayerFeeInFeeToken,
 		}
 
 		const totalEthValue = order.outputs
@@ -555,19 +559,14 @@ export class EvmChain implements IChain {
 		const intentGatewayAddress = this.chainConfigService.getIntentGatewayAddress(order.destChain)
 		const testValue = toHex(maxUint256)
 
-		const overrides = await Promise.all(
+		const orderOverrides = await Promise.all(
 			order.outputs.map(async (output) => {
 				const tokenAddress = bytes32ToBytes20(output.token)
 
 				try {
 					const stateDiffs = []
 
-					const balanceSlot = await getStorageSlot(
-						destChain.publicClient,
-						tokenAddress,
-						0,
-						fillerWalletAddress,
-					)
+					const balanceSlot = await getStorageSlot(destChain.publicClient, tokenAddress, 0, MOCK_ADDRESS)
 					stateDiffs.push({ slot: balanceSlot as HexString, value: testValue })
 
 					try {
@@ -575,7 +574,7 @@ export class EvmChain implements IChain {
 							destChain.publicClient,
 							tokenAddress,
 							1,
-							fillerWalletAddress,
+							MOCK_ADDRESS,
 							intentGatewayAddress,
 						)
 						stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
@@ -591,28 +590,48 @@ export class EvmChain implements IChain {
 			}),
 		).then((results) => results.filter(Boolean))
 
+		const { address: feeTokenAddress } = await destChain.getFeeTokenWithDecimals()
+		const feeTokenBalanceSlot = await getStorageSlot(destChain.publicClient, feeTokenAddress, 0, MOCK_ADDRESS)
+		const feeTokenAllowanceSlot = await getStorageSlot(
+			destChain.publicClient,
+			feeTokenAddress,
+			1,
+			MOCK_ADDRESS,
+			intentGatewayAddress,
+		)
+		const feeTokenStateDiffs = [
+			{ slot: feeTokenBalanceSlot, value: testValue },
+			{ slot: feeTokenAllowanceSlot, value: testValue },
+		]
+
+		orderOverrides.push({
+			address: feeTokenAddress,
+			stateDiff: feeTokenStateDiffs as any,
+		})
+
 		const fillGas = await destChain.publicClient.estimateContractGas({
 			abi: IntentGateway.ABI,
 			address: intentGatewayAddress,
 			functionName: "fillOrder",
 			args: [transformOrderForContract(order), fillOptions as any],
-			account: fillerWalletAddress,
+			account: MOCK_ADDRESS,
 			value: totalEthValue,
-			stateOverride: overrides as any,
+			stateOverride: orderOverrides as any,
 		})
 
-		const swapOperations = await destChain.calculateSwapOperations({
-			order,
-			fillerWalletAddress,
-		})
+		const relayerFeeGas = postGasEstimate + (postGasEstimate * RELAYER_FEE_BPS) / 10000n // 2% markup
+		const protocolFee = await this.getProtocolFee(order, relayerFeeInFeeToken) // Already in fee token
 
-		const relayerFeeGas = postGasEstimate + (postGasEstimate * RELAYER_FEE_BPS) / 10000n
-		const totalGasEstimate = fillGas + swapOperations.totalGasEstimate + relayerFeeGas
+		const totalGasEstimate = fillGas + relayerFeeGas
+		const totalGasEstimateInFeeToken =
+			(await this.convertGasToFeeToken(totalGasEstimate, destChain.publicClient)) + protocolFee
 
-		return await this.convertGasToUsd(totalGasEstimate, destChain.publicClient)
+		const SWAP_OPERATIONS_BPS = 1000n // 10% buffer for potential swaps
+		const swapOperationsInFeeToken = (totalGasEstimateInFeeToken * SWAP_OPERATIONS_BPS) / 10000n
+		return totalGasEstimateInFeeToken + swapOperationsInFeeToken
 	}
 
-	private async convertGasToUsd(gasEstimate: bigint, publicClient: PublicClient): Promise<bigint> {
+	private async convertGasToFeeToken(gasEstimate: bigint, publicClient: PublicClient): Promise<bigint> {
 		const gasPrice = await publicClient.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = publicClient.chain?.nativeCurrency
@@ -625,7 +644,11 @@ export class EvmChain implements IChain {
 		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
 		const gasCostUsd = gasCostInToken * tokenPriceUsd
 
-		return BigInt(Math.floor(gasCostUsd * Math.pow(10, 18)))
+		let { address: feeTokenAddress, decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals()
+		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI") // Using DAI as default
+		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, feeTokenDecimals)))
 	}
 
 	/**
@@ -881,6 +904,21 @@ export class EvmChain implements IChain {
 		}
 
 		return { calls, totalGasEstimate }
+	}
+
+	async getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }> {
+		const hostParams = await this.publicClient.readContract({
+			abi: EvmHost.ABI,
+			address: this.params.host,
+			functionName: "hostParams",
+		})
+		const feeTokenAddress = hostParams.feeToken
+		const feeTokenDecimals = await this.publicClient.readContract({
+			address: feeTokenAddress,
+			abi: erc20Abi,
+			functionName: "decimals",
+		})
+		return { address: feeTokenAddress, decimals: feeTokenDecimals }
 	}
 
 	/**
@@ -1159,6 +1197,32 @@ export class EvmChain implements IChain {
 		})
 
 		return nonce
+	}
+
+	/**
+	 * Gets the HyperBridge protocol fee in fee token
+	 */
+	async getProtocolFee(order: Order, relayerFee: bigint): Promise<bigint> {
+		const destClient = this.publicClient
+		const requestBody = constructRedeemEscrowRequestBody(order, MOCK_ADDRESS)
+
+		const dispatchPost: DispatchPost = {
+			dest: toHex(order.sourceChain),
+			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
+			body: requestBody,
+			timeout: 0n,
+			fee: relayerFee,
+			payer: MOCK_ADDRESS,
+		}
+
+		const protocolFee = await destClient.readContract({
+			abi: IntentGateway.ABI,
+			address: this.chainConfigService.getIntentGatewayAddress(order.destChain),
+			functionName: "quote",
+			args: [dispatchPost as any],
+		})
+
+		return protocolFee
 	}
 
 	/**

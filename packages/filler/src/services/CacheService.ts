@@ -1,7 +1,7 @@
 interface GasEstimateCache {
 	fillGas: string
 	postGas: string
-	relayerFeeUSD: string
+	relayerFeeInFeeToken: string
 	timestamp: number
 }
 
@@ -54,14 +54,14 @@ export class CacheService {
 		})
 	}
 
-	getGasEstimate(orderId: string): { fillGas: bigint; postGas: bigint; relayerFeeUSD: bigint } | null {
+	getGasEstimate(orderId: string): { fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint } | null {
 		try {
 			const cache = this.cacheData.gasEstimates[orderId]
 			if (cache && this.isCacheValid(cache.timestamp)) {
 				return {
 					fillGas: BigInt(cache.fillGas),
 					postGas: BigInt(cache.postGas),
-					relayerFeeUSD: BigInt(cache.relayerFeeUSD),
+					relayerFeeInFeeToken: BigInt(cache.relayerFeeInFeeToken),
 				}
 			}
 			return null
@@ -71,7 +71,7 @@ export class CacheService {
 		}
 	}
 
-	setGasEstimate(orderId: string, fillGas: bigint, postGas: bigint, relayerFeeUSD: bigint): void {
+	setGasEstimate(orderId: string, fillGas: bigint, postGas: bigint, relayerFeeInFeeToken: bigint): void {
 		if (fillGas <= 0n || postGas <= 0n) {
 			throw new Error("Gas values must be positive")
 		}
@@ -80,7 +80,7 @@ export class CacheService {
 			this.cacheData.gasEstimates[orderId] = {
 				fillGas: fillGas.toString(),
 				postGas: postGas.toString(),
-				relayerFeeUSD: relayerFeeUSD.toString(),
+				relayerFeeInFeeToken: relayerFeeInFeeToken.toString(),
 				timestamp: Date.now(),
 			}
 		} catch (error) {

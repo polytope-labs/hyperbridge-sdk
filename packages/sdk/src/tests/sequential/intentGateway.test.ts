@@ -262,7 +262,7 @@ describe.sequential(
 
 			assert(postGasEstimate > 0n)
 
-			let gasEstimate = await gnosisChiadoEvmChain.estimateFillOrder(order, fillerWalletAddress, bscEvmChain)
+			let gasEstimate = await gnosisChiadoEvmChain.estimateFillOrder(order, bscEvmChain)
 
 			console.log("Fill gas estimate including fillOrder + swapEstimates + relayerFee:", gasEstimate)
 
