@@ -166,7 +166,7 @@ export async function getSubstrateTokenDecimals(_symbol: string): Promise<number
 			}
 
 			if (api.query.assets) {
-				const response = await api.query.assets?.metadata<StorageData>(asset)
+				const response = await api.query.assets?.metadata<StorageData>(asset.toHex())
 				const { symbol, decimals } = response.toHuman()
 				if (decimals && symbol.toLowerCase() === _symbol.toLowerCase()) {
 					return Number(decimals)
