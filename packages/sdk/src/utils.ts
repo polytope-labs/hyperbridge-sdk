@@ -531,36 +531,82 @@ export function mapTestnetToMainnet(identifier: string): string {
 }
 
 /**
- * Fetches the USD price of a token from CoinGecko
- * @param symbol - The ticker symbol of the token (e.g., "BTC", "ETH", "USDC")
+ * Fetches the USD price of a token from CoinGecko with Defillama fallback
+ * @param identifier - The ticker symbol of the token (e.g., "BTC", "ETH", "USDC") or contract address
+ * @note This function will be replaced by internal price indexer
  * @returns The USD price of the token as a number (preserves decimals)
  */
 export async function fetchTokenUsdPrice(identifier: string): Promise<number> {
+	// First try CoinGecko
 	try {
-		// Map testnet identifiers to mainnet identifiers
-		const mappedIdentifier = mapTestnetToMainnet(identifier)
-
-		const url = mappedIdentifier.startsWith("0x")
-			? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
-			: `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
-
-		const response = await fetch(url)
-
-		if (!response.ok) {
-			throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
-		}
-
-		const data = await response.json()
-
-		if (!data[mappedIdentifier.toLowerCase()]?.usd) {
-			throw new Error(`Price not found for token symbol: ${mappedIdentifier}`)
-		}
-
-		return data[mappedIdentifier.toLowerCase()].usd
+		const coinGeckoPrice = await fetchFromCoinGecko(identifier)
+		return coinGeckoPrice
 	} catch (error) {
-		console.log(`Error fetching price for ${identifier}: ${error}, returning 1`)
-		return 1
+		// Fallback to Defillama
+		try {
+			const defillamaPrice = await fetchFromDefillama(identifier)
+			return defillamaPrice
+		} catch (fallbackError) {
+			console.log(
+				`Both APIs failed for ${identifier}. CoinGecko: ${error}, Defillama: ${fallbackError}. Returning 1`,
+			)
+			return 1
+		}
 	}
+}
+
+/**
+ * Fetches price from CoinGecko API
+ */
+async function fetchFromCoinGecko(identifier: string): Promise<number> {
+	const mappedIdentifier = mapTestnetToMainnet(identifier)
+
+	const url = mappedIdentifier.startsWith("0x")
+		? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
+		: `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
+
+	const response = await fetch(url)
+
+	if (!response.ok) {
+		throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
+	}
+
+	const data = await response.json()
+
+	if (!data[mappedIdentifier.toLowerCase()]?.usd) {
+		throw new Error(`Price not found for token: ${mappedIdentifier}`)
+	}
+
+	return data[mappedIdentifier.toLowerCase()].usd
+}
+
+/**
+ * Fetches price from Defillama API
+ */
+async function fetchFromDefillama(identifier: string): Promise<number> {
+	const mappedIdentifier = mapTestnetToMainnet(identifier)
+
+	// Format the coin ID for Defillama
+	const coinId = mappedIdentifier.startsWith("0x")
+		? `ethereum:${mappedIdentifier}` // Contract address format
+		: `coingecko:${mappedIdentifier}` // Symbol format (uses CoinGecko IDs)
+
+	const url = `https://coins.llama.fi/prices/current/${coinId}`
+
+	const response = await fetch(url)
+
+	if (!response.ok) {
+		throw new Error(`Defillama API error: ${response.status} ${response.statusText}`)
+	}
+
+	const data = await response.json()
+	const price = data.coins?.[coinId]?.price
+
+	if (!price && price !== 0) {
+		throw new Error(`Price not found for token: ${mappedIdentifier}`)
+	}
+
+	return price
 }
 
 export async function getStorageSlot(

@@ -546,7 +546,16 @@ export class EvmChain implements IChain {
 		const postGasEstimateFeeToken = await this.convertGasToFeeToken(postGasEstimate, this.publicClient)
 		// 2% markup
 		const RELAYER_FEE_BPS = 200n
-		const relayerFeeInFeeToken = postGasEstimateFeeToken + (postGasEstimateFeeToken * RELAYER_FEE_BPS) / 10000n
+		let relayerFeeInFeeToken = postGasEstimateFeeToken + (postGasEstimateFeeToken * RELAYER_FEE_BPS) / 10000n
+
+		const { decimals: sourceChainFeeTokenDecimals } = await this.getFeeTokenWithDecimals()
+		const { decimals: destChainFeeTokenDecimals } = await destChain.getFeeTokenWithDecimals()
+
+		relayerFeeInFeeToken = this.adjustRelayerFeeDecimals(
+			relayerFeeInFeeToken,
+			sourceChainFeeTokenDecimals,
+			destChainFeeTokenDecimals,
+		)
 
 		const fillOptions: FillOptions = {
 			relayerFee: relayerFeeInFeeToken,
@@ -609,7 +618,7 @@ export class EvmChain implements IChain {
 			stateDiff: feeTokenStateDiffs as any,
 		})
 
-		const fillGas = await destChain.publicClient.estimateContractGas({
+		const destChainFillGas = await destChain.publicClient.estimateContractGas({
 			abi: IntentGateway.ABI,
 			address: intentGatewayAddress,
 			functionName: "fillOrder",
@@ -619,16 +628,28 @@ export class EvmChain implements IChain {
 			stateOverride: orderOverrides as any,
 		})
 
-		const relayerFeeGas = postGasEstimate + (postGasEstimate * RELAYER_FEE_BPS) / 10000n // 2% markup
-		const protocolFee = await this.getProtocolFee(order, relayerFeeInFeeToken) // Already in fee token
+		let fillGasFeeToken = await this.convertGasToFeeToken(destChainFillGas, destChain.publicClient)
+		let protocolFee = await this.getProtocolFee(order, relayerFeeInFeeToken) // Already in fee token but in destination chain decimals
 
-		const totalGasEstimate = fillGas + relayerFeeGas
-		const totalGasEstimateInFeeToken =
-			(await this.convertGasToFeeToken(totalGasEstimate, destChain.publicClient)) + protocolFee
+		// Adjustments
+		fillGasFeeToken = this.adjustRelayerFeeDecimals(
+			fillGasFeeToken,
+			destChainFeeTokenDecimals,
+			sourceChainFeeTokenDecimals,
+		)
+		protocolFee = this.adjustRelayerFeeDecimals(protocolFee, destChainFeeTokenDecimals, sourceChainFeeTokenDecimals)
+		relayerFeeInFeeToken = this.adjustRelayerFeeDecimals(
+			relayerFeeInFeeToken,
+			destChainFeeTokenDecimals,
+			sourceChainFeeTokenDecimals,
+		)
+
+		// All values in source chain fee token
+		const totalEstimate = fillGasFeeToken + relayerFeeInFeeToken + protocolFee
 
 		const SWAP_OPERATIONS_BPS = 1000n // 10% buffer for potential swaps
-		const swapOperationsInFeeToken = (totalGasEstimateInFeeToken * SWAP_OPERATIONS_BPS) / 10000n
-		return totalGasEstimateInFeeToken + swapOperationsInFeeToken
+		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
+		return totalEstimate + swapOperationsInFeeToken
 	}
 
 	private async convertGasToFeeToken(gasEstimate: bigint, publicClient: PublicClient): Promise<bigint> {
@@ -649,6 +670,30 @@ export class EvmChain implements IChain {
 		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, feeTokenDecimals)))
+	}
+
+	/**
+	 * Convert relayer fee amount between tokens with different decimals.
+	 *
+	 * @param relayerFeeInFeeToken The fee amount in source token units
+	 * @param fromDecimals Decimals the relayerFeeInFeeToken is currently in
+	 * @param toDecimals Decimals the relayerFeeInFeeToken should be converted to
+	 * @returns Fee amount adjusted to destination token decimals
+	 */
+	adjustRelayerFeeDecimals(relayerFeeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
+		if (fromDecimals === toDecimals) {
+			return relayerFeeInFeeToken
+		}
+
+		if (fromDecimals < toDecimals) {
+			// Scale UP (no precision loss)
+			const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
+			return relayerFeeInFeeToken * scaleFactor
+		} else {
+			// Scale DOWN (ceil division to avoid undercharging)
+			const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
+			return (relayerFeeInFeeToken + scaleFactor - 1n) / scaleFactor
+		}
 	}
 
 	/**
