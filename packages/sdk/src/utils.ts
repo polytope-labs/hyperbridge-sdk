@@ -516,13 +516,13 @@ export function mapTestnetToMainnet(identifier: string): string {
 		case "tbnb":
 			return "wbnb"
 		case "0xc043f483373072f7f27420d6e7d7ad269c018e18".toLowerCase():
-			return "usdt"
+			return "dai"
 		case "0xae13d989dac2f0debff460ac112a837c89baa7cd".toLowerCase():
-			return "WBNB"
+			return "wbnb"
 		case "0x1938165569A5463327fb206bE06d8D9253aa06b7".toLowerCase():
 			return "dai"
 		case "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92".toLowerCase():
-			return "usdc"
+			return "dai"
 		case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
 			return "dai"
 		default:
