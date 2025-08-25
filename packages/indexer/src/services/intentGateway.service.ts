@@ -136,7 +136,7 @@ export class IntentGatewayService {
 					symbol = await tokenContract.symbol()
 				}
 
-				return PriceFeedsService.getPrice(symbol, token.amount, decimals)
+				return PriceFeedsService.getPrice(symbol, token.amount, decimals, tokenAddress)
 			}),
 		)
 

@@ -31,7 +31,7 @@ export const getPriceDataFromEthereumLog = async (address: string, amount: bigin
 	const symbol = await contract.symbol()
 	const decimals = await contract.decimals()
 
-	const { amountValueInUSD, priceInUSD } = await PriceFeedsService.getPrice(symbol, amount, decimals)
+	const { amountValueInUSD, priceInUSD } = await PriceFeedsService.getPrice(symbol, amount, decimals, address)
 
 	return {
 		amountValueInUSD,
