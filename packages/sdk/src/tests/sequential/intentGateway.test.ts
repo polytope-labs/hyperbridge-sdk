@@ -264,9 +264,9 @@ describe.sequential(
 
 			let gasEstimate = await gnosisChiadoEvmChain.estimateFillOrder(order, bscEvmChain)
 
-			console.log("Fill gas estimate including fillOrder + swapEstimates + relayerFee:", gasEstimate)
+			console.log("Fill gas estimate:", gasEstimate)
 
-			assert(gasEstimate > 100000n)
+			assert(gasEstimate > 160000n)
 
 			let initialAmountIn = 100n
 

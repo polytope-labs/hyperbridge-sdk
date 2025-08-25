@@ -63,20 +63,16 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
-			const {
-				fillGas,
-				postGas: relayerFeeGas,
-				relayerFeeInFeeToken,
-			} = await this.contractService.estimateGasFillPost(order)
+			const { fillGas, relayerFeeInFeeToken } = await this.contractService.estimateGasFillPost(order)
 
 			const protocolFeeInFeeToken = await this.contractService.getProtocolFee(order, relayerFeeInFeeToken)
+			const { decimals } = await this.contractService.getFeeTokenWithDecimals(order.destChain)
 
-			const totalGasEstimate = fillGas + relayerFeeGas
 			const totalGasEstimateInFeeToken =
-				(await this.contractService.convertGasToFeeToken(totalGasEstimate, order.destChain)) +
-				protocolFeeInFeeToken
+				(await this.contractService.convertGasToFeeToken(fillGas, order.destChain, decimals)) +
+				protocolFeeInFeeToken +
+				relayerFeeInFeeToken
 
-			// Calculate the profit
 			const { outputUsdValue, inputUsdValue } = await this.contractService.getTokenUsdValue(order)
 			const feeTokenPrice = await fetchTokenUsdPrice("DAI")
 			const feeTokenPriceInDecimals = BigInt(Math.floor(feeTokenPrice * Math.pow(10, 18)))
@@ -86,7 +82,7 @@ export class BasicFiller implements FillerStrategy {
 			const toReceive = inputUsdValue + orderFeeInUsd
 			const toPay = outputUsdValue + totalGasEstimateInUsd
 
-			const profit = toReceive - toPay
+			const profit = toReceive > toPay ? toReceive - toPay : BigInt(0)
 
 			// Log for debugging
 			console.log({

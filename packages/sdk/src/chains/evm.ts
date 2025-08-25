@@ -448,7 +448,9 @@ export class EvmChain implements IChain {
 			args: [toHex(request.dest)],
 		})
 
-		return perByteFee * BigInt(request.body.length)
+		const length = 32 > request.body.length ? 32 : request.body.length
+
+		return perByteFee * BigInt(length)
 	}
 
 	/**
@@ -648,10 +650,8 @@ export class EvmChain implements IChain {
 			sourceChainFeeTokenDecimals,
 		)
 
-		const destProtocolFee = await this.getProtocolFee(order, relayerFeeInDestFeeToken)
-
 		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
-			destProtocolFee,
+			(await destChain.quote(postRequest)) + relayerFeeInDestFeeToken, // Following baseIsmpModule.quote()
 			destChainFeeTokenDecimals,
 			sourceChainFeeTokenDecimals,
 		)
@@ -720,6 +720,12 @@ export class EvmChain implements IChain {
 		}
 	}
 
+	/**
+	 * Gets the fee token address and decimals for the chain.
+	 * This function gets the fee token address and decimals for the chain.
+	 *
+	 * @returns The fee token address and decimals
+	 */
 	async getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }> {
 		const hostParams = await this.publicClient.readContract({
 			abi: EvmHost.ABI,
@@ -1011,32 +1017,6 @@ export class EvmChain implements IChain {
 		})
 
 		return nonce
-	}
-
-	/**
-	 * Gets the HyperBridge protocol fee in fee token
-	 */
-	async getProtocolFee(order: Order, relayerFee: bigint): Promise<bigint> {
-		const destClient = this.publicClient
-		const requestBody = constructRedeemEscrowRequestBody(order, MOCK_ADDRESS)
-
-		const dispatchPost: DispatchPost = {
-			dest: toHex(order.sourceChain),
-			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
-			body: requestBody,
-			timeout: 0n,
-			fee: relayerFee,
-			payer: MOCK_ADDRESS,
-		}
-
-		const protocolFee = await destClient.readContract({
-			abi: IntentGateway.ABI,
-			address: this.chainConfigService.getIntentGatewayAddress(order.destChain),
-			functionName: "quote",
-			args: [dispatchPost as any],
-		})
-
-		return protocolFee
 	}
 
 	/**
