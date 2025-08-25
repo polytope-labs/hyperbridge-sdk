@@ -542,23 +542,32 @@ export class EvmChain implements IChain {
 			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
 		}
 
+		const { decimals: sourceChainFeeTokenDecimals } = await this.getFeeTokenWithDecimals()
+		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
+			await destChain.getFeeTokenWithDecimals()
+
+		// Get source post gas estimate directly in source chain decimals
 		const postGasEstimate = await this.estimateGas(postRequest)
-		const postGasEstimateFeeToken = await this.convertGasToFeeToken(postGasEstimate, this.publicClient)
+		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
+			postGasEstimate,
+			this.publicClient,
+			sourceChainFeeTokenDecimals,
+		)
+
 		// 2% markup
 		const RELAYER_FEE_BPS = 200n
-		let relayerFeeInFeeToken = postGasEstimateFeeToken + (postGasEstimateFeeToken * RELAYER_FEE_BPS) / 10000n
+		const relayerFeeInSourceFeeToken =
+			postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * RELAYER_FEE_BPS) / 10000n
 
-		const { decimals: sourceChainFeeTokenDecimals } = await this.getFeeTokenWithDecimals()
-		const { decimals: destChainFeeTokenDecimals } = await destChain.getFeeTokenWithDecimals()
-
-		relayerFeeInFeeToken = this.adjustRelayerFeeDecimals(
-			relayerFeeInFeeToken,
+		// Convert relayer fee to dest chain decimals for fillOrder call
+		const relayerFeeInDestFeeToken = this.adjustFeeDecimals(
+			relayerFeeInSourceFeeToken,
 			sourceChainFeeTokenDecimals,
 			destChainFeeTokenDecimals,
 		)
 
 		const fillOptions: FillOptions = {
-			relayerFee: relayerFeeInFeeToken,
+			relayerFee: relayerFeeInDestFeeToken,
 		}
 
 		const totalEthValue = order.outputs
@@ -599,22 +608,26 @@ export class EvmChain implements IChain {
 			}),
 		).then((results) => results.filter(Boolean))
 
-		const { address: feeTokenAddress } = await destChain.getFeeTokenWithDecimals()
-		const feeTokenBalanceSlot = await getStorageSlot(destChain.publicClient, feeTokenAddress, 0, MOCK_ADDRESS)
-		const feeTokenAllowanceSlot = await getStorageSlot(
+		const destFeeTokenBalanceSlot = await getStorageSlot(
 			destChain.publicClient,
-			feeTokenAddress,
+			destChainFeeTokenAddress,
+			0,
+			MOCK_ADDRESS,
+		)
+		const destFeeTokenAllowanceSlot = await getStorageSlot(
+			destChain.publicClient,
+			destChainFeeTokenAddress,
 			1,
 			MOCK_ADDRESS,
 			intentGatewayAddress,
 		)
 		const feeTokenStateDiffs = [
-			{ slot: feeTokenBalanceSlot, value: testValue },
-			{ slot: feeTokenAllowanceSlot, value: testValue },
+			{ slot: destFeeTokenBalanceSlot, value: testValue },
+			{ slot: destFeeTokenAllowanceSlot, value: testValue },
 		]
 
 		orderOverrides.push({
-			address: feeTokenAddress,
+			address: destChainFeeTokenAddress,
 			stateDiff: feeTokenStateDiffs as any,
 		})
 
@@ -628,31 +641,43 @@ export class EvmChain implements IChain {
 			stateOverride: orderOverrides as any,
 		})
 
-		let fillGasFeeToken = await this.convertGasToFeeToken(destChainFillGas, destChain.publicClient)
-		let protocolFee = await this.getProtocolFee(order, relayerFeeInFeeToken) // Already in fee token but in destination chain decimals
-
-		// Adjustments
-		fillGasFeeToken = this.adjustRelayerFeeDecimals(
-			fillGasFeeToken,
-			destChainFeeTokenDecimals,
-			sourceChainFeeTokenDecimals,
-		)
-		protocolFee = this.adjustRelayerFeeDecimals(protocolFee, destChainFeeTokenDecimals, sourceChainFeeTokenDecimals)
-		relayerFeeInFeeToken = this.adjustRelayerFeeDecimals(
-			relayerFeeInFeeToken,
-			destChainFeeTokenDecimals,
+		// Convert dest chain gas directly to source chain decimals
+		const fillGasInSourceFeeToken = await this.convertGasToFeeToken(
+			destChainFillGas,
+			destChain.publicClient,
 			sourceChainFeeTokenDecimals,
 		)
 
-		// All values in source chain fee token
-		const totalEstimate = fillGasFeeToken + relayerFeeInFeeToken + protocolFee
+		const destProtocolFee = await this.getProtocolFee(order, relayerFeeInDestFeeToken)
+
+		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
+			destProtocolFee,
+			destChainFeeTokenDecimals,
+			sourceChainFeeTokenDecimals,
+		)
+
+		// All values now in source chain fee token decimals
+		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
 		const SWAP_OPERATIONS_BPS = 1000n // 10% buffer for potential swaps
 		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
 		return totalEstimate + swapOperationsInFeeToken
 	}
 
-	private async convertGasToFeeToken(gasEstimate: bigint, publicClient: PublicClient): Promise<bigint> {
+	/**
+	 * Converts a gas estimate to a fee token amount.
+	 * This function converts a gas estimate to a fee token amount, taking into account the gas price, the native token decimals, and the target fee token decimals.
+	 *
+	 * @param gasEstimate - The gas estimate to convert
+	 * @param publicClient - The public client to use
+	 * @param targetDecimals - The decimals of the target fee token
+	 * @returns The fee token amount
+	 */
+	private async convertGasToFeeToken(
+		gasEstimate: bigint,
+		publicClient: PublicClient,
+		targetDecimals: number,
+	): Promise<bigint> {
 		const gasPrice = await publicClient.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = publicClient.chain?.nativeCurrency
@@ -665,11 +690,10 @@ export class EvmChain implements IChain {
 		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
 		const gasCostUsd = gasCostInToken * tokenPriceUsd
 
-		let { address: feeTokenAddress, decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals()
 		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI") // Using DAI as default
-		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
-		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, feeTokenDecimals)))
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
 	}
 
 	/**
@@ -680,275 +704,20 @@ export class EvmChain implements IChain {
 	 * @param toDecimals Decimals the relayerFeeInFeeToken should be converted to
 	 * @returns Fee amount adjusted to destination token decimals
 	 */
-	adjustRelayerFeeDecimals(relayerFeeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
+	adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
 		if (fromDecimals === toDecimals) {
-			return relayerFeeInFeeToken
+			return feeInFeeToken
 		}
 
 		if (fromDecimals < toDecimals) {
 			// Scale UP (no precision loss)
 			const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
-			return relayerFeeInFeeToken * scaleFactor
+			return feeInFeeToken * scaleFactor
 		} else {
 			// Scale DOWN (ceil division to avoid undercharging)
 			const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
-			return (relayerFeeInFeeToken + scaleFactor - 1n) / scaleFactor
+			return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
 		}
-	}
-
-	/**
-	 * Calculates the swap operations required to fill an order.
-	 * This function calculates the swap operations required to fill the order, including the gas required to swap the tokens.
-	 *
-	 * @param params - The parameters for the swap operations
-	 * @returns The swap operations required to fill the order
-	 */
-	async calculateSwapOperations(params: {
-		order: Order
-		fillerWalletAddress: HexString
-	}): Promise<{ calls: { to: HexString; data: HexString; value: bigint }[]; totalGasEstimate: bigint }> {
-		const { order, fillerWalletAddress } = params
-		const destClient = this.publicClient
-
-		const calls: { to: HexString; data: HexString; value: bigint }[] = []
-		let totalGasEstimate = BigInt(0)
-
-		// Default available assets
-		const daiAssetAddress = this.chainConfigService.getDaiAsset(order.destChain)
-		const usdtAssetAddress = this.chainConfigService.getUsdtAsset(order.destChain)
-		const usdcAssetAddress = this.chainConfigService.getUsdcAsset(order.destChain)
-
-		const daiAssetDecimals = await this.publicClient.readContract({
-			address: daiAssetAddress,
-			abi: erc20Abi,
-			functionName: "decimals",
-		})
-		const usdtAssetDecimals = await this.publicClient.readContract({
-			address: usdtAssetAddress,
-			abi: erc20Abi,
-			functionName: "decimals",
-		})
-		const usdcAssetDecimals = await this.publicClient.readContract({
-			address: usdcAssetAddress,
-			abi: erc20Abi,
-			functionName: "decimals",
-		})
-
-		const universalRouterAddress = this.chainConfigService.getUniversalRouterAddress(order.destChain)
-
-		const V2_SWAP_EXACT_OUT = 0x09
-		const V3_SWAP_EXACT_OUT = 0x01
-
-		for (const token of order.outputs) {
-			const tokenAddress = bytes32ToBytes20(token.token)
-			const nativeTokenBalance = await destClient.getBalance({
-				address: fillerWalletAddress,
-			})
-
-			const daiBalance = await destClient.readContract({
-				address: daiAssetAddress,
-				abi: erc20Abi,
-				functionName: "balanceOf",
-				args: [fillerWalletAddress],
-			})
-
-			const usdtBalance = await destClient.readContract({
-				address: usdtAssetAddress,
-				abi: erc20Abi,
-				functionName: "balanceOf",
-				args: [fillerWalletAddress],
-			})
-
-			const usdcBalance = await destClient.readContract({
-				address: usdcAssetAddress,
-				abi: erc20Abi,
-				functionName: "balanceOf",
-				args: [fillerWalletAddress],
-			})
-
-			const currentBalance =
-				tokenAddress == daiAssetAddress
-					? daiBalance
-					: tokenAddress == usdtAssetAddress
-						? usdtBalance
-						: tokenAddress == usdcAssetAddress
-							? usdcBalance
-							: nativeTokenBalance
-
-			const balanceNeeded = token.amount > currentBalance ? token.amount - currentBalance : BigInt(0)
-
-			if (balanceNeeded > BigInt(0)) {
-				const normalizedBalances = {
-					dai: daiBalance / BigInt(10 ** daiAssetDecimals),
-					usdt: usdtBalance / BigInt(10 ** usdtAssetDecimals),
-					usdc: usdcBalance / BigInt(10 ** usdcAssetDecimals),
-					native: nativeTokenBalance / BigInt(10 ** 18),
-				}
-
-				const sortedBalances = Object.entries(normalizedBalances).sort(([, a], [, b]) => Number(b - a))
-
-				// Try to fulfill the requirement using the highest balance first
-				let remainingNeeded = balanceNeeded
-
-				for (const [tokenType, normalizedBalance] of sortedBalances) {
-					if (remainingNeeded <= BigInt(0)) break
-
-					// Skip if this is the same token we're trying to get
-					if (
-						(tokenType === "dai" && tokenAddress === daiAssetAddress) ||
-						(tokenType === "usdt" && tokenAddress === usdtAssetAddress) ||
-						(tokenType === "usdc" && tokenAddress === usdcAssetAddress) ||
-						(tokenType === "native" && tokenAddress === ADDRESS_ZERO)
-					) {
-						continue
-					}
-
-					// Get the actual balance with decimals
-					const actualBalance =
-						tokenType === "dai"
-							? daiBalance
-							: tokenType === "usdt"
-								? usdtBalance
-								: tokenType === "usdc"
-									? usdcBalance
-									: nativeTokenBalance
-
-					// Calculate how much we can swap from this token (in actual uint256 with decimals)
-					const swapAmount = actualBalance > remainingNeeded ? remainingNeeded : actualBalance
-
-					if (swapAmount > BigInt(0)) {
-						const tokenToSwap =
-							tokenType === "dai"
-								? daiAssetAddress
-								: tokenType === "usdt"
-									? usdtAssetAddress
-									: tokenType === "usdc"
-										? usdcAssetAddress
-										: ADDRESS_ZERO
-
-						const bestProtocol = await this.findBestProtocolWithAmountOut(
-							order.destChain,
-							tokenToSwap,
-							tokenAddress,
-							swapAmount,
-						)
-
-						if (bestProtocol.protocol === null) {
-							console.warn(`No liquidity available for swap ${tokenToSwap} -> ${tokenAddress}`)
-							continue
-						}
-
-						const amountIn = bestProtocol.amountIn
-
-						// Transfer tokens directly to Universal Router (no approval needed)
-						const transferData = encodeFunctionData({
-							abi: erc20Abi,
-							functionName: "transfer",
-							args: [universalRouterAddress, amountIn],
-						})
-
-						const transferCall = {
-							to: tokenToSwap,
-							data: transferData,
-							value: BigInt(0),
-						}
-
-						// Universal Router swap call based on protocol
-						let commands: HexString
-						let inputs: HexString[]
-						const isPermit2 = false
-
-						if (bestProtocol.protocol === "v2") {
-							// V2 swap
-							const path = [tokenToSwap, tokenAddress]
-							commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
-
-							// Inputs for V2_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
-							inputs = [
-								encodeAbiParameters(
-									[
-										{ type: "address", name: "recipient" },
-										{ type: "uint256", name: "amountOut" },
-										{ type: "uint256", name: "amountInMax" },
-										{ type: "address[]", name: "path" },
-										{ type: "bool", name: "isPermit2" },
-									],
-									[fillerWalletAddress, swapAmount, amountIn, path, isPermit2],
-								),
-							]
-						} else {
-							// V3 swap
-							// Encode path with fee: tokenIn + fee + tokenOut
-							const pathV3 = encodePacked(
-								["address", "uint24", "address"],
-								[tokenToSwap, bestProtocol.fee!, tokenAddress],
-							)
-
-							commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
-
-							// Inputs for V3_SWAP_EXACT_OUT: (recipient, amountOut, amountInMax, path, isPermit2)
-							inputs = [
-								encodeAbiParameters(
-									[
-										{ type: "address", name: "recipient" },
-										{ type: "uint256", name: "amountOut" },
-										{ type: "uint256", name: "amountInMax" },
-										{ type: "bytes", name: "path" },
-										{ type: "bool", name: "isPermit2" },
-									],
-									[fillerWalletAddress, swapAmount, amountIn, pathV3, isPermit2],
-								),
-							]
-						}
-
-						const swapData = encodeFunctionData({
-							abi: UniversalRouter.ABI,
-							functionName: "execute",
-							args: [commands, inputs, order.deadline],
-						})
-
-						const call = {
-							to: universalRouterAddress,
-							data: swapData,
-							value: BigInt(0),
-						}
-
-						try {
-							const { results } = await destClient.simulateCalls({
-								account: fillerWalletAddress,
-								calls: [transferCall, call],
-							})
-
-							const operationGasEstimate = results.reduce(
-								(acc, result) => acc + result.gasUsed,
-								BigInt(0),
-							)
-
-							calls.push(transferCall, call)
-							totalGasEstimate += operationGasEstimate
-							remainingNeeded -= swapAmount
-
-							console.log(
-								`Using ${bestProtocol.protocol.toUpperCase()} for swap ${tokenToSwap} -> ${tokenAddress}, amountIn: ${amountIn}${bestProtocol.fee ? `, fee: ${bestProtocol.fee}` : ""}`,
-							)
-						} catch (simulationError) {
-							console.error(
-								`Swap simulation failed for ${tokenType} using ${bestProtocol.protocol}:`,
-								simulationError,
-							)
-							continue
-						}
-					}
-				}
-
-				// If we still need more tokens after trying all balances
-				if (remainingNeeded > BigInt(0)) {
-					throw new Error(`Insufficient balance to fulfill token requirement for ${tokenAddress}`)
-				}
-			}
-		}
-
-		return { calls, totalGasEstimate }
 	}
 
 	async getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }> {

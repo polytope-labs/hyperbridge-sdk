@@ -83,18 +83,15 @@ export class StableSwapFiller implements FillerStrategy {
 	 */
 	async calculateProfitability(order: Order): Promise<bigint> {
 		try {
-			const {
-				fillGas,
-				postGas: relayerFeeGas,
-				relayerFeeInFeeToken,
-			} = await this.contractService.estimateGasFillPost(order)
+			const { fillGas, relayerFeeInFeeToken } = await this.contractService.estimateGasFillPost(order)
 			const { totalGasEstimate: swapGasEstimate } = await this.calculateSwapOperations(order, order.destChain)
 			const protocolFeeInFeeToken = await this.contractService.getProtocolFee(order, relayerFeeInFeeToken)
 
-			const totalGasEstimate = fillGas + relayerFeeGas + swapGasEstimate
+			const gasEstimateExcludingRelayerFee = fillGas + swapGasEstimate
 			const totalGasEstimateInFeeToken =
-				(await this.contractService.convertGasToFeeToken(totalGasEstimate, order.destChain)) +
-				protocolFeeInFeeToken
+				(await this.contractService.convertGasToFeeToken(gasEstimateExcludingRelayerFee, order.destChain, 18)) +
+				protocolFeeInFeeToken +
+				relayerFeeInFeeToken
 
 			const { outputUsdValue, inputUsdValue } = await this.contractService.getTokenUsdValue(order)
 			const feeTokenPrice = await fetchTokenUsdPrice("DAI")

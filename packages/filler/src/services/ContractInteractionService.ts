@@ -280,13 +280,19 @@ export class ContractInteractionService {
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 
+			const { decimals: destFeeTokenDecimals } = await this.getFeeTokenWithDecimals(order.destChain)
+
 			// Add 2% markup
 			postGasEstimate = (postGasEstimate * BigInt(200)) / BigInt(10000)
 
-			const postGasEstimateFeeToken = await this.convertGasToFeeToken(postGasEstimate, order.sourceChain)
+			const postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
+				postGasEstimate,
+				order.sourceChain,
+				destFeeTokenDecimals,
+			)
 
 			const fillOptions: FillOptions = {
-				relayerFee: postGasEstimateFeeToken,
+				relayerFee: postGasEstimateInDestFeeToken,
 			}
 
 			const ethValue = this.calculateRequiredEthValue(order.outputs)
@@ -337,9 +343,9 @@ export class ContractInteractionService {
 			})
 
 			// Cache the results
-			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, postGasEstimateFeeToken)
+			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, postGasEstimateInDestFeeToken)
 
-			return { fillGas: gas, postGas: postGasEstimate, relayerFeeInFeeToken: postGasEstimateFeeToken }
+			return { fillGas: gas, postGas: postGasEstimate, relayerFeeInFeeToken: postGasEstimateInDestFeeToken }
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
@@ -363,7 +369,7 @@ export class ContractInteractionService {
 		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
 	}
 
-	async convertGasToFeeToken(gasEstimate: bigint, chain: string): Promise<bigint> {
+	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
 		const gasPrice = await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
@@ -377,11 +383,10 @@ export class ContractInteractionService {
 		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
 		const gasCostUsd = gasCostInToken * tokenPriceUsd
 
-		const { address: feeTokenAddress, decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals(chain)
 		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI") // Using DAI as default
 		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
-		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, feeTokenDecimals)))
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
 	}
 
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
