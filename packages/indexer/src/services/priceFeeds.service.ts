@@ -3,6 +3,8 @@ import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
 import PriceHelper, { PriceResponse } from "@/utils/price.helpers"
+import { getTokenDecimals } from "@/utils/rpc.helpers"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 import stringify from "safe-stable-stringify"
 
 const PROVIDER_COINGECKO = "COINGECKO"
@@ -19,7 +21,7 @@ export class PriceFeedsService {
 	 * @returns A Promise that resolves to a PriceResponse object containing the price of the token in USD and the amount value in USD.
 	 * @dev This method trigger a background price fees update for all supported tokens
 	 */
-	static async getPrice(symbol: string, amount: bigint, decimals: number): Promise<PriceResponse> {
+	static async getPrice(symbol: string, amount: bigint, decimals: number, address?: string): Promise<PriceResponse> {
 		const priceFeed = await this.getLatestPrice(symbol)
 		if (!priceFeed) {
 			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
@@ -36,7 +38,7 @@ export class PriceFeedsService {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
 
-			await this.record(symbol, price, BigInt(Date.now()))
+			await this.record(symbol, price, BigInt(Date.now()), address)
 
 			return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
 		}
@@ -171,13 +173,17 @@ export class PriceFeedsService {
 		await priceFeedLog.save()
 	}
 
-	static async record(symbol: string, price: number, timestamp: bigint) {
+	static async record(symbol: string, price: number, timestamp: bigint, address?: string) {
 		if (TOKEN_REGISTRY.find((token) => token.symbol === symbol)) return
+
+		const chain = getHostStateMachine(chainId)
+		const decimals = await getTokenDecimals(chain, address)
 
 		const token = {
 			name: symbol,
 			symbol,
-			decimals: 18, // TODO: fetch decimal for given token
+			decimals,
+			address,
 			updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
 		} as TokenConfig
 
