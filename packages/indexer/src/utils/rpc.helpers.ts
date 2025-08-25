@@ -1,6 +1,6 @@
 import fetch from "node-fetch"
 import { u64 } from "scale-ts"
-import {  Hex, hexToBytes, keccak256, stringToBytes } from "viem"
+import { Hex, hexToBytes, keccak256, stringToBytes } from "viem"
 import { Option as PolkadotOption } from "@polkadot/types"
 import { Codec } from "@polkadot/types/types"
 import { StorageData } from "@polkadot/types/interfaces"
@@ -117,7 +117,7 @@ export async function getSubstrateBlockTimestamp(blockHash: string): Promise<big
  * @throws Error if the RPC call fails or returns an unexpected response
  */
 export async function getTokenDecimals(symbol: string, chain?: string, contractAddress?: Hex): Promise<number> {
- 	if (chain && chain.startsWith("EVM") && contractAddress) {
+	if (chain && chain.startsWith("EVM") && contractAddress) {
 		return getEvmTokenDecimals(chain, contractAddress)
 	}
 

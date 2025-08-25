@@ -18,7 +18,7 @@ interface TokenGatewayAssetMetadata {
 
 describe("RPC Helpers", () => {
 	afterEach(() => {
-	  ;((globalThis as any).api as ApiPromise).disconnect()
+		;((globalThis as any).api as ApiPromise).disconnect()
 	})
 
 	it("getSubstrateTokenDecimals should properly get token decimals for BNC on Bifrost", async () => {
