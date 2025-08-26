@@ -1,3 +1,5 @@
+const DEFAULT_TOKEN_UPDATE_FREQUENCY = 600 as const // 10 minutes
+
 /**
  * Token configuration interface.
  */
@@ -13,84 +15,84 @@ export const TOKEN_REGISTRY: TokenConfig[] = [
 	{
 		name: "ETH",
 		symbol: "ETH",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Polkadot",
 		symbol: "DOT",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Gnosis xDAI",
 		symbol: "XDAI",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 
 	// Major stablecoins
 	{
 		name: "USD coin",
 		symbol: "USDC",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Tether USD",
 		symbol: "USDT",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Maker DAI",
 		symbol: "DAI",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	// {
 	// 	name: "USDH",
 	// 	symbol: "USDH",
-	// 	updateFrequencySeconds: 600, // 10 minutes,
+	// 	updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	// },
 
 	// Substrate tokens
 	{
 		name: "Bifrost",
 		symbol: "BNC",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Cere Network",
 		symbol: "CERE",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 
 	// Parachain tokens
 	{
 		name: "Moonbeam",
 		symbol: "GLMR",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Astar",
 		symbol: "ASTR",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 
 	// Voucher/Liquid staking tokens
 	{
 		name: "Voucher DOT",
 		symbol: "vDOT",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Voucher BNC",
 		symbol: "vBNC",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Bifrost Voucher ASTR",
 		symbol: "vASTR",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 	{
 		name: "Voucher GLMR",
 		symbol: "vGLMR",
-		updateFrequencySeconds: 600, // 10 minutes,
+		updateFrequencySeconds: DEFAULT_TOKEN_UPDATE_FREQUENCY,
 	},
 ]

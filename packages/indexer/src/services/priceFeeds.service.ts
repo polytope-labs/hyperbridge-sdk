@@ -1,5 +1,5 @@
 import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
-import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
+import { TokenPrice } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
 import PriceHelper, { PriceResponse } from "@/utils/price.helpers"
@@ -7,7 +7,10 @@ import { getTokenDecimals } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import stringify from "safe-stable-stringify"
 
-const PROVIDER_COINGECKO = "COINGECKO"
+const DEFAULT_PROVIDER = "COINGECKO" as const
+const DEFAULT_SUPPORTED_CURRENCY = "USD" as const
+
+type TokenConfigWithCurrency = TokenConfig & { currency: string | typeof DEFAULT_SUPPORTED_CURRENCY }
 
 /**
  * Price Feeds Service fetches prices from CoinGecko adapter and stores them in the PriceFeed (current) and PriceFeedLog (historical).
@@ -23,27 +26,29 @@ export class PriceFeedsService {
 	 */
 	static async getPrice(symbol: string, amount: bigint, decimals: number, address?: string): Promise<PriceResponse> {
 		const priceFeed = await this.getLatestPrice(symbol)
-		if (!priceFeed) {
-			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
-			if (response instanceof Error) {
-				return { priceInUSD: "0", amountValueInUSD: "0" }
-			}
+		// if (!priceFeed) {
+		// 	const response = await PriceHelper.getTokenPriceFromCoinGecko(symbol)
+		// 	if (response instanceof Error) {
+		// 		return { priceInUSD: "0", amountValueInUSD: "0" }
+		// 	}
 
-			const price = (response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd
-			if (!price || price <= 0) {
-				return { priceInUSD: "0", amountValueInUSD: "0" }
-			}
+		// 	const price = (response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd
+		// 	if (!price || price <= 0) {
+		// 		return { priceInUSD: "0", amountValueInUSD: "0" }
+		// 	}
 
-			await this.record(symbol, price, BigInt(Date.now()), address)
+		// 	await this.record(symbol, price, BigInt(Date.now()), address)
 
-			this.updatePricesForChain(BigInt(Date.now())).catch((error) =>
-				console.error("Background price update failed:", error),
-			)
+		// 	this.updatePricesForChain(BigInt(Date.now())).catch((error) =>
+		// 		console.error("Background price update failed:", error),
+		// 	)
 
-			return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
-		}
+		// 	return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
+		// }
 
-		return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
+		// return PriceHelper.getAmountValueInUSD(amount, decimals, priceFeed.priceUSD)
+
+		return Promise.resolve({ priceInUSD: "0", amountValueInUSD: "0" });
 	}
 
 	/**
@@ -51,14 +56,15 @@ export class PriceFeedsService {
 	 * @param symbol - The symbol of the token to fetch the price for.
 	 * @returns A Promise that resolves to a PriceFeed object containing the price of the token in USD.
 	 */
-	static async getLatestPrice(symbol: string): ReturnType<typeof PriceFeed.get> {
-		const token = TOKEN_REGISTRY.find((token) => token.symbol === symbol)
-		if (!token) return undefined
+	static async getLatestPrice(symbol: string): ReturnType<typeof TokenPrice.get> {
+		// const token = TOKEN_REGISTRY.find((token) => token.symbol === symbol)
+		// if (!token) return undefined
 
-		const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
-		if (expired) return undefined
+		// const expired = await this.shouldUpdateTokenPrice(token, BigInt(Date.now()))
+		// if (expired) return undefined
 
-		return PriceFeed.get(symbol)
+		// return PriceFeed.get(symbol)
+		return
 	}
 
 	/**
@@ -66,77 +72,58 @@ export class PriceFeedsService {
 	 * This is the method that indexer handlers will call
 	 */
 	static async updatePricesForChain(blockTimestamp: bigint, blockNumber?: bigint, blockHash?: string): Promise<void> {
-		try {
-			const tokensToUpdate = await this.getTokensRequiringUpdate(blockTimestamp)
-			if (tokensToUpdate.length === 0) {
-				logger.info(`[PriceFeedsService.updatePricesForChain] No tokens requiring updates at ${blockTimestamp}`)
-				return
-			}
+		// try {
+		// 	const tokensToUpdate = await this.getTokensRequiringUpdate(blockTimestamp)
+		// 	if (tokensToUpdate.length === 0) {
+		// 		logger.info(`[PriceFeedsService.updatePricesForChain] No tokens requiring updates at ${blockTimestamp}`)
+		// 		return
+		// 	}
 
-			const symbols = tokensToUpdate.map((token) => token.symbol.toLowerCase()).join(",")
+		// 	const symbols = tokensToUpdate.map((token) => token.symbol.toLowerCase()).join(",")
 
-			logger.info(
-				`[PriceFeedsService.updatePricesForChain] Tokens requiring updates ${blockTimestamp} -> ${symbols}`,
-			)
+		// 	logger.info(
+		// 		`[PriceFeedsService.updatePricesForChain] Tokens requiring updates ${blockTimestamp} -> ${symbols}`,
+		// 	)
 
-			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols)
-			if (response instanceof Error) {
-				throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
-			}
+		// 	const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols)
+		// 	if (response instanceof Error) {
+		// 		throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
+		// 	}
 
-			logger.info(`[PriceFeedsService.updatePricesForChain] response ${stringify(response)}`)
+		// 	logger.info(`[PriceFeedsService.updatePricesForChain] response ${stringify(response)}`)
 
-			await Promise.all(
-				tokensToUpdate
-					.filter(({ symbol }) => !!(response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd)
-					.map(async (token) =>
-						this.storePriceFeed(
-							token,
-							(response[token.symbol.toLowerCase()] || response[token.symbol.toUpperCase()])?.usd,
-							blockTimestamp,
-							blockNumber,
-							blockHash,
-						),
-					),
-			)
-		} catch (error) {
-			logger.error(`Failed to update prices for chain: ${error}`)
-		}
+		// 	await Promise.all(
+		// 		tokensToUpdate
+		// 			.filter(({ symbol }) => !!(response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd)
+		// 			.map(async (token) =>
+		// 				this.storePriceFeed(
+		// 					token,
+		// 					(response[token.symbol.toLowerCase()] || response[token.symbol.toUpperCase()])?.usd,
+		// 					blockTimestamp,
+		// 					blockNumber,
+		// 					blockHash,
+		// 				),
+		// 			),
+		// 	)
+		// } catch (error) {
+		// 	logger.error(`Failed to update prices for chain: ${error}`)
+		// }
 	}
 
-	/**
-	 * Determine which tokens need price updates based on their update frequency
-	 */
-	static async getTokensRequiringUpdate(currentTimestamp: bigint): Promise<TokenConfig[]> {
-		const tokensNeedingUpdate: TokenConfig[] = []
-		for (const token of safeArray(TOKEN_REGISTRY)) {
-			const shouldUpdate = await this.shouldUpdateTokenPrice(token, currentTimestamp)
-			if (shouldUpdate) {
-				tokensNeedingUpdate.push(token)
-			}
-		}
+	// /**
+	//  * Determine which tokens need price updates based on their update frequency
+	//  */
+	// static async getTokensRequiringUpdate(currentTimestamp: bigint): Promise<TokenConfig[]> {
+	// 	const tokensNeedingUpdate: TokenConfig[] = []
+	// 	for (const token of safeArray(TOKEN_REGISTRY)) {
+	// 		const shouldUpdate = await this.shouldUpdateTokenPrice(token, currentTimestamp)
+	// 		if (shouldUpdate) {
+	// 			tokensNeedingUpdate.push(token)
+	// 		}
+	// 	}
 
-		return tokensNeedingUpdate
-	}
-
-	/**
-	 * Check if a token price should be updated
-	 */
-	static async shouldUpdateTokenPrice(token: TokenConfig, currentTimestamp: bigint): Promise<boolean> {
-		const lastPrice = await PriceFeed.get(token.symbol)
-		if (!lastPrice) {
-			return true
-		}
-
-		const timeSinceUpdateMs = Number(normalizeTimestamp(currentTimestamp)) - Number(lastPrice.lastUpdatedAt)
-		const frequencyMs = token.updateFrequencySeconds * 1000 // Convert to milliseconds
-		const needsUpdate = timeSinceUpdateMs >= frequencyMs
-
-		logger.info(
-			`[PriceFeedsService.shouldUpdateTokenPrice] Token ${token.symbol}: timeSinceUpdate=${timeSinceUpdateMs}ms, frequency=${frequencyMs}ms, needsUpdate=${needsUpdate}`,
-		)
-		return needsUpdate
-	}
+	// 	return tokensNeedingUpdate
+	// }
 
 	static async storePriceFeed(
 		token: TokenConfig,
@@ -145,48 +132,68 @@ export class PriceFeedsService {
 		blockNumber?: bigint,
 		blockHash?: string,
 	) {
-		let priceFeed = await PriceFeed.get(token.symbol)
-		if (!priceFeed) {
-			priceFeed = PriceFeed.create({
-				id: token.symbol,
-				symbol: token.symbol,
-				priceUSD: price.toString(),
-				lastUpdatedAt: normalizeTimestamp(blockTimestamp),
-			})
-		}
+	// 	let priceFeed = await PriceFeed.get(token.symbol)
+	// 	if (!priceFeed) {
+	// 		priceFeed = PriceFeed.create({
+	// 			id: token.symbol,
+	// 			symbol: token.symbol,
+	// 			priceUSD: price.toString(),
+	// 			lastUpdatedAt: normalizeTimestamp(blockTimestamp),
+	// 		})
+	// 	}
 
-		priceFeed.priceUSD = price.toString()
-		priceFeed.lastUpdatedAt = normalizeTimestamp(blockTimestamp)
+	// 	priceFeed.priceUSD = price.toString()
+	// 	priceFeed.lastUpdatedAt = normalizeTimestamp(blockTimestamp)
 
-		const priceFeedLog = PriceFeedLog.create({
-			id: `${token.symbol}-${blockTimestamp}`,
-			symbol: token.symbol,
-			priceUSD: priceFeed.priceUSD,
-			provider: PROVIDER_COINGECKO,
-			timestamp: normalizeTimestamp(blockTimestamp),
-			blockNumber: blockNumber || BigInt(0),
-			blockHash: blockHash,
-			createdAt: timestampToDate(blockTimestamp),
-		})
+	// 	const priceFeedLog = PriceFeedLog.create({
+	// 		id: `${token.symbol}-${blockTimestamp}`,
+	// 		symbol: token.symbol,
+	// 		priceUSD: priceFeed.priceUSD,
+	// 		provider: PROVIDER_COINGECKO,
+	// 		timestamp: normalizeTimestamp(blockTimestamp),
+	// 		blockNumber: blockNumber || BigInt(0),
+	// 		blockHash: blockHash,
+	// 		createdAt: timestampToDate(blockTimestamp),
+	// 	})
 
-		await priceFeed.save()
-		await priceFeedLog.save()
+	// 	await priceFeed.save()
+	// 	await priceFeedLog.save()
+	// }
+
+	// static async record(symbol: string, price: number, timestamp: bigint, address?: string) {
+	// 	if (TOKEN_REGISTRY.find((token) => token.symbol === symbol)) return
+
+	// 	const chain = getHostStateMachine(chainId)
+	// 	const decimals = await getTokenDecimals(chain, address)
+
+	// 	const token = {
+	// 		name: symbol,
+	// 		symbol,
+	// 		decimals,
+	// 		address,
+	// 		updateFrequencySeconds: 600,
+	// 	} as TokenConfig
+
+	// 	await this.storePriceFeed(token, price, timestamp)
 	}
 
-	static async record(symbol: string, price: number, timestamp: bigint, address?: string) {
-		if (TOKEN_REGISTRY.find((token) => token.symbol === symbol)) return
+	static async isTokenPriceStale(token: TokenConfigWithCurrency, currentTimestamp: bigint): Promise<boolean> {
+	  const latestTokenPrice = await this.getLatestTokenPrice(token.symbol, token.currency)
+		if (!latestTokenPrice) {
+			return true
+		}
 
-		const chain = getHostStateMachine(chainId)
-		const decimals = await getTokenDecimals(chain, address)
+		const timeSinceUpdateMs = Number(normalizeTimestamp(currentTimestamp)) - Number(latestTokenPrice.lastUpdatedAt)
+		const frequencyMs = token.updateFrequencySeconds * 1000 // Convert to milliseconds
+		const needsUpdate = timeSinceUpdateMs >= frequencyMs
 
-		const token = {
-			name: symbol,
-			symbol,
-			decimals,
-			address,
-			updateFrequencySeconds: 600,
-		} as TokenConfig
+		logger.info(
+			`[PriceFeedsService.isTokenPriceStale] Token ${token.symbol}: timeSinceUpdate=${timeSinceUpdateMs}ms, frequency=${frequencyMs}ms, needsUpdate=${needsUpdate}`,
+		)
+		return needsUpdate
+	}
 
-		await this.storePriceFeed(token, price, timestamp)
+	static async getLatestTokenPrice(symbol: string, currency: string = DEFAULT_SUPPORTED_CURRENCY): ReturnType<typeof TokenPrice.get> {
+	  return TokenPrice.get(`${symbol}-${currency}`)
 	}
 }
