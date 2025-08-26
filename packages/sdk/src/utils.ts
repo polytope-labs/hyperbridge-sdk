@@ -641,10 +641,10 @@ export enum ERC20Method {
  *
  * @example
  * ```ts
- * import { MethodSignature, bytes20ToBytes32 } from '@hyperbridge/sdk'
+ * import { ERC20Method, bytes20ToBytes32 } from '@hyperbridge/sdk'
  *
  * // Get balance storage slot for ERC20
- * const balanceData = MethodSignature.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+ * const balanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
  * const balanceSlot = await getStorageSlot(
  *   client,
  *   tokenAddress,
@@ -652,7 +652,7 @@ export enum ERC20Method {
  * )
  *
  * // Get allowance storage slot for ERC20
- * const allowanceData = MethodSignature.ALLOWANCE +
+ * const allowanceData = ERC20Method.ALLOWANCE +
  *   bytes20ToBytes32(ownerAddress).slice(2) +
  *   bytes20ToBytes32(spenderAddress).slice(2)
  * const allowanceSlot = await getStorageSlot(

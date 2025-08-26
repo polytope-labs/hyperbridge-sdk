@@ -14,7 +14,7 @@ import {
 	constructRedeemEscrowRequestBody,
 	IPostRequest,
 	getStorageSlot,
-	MethodSignature,
+	ERC20Method,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -310,7 +310,7 @@ export class ContractInteractionService {
 						const testValue = toHex(maxUint256)
 
 						try {
-							const balanceData = MethodSignature.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+							const balanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
 							const balanceSlot = await getStorageSlot(
 								destClient as any,
 								tokenAddress,
@@ -320,7 +320,7 @@ export class ContractInteractionService {
 
 							try {
 								const allowanceData =
-									MethodSignature.ALLOWANCE +
+									ERC20Method.ALLOWANCE +
 									bytes20ToBytes32(userAddress).slice(2) +
 									bytes20ToBytes32(this.configService.getIntentGatewayAddress(order.destChain)).slice(
 										2,
