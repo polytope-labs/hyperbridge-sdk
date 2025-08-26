@@ -615,16 +615,58 @@ async function fetchFromDefillama(identifier: string): Promise<number> {
 	return price
 }
 
+/**
+ * ERC20 method signatures used for storage slot detection
+ */
+export enum ERC20Method {
+	/** ERC20 balanceOf(address) method signature */
+	BALANCE_OF = "0x70a08231",
+	/** ERC20 allowance(address,address) method signature */
+	ALLOWANCE = "0xdd62ed3e",
+}
+
+/**
+ * Retrieves the storage slot for a contract call using debug_traceCall
+ *
+ * This function uses the Ethereum debug API to trace contract execution and identify
+ * the storage slot accessed during the call. It's commonly used for ERC20 token state
+ * mappings like balanceOf and allowance, but can work with any contract call that
+ * performs SLOAD operations.
+ *
+ * @param client - The viem PublicClient instance connected to an RPC node with debug API enabled
+ * @param tokenAddress - The address of the contract to trace
+ * @param data - The full encoded function call data (method signature + encoded parameters)
+ * @returns The storage slot as a hex string
+ * @throws Error if the storage slot cannot be found or if debug API is not available
+ *
+ * @example
+ * ```ts
+ * import { MethodSignature, bytes20ToBytes32 } from '@hyperbridge/sdk'
+ *
+ * // Get balance storage slot for ERC20
+ * const balanceData = MethodSignature.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+ * const balanceSlot = await getStorageSlot(
+ *   client,
+ *   tokenAddress,
+ *   balanceData as HexString
+ * )
+ *
+ * // Get allowance storage slot for ERC20
+ * const allowanceData = MethodSignature.ALLOWANCE +
+ *   bytes20ToBytes32(ownerAddress).slice(2) +
+ *   bytes20ToBytes32(spenderAddress).slice(2)
+ * const allowanceSlot = await getStorageSlot(
+ *   client,
+ *   tokenAddress,
+ *   allowanceData as HexString
+ * )
+ * ```
+ */
 export async function getStorageSlot(
 	client: PublicClient,
-	tokenAddress: HexString,
-	type: 0 | 1, // 0 = balanceOf, 1 = allowance
-	userAddress: HexString,
-	spenderAddress?: HexString,
+	contractAddress: HexString,
+	data: HexString,
 ): Promise<string> {
-	const signatures = ["0x70a08231", "0xdd62ed3e"] // balanceOf, allowance
-	const errorMessages = ["Balance storage slot not found", "Allowance storage slot not found"]
-
 	const traceCallClient = client.extend((client) => ({
 		async traceCall(args: CallParameters) {
 			return client.request({
@@ -636,17 +678,12 @@ export async function getStorageSlot(
 		},
 	}))
 
-	// Build payload based on type
-	const data =
-		type === 0
-			? signatures[0] + bytes20ToBytes32(userAddress).slice(2)
-			: signatures[1] + bytes20ToBytes32(userAddress).slice(2) + bytes20ToBytes32(spenderAddress!).slice(2)
-
 	// Make trace call
 	const response = await traceCallClient.traceCall({
-		to: tokenAddress,
-		data: data as HexString,
+		to: contractAddress,
+		data: data,
 	})
+	const methodSignature = data.slice(0, 10) as HexString
 
 	// @ts-ignore
 	const logs = response.structLogs
@@ -656,11 +693,12 @@ export async function getStorageSlot(
 			const sigHash = log.stack[0]
 			const slotHex = log.stack[log.stack.length - 1]
 
-			if (sigHash === signatures[type] && slotHex.length === 66) {
+			// Extract method signature from data (first 4 bytes)
+			if (sigHash === methodSignature && slotHex.length === 66) {
 				return slotHex
 			}
 		}
 	}
 
-	throw new Error(errorMessages[type])
+	throw new Error(`Storage slot not found for data: ${methodSignature}`)
 }

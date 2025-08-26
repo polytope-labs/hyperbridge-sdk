@@ -8,11 +8,13 @@ import {
 	FillOptions,
 	DispatchPost,
 	bytes32ToBytes20,
+	bytes20ToBytes32,
 	HostParams,
 	estimateGasForPost,
 	constructRedeemEscrowRequestBody,
 	IPostRequest,
 	getStorageSlot,
+	MethodSignature,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -308,16 +310,25 @@ export class ContractInteractionService {
 						const testValue = toHex(maxUint256)
 
 						try {
-							const balanceSlot = await getStorageSlot(destClient as any, tokenAddress, 0, userAddress)
+							const balanceData = MethodSignature.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+							const balanceSlot = await getStorageSlot(
+								destClient as any,
+								tokenAddress,
+								balanceData as HexString,
+							)
 							const stateDiffs = [{ slot: balanceSlot as HexString, value: testValue }]
 
 							try {
+								const allowanceData =
+									MethodSignature.ALLOWANCE +
+									bytes20ToBytes32(userAddress).slice(2) +
+									bytes20ToBytes32(this.configService.getIntentGatewayAddress(order.destChain)).slice(
+										2,
+									)
 								const allowanceSlot = await getStorageSlot(
 									destClient as any,
 									tokenAddress,
-									1,
-									userAddress,
-									this.configService.getIntentGatewayAddress(order.destChain),
+									allowanceData as HexString,
 								)
 								stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
 							} catch (e) {

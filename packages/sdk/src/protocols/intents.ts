@@ -1,10 +1,12 @@
 import {
 	bytes32ToBytes20,
+	bytes20ToBytes32,
 	constructRedeemEscrowRequestBody,
 	fetchTokenUsdPrice,
 	getStorageSlot,
 	ADDRESS_ZERO,
 	MOCK_ADDRESS,
+	ERC20Method,
 } from "@/utils"
 import { maxUint256, toHex } from "viem"
 import { type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
@@ -95,16 +97,19 @@ export class IntentGateway {
 				try {
 					const stateDiffs = []
 
-					const balanceSlot = await getStorageSlot(this.dest.client, tokenAddress, 0, MOCK_ADDRESS)
+					const balanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
+					const balanceSlot = await getStorageSlot(this.dest.client, tokenAddress, balanceData as HexString)
 					stateDiffs.push({ slot: balanceSlot as HexString, value: testValue })
 
 					try {
+						const allowanceData =
+							ERC20Method.ALLOWANCE +
+							bytes20ToBytes32(MOCK_ADDRESS).slice(2) +
+							bytes20ToBytes32(intentGatewayAddress).slice(2)
 						const allowanceSlot = await getStorageSlot(
 							this.dest.client,
 							tokenAddress,
-							1,
-							MOCK_ADDRESS,
-							intentGatewayAddress,
+							allowanceData as HexString,
 						)
 						stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
 					} catch (e) {
@@ -119,18 +124,20 @@ export class IntentGateway {
 			}),
 		).then((results) => results.filter(Boolean))
 
+		const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
 		const destFeeTokenBalanceSlot = await getStorageSlot(
 			this.dest.client,
 			destChainFeeTokenAddress,
-			0,
-			MOCK_ADDRESS,
+			destFeeTokenBalanceData as HexString,
 		)
+		const destFeeTokenAllowanceData =
+			ERC20Method.ALLOWANCE +
+			bytes20ToBytes32(MOCK_ADDRESS).slice(2) +
+			bytes20ToBytes32(intentGatewayAddress).slice(2)
 		const destFeeTokenAllowanceSlot = await getStorageSlot(
 			this.dest.client,
 			destChainFeeTokenAddress,
-			1,
-			MOCK_ADDRESS,
-			intentGatewayAddress,
+			destFeeTokenAllowanceData as HexString,
 		)
 		const feeTokenStateDiffs = [
 			{ slot: destFeeTokenBalanceSlot, value: testValue },
