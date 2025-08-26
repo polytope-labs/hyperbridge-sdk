@@ -16,6 +16,7 @@ export {
 	getStorageSlot,
 	fetchTokenUsdPrice,
 } from "@/utils"
+export * from "@/protocols/intents"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"
 export * from "@/chain"
