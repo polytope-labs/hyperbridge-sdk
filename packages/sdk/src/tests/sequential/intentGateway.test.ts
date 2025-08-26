@@ -21,7 +21,7 @@ import ERC6160 from "@/abis/erc6160"
 import INTENT_GATEWAY_ABI from "@/abis/IntentGateway"
 import EVM_HOST from "@/abis/evmHost"
 import HANDLER from "@/abis/handler"
-import { EvmChain, EvmChainParams, SubstrateChain } from "@/chain"
+import { EvmChain, EvmChainParams, SubstrateChain, IntentGateway } from "@/chain"
 import { createQueryClient } from "@/query-client"
 import { IntentFiller, BasicFiller, ConfirmationPolicy } from "@hyperbridge/filler"
 import { ChainConfigService } from "@/configs/ChainConfigService"
@@ -209,6 +209,7 @@ describe.sequential(
 
 			let gnosisChiadoEvmChain = new EvmChain(gnosisChiadoEvmStructParams) // Source Chain
 			let bscEvmChain = new EvmChain(bscEvmStructParams) // Destination Chain
+			let intentGateway = new IntentGateway(gnosisChiadoEvmChain, bscEvmChain)
 
 			let wrappedNativeTokenSourceChain = chainConfigService.getWrappedNativeAssetWithDecimals(gnosisChiadoId)
 
@@ -262,7 +263,7 @@ describe.sequential(
 
 			assert(postGasEstimate > 0n)
 
-			let gasEstimate = await gnosisChiadoEvmChain.estimateFillOrder(order, bscEvmChain)
+			let gasEstimate = await intentGateway.estimateFillOrder(order)
 
 			console.log("Fill gas estimate:", gasEstimate)
 
@@ -270,7 +271,7 @@ describe.sequential(
 
 			let initialAmountIn = 100n
 
-			let bestQuoteWithAmountOut = await bscEvmChain.findBestProtocolWithAmountIn(
+			let bestQuoteWithAmountOut = await intentGateway.findBestProtocolWithAmountIn(
 				order.destChain,
 				daiAsset,
 				usdtAsset,
@@ -281,7 +282,7 @@ describe.sequential(
 
 			assert(bestQuoteWithAmountOut.amountOut > 0n)
 
-			let bestQuoteWithAmountIn = await bscEvmChain.findBestProtocolWithAmountOut(
+			let bestQuoteWithAmountIn = await intentGateway.findBestProtocolWithAmountOut(
 				order.destChain,
 				usdtAsset,
 				daiAsset,
@@ -293,15 +294,15 @@ describe.sequential(
 			assert(bestQuoteWithAmountIn.amountIn === initialAmountIn)
 
 			// Order filled checker
-			let intentGatewayAddress = chainConfigService.getIntentGatewayAddress(order.destChain)
-			const unfilledOrderCommitment = order.id as HexString
 			const filledOrderCommitment =
 				"0x1dede1bc4939f194e8a06a9086377d1e64c5c1c77c055e4430ff7141c774528c" as HexString
-			let isFilled = await bscEvmChain.isOrderFilled(unfilledOrderCommitment, intentGatewayAddress)
+			let isFilled = await intentGateway.isOrderFilled(order)
 
 			assert(isFilled === false)
 
-			isFilled = await bscEvmChain.isOrderFilled(filledOrderCommitment, intentGatewayAddress)
+			// Create a mock order with the filled commitment for testing
+			let filledOrder = { ...order, id: filledOrderCommitment }
+			isFilled = await intentGateway.isOrderFilled(filledOrder)
 
 			assert(isFilled === true)
 		})

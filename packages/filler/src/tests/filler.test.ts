@@ -18,6 +18,7 @@ import {
 	ADDRESS_ZERO,
 	postRequestCommitment,
 	EvmChain,
+	IntentGateway,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -74,7 +75,7 @@ describe.sequential("Basic", () => {
 		})
 	})
 
-	it.skip("Should listen, place order, fill order, and check if filled at the source chain", async () => {
+	it("Should listen, place order, fill order, and check if filled at the source chain", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -90,6 +91,7 @@ describe.sequential("Basic", () => {
 			gnosisChiadoEvmHelper,
 			chainConfigService,
 			bscChapelId,
+			intentGatewayHelper,
 		} = await setUp()
 
 		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
@@ -123,15 +125,12 @@ describe.sequential("Basic", () => {
 			callData: "0x" as HexString,
 		}
 
-		const estimatedFees = await bscEvmHelper.estimateFillOrder(
-			{
-				...order,
-				id: orderCommitment(order),
-				destChain: hexToString(order.destChain as HexString),
-				sourceChain: hexToString(order.sourceChain as HexString),
-			},
-			gnosisChiadoEvmHelper,
-		)
+		const estimatedFees = await intentGatewayHelper.estimateFillOrder({
+			...order,
+			id: orderCommitment(order),
+			destChain: hexToString(order.destChain as HexString),
+			sourceChain: hexToString(order.sourceChain as HexString),
+		})
 
 		order.fees = estimatedFees
 
@@ -723,6 +722,8 @@ async function setUp() {
 		url: process.env.GNOSIS_CHIADO!,
 	})
 
+	const intentGatewayHelper = new IntentGateway(bscEvmHelper, gnosisChiadoEvmHelper)
+
 	return {
 		chainClientManager,
 		bscWalletClient,
@@ -747,6 +748,7 @@ async function setUp() {
 		gnosisChiadoHandler,
 		bscEvmHelper,
 		gnosisChiadoEvmHelper,
+		intentGatewayHelper,
 	}
 }
 

@@ -44,7 +44,7 @@ import UniswapRouterV2 from "@/abis/uniswapRouterV2"
 import UniswapV3Factory from "@/abis/uniswapV3Factory"
 import UniswapV3Pool from "@/abis/uniswapV3Pool"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
-import IntentGateway from "@/abis/IntentGateway"
+import IntentGatewayABI from "@/abis/IntentGateway"
 import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
@@ -128,6 +128,19 @@ export class EvmChain implements IChain {
 			transport: http(params.url),
 		})
 		this.chainConfigService = new ChainConfigService()
+	}
+
+	// Expose minimal getters for external helpers/classes
+	get client(): PublicClient {
+		return this.publicClient
+	}
+
+	get host(): HexString {
+		return this.params.host
+	}
+
+	get config(): ChainConfigService {
+		return this.chainConfigService
 	}
 
 	/**
@@ -526,207 +539,6 @@ export class EvmChain implements IChain {
 	}
 
 	/**
-	 * Estimates the gas required to fill an order on the destination chain.
-	 * This function estimates the gas required to fill the order, including the gas required to post the request to the destination chain.
-	 *
-	 * @param order - The order to fill
-	 * @param fillerWalletAddress - The address of the wallet that will fill the order
-	 * @param destChain - The destination chain to fill the order on
-	 * @returns The estimated gas amount in fee token (DAI)
-	 */
-	async estimateFillOrder(order: Order, destChain: EvmChain): Promise<bigint> {
-		const postRequest: IPostRequest = {
-			source: order.destChain,
-			dest: order.sourceChain,
-			body: constructRedeemEscrowRequestBody(order, MOCK_ADDRESS),
-			timeoutTimestamp: 0n,
-			nonce: await this.getHostNonce(),
-			from: this.chainConfigService.getIntentGatewayAddress(order.destChain),
-			to: this.chainConfigService.getIntentGatewayAddress(order.sourceChain),
-		}
-
-		const { decimals: sourceChainFeeTokenDecimals } = await this.getFeeTokenWithDecimals()
-		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
-			await destChain.getFeeTokenWithDecimals()
-
-		// Get source post gas estimate directly in source chain decimals
-		const postGasEstimate = await this.estimateGas(postRequest)
-
-		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
-			postGasEstimate,
-			this.publicClient,
-			sourceChainFeeTokenDecimals,
-		)
-
-		// 2% markup
-		const RELAYER_FEE_BPS = 200n
-		const relayerFeeInSourceFeeToken =
-			postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * RELAYER_FEE_BPS) / 10000n
-
-		// Convert relayer fee to dest chain decimals for fillOrder call
-		const relayerFeeInDestFeeToken = this.adjustFeeDecimals(
-			relayerFeeInSourceFeeToken,
-			sourceChainFeeTokenDecimals,
-			destChainFeeTokenDecimals,
-		)
-
-		const fillOptions: FillOptions = {
-			relayerFee: relayerFeeInDestFeeToken,
-		}
-
-		const totalEthValue = order.outputs
-			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
-			.reduce((sum, output) => sum + output.amount, 0n)
-
-		const intentGatewayAddress = this.chainConfigService.getIntentGatewayAddress(order.destChain)
-		const testValue = toHex(maxUint256)
-
-		const orderOverrides = await Promise.all(
-			order.outputs.map(async (output) => {
-				const tokenAddress = bytes32ToBytes20(output.token)
-
-				if (tokenAddress === ADDRESS_ZERO) {
-					return null
-				}
-
-				try {
-					const stateDiffs = []
-
-					const balanceSlot = await getStorageSlot(destChain.publicClient, tokenAddress, 0, MOCK_ADDRESS)
-					stateDiffs.push({ slot: balanceSlot as HexString, value: testValue })
-
-					try {
-						const allowanceSlot = await getStorageSlot(
-							destChain.publicClient,
-							tokenAddress,
-							1,
-							MOCK_ADDRESS,
-							intentGatewayAddress,
-						)
-						stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
-					} catch (e) {
-						console.warn(`Could not find allowance slot for token ${tokenAddress}:`, e)
-					}
-
-					return { address: tokenAddress, stateDiff: stateDiffs }
-				} catch (e) {
-					console.warn(`Could not find balance slot for token ${tokenAddress}:`, e)
-					return null
-				}
-			}),
-		).then((results) => results.filter(Boolean))
-
-		const destFeeTokenBalanceSlot = await getStorageSlot(
-			destChain.publicClient,
-			destChainFeeTokenAddress,
-			0,
-			MOCK_ADDRESS,
-		)
-		const destFeeTokenAllowanceSlot = await getStorageSlot(
-			destChain.publicClient,
-			destChainFeeTokenAddress,
-			1,
-			MOCK_ADDRESS,
-			intentGatewayAddress,
-		)
-		const feeTokenStateDiffs = [
-			{ slot: destFeeTokenBalanceSlot, value: testValue },
-			{ slot: destFeeTokenAllowanceSlot, value: testValue },
-		]
-
-		orderOverrides.push({
-			address: destChainFeeTokenAddress,
-			stateDiff: feeTokenStateDiffs as any,
-		})
-
-		const destChainFillGas = await destChain.publicClient.estimateContractGas({
-			abi: IntentGateway.ABI,
-			address: intentGatewayAddress,
-			functionName: "fillOrder",
-			args: [transformOrderForContract(order), fillOptions as any],
-			account: MOCK_ADDRESS,
-			value: totalEthValue,
-			stateOverride: orderOverrides as any,
-		})
-
-		// Convert dest chain gas directly to source chain decimals
-		const fillGasInSourceFeeToken = await this.convertGasToFeeToken(
-			destChainFillGas,
-			destChain.publicClient,
-			sourceChainFeeTokenDecimals,
-		)
-
-		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
-			await destChain.quote(postRequest),
-			destChainFeeTokenDecimals,
-			sourceChainFeeTokenDecimals,
-		)
-
-		// All values now in source chain fee token decimals
-		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
-
-		const SWAP_OPERATIONS_BPS = 2000n // 20% buffer for potential swaps
-		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
-		return totalEstimate + swapOperationsInFeeToken
-	}
-
-	/**
-	 * Converts a gas estimate to a fee token amount.
-	 * This function converts a gas estimate to a fee token amount, taking into account the gas price, the native token decimals, and the target fee token decimals.
-	 *
-	 * @param gasEstimate - The gas estimate to convert
-	 * @param publicClient - The public client to use
-	 * @param targetDecimals - The decimals of the target fee token
-	 * @returns The fee token amount
-	 */
-	private async convertGasToFeeToken(
-		gasEstimate: bigint,
-		publicClient: PublicClient,
-		targetDecimals: number,
-	): Promise<bigint> {
-		const gasPrice = await publicClient.getGasPrice()
-		const gasCostInWei = gasEstimate * gasPrice
-		const nativeToken = publicClient.chain?.nativeCurrency
-
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
-		}
-
-		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
-		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
-		const gasCostUsd = gasCostInToken * tokenPriceUsd
-
-		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI") // Using DAI as default
-		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
-
-		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
-	}
-
-	/**
-	 * Convert relayer fee amount between tokens with different decimals.
-	 *
-	 * @param relayerFeeInFeeToken The fee amount in source token units
-	 * @param fromDecimals Decimals the relayerFeeInFeeToken is currently in
-	 * @param toDecimals Decimals the relayerFeeInFeeToken should be converted to
-	 * @returns Fee amount adjusted to destination token decimals
-	 */
-	adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
-		if (fromDecimals === toDecimals) {
-			return feeInFeeToken
-		}
-
-		if (fromDecimals < toDecimals) {
-			// Scale UP (no precision loss)
-			const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
-			return feeInFeeToken * scaleFactor
-		} else {
-			// Scale DOWN (ceil division to avoid undercharging)
-			const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
-			return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
-		}
-	}
-
-	/**
 	 * Gets the fee token address and decimals for the chain.
 	 * This function gets the fee token address and decimals for the chain.
 	 *
@@ -748,36 +560,177 @@ export class EvmChain implements IChain {
 	}
 
 	/**
-	 * Finds the best protocol to use for a swap.
-	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
+	 * Gets the nonce of the host.
+	 * This function gets the nonce of the host.
 	 *
-	 * @param chain - The chain to use for the swap
-	 * @param tokenIn - The address of the input token
-	 * @param tokenOut - The address of the output token
-	 * @param amountOut - The amount of output tokens to swap
-	 * @returns The best protocol to use for the swap
+	 * @returns The nonce of the host
 	 */
+	async getHostNonce(): Promise<bigint> {
+		const nonce = await this.publicClient.readContract({
+			abi: evmHost.ABI,
+			address: this.params.host,
+			functionName: "nonce",
+		})
+
+		return nonce
+	}
+
+	// isOrderFilled moved to IntentGateway class
+}
+
+export class IntentGateway {
+	constructor(
+		public readonly source: EvmChain,
+		public readonly dest: EvmChain,
+	) {}
+
+	async estimateFillOrder(order: Order): Promise<bigint> {
+		const postRequest: IPostRequest = {
+			source: order.destChain,
+			dest: order.sourceChain,
+			body: constructRedeemEscrowRequestBody(order, MOCK_ADDRESS),
+			timeoutTimestamp: 0n,
+			nonce: await this.source.getHostNonce(),
+			from: this.source.config.getIntentGatewayAddress(order.destChain),
+			to: this.source.config.getIntentGatewayAddress(order.sourceChain),
+		}
+
+		const { decimals: sourceChainFeeTokenDecimals } = await this.source.getFeeTokenWithDecimals()
+		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
+			await this.dest.getFeeTokenWithDecimals()
+
+		const postGasEstimate = await this.source.estimateGas(postRequest)
+
+		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
+			postGasEstimate,
+			this.source.client,
+			sourceChainFeeTokenDecimals,
+		)
+
+		const RELAYER_FEE_BPS = 200n
+		const relayerFeeInSourceFeeToken =
+			postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * RELAYER_FEE_BPS) / 10000n
+
+		const relayerFeeInDestFeeToken = this.adjustFeeDecimals(
+			relayerFeeInSourceFeeToken,
+			sourceChainFeeTokenDecimals,
+			destChainFeeTokenDecimals,
+		)
+
+		const fillOptions: FillOptions = {
+			relayerFee: relayerFeeInDestFeeToken,
+		}
+
+		const totalEthValue = order.outputs
+			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
+			.reduce((sum, output) => sum + output.amount, 0n)
+
+		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+		const testValue = toHex(maxUint256)
+
+		const orderOverrides = await Promise.all(
+			order.outputs.map(async (output) => {
+				const tokenAddress = bytes32ToBytes20(output.token)
+
+				if (tokenAddress === ADDRESS_ZERO) {
+					return null
+				}
+
+				try {
+					const stateDiffs = []
+
+					const balanceSlot = await getStorageSlot(this.dest.client, tokenAddress, 0, MOCK_ADDRESS)
+					stateDiffs.push({ slot: balanceSlot as HexString, value: testValue })
+
+					try {
+						const allowanceSlot = await getStorageSlot(
+							this.dest.client,
+							tokenAddress,
+							1,
+							MOCK_ADDRESS,
+							intentGatewayAddress,
+						)
+						stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
+					} catch (e) {
+						console.warn(`Could not find allowance slot for token ${tokenAddress}:`, e)
+					}
+
+					return { address: tokenAddress, stateDiff: stateDiffs }
+				} catch (e) {
+					console.warn(`Could not find balance slot for token ${tokenAddress}:`, e)
+					return null
+				}
+			}),
+		).then((results) => results.filter(Boolean))
+
+		const destFeeTokenBalanceSlot = await getStorageSlot(
+			this.dest.client,
+			destChainFeeTokenAddress,
+			0,
+			MOCK_ADDRESS,
+		)
+		const destFeeTokenAllowanceSlot = await getStorageSlot(
+			this.dest.client,
+			destChainFeeTokenAddress,
+			1,
+			MOCK_ADDRESS,
+			intentGatewayAddress,
+		)
+		const feeTokenStateDiffs = [
+			{ slot: destFeeTokenBalanceSlot, value: testValue },
+			{ slot: destFeeTokenAllowanceSlot, value: testValue },
+		]
+
+		orderOverrides.push({
+			address: destChainFeeTokenAddress,
+			stateDiff: feeTokenStateDiffs as any,
+		})
+
+		const destChainFillGas = await this.dest.client.estimateContractGas({
+			abi: IntentGatewayABI.ABI,
+			address: intentGatewayAddress,
+			functionName: "fillOrder",
+			args: [transformOrderForContract(order), fillOptions as any],
+			account: MOCK_ADDRESS,
+			value: totalEthValue,
+			stateOverride: orderOverrides as any,
+		})
+
+		const fillGasInSourceFeeToken = await this.convertGasToFeeToken(
+			destChainFillGas,
+			this.dest.client,
+			sourceChainFeeTokenDecimals,
+		)
+
+		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
+			await this.dest.quote(postRequest),
+			destChainFeeTokenDecimals,
+			sourceChainFeeTokenDecimals,
+		)
+
+		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
+
+		const SWAP_OPERATIONS_BPS = 2500n
+		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
+		return totalEstimate + swapOperationsInFeeToken
+	}
+
 	async findBestProtocolWithAmountOut(
 		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
-	): Promise<{
-		protocol: "v2" | "v3" | null
-		amountIn: bigint
-		fee?: number // For V3
-		gasEstimate?: bigint // For V3
-	}> {
-		const destClient = this.publicClient
+	): Promise<{ protocol: "v2" | "v3" | null; amountIn: bigint; fee?: number; gasEstimate?: bigint }> {
+		const destClient = this.dest.client
 		let amountInV2 = maxUint256
 		let amountInV3 = maxUint256
 		let bestV3Fee = 0
 		let v3GasEstimate = BigInt(0)
 
-		const v2Router = this.chainConfigService.getUniswapRouterV2Address(chain)
-		const v2Factory = this.chainConfigService.getUniswapV2FactoryAddress(chain)
-		const v3Factory = this.chainConfigService.getUniswapV3FactoryAddress(chain)
-		const v3Quoter = this.chainConfigService.getUniswapV3QuoterAddress(chain)
+		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
+		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
+		const v3Factory = this.source.config.getUniswapV3FactoryAddress(chain)
+		const v3Quoter = this.source.config.getUniswapV3QuoterAddress(chain)
 
 		try {
 			const v2PairExists = (await destClient.readContract({
@@ -801,9 +754,8 @@ export class EvmChain implements IChain {
 			console.warn("V2 quote failed:", error)
 		}
 
-		// Find the best pool in v3 with best quote
 		let bestV3AmountIn = maxUint256
-		const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
+		const fees = [500, 3000, 10000]
 
 		for (const fee of fees) {
 			try {
@@ -822,7 +774,6 @@ export class EvmChain implements IChain {
 					})
 
 					if (liquidity > BigInt(0)) {
-						// Get quote from quoter
 						const quoteResult = (await destClient.readContract({
 							address: v3Quoter,
 							abi: UniswapV3Quoter.ABI,
@@ -836,7 +787,7 @@ export class EvmChain implements IChain {
 									sqrtPriceLimitX96: BigInt(0),
 								},
 							],
-						})) as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+						})) as [bigint, bigint, number, bigint]
 
 						const [amountIn, , , gasEstimate] = quoteResult
 
@@ -849,66 +800,38 @@ export class EvmChain implements IChain {
 				}
 			} catch (error) {
 				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
-				// Continue to next fee tier
 			}
 		}
 
 		amountInV3 = bestV3AmountIn
 
 		if (amountInV2 === maxUint256 && amountInV3 === maxUint256) {
-			// No liquidity in either protocol
-			return {
-				protocol: null,
-				amountIn: maxUint256,
-			}
+			return { protocol: null, amountIn: maxUint256 }
 		}
 
 		if (amountInV2 <= amountInV3) {
-			return {
-				protocol: "v2",
-				amountIn: amountInV2,
-			}
+			return { protocol: "v2", amountIn: amountInV2 }
 		} else {
-			return {
-				protocol: "v3",
-				amountIn: amountInV3,
-				fee: bestV3Fee,
-				gasEstimate: v3GasEstimate,
-			}
+			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee, gasEstimate: v3GasEstimate }
 		}
 	}
 
-	/**
-	 * Finds the best protocol to use for a swap.
-	 * This function finds the best protocol to use for a swap, including the best fee and gas estimate.
-	 *
-	 * @param chain - The chain to use for the swap
-	 * @param tokenIn - The address of the input token
-	 * @param tokenOut - The address of the output token
-	 * @param amountIn - The amount of input tokens to swap
-	 * @returns The best protocol to use for the swap
-	 */
 	async findBestProtocolWithAmountIn(
 		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountIn: bigint,
-	): Promise<{
-		protocol: "v2" | "v3" | null
-		amountOut: bigint
-		fee?: number // For V3
-		gasEstimate?: bigint // For V3
-	}> {
-		const destClient = this.publicClient
+	): Promise<{ protocol: "v2" | "v3" | null; amountOut: bigint; fee?: number; gasEstimate?: bigint }> {
+		const destClient = this.dest.client
 		let amountOutV2 = BigInt(0)
 		let amountOutV3 = BigInt(0)
 		let bestV3Fee = 0
 		let v3GasEstimate = BigInt(0)
 
-		const v2Router = this.chainConfigService.getUniswapRouterV2Address(chain)
-		const v2Factory = this.chainConfigService.getUniswapV2FactoryAddress(chain)
-		const v3Factory = this.chainConfigService.getUniswapV3FactoryAddress(chain)
-		const v3Quoter = this.chainConfigService.getUniswapV3QuoterAddress(chain)
+		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
+		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
+		const v3Factory = this.source.config.getUniswapV3FactoryAddress(chain)
+		const v3Quoter = this.source.config.getUniswapV3QuoterAddress(chain)
 
 		try {
 			const v2PairExists = (await destClient.readContract({
@@ -926,15 +849,14 @@ export class EvmChain implements IChain {
 					args: [amountIn, [tokenIn, tokenOut]],
 				})) as bigint[]
 
-				amountOutV2 = v2AmountOut[1] // Second element is the output amount
+				amountOutV2 = v2AmountOut[1]
 			}
 		} catch (error) {
 			console.warn("V2 quote failed:", error)
 		}
 
-		// Find the best pool in v3 with best quote
 		let bestV3AmountOut = BigInt(0)
-		const fees = [500, 3000, 10000] // 0.05%, 0.3%, 1%
+		const fees = [500, 3000, 10000]
 
 		for (const fee of fees) {
 			try {
@@ -953,7 +875,6 @@ export class EvmChain implements IChain {
 					})
 
 					if (liquidity > BigInt(0)) {
-						// Get quote from quoter
 						const quoteResult = (await destClient.readContract({
 							address: v3Quoter,
 							abi: UniswapV3Quoter.ABI,
@@ -967,7 +888,7 @@ export class EvmChain implements IChain {
 									sqrtPriceLimitX96: BigInt(0),
 								},
 							],
-						})) as [bigint, bigint, number, bigint] // [amountOut, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+						})) as [bigint, bigint, number, bigint]
 
 						const [amountOut, , , gasEstimate] = quoteResult
 
@@ -980,49 +901,54 @@ export class EvmChain implements IChain {
 				}
 			} catch (error) {
 				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
-				// Continue to next fee tier
 			}
 		}
 
 		amountOutV3 = bestV3AmountOut
 
 		if (amountOutV2 === BigInt(0) && amountOutV3 === BigInt(0)) {
-			// No liquidity in either protocol
-			return {
-				protocol: null,
-				amountOut: BigInt(0),
-			}
+			return { protocol: null, amountOut: BigInt(0) }
 		}
 
 		if (amountOutV2 >= amountOutV3) {
-			return {
-				protocol: "v2",
-				amountOut: amountOutV2,
-			}
+			return { protocol: "v2", amountOut: amountOutV2 }
 		} else {
-			return {
-				protocol: "v3",
-				amountOut: amountOutV3,
-				fee: bestV3Fee,
-				gasEstimate: v3GasEstimate,
-			}
+			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee, gasEstimate: v3GasEstimate }
 		}
 	}
 
-	/**
-	 * Gets the nonce of the host.
-	 * This function gets the nonce of the host.
-	 *
-	 * @returns The nonce of the host
-	 */
-	async getHostNonce(): Promise<bigint> {
-		const nonce = await this.publicClient.readContract({
-			abi: evmHost.ABI,
-			address: this.params.host,
-			functionName: "nonce",
-		})
+	private async convertGasToFeeToken(
+		gasEstimate: bigint,
+		publicClient: PublicClient,
+		targetDecimals: number,
+	): Promise<bigint> {
+		const gasPrice = await publicClient.getGasPrice()
+		const gasCostInWei = gasEstimate * gasPrice
+		const nativeToken = publicClient.chain?.nativeCurrency
 
-		return nonce
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
+		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+		const gasCostUsd = gasCostInToken * tokenPriceUsd
+
+		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI")
+		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
+	}
+
+	adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
+		if (fromDecimals === toDecimals) return feeInFeeToken
+		if (fromDecimals < toDecimals) {
+			const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
+			return feeInFeeToken * scaleFactor
+		} else {
+			const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
+			return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
+		}
 	}
 
 	/**
@@ -1033,15 +959,17 @@ export class EvmChain implements IChain {
 	 * @param intentGatewayAddress - The address of the intent gateway
 	 * @returns True if the order has been filled, false otherwise
 	 */
-	async isOrderFilled(orderCommitment: HexString, intentGatewayAddress: HexString): Promise<boolean> {
-		let filledSlot = await this.publicClient.readContract({
-			abi: IntentGateway.ABI,
+	async isOrderFilled(order: Order): Promise<boolean> {
+		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+
+		let filledSlot = await this.dest.client.readContract({
+			abi: IntentGatewayABI.ABI,
 			address: intentGatewayAddress,
 			functionName: "calculateCommitmentSlotHash",
-			args: [orderCommitment],
+			args: [order.id as HexString],
 		})
 
-		const filledStatus = await this.publicClient.getStorageAt({
+		const filledStatus = await this.dest.client.getStorageAt({
 			address: intentGatewayAddress,
 			slot: filledSlot,
 		})
