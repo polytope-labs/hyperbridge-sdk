@@ -76,10 +76,8 @@ export class BasicFiller implements FillerStrategy {
 
 			const { outputUsdValue, inputUsdValue } = await this.contractService.getTokenUsdValue(order)
 
-			const feeTokenPrice = await fetchTokenUsdPrice("DAI")
-			const feeTokenPriceInDecimals = BigInt(Math.floor(feeTokenPrice * Math.pow(10, 18)))
-			const orderFeeInUsd = (order.fees * feeTokenPriceInDecimals) / BigInt(10 ** 18)
-			const totalGasEstimateInUsd = (totalGasEstimateInFeeToken * feeTokenPriceInDecimals) / BigInt(10 ** 18)
+			const orderFeeInUsd = (order.fees * BigInt(10 ** decimals)) / BigInt(10 ** 18)
+			const totalGasEstimateInUsd = (totalGasEstimateInFeeToken * BigInt(10 ** decimals)) / BigInt(10 ** 18)
 
 			const toReceive = inputUsdValue + orderFeeInUsd
 			const toPay = outputUsdValue + totalGasEstimateInUsd
