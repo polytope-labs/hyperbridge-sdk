@@ -1,20 +1,6 @@
 import { ApiPromise, WsProvider } from "@polkadot/api"
-import { StorageData } from "@polkadot/types/interfaces"
 import { keccakAsU8a } from "@polkadot/util-crypto"
-import { keccak256, stringToBytes } from "viem"
 import { getEvmTokenDecimals, getSubstrateTokenDecimals } from "../rpc.helpers"
-
-/**
- * NumberString is a number wrapped in a string
- */
-type NumberString = string
-
-interface TokenGatewayAssetMetadata {
-	name: string
-	symbol: string
-	decimals: NumberString
-	minimalBalance: "10,000,000,000"
-}
 
 describe("RPC Helpers", () => {
 	afterEach(() => {

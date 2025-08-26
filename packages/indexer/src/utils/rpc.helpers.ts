@@ -138,7 +138,7 @@ export async function getEvmTokenDecimals(chain: string, contractAddress: Hex): 
 				id: 1,
 				jsonrpc: "2.0",
 				method: "eth_call",
-				params: [{ to: contractAddress, data: keccak256(stringToBytes("decimals()")) }, "latest"],
+				params: [{ to: contractAddress, data: keccak256(stringToBytes("decimals()")).slice(0, 10) }, "latest"],
 			}),
 		})
 

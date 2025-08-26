@@ -29,16 +29,16 @@ export class PriceFeedsService {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
 
-			this.updatePricesForChain(BigInt(Date.now())).catch((error) =>
-				console.error("Background price update failed:", error),
-			)
-
 			const price = (response[symbol.toLowerCase()] || response[symbol.toUpperCase()])?.usd
 			if (!price || price <= 0) {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
 
 			await this.record(symbol, price, BigInt(Date.now()), address)
+
+			this.updatePricesForChain(BigInt(Date.now())).catch((error) =>
+				console.error("Background price update failed:", error),
+			)
 
 			return PriceHelper.getAmountValueInUSD(amount, decimals, price.toString())
 		}
