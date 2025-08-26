@@ -17,12 +17,29 @@ import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { type PublicClient } from "viem"
 import { EvmChain } from "@/chains/evm"
 
+/**
+ * IntentGateway handles cross-chain intent operations between EVM chains.
+ * It provides functionality for estimating fill orders, finding optimal swap protocols,
+ * and checking order statuses across different chains.
+ */
 export class IntentGateway {
+	/**
+	 * Creates a new IntentGateway instance for cross-chain operations.
+	 * @param source - The source EVM chain
+	 * @param dest - The destination EVM chain
+	 */
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
 	) {}
 
+	/**
+	 * Estimates the total cost required to fill an order, including gas fees, relayer fees,
+	 * protocol fees, and swap operations.
+	 *
+	 * @param order - The order to estimate fill costs for
+	 * @returns The estimated total cost in the source chain's fee token
+	 */
 	async estimateFillOrder(order: Order): Promise<bigint> {
 		const postRequest: IPostRequest = {
 			source: order.destChain,
@@ -154,6 +171,16 @@ export class IntentGateway {
 		return totalEstimate + swapOperationsInFeeToken
 	}
 
+	/**
+	 * Finds the best Uniswap protocol (V2 or V3) for swapping tokens given a desired output amount.
+	 * Compares liquidity and pricing across different protocols and fee tiers.
+	 *
+	 * @param chain - The chain identifier where the swap will occur
+	 * @param tokenIn - The address of the input token
+	 * @param tokenOut - The address of the output token
+	 * @param amountOut - The desired output amount
+	 * @returns Object containing the best protocol, required input amount, fee tier (for V3), and gas estimate
+	 */
 	async findBestProtocolWithAmountOut(
 		chain: string,
 		tokenIn: HexString,
@@ -255,6 +282,16 @@ export class IntentGateway {
 		}
 	}
 
+	/**
+	 * Finds the best Uniswap protocol (V2 or V3) for swapping tokens given an input amount.
+	 * Compares liquidity and pricing across different protocols and fee tiers.
+	 *
+	 * @param chain - The chain identifier where the swap will occur
+	 * @param tokenIn - The address of the input token
+	 * @param tokenOut - The address of the output token
+	 * @param amountIn - The input amount to swap
+	 * @returns Object containing the best protocol, expected output amount, fee tier (for V3), and gas estimate
+	 */
 	async findBestProtocolWithAmountIn(
 		chain: string,
 		tokenIn: HexString,
@@ -356,6 +393,16 @@ export class IntentGateway {
 		}
 	}
 
+	/**
+	 * Converts gas costs to the equivalent amount in the fee token (DAI).
+	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
+	 *
+	 * @param gasEstimate - The estimated gas units
+	 * @param publicClient - The client for the chain to get gas prices
+	 * @param targetDecimals - The decimal places of the target fee token
+	 * @returns The gas cost converted to fee token amount
+	 * @private
+	 */
 	private async convertGasToFeeToken(
 		gasEstimate: bigint,
 		publicClient: PublicClient,
@@ -379,6 +426,15 @@ export class IntentGateway {
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
 	}
 
+	/**
+	 * Adjusts fee amounts between different decimal precisions.
+	 * Handles scaling up or down based on the decimal difference.
+	 *
+	 * @param feeInFeeToken - The fee amount to adjust
+	 * @param fromDecimals - The current decimal precision
+	 * @param toDecimals - The target decimal precision
+	 * @returns The adjusted fee amount with the target decimal precision
+	 */
 	adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
 		if (fromDecimals === toDecimals) return feeInFeeToken
 		if (fromDecimals < toDecimals) {
@@ -391,8 +447,8 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Checks if an order has been filled.
-	 * This function checks if an order has been filled by checking the filled status of the order commitment.
+	 * Checks if an order has been filled by verifying the commitment status on-chain.
+	 * Reads the storage slot corresponding to the order's commitment hash.
 	 *
 	 * @param order - The order to check
 	 * @returns True if the order has been filled, false otherwise
@@ -415,6 +471,13 @@ export class IntentGateway {
 	}
 }
 
+/**
+ * Transforms an Order object into the format expected by the smart contract.
+ * Converts chain IDs to hex format and restructures input/output arrays.
+ *
+ * @param order - The order to transform
+ * @returns The order in contract-compatible format
+ */
 function transformOrderForContract(order: Order) {
 	return {
 		sourceChain: toHex(order.sourceChain),

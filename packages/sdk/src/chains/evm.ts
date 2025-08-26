@@ -269,7 +269,7 @@ export class EvmChain implements IChain {
 
 	/**
 	 * Get the state machine update time for a given state machine height.
-	 * @param {StateMachineHeight} stateMachineheight - The state machine height.
+	 * @param {StateMachineHeight} stateMachineHeight - The state machine height.
 	 * @returns {Promise<bigint>} The statemachine update time in seconds.
 	 */
 	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
