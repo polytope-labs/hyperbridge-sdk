@@ -14,8 +14,12 @@ export {
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
 	getStorageSlot,
+	fetchTokenUsdPrice,
 } from "@/utils"
+export * from "@/protocols/intents"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"
 export * from "@/chain"
 export * from "@/types"
+export * from "@/configs/ChainConfigService"
+export * from "@/configs/chain"

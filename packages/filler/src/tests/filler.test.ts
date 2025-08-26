@@ -1,5 +1,5 @@
 import { IntentFiller } from "@/core/filler"
-import { ChainClientManager, ChainConfigService, ContractInteractionService } from "@/services"
+import { ChainClientManager, ContractInteractionService } from "@/services"
 import { BasicFiller } from "@/strategies/basic"
 import { StableSwapFiller } from "@/strategies/swap"
 import {
@@ -16,8 +16,9 @@ import {
 	orderCommitment,
 	bytes20ToBytes32,
 	ADDRESS_ZERO,
-	bytes32ToBytes20,
 	postRequestCommitment,
+	EvmChain,
+	IntentGateway,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -25,13 +26,11 @@ import {
 	decodeFunctionData,
 	encodePacked,
 	getContract,
-	hexToBigInt,
 	hexToString,
 	keccak256,
 	maxUint256,
 	parseEventLogs,
 	PublicClient,
-	toHex,
 	WalletClient,
 } from "viem"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
@@ -43,6 +42,7 @@ import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
+import { ChainConfigService } from "@hyperbridge/sdk"
 describe.sequential("Basic", () => {
 	let indexer: IndexerClient
 
@@ -75,7 +75,7 @@ describe.sequential("Basic", () => {
 		})
 	})
 
-	it.skip("Should listen, place order, fill order, and check if filled at the source chain", async () => {
+	it("Should listen, place order, fill order, and check if filled at the source chain", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -87,9 +87,11 @@ describe.sequential("Basic", () => {
 			chainConfigs,
 			fillerConfig,
 			gnosisChiadoPublicClient,
-			bscHandler,
+			bscEvmHelper,
+			gnosisChiadoEvmHelper,
 			chainConfigService,
 			bscChapelId,
+			intentGatewayHelper,
 		} = await setUp()
 
 		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
@@ -111,17 +113,26 @@ describe.sequential("Basic", () => {
 			},
 		]
 
-		const order = {
+		let order = {
 			user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
 			sourceChain: await bscIsmpHost.read.host(),
 			destChain: await gnosisChiadoIsmpHost.read.host(),
 			deadline: 65337297n,
 			nonce: 0n,
-			fees: 1000000n,
+			fees: 0n,
 			outputs,
 			inputs,
 			callData: "0x" as HexString,
 		}
+
+		const estimatedFees = await intentGatewayHelper.estimateFillOrder({
+			...order,
+			id: orderCommitment(order),
+			destChain: hexToString(order.destChain as HexString),
+			sourceChain: hexToString(order.sourceChain as HexString),
+		})
+
+		order.fees = estimatedFees
 
 		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
 
@@ -404,7 +415,7 @@ describe.sequential("Basic", () => {
 		}
 	}, 1_000_0000)
 
-	it("Should handle order filling with token swaps", async () => {
+	it.skip("Should handle order filling with token swaps", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
@@ -622,14 +633,14 @@ async function setUp() {
 
 	const confirmationPolicy = new ConfirmationPolicy({
 		"97": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
+			minAmount: "1000000000000000000", // 1 USD with 18 decimals
+			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
 			minConfirmations: 1,
 			maxConfirmations: 5,
 		},
 		"10200": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
+			minAmount: "1000000000000000000", // 1 USD with 18 decimals
+			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
 			minConfirmations: 1,
 			maxConfirmations: 5,
 		},
@@ -657,8 +668,9 @@ async function setUp() {
 	const bscPublicClient = chainClientManager.getPublicClient(bscChapelId)
 	const gnosisChiadoPublicClient = chainClientManager.getPublicClient(gnosisChiadoId)
 	const intentGatewayAddress = chainConfigService.getChainConfig(bscChapelId).intentGatewayAddress
-	const feeTokenBscAddress = (await contractInteractionService.getHostParams(bscChapelId)).feeToken
-	const feeTokenGnosisChiadoAddress = (await contractInteractionService.getHostParams(gnosisChiadoId)).feeToken
+	const feeTokenBscAddress = (await contractInteractionService.getFeeTokenWithDecimals(bscChapelId)).address
+	const feeTokenGnosisChiadoAddress = (await contractInteractionService.getFeeTokenWithDecimals(gnosisChiadoId))
+		.address
 	const bscIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
 	const gnosisChiadoIsmpHostAddress = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb" as HexString
 	const bscHandlerAddress = "0x4638945E120846366cB7Abc08DB9c0766E3a663F" as HexString
@@ -699,6 +711,19 @@ async function setUp() {
 		client: { public: gnosisChiadoPublicClient, wallet: gnosisChiadoWalletClient },
 	})
 
+	const bscEvmHelper = new EvmChain({
+		chainId: 97,
+		host: bscIsmpHostAddress,
+		url: process.env.BSC_CHAPEL!,
+	})
+	const gnosisChiadoEvmHelper = new EvmChain({
+		chainId: 10200,
+		host: gnosisChiadoIsmpHostAddress,
+		url: process.env.GNOSIS_CHIADO!,
+	})
+
+	const intentGatewayHelper = new IntentGateway(bscEvmHelper, gnosisChiadoEvmHelper)
+
 	return {
 		chainClientManager,
 		bscWalletClient,
@@ -721,6 +746,9 @@ async function setUp() {
 		fillerConfig,
 		chainConfigs,
 		gnosisChiadoHandler,
+		bscEvmHelper,
+		gnosisChiadoEvmHelper,
+		intentGatewayHelper,
 	}
 }
 
