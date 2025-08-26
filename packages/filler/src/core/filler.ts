@@ -112,11 +112,11 @@ export class IntentFiller {
 				)
 
 				const validStrategies = eligibleStrategies
-					.filter((s) => s !== null)
+					.filter((s): s is NonNullable<typeof s> => s !== null && s.profitability > 0n)
 					.sort((a, b) => Number(b.profitability) - Number(a.profitability))
 
 				if (validStrategies.length === 0) {
-					console.log(`No viable strategy found for order ${order.id}`)
+					console.log(`No profitable strategy found for order ${order.id}`)
 					return
 				}
 

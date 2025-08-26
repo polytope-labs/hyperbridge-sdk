@@ -157,7 +157,7 @@ export class ContractInteractionService {
 		}
 
 		// Approve each token
-		for (const tokenAddress of [...uniqueTokens, (await this.getHostParams(order.destChain)).feeToken]) {
+		for (const tokenAddress of [...uniqueTokens, (await this.getFeeTokenWithDecimals(order.destChain)).address]) {
 			const currentAllowance = await destClient.readContract({
 				abi: ERC20_ABI,
 				address: tokenAddress as HexString,
@@ -270,9 +270,10 @@ export class ContractInteractionService {
 				body: constructRedeemEscrowRequestBody(order, privateKeyToAddress(this.privateKey)),
 				timeoutTimestamp: 0n,
 				nonce: await this.getHostNonce(order.sourceChain),
-				from: this.configService.getIntentGatewayAddress(order.sourceChain),
-				to: this.configService.getIntentGatewayAddress(order.destChain),
+				from: this.configService.getIntentGatewayAddress(order.destChain),
+				to: this.configService.getIntentGatewayAddress(order.sourceChain),
 			}
+
 			let postGasEstimate = await estimateGasForPost({
 				postRequest: postRequest,
 				sourceClient: sourceClient as any,
@@ -283,7 +284,7 @@ export class ContractInteractionService {
 			const { decimals: destFeeTokenDecimals } = await this.getFeeTokenWithDecimals(order.destChain)
 
 			// Add 2% markup
-			postGasEstimate = (postGasEstimate * BigInt(200)) / BigInt(10000)
+			postGasEstimate = postGasEstimate + (postGasEstimate * 200n) / 10000n
 
 			const postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
 				postGasEstimate,
@@ -422,14 +423,45 @@ export class ContractInteractionService {
 			payer: intentFillerAddr,
 		}
 
-		const protocolFeeEth = await destClient.readContract({
+		const protocolFeeInFeeToken = await destClient.readContract({
 			abi: INTENT_GATEWAY_ABI,
 			address: this.configService.getIntentGatewayAddress(order.destChain),
 			functionName: "quote",
 			args: [dispatchPost as any],
 		})
 
-		return protocolFeeEth
+		return protocolFeeInFeeToken
+	}
+
+	/**
+	 * Calculates the fee required to send a post request to the destination chain.
+	 * The fee is calculated based on the per-byte fee for the destination chain
+	 * multiplied by the size of the request body.
+	 *
+	 * @param request - The post request to calculate the fee for
+	 * @returns The total fee in wei required to send the post request
+	 */
+	async quote(order: Order): Promise<bigint> {
+		const { destClient } = this.clientManager.getClientsForOrder(order)
+		const postRequest: IPostRequest = {
+			source: order.destChain,
+			dest: order.sourceChain,
+			body: constructRedeemEscrowRequestBody(order, privateKeyToAddress(this.privateKey)),
+			timeoutTimestamp: 0n,
+			nonce: await this.getHostNonce(order.sourceChain),
+			from: this.configService.getIntentGatewayAddress(order.destChain),
+			to: this.configService.getIntentGatewayAddress(order.sourceChain),
+		}
+		const perByteFee = await destClient.readContract({
+			address: this.configService.getHostAddress(order.destChain),
+			abi: EVM_HOST,
+			functionName: "perByteFee",
+			args: [toHex(order.sourceChain)],
+		})
+
+		const length = postRequest.body.length > 32 ? 32 : postRequest.body.length
+
+		return perByteFee * BigInt(length)
 	}
 
 	/**
@@ -481,19 +513,6 @@ export class ContractInteractionService {
 		latestHeight = await this.api.query.system.number()
 
 		return BigInt(latestHeight.toString())
-	}
-
-	/**
-	 * Gets the host params for a given chain
-	 */
-	async getHostParams(chain: string): Promise<HostParams> {
-		const client = this.clientManager.getPublicClient(chain)
-		const hostParams = await client.readContract({
-			abi: EVM_HOST,
-			address: this.configService.getHostAddress(chain),
-			functionName: "hostParams",
-		})
-		return hostParams
 	}
 
 	async getTokenUsdValue(order: Order): Promise<{ outputUsdValue: bigint; inputUsdValue: bigint }> {

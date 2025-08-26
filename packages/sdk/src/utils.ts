@@ -31,7 +31,7 @@ export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
-export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890"
+export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890" as HexString
 export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
@@ -525,6 +525,8 @@ export function mapTestnetToMainnet(identifier: string): string {
 			return "dai"
 		case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
 			return "dai"
+		case "0xa801da100bf16d07f668f4a49e1f71fc54d05177".toLowerCase():
+			return "dai"
 		default:
 			return identifier
 	}
@@ -573,11 +575,15 @@ async function fetchFromCoinGecko(identifier: string): Promise<number> {
 
 	const data = await response.json()
 
-	if (!data[mappedIdentifier.toLowerCase()]?.usd) {
+	// For contract addresses, the key is the contract address
+	// For symbols, the key is the symbol
+	const key = mappedIdentifier.toLowerCase()
+
+	if (!data[key]?.usd) {
 		throw new Error(`Price not found for token: ${mappedIdentifier}`)
 	}
 
-	return data[mappedIdentifier.toLowerCase()].usd
+	return data[key].usd
 }
 
 /**

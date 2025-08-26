@@ -57,6 +57,7 @@ import {
 	mmrPositionToKIndex,
 	MmrProof,
 	MOCK_ADDRESS,
+	orderCommitment,
 	SubstrateStateProof,
 } from "@/utils"
 import {
@@ -448,7 +449,7 @@ export class EvmChain implements IChain {
 			args: [toHex(request.dest)],
 		})
 
-		const length = 32 > request.body.length ? 32 : request.body.length
+		const length = request.body.length > 32 ? 32 : request.body.length
 
 		return perByteFee * BigInt(length)
 	}
@@ -471,7 +472,7 @@ export class EvmChain implements IChain {
 		})
 
 		const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(request, 2n ** 10n)
-		const latestStateMachineHeight = 100n
+		const latestStateMachineHeight = 6291991n
 		const paraId = 4009n
 		const overlayRootSlot = getStateCommitmentFieldSlot(
 			paraId, // Hyperbridge chain id
@@ -550,6 +551,7 @@ export class EvmChain implements IChain {
 
 		// Get source post gas estimate directly in source chain decimals
 		const postGasEstimate = await this.estimateGas(postRequest)
+
 		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
 			postGasEstimate,
 			this.publicClient,
@@ -582,6 +584,10 @@ export class EvmChain implements IChain {
 		const orderOverrides = await Promise.all(
 			order.outputs.map(async (output) => {
 				const tokenAddress = bytes32ToBytes20(output.token)
+
+				if (tokenAddress === ADDRESS_ZERO) {
+					return null
+				}
 
 				try {
 					const stateDiffs = []
@@ -651,7 +657,7 @@ export class EvmChain implements IChain {
 		)
 
 		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
-			(await destChain.quote(postRequest)) + relayerFeeInDestFeeToken, // Following baseIsmpModule.quote()
+			await destChain.quote(postRequest),
 			destChainFeeTokenDecimals,
 			sourceChainFeeTokenDecimals,
 		)
@@ -659,7 +665,7 @@ export class EvmChain implements IChain {
 		// All values now in source chain fee token decimals
 		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
-		const SWAP_OPERATIONS_BPS = 1000n // 10% buffer for potential swaps
+		const SWAP_OPERATIONS_BPS = 2000n // 20% buffer for potential swaps
 		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
 		return totalEstimate + swapOperationsInFeeToken
 	}
