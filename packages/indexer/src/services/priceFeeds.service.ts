@@ -1,4 +1,4 @@
-import { PriceUpdateFrequency, TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
+import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
 import { PriceFeed, PriceFeedLog } from "@/configs/src/types"
 import { safeArray } from "@/utils/data.helper"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
@@ -184,7 +184,7 @@ export class PriceFeedsService {
 			symbol,
 			decimals,
 			address,
-			updateFrequencySeconds: PriceUpdateFrequency.MEDIUM,
+			updateFrequencySeconds: 600,
 		} as TokenConfig
 
 		await this.storePriceFeed(token, price, timestamp)
