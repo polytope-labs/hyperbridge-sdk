@@ -20,55 +20,30 @@ export class TokenPriceService {
 	 * @param currency - The currency to fetch price in (defaults to USD)
 	 * @returns A Promise that resolves to the price as a number
 	 */
-	static async getPrice(symbol: string, currency: string = DEFAULT_SUPPORTED_CURRENCY): Promise<number> {
-		const tokenPrice = await this.get(symbol, currency)
-		if (!tokenPrice) {
-			const response = await PriceHelper.getTokenPriceFromCoinGecko([symbol], [currency])
-			if (response instanceof Error) {
-				logger.error(
-					`[TokenPriceService.getPrice] Failed to fetch price for new token ${symbol}: ${response.message}`,
-				)
-				return 0
-			}
-
-			const prices = pick(response, [symbol.toLowerCase(), symbol.toUpperCase()])
-			if (prices) {
-				const priceValue = pick(prices, [currency.toLowerCase() as any])
-				if (priceValue && typeof priceValue === "number") {
-					await this.storeTokenPrice(symbol, currency, priceValue, BigInt(Date.now()))
-					return priceValue
-				}
-			}
-			return 0
-		}
-
-		const currentTimestamp = BigInt(Date.now())
-
+	static async getPrice(
+		symbol: string,
+		currentTimestamp = BigInt(Date.now()),
+		currency: string = DEFAULT_SUPPORTED_CURRENCY,
+	): Promise<number> {
 		let token = await TokenRegistryService.get(symbol)
 		if (!token) {
 			const tokenConfig = { name: symbol, symbol, updateFrequencySeconds: 600 } as TokenConfig
 			token = await TokenRegistryService.getOrCreateToken(tokenConfig, currentTimestamp, { isActive: true })
 		}
 
-		const stale = await TokenRegistryService.isStale(token, tokenPrice.lastUpdatedAt, currentTimestamp)
-		if (stale) {
-			const response = await PriceHelper.getTokenPriceFromCoinGecko([symbol], [currency])
-			if (response instanceof Error) {
-				logger.error(
-					`[TokenPriceService.getPrice] Failed to fetch fresh price for ${symbol}: ${response.message}`,
-				)
-				return parseFloat(tokenPrice.price)
-			}
-
-			const prices = pick(response, [symbol.toLowerCase(), symbol.toUpperCase()])
-			if (prices) {
-				const priceValue = pick(prices, [currency.toLowerCase() as any])
-				if (priceValue && typeof priceValue === "number") {
-					await this.storeTokenPrice(symbol, currency, priceValue, BigInt(Date.now()))
-					return priceValue
-				}
-			}
+		let tokenPrice = await this.get(symbol, currency)
+		if (!tokenPrice) {
+			const updatedTokenPrices = await this.updateTokenPrices([symbol], [currency], currentTimestamp)
+			if (updatedTokenPrices.length === 0) throw new Error(`Failed to update token price for ${symbol}`)
+			tokenPrice = updatedTokenPrices[0]
 		}
+
+		const stale = await TokenRegistryService.isStale(token, tokenPrice.lastUpdatedAt, currentTimestamp)
+		if (!stale) return parseFloat(tokenPrice.price)
+
+		const updatedTokenPrices = await this.updateTokenPrices([symbol], [currency], currentTimestamp)
+		if (updatedTokenPrices.length === 0) throw new Error(`Failed to update token price for ${symbol}`)
+		tokenPrice = updatedTokenPrices[0]
 
 		return parseFloat(tokenPrice.price)
 	}
@@ -87,7 +62,7 @@ export class TokenPriceService {
 		currency: string,
 		price: number,
 		blockTimestamp: bigint,
-	): Promise<void> {
+	): Promise<TokenPrice> {
 		const id = `${symbol}-${currency}`
 		const normalizedTimestamp = normalizeTimestamp(blockTimestamp)
 
@@ -120,6 +95,8 @@ export class TokenPriceService {
 
 		await tokenPrice.save()
 		await tokenPriceLog.save()
+
+		return tokenPrice
 	}
 
 	static async initializePriceIndexing(currentTimestamp: bigint): Promise<void> {
@@ -166,36 +143,32 @@ export class TokenPriceService {
 	 * @param currencies - Currencies to store prices (optional)
 	 * @param blockTimestamp - Timestamp of the block to update prices for (optional)
 	 */
-	static async updateTokenPrices(symbols: string[], currencies: string[], blockTimestamp: bigint): Promise<void> {
-		try {
-			logger.info(`[TokenPriceService.updateTokenPrices] Syncing prices for: ${symbols}`)
+	static async updateTokenPrices(
+		symbols: string[],
+		currencies: string[],
+		blockTimestamp: bigint,
+	): Promise<TokenPrice[]> {
+		logger.info(`[TokenPriceService.updateTokenPrices] Syncing prices for: ${symbols}`)
 
-			const _currencies = safeArray(currencies).length > 0 ? safeArray(currencies) : [DEFAULT_SUPPORTED_CURRENCY]
+		const _currencies = safeArray(currencies).length > 0 ? safeArray(currencies) : [DEFAULT_SUPPORTED_CURRENCY]
 
-			const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols, _currencies)
-			if (response instanceof Error) {
-				throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
-			}
-
-			logger.info(`[TokenPriceService.updateTokenPrices] CoinGecko response: ${stringify(response)}`)
-
-			const storePromises = symbols.flatMap((symbol) => {
-				const prices = pick(response, [symbol.toLowerCase(), symbol.toUpperCase()])
-				if (!prices) return []
-				return _currencies.map((currency) => {
-					const priceValue = prices[currency.toLowerCase()]
-					if (priceValue && typeof priceValue === "number") {
-						return this.storeTokenPrice(symbol, currency, priceValue, blockTimestamp)
-					}
-					return Promise.resolve()
-				})
-			})
-
-			await Promise.all(storePromises)
-		} catch (error) {
-			logger.error(`[TokenPriceService.updateTokenPrices] Failed to update prices: ${error}`)
-			throw error
+		const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols, _currencies)
+		if (response instanceof Error) {
+			throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
 		}
+
+		logger.info(`[TokenPriceService.updateTokenPrices] CoinGecko response: ${stringify(response)}`)
+
+		const storePromises = symbols.flatMap((symbol) => {
+			const prices = pick(response, [symbol.toLowerCase(), symbol.toUpperCase()])
+			if (!prices) return []
+
+			return _currencies.map((currency) =>
+				this.storeTokenPrice(symbol, currency, prices[currency.toLowerCase()], blockTimestamp),
+			)
+		})
+
+		return Promise.all(storePromises)
 	}
 
 	static async get(symbol: string, currency?: string): ReturnType<typeof TokenPrice.get> {
