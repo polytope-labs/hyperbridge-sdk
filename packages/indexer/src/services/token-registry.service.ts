@@ -1,7 +1,7 @@
 import { TOKEN_REGISTRY, TokenConfig } from "@/addresses/token-registry.addresses"
 import { TokenRegistry } from "@/configs/src/types"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
-import { safeArray } from "@/utils/data.helper"
+import { fulfilled, safeArray } from "@/utils/data.helper"
 
 /**
  * Token Registry Service manages token configurations and metadata,
@@ -23,7 +23,7 @@ export class TokenRegistryService {
 			}
 		})
 
-		await Promise.all(registrationPromises)
+		await Promise.allSettled(registrationPromises)
 		logger.info(`[TokenRegistryService.initialize] Initialized ${TOKEN_REGISTRY.length} tokens`)
 	}
 
@@ -101,8 +101,8 @@ export class TokenRegistryService {
 	 * @returns Array of all TokenRegistry entities
 	 */
 	private static async getTokens(): Promise<TokenRegistry[]> {
-		const tokens = await Promise.all(safeArray(TOKEN_REGISTRY).map((token) => this.get(token.symbol)))
-		return tokens.filter((token): token is TokenRegistry => token !== undefined)
+		const result = await Promise.allSettled(safeArray(TOKEN_REGISTRY).map((token) => this.get(token.symbol)))
+		return fulfilled(result).filter((token): token is TokenRegistry => token !== undefined)
 	}
 
 	/**

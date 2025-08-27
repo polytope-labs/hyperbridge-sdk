@@ -1256,7 +1256,7 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 """
 Token Registry - Configuration and metadata for supported tokens
 """
-type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "isActive"]]) {
+type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"], ["symbol", "createdAt"]]) {
 	"""
 	Unique identifier: symbol (e.g., ETH, DOT)
 	"""
@@ -1285,12 +1285,12 @@ type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "isActive"]]) {
 	"""
 	Whether this token configuration is currently active
 	"""
-	isActive: Boolean! @index
+	isActive: Boolean!
 
 	"""
 	Timestamp when this token configuration was last updated
 	"""
-	lastUpdatedAt: BigInt!
+	lastUpdatedAt: BigInt! @index
 
 	"""
 	Record creation timestamp

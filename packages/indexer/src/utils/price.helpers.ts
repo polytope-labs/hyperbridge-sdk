@@ -12,6 +12,7 @@ import uniswapV3FactoryAbi from "@/configs/abis/UniswapV3Factory.abi.json"
 import uniswapV3PoolAbi from "@/configs/abis/UniswapV3Pool.abi.json"
 import uniswapV3QuoterV2Abi from "@/configs/abis/UniswapV3QuoterV2.abi.json"
 import uniswapV4QuoterAbi from "@/configs/abis/UniswapV4Quoter.abi.json"
+import { ErrTokenPriceUnavailable } from "@/types/errors"
 
 export interface CoinGeckoResponse {
 	[key: string]: {
@@ -338,7 +339,7 @@ export default class PriceHelper {
 
 			const data = (await response.json()) as CoinGeckoResponse
 			if (Object.keys(data).length === 0) {
-				throw new Error(`No data found for symbols: ${symbols}`)
+				return new ErrTokenPriceUnavailable(`No price found for symbols: ${symbols}`)
 			}
 
 			return data

@@ -2,7 +2,8 @@ import stringify from "safe-stable-stringify"
 import { TokenPrice, TokenPriceLog } from "@/configs/src/types"
 import { normalizeTimestamp, timestampToDate } from "@/utils/date.helpers"
 import PriceHelper from "@/utils/price.helpers"
-import { pick, safeArray } from "@/utils/data.helper"
+import { fulfilled, safeArray } from "@/utils/data.helper"
+import { ErrTokenPriceUnavailable } from "@/types/errors"
 
 import { TokenRegistryService } from "./token-registry.service"
 import { TokenConfig } from "@/addresses/token-registry.addresses"
@@ -25,27 +26,46 @@ export class TokenPriceService {
 		currentTimestamp = BigInt(Date.now()),
 		currency: string = DEFAULT_SUPPORTED_CURRENCY,
 	): Promise<number> {
-		let token = await TokenRegistryService.get(symbol)
-		if (!token) {
-			const tokenConfig = { name: symbol, symbol, updateFrequencySeconds: 600 } as TokenConfig
-			token = await TokenRegistryService.getOrCreateToken(tokenConfig, currentTimestamp, { isActive: true })
-		}
+		try {
+			let token = await TokenRegistryService.get(symbol)
+			if (!token) {
+				const tokenConfig = { name: symbol, symbol, updateFrequencySeconds: 600 } as TokenConfig
+				token = await TokenRegistryService.getOrCreateToken(tokenConfig, currentTimestamp, { isActive: true })
+			}
 
-		let tokenPrice = await this.get(symbol, currency)
-		if (!tokenPrice) {
+			let tokenPrice = await this.get(symbol, currency)
+			if (!tokenPrice) {
+				const updatedTokenPrices = await this.updateTokenPrices([symbol], [currency], currentTimestamp)
+				if (updatedTokenPrices instanceof Error) {
+					throw updatedTokenPrices
+				}
+				if (updatedTokenPrices.length === 0) {
+					throw new Error(`Failed to update token price for ${symbol}`)
+				}
+				tokenPrice = updatedTokenPrices[0]
+			}
+
+			const stale = await TokenRegistryService.isStale(token, tokenPrice.lastUpdatedAt, currentTimestamp)
+			if (!stale) return parseFloat(tokenPrice.price)
+
 			const updatedTokenPrices = await this.updateTokenPrices([symbol], [currency], currentTimestamp)
-			if (updatedTokenPrices.length === 0) throw new Error(`Failed to update token price for ${symbol}`)
-			tokenPrice = updatedTokenPrices[0]
+			if (updatedTokenPrices instanceof Error) {
+				throw updatedTokenPrices
+			}
+			if (updatedTokenPrices.length === 0) {
+				throw new Error(`Failed to update token price for ${symbol}`)
+			}
+
+			return parseFloat(tokenPrice.price)
+		} catch (error) {
+			if (ErrTokenPriceUnavailable.isError(error)) {
+				logger.warn(`[TokenPriceService.getPrice] Price unavailable for ${symbol}, returning 0`)
+				return 0
+			}
+
+			logger.error(`[TokenPriceService.getPrice] Failed to update token price for ${symbol}`, error)
+			throw error
 		}
-
-		const stale = await TokenRegistryService.isStale(token, tokenPrice.lastUpdatedAt, currentTimestamp)
-		if (!stale) return parseFloat(tokenPrice.price)
-
-		const updatedTokenPrices = await this.updateTokenPrices([symbol], [currency], currentTimestamp)
-		if (updatedTokenPrices.length === 0) throw new Error(`Failed to update token price for ${symbol}`)
-		tokenPrice = updatedTokenPrices[0]
-
-		return parseFloat(tokenPrice.price)
 	}
 
 	/**
@@ -112,7 +132,6 @@ export class TokenPriceService {
 	static async syncAllTokenPrices(currentTimestamp: bigint, currency?: string): Promise<void> {
 		const _currency = currency || DEFAULT_SUPPORTED_CURRENCY
 
-		const symbolsNeedingUpdate: string[] = []
 		const tokens = await TokenRegistryService.getActiveTokens()
 
 		const tokensToUpdate = tokens.map(async (token) => {
@@ -125,9 +144,8 @@ export class TokenPriceService {
 			return isStale ? token.symbol : null
 		})
 
-		const checkResults = await Promise.all(tokensToUpdate)
-
-		symbolsNeedingUpdate.push(...(checkResults.filter(Boolean) as string[]))
+		const checkResults = await Promise.allSettled(tokensToUpdate)
+		const symbolsNeedingUpdate = fulfilled(checkResults).filter((t) => t !== null)
 
 		await this.updateTokenPrices(symbolsNeedingUpdate, [_currency], currentTimestamp)
 	}
@@ -142,28 +160,30 @@ export class TokenPriceService {
 		symbols: string[],
 		currencies: string[],
 		blockTimestamp: bigint,
-	): Promise<TokenPrice[]> {
+	): Promise<TokenPrice[] | Error> {
 		logger.info(`[TokenPriceService.updateTokenPrices] Syncing prices for: ${symbols}`)
 
 		const _currencies = safeArray(currencies).length > 0 ? safeArray(currencies) : [DEFAULT_SUPPORTED_CURRENCY]
 
 		const response = await PriceHelper.getTokenPriceFromCoinGecko(symbols, _currencies)
 		if (response instanceof Error) {
-			throw new Error(`Failed to fetch prices from CoinGecko: ${response.message}`)
+			return response
 		}
 
 		logger.info(`[TokenPriceService.updateTokenPrices] CoinGecko response: ${stringify(response)}`)
 
 		const storePromises = symbols.flatMap((symbol) => {
-			const prices = pick(response, [symbol.toLowerCase(), symbol.toUpperCase()])
+			const prices = response[symbol.toLowerCase()] || response[symbol.toUpperCase()]
 			if (!prices) return []
 
-			return _currencies.map((currency) =>
-				this.storeTokenPrice(symbol, currency, prices[currency.toLowerCase()], blockTimestamp),
+			return _currencies.map(
+				async (currency) =>
+					await this.storeTokenPrice(symbol, currency, prices[currency.toLowerCase()], blockTimestamp),
 			)
 		})
 
-		return Promise.all(storePromises)
+		const updatedTokensPromise = await Promise.allSettled(storePromises)
+		return fulfilled(updatedTokensPromise)
 	}
 
 	static async get(symbol: string, currency?: string): ReturnType<typeof TokenPrice.get> {
