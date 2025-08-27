@@ -7,7 +7,8 @@ import { VolumeService } from "@/services/volume.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { wrap } from "@/utils/event.utils"
-import { PriceFeedsService } from "@/services/priceFeeds.service"
+import { TokenPriceService } from "@/services/token-price.service"
+import PriceHelper from "@/utils/price.helpers"
 
 export const handleAssetReceivedEvent = wrap(async (event: AssetReceivedLog): Promise<void> => {
 	logger.info(`Asset Received Event: ${stringify(event)}`)
@@ -35,9 +36,10 @@ export const handleAssetReceivedEvent = wrap(async (event: AssetReceivedLog): Pr
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const usdValue = await PriceFeedsService.getPrice(symbol, amount.toBigInt(), decimals, tokenContract.address)
+		const price = await TokenPriceService.getPrice(symbol, timestamp)
+		const { amountValueInUSD } = PriceHelper.getAmountValueInUSD(amount.toBigInt(), decimals, price)
 
-		await VolumeService.updateVolume("TokenGateway", usdValue.amountValueInUSD, timestamp)
+		await VolumeService.updateVolume("TokenGateway", amountValueInUSD, timestamp)
 	}
 
 	await TokenGatewayService.updateTeleportStatus(commitment, TeleportStatus.RECEIVED, {

@@ -1181,9 +1181,9 @@ type DailyProtocolFeesStats @entity {
 """
 Current price data for tokens across supported chains
 """
-type PriceFeed @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"]]) {
+type TokenPrice @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"]]) {
 	"""
-	Unique identifier: symbol (e.g., ETH)
+	Unique identifier: symbol + currency (e.g., ETH-USD)
 	"""
 	id: ID!
 
@@ -1198,9 +1198,14 @@ type PriceFeed @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"]]) 
 	address: String
 
 	"""
-	Current price in USD with 18 decimal precision (stored as string)
+	Token price currency (e.g USD)
 	"""
-	priceUSD: String!
+	currency: String!
+
+	"""
+	Current price at the specified currency value
+	"""
+	price: String!
 
 	"""
 	Timestamp when price was last updated
@@ -1211,9 +1216,9 @@ type PriceFeed @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"]]) 
 """
 Historical price feed logs for tokens
 """
-type PriceFeedLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], ["provider", "timestamp"]]) {
+type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], ["provider", "timestamp"]]) {
 	"""
-	Unique identifier: hash of symbol + timestamp + provider
+	Unique identifier: symbol + currency + provider + timestamp
 	"""
 	id: ID!
 
@@ -1223,9 +1228,14 @@ type PriceFeedLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], ["
 	symbol: String! @index
 
 	"""
-	Price in USD with 18 decimal precision (stored as string)
+	Token price currency (e.g USD)
 	"""
-	priceUSD: String!
+	currency: String!
+
+	"""
+	Current price at the specified currency value
+	"""
+	price: String!
 
 	"""
 	Price data provider (e.g., COINGECKO, CHAINLINK)
@@ -1238,14 +1248,49 @@ type PriceFeedLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], ["
 	timestamp: BigInt! @index
 
 	"""
-	Block number where price was recorded
+	Record creation timestamp
 	"""
-	blockNumber: BigInt!
+	createdAt: Date! @index
+}
+
+"""
+Token Registry - Configuration and metadata for supported tokens
+"""
+type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "isActive"]]) {
+	"""
+	Unique identifier: symbol (e.g., ETH, DOT)
+	"""
+	id: ID!
 
 	"""
-	block hash that triggered price update
+	Token name (e.g., Ethereum, Polkadot, USD Coin)
 	"""
-	blockHash: String
+	name: String!
+
+	"""
+	Token symbol (e.g., ETH, DOT, USDC)
+	"""
+	symbol: String! @index
+
+	"""
+	Token contract address (zero address for native tokens)
+	"""
+	address: String
+
+	"""
+	Update frequency in seconds for price feeds
+	"""
+	updateFrequencySeconds: Int!
+
+	"""
+	Whether this token configuration is currently active
+	"""
+	isActive: Boolean! @index
+
+	"""
+	Timestamp when this token configuration was last updated
+	"""
+	lastUpdatedAt: BigInt!
 
 	"""
 	Record creation timestamp

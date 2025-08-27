@@ -307,16 +307,15 @@ export default class PriceHelper {
 	/**
 	 * Get Token Price From CoinGecko
 	 * @param symbols - The token contract address
-	 * @param amount - Amount in token's smallest unit (e.g., wei for ETH)
-	 * @param decimals - Token decimals
+	 * @param currencies - The currency to convert to
 	 * @returns Price per token and total value in USD
 	 */
-	static async getTokenPriceFromCoinGecko(symbols: string): Promise<CoinGeckoResponse | Error> {
+	static async getTokenPriceFromCoinGecko(
+		symbols: string[],
+		currencies: string[],
+	): Promise<CoinGeckoResponse | Error> {
 		try {
-			const headers = {
-				accept: "application/json",
-				"content-type": "application/json",
-			} as Record<string, string>
+			const headers = { accept: "application/json", "content-type": "application/json" } as Record<string, string>
 
 			const coingeckoApiKey = ENV_CONFIG["COIN_GECKGO_API_KEY"]
 			if (coingeckoApiKey) {
@@ -325,17 +324,19 @@ export default class PriceHelper {
 
 			const baseUrl = coingeckoApiKey ? "https://pro-api.coingecko.com" : "https://api.coingecko.com"
 
-			const response = await fetch(`${baseUrl}/api/v3/simple/price?symbols=${symbols}&vs_currencies=usd`, {
-				method: "GET",
-				headers,
-			})
+			const response = await fetch(
+				`${baseUrl}/api/v3/simple/price?symbols=${symbols.join(",")}&vs_currencies=${currencies.join(",")}`,
+				{
+					method: "GET",
+					headers,
+				},
+			)
 
 			if (!response.ok) {
 				throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
 			}
 
 			const data = (await response.json()) as CoinGeckoResponse
-
 			if (Object.keys(data).length === 0) {
 				throw new Error(`No data found for symbols: ${symbols}`)
 			}
@@ -347,7 +348,7 @@ export default class PriceHelper {
 		}
 	}
 
-	static getAmountValueInUSD(amount: bigint, decimals: number, price: string): PriceResponse {
+	static getAmountValueInUSD(amount: bigint, decimals: number, price: string | number): PriceResponse {
 		const priceInUSD = new Decimal(price).toFixed(18)
 		const amountValueInUSD = new Decimal(amount.toString())
 			.dividedBy(new Decimal(10).pow(decimals))
@@ -375,7 +376,7 @@ export default class PriceHelper {
 		}
 
 		try {
-			const response = await this.getTokenPriceFromCoinGecko(symbol)
+			const response = await this.getTokenPriceFromCoinGecko([symbol], ["USD"])
 			if (response instanceof Error) {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}
