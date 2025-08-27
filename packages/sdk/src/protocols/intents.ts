@@ -154,7 +154,7 @@ export class IntentGateway {
 			// even when the address doesn't hold any native token in that chain
 			{
 				address: MOCK_ADDRESS,
-				balance: parseEther("100"),
+				balance: maxUint256,
 			},
 			...orderOverrides.map((override) => ({
 				address: override!.address,
