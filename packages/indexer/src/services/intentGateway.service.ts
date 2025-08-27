@@ -10,7 +10,8 @@ import { timestampToDate } from "@/utils/date.helpers"
 
 import { PointsService } from "./points.service"
 import { VolumeService } from "./volume.service"
-import { PriceFeedsService } from "./priceFeeds.service"
+import PriceHelper from "@/utils/price.helpers"
+import { TokenPriceService } from "./token-price.service"
 
 export interface TokenInfo {
 	token: Hex
@@ -136,7 +137,8 @@ export class IntentGatewayService {
 					symbol = await tokenContract.symbol()
 				}
 
-				return PriceFeedsService.getPrice(symbol, token.amount, decimals, tokenAddress)
+				const price = await TokenPriceService.getPrice(symbol)
+				return PriceHelper.getAmountValueInUSD(token.amount, decimals, price)
 			}),
 		)
 

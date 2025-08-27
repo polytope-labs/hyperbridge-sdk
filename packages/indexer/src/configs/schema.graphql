@@ -1248,16 +1248,6 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 	timestamp: BigInt! @index
 
 	"""
-	Block number where price was recorded
-	"""
-	blockNumber: BigInt!
-
-	"""
-	block hash that triggered price update
-	"""
-	blockHash: String
-
-	"""
 	Record creation timestamp
 	"""
 	createdAt: Date! @index
