@@ -1,8 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
-import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
+import { formatChain, getHexFromSS58Address, getHostStateMachine } from "@/utils/substrate.helpers"
 import { AssetTeleportedService } from "@/services/assetTeleported.service"
-import { decodeAddress } from "@polkadot/util-crypto"
-import { u8aToHex } from "@polkadot/util"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
@@ -14,20 +12,7 @@ export const handleSubstrateAssetTeleportedEvent = wrap(async (event: SubstrateE
 
 	const [from, to, amount, dest, commitment] = event.event.data
 
-	// Convert the SS58 address to hex format
-	let fromHex: string
-	try {
-		// Decode SS58 address to get the public key as Uint8Array
-		const publicKey = decodeAddress(from.toString())
-		// Convert the public key to hex format with 0x prefix
-		fromHex = u8aToHex(publicKey)
-
-		logger.info(`Decoded SS58 address ${from.toString()} to hex ${fromHex}`)
-	} catch (error) {
-		logger.error(`Failed to decode SS58 address ${from.toString()}: ${error}`)
-		// Fall back to the original address if decoding fails
-		fromHex = from.toString()
-	}
+	const fromHex = getHexFromSS58Address(from.toString())
 
 	logger.info(
 		`Handling AssetTeleported Event: ${stringify({
