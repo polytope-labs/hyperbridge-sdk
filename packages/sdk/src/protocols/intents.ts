@@ -166,7 +166,8 @@ export class IntentGateway {
 		)
 
 		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
-			await this.dest.quote(postRequest),
+			// Following baseIsmpModule.sol, the protocol fee is added to the relayer fee
+			(await this.dest.quote(postRequest)) + relayerFeeInDestFeeToken,
 			destChainFeeTokenDecimals,
 			sourceChainFeeTokenDecimals,
 		)

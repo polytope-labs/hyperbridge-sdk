@@ -31,8 +31,11 @@ export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
-export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890" as HexString
 export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
+
+// The following MOCK_ADDRESS should hold native tokens of the respective chain it is used on
+// Otherwise the simulation will fail
+export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890" as HexString
 
 /**
  * Sleeps for the specified number of milliseconds.

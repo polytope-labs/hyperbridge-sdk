@@ -85,7 +85,7 @@ export class StableSwapFiller implements FillerStrategy {
 		try {
 			const { fillGas, relayerFeeInFeeToken } = await this.contractService.estimateGasFillPost(order)
 			const { totalGasEstimate: swapGasEstimate } = await this.calculateSwapOperations(order, order.destChain)
-			const protocolFeeInFeeToken = await this.contractService.getProtocolFee(order, relayerFeeInFeeToken)
+			const protocolFeeInFeeToken = (await this.contractService.quote(order)) + relayerFeeInFeeToken
 			const { decimals: destFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
 				order.destChain,
 			)
