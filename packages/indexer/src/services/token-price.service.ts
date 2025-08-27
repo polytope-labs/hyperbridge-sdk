@@ -122,6 +122,11 @@ export class TokenPriceService {
 		await tokenPriceLog.save()
 	}
 
+	static async initializePriceIndexing(currentTimestamp: bigint): Promise<void> {
+		await TokenRegistryService.initialize(currentTimestamp)
+		await this.syncAllTokenPrices(currentTimestamp)
+	}
+
 	/**
 	 * syncAllTokenPrices updates prices for all tokens that require updates
 	 * @param currentTimestamp - Current timestamp

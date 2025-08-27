@@ -22,7 +22,7 @@ export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<v
 
 		logger.info(`[handlePriceIndexing] Updating prices ${timestamp} via ${chain}`)
 
-		await TokenPriceService.syncAllTokenPrices(timestamp)
+		await TokenPriceService.initializePriceIndexing(timestamp)
 
 		logger.info(`Price update completed for chain: ${chain}`)
 	} catch (error) {
