@@ -264,9 +264,13 @@ describe.sequential(
 
 			let postGasEstimate = await gnosisChiadoEvmChain.estimateGas(postRequest) // Source Chain Post Estimate
 
+			console.log("Post gas estimate:", postGasEstimate)
+
 			assert(postGasEstimate > 0n)
 
 			let gasEstimate = await intentGateway.estimateFillOrder(order)
+
+			console.log("Gas estimate for fill order:", gasEstimate)
 
 			assert(gasEstimate > 160000n)
 

@@ -8,7 +8,7 @@ import {
 	MOCK_ADDRESS,
 	ERC20Method,
 } from "@/utils"
-import { maxUint256, toHex } from "viem"
+import { maxUint256, parseEther, toHex } from "viem"
 import { type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapV2Factory from "@/abis/uniswapV2Factory"
@@ -149,6 +149,19 @@ export class IntentGateway {
 			stateDiff: feeTokenStateDiffs as any,
 		})
 
+		const stateOverride = [
+			// Mock address with ETH balance so that any chain estimation runs
+			// even when the address doesn't hold any native token in that chain
+			{
+				address: MOCK_ADDRESS,
+				balance: parseEther("100"),
+			},
+			...orderOverrides.map((override) => ({
+				address: override!.address,
+				stateDiff: override!.stateDiff,
+			})),
+		]
+
 		const destChainFillGas = await this.dest.client.estimateContractGas({
 			abi: IntentGatewayABI.ABI,
 			address: intentGatewayAddress,
@@ -156,7 +169,7 @@ export class IntentGateway {
 			args: [transformOrderForContract(order), fillOptions as any],
 			account: MOCK_ADDRESS,
 			value: totalEthValue,
-			stateOverride: orderOverrides as any,
+			stateOverride: stateOverride as any,
 		})
 
 		const fillGasInSourceFeeToken = await this.convertGasToFeeToken(
