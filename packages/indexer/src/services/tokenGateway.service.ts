@@ -72,7 +72,7 @@ export class TokenGatewayService {
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const price = await TokenPriceService.getPrice(symbol)
+		const price = await TokenPriceService.getPrice(symbol, timestamp)
 		const { amountValueInUSD } = PriceHelper.getAmountValueInUSD(teleportParams.amount, decimals, price)
 
 		if (!teleport) {

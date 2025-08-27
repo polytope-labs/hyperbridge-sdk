@@ -23,7 +23,7 @@ export const handleAssetTeleportedEvent = wrap(async (event: AssetTeleportedLog)
 		const decimals = await tokenContract.decimals()
 		const symbol = await tokenContract.symbol()
 
-		const price = await TokenPriceService.getPrice(symbol)
+		const price = await TokenPriceService.getPrice(symbol, timestamp)
 		const { amountValueInUSD } = PriceHelper.getAmountValueInUSD(amount.toBigInt(), decimals, price)
 
 		await VolumeService.updateVolume("TokenGateway", amountValueInUSD, timestamp)

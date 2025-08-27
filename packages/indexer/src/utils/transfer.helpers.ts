@@ -26,13 +26,17 @@ type GetPriceFromEthereumLogResponse = Promise<PriceResponse & { symbol: string;
  * @param log EthereumLog<EthereumResult>
  * @returns Promise<GetPriceDataFromEthereumLogResponse>
  */
-export const getPriceDataFromEthereumLog = async (address: string, amount: bigint): GetPriceFromEthereumLogResponse => {
+export const getPriceDataFromEthereumLog = async (
+	address: string,
+	amount: bigint,
+	currentTimestamp?: bigint,
+): GetPriceFromEthereumLogResponse => {
 	const contract = ERC6160Ext20Abi__factory.connect(address.toLowerCase(), api)
 
 	const symbol = await contract.symbol()
 	const decimals = await contract.decimals()
 
-	const price = await TokenPriceService.getPrice(symbol)
+	const price = await TokenPriceService.getPrice(symbol, currentTimestamp)
 	const { amountValueInUSD, priceInUSD } = PriceHelper.getAmountValueInUSD(amount, decimals, price)
 
 	return {

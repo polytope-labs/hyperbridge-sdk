@@ -115,22 +115,17 @@ export class TokenPriceService {
 		const symbolsNeedingUpdate: string[] = []
 		const tokens = await TokenRegistryService.getActiveTokens()
 
-		const checkResults = await Promise.all(
-			tokens.map(async (token) => {
-				const tokenPrice = await this.get(token.symbol, _currency)
+		const tokensToUpdate = tokens.map(async (token) => {
+			const tokenPrice = await this.get(token.symbol, _currency)
+			if (!tokenPrice) {
+				return token.symbol
+			}
 
-				if (tokenPrice) {
-					const isStale = await TokenRegistryService.isStale(
-						token,
-						tokenPrice.lastUpdatedAt,
-						currentTimestamp,
-					)
-					return isStale ? token.symbol : null
-				}
+			const isStale = await TokenRegistryService.isStale(token, tokenPrice.lastUpdatedAt, currentTimestamp)
+			return isStale ? token.symbol : null
+		})
 
-				return null
-			}),
-		)
+		const checkResults = await Promise.all(tokensToUpdate)
 
 		symbolsNeedingUpdate.push(...(checkResults.filter(Boolean) as string[]))
 
