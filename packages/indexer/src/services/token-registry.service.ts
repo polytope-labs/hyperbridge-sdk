@@ -11,17 +11,14 @@ export class TokenRegistryService {
 	/**
 	 * Initialize token registry with default tokens from TOKEN_REGISTRY
 	 * @param currentTimestamp - Current timestamp
-	 * @param forceUpdate - Whether to update existing tokens
 	 */
-	static async initialize(currentTimestamp: bigint, forceUpdate = false): Promise<void> {
-		logger.info(`[TokenRegistryService.initialize] Initializing token registry`)
+	static async initialize(currentTimestamp: bigint): Promise<void> {
+	  logger.info(`[TokenRegistryService.initialize] Initializing token registry`)
 
 		const tokensToBeIndexed = await this.getTokensToBeIndexed()
-
 		const registrationPromises = tokensToBeIndexed.map(async (t) => this.getOrCreateToken(t, currentTimestamp))
 
 		await Promise.allSettled(registrationPromises)
-		logger.info(`[TokenRegistryService.initialize] Initialized ${TOKEN_REGISTRY.length} tokens`)
 	}
 
 	/**
@@ -92,8 +89,8 @@ export class TokenRegistryService {
 	 */
 	private static async getTokensToBeIndexed(): Promise<TokenConfig[]> {
 		const tokens = await this.getTokens()
-		const symbols = tokens.map((token) => token.symbol)
-		return safeArray(TOKEN_REGISTRY).filter((token) => symbols.includes(token.symbol))
+		const symbolsSet = new Set(tokens.map((token) => token.symbol.toLowerCase()))
+		return safeArray(TOKEN_REGISTRY).filter((token) => !symbolsSet.has(token.symbol.toLowerCase()))
 	}
 
 	/**
