@@ -200,19 +200,18 @@ export class IntentGateway {
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountOut - The desired output amount
-	 * @returns Object containing the best protocol, required input amount, fee tier (for V3), and gas estimate
+	 * @returns Object containing the best protocol, required input amount, and fee tier (for V3)
 	 */
 	async findBestProtocolWithAmountOut(
 		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
-	): Promise<{ protocol: "v2" | "v3" | null; amountIn: bigint; fee?: number; gasEstimate?: bigint }> {
+	): Promise<{ protocol: "v2" | "v3" | null; amountIn: bigint; fee?: number }> {
 		const destClient = this.dest.client
 		let amountInV2 = maxUint256
 		let amountInV3 = maxUint256
 		let bestV3Fee = 0
-		let v3GasEstimate = BigInt(0)
 
 		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
 		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
@@ -261,27 +260,29 @@ export class IntentGateway {
 					})
 
 					if (liquidity > BigInt(0)) {
-						const quoteResult = (await destClient.readContract({
-							address: v3Quoter,
-							abi: UniswapV3Quoter.ABI,
-							functionName: "quoteExactOutputSingle",
-							args: [
-								{
-									tokenIn: tokenIn,
-									tokenOut: tokenOut,
-									fee: fee,
-									amount: amountOut,
-									sqrtPriceLimitX96: BigInt(0),
-								},
-							],
-						})) as [bigint, bigint, number, bigint]
+						// Use simulateContract for V3 quoter (handles revert-based returns)
+						const quoteResult = (
+							await destClient.simulateContract({
+								address: v3Quoter,
+								abi: UniswapV3Quoter.ABI,
+								functionName: "quoteExactOutputSingle",
+								args: [
+									{
+										tokenIn: tokenIn,
+										tokenOut: tokenOut,
+										fee: fee,
+										amount: amountOut,
+										sqrtPriceLimitX96: BigInt(0),
+									},
+								],
+							})
+						).result as [bigint, bigint, number, bigint]
 
-						const [amountIn, , , gasEstimate] = quoteResult
+						const amountIn = quoteResult[0]
 
 						if (amountIn < bestV3AmountIn) {
 							bestV3AmountIn = amountIn
 							bestV3Fee = fee
-							v3GasEstimate = gasEstimate
 						}
 					}
 				}
@@ -299,7 +300,7 @@ export class IntentGateway {
 		if (amountInV2 <= amountInV3) {
 			return { protocol: "v2", amountIn: amountInV2 }
 		} else {
-			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee, gasEstimate: v3GasEstimate }
+			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee }
 		}
 	}
 
@@ -311,19 +312,18 @@ export class IntentGateway {
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountIn - The input amount to swap
-	 * @returns Object containing the best protocol, expected output amount, fee tier (for V3), and gas estimate
+	 * @returns Object containing the best protocol, expected output amount, and fee tier (for V3)
 	 */
 	async findBestProtocolWithAmountIn(
 		chain: string,
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountIn: bigint,
-	): Promise<{ protocol: "v2" | "v3" | null; amountOut: bigint; fee?: number; gasEstimate?: bigint }> {
+	): Promise<{ protocol: "v2" | "v3" | null; amountOut: bigint; fee?: number }> {
 		const destClient = this.dest.client
 		let amountOutV2 = BigInt(0)
 		let amountOutV3 = BigInt(0)
 		let bestV3Fee = 0
-		let v3GasEstimate = BigInt(0)
 
 		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
 		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
@@ -372,27 +372,29 @@ export class IntentGateway {
 					})
 
 					if (liquidity > BigInt(0)) {
-						const quoteResult = (await destClient.readContract({
-							address: v3Quoter,
-							abi: UniswapV3Quoter.ABI,
-							functionName: "quoteExactInputSingle",
-							args: [
-								{
-									tokenIn: tokenIn,
-									tokenOut: tokenOut,
-									fee: fee,
-									amountIn: amountIn,
-									sqrtPriceLimitX96: BigInt(0),
-								},
-							],
-						})) as [bigint, bigint, number, bigint]
+						// Use simulateContract for V3 quoter (handles revert-based returns)
+						const quoteResult = (
+							await destClient.simulateContract({
+								address: v3Quoter,
+								abi: UniswapV3Quoter.ABI,
+								functionName: "quoteExactInputSingle",
+								args: [
+									{
+										tokenIn: tokenIn,
+										tokenOut: tokenOut,
+										fee: fee,
+										amountIn: amountIn,
+										sqrtPriceLimitX96: BigInt(0),
+									},
+								],
+							})
+						).result as [bigint, bigint, number, bigint]
 
-						const [amountOut, , , gasEstimate] = quoteResult
+						const amountOut = quoteResult[0]
 
 						if (amountOut > bestV3AmountOut) {
 							bestV3AmountOut = amountOut
 							bestV3Fee = fee
-							v3GasEstimate = gasEstimate
 						}
 					}
 				}
@@ -410,7 +412,7 @@ export class IntentGateway {
 		if (amountOutV2 >= amountOutV3) {
 			return { protocol: "v2", amountOut: amountOutV2 }
 		} else {
-			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee, gasEstimate: v3GasEstimate }
+			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee }
 		}
 	}
 
