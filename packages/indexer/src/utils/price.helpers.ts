@@ -307,15 +307,12 @@ export default class PriceHelper {
 
 	/**
 	 * Get Token Price From CoinGecko
-	 * @param symbols - The token contract address
-	 * @param currencies - The currency to convert to
+	 * @param symbols - The token symbol or an array of token symbols
 	 * @returns Price per token and total value in USD
 	 */
-	static async getTokenPriceFromCoinGecko(
-		symbols: string[],
-		currencies: string[],
-	): Promise<CoinGeckoResponse | Error> {
+	static async getTokenPriceFromCoinGecko(symbols: string | string[]): Promise<CoinGeckoResponse | Error> {
 		try {
+			const _symbols = typeof symbols === "string" ? symbols : Array.from(symbols).join(",")
 			const headers = { accept: "application/json", "content-type": "application/json" } as Record<string, string>
 
 			const coingeckoApiKey = ENV_CONFIG["COIN_GECKGO_API_KEY"]
@@ -325,13 +322,10 @@ export default class PriceHelper {
 
 			const baseUrl = coingeckoApiKey ? "https://pro-api.coingecko.com" : "https://api.coingecko.com"
 
-			const response = await fetch(
-				`${baseUrl}/api/v3/simple/price?symbols=${symbols.join(",")}&vs_currencies=${currencies.join(",")}`,
-				{
-					method: "GET",
-					headers,
-				},
-			)
+			const response = await fetch(`${baseUrl}/api/v3/simple/price?symbols=${_symbols}&vs_currencies=usd`, {
+				method: "GET",
+				headers,
+			})
 
 			if (!response.ok) {
 				throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
@@ -377,7 +371,7 @@ export default class PriceHelper {
 		}
 
 		try {
-			const response = await this.getTokenPriceFromCoinGecko([symbol], ["USD"])
+			const response = await this.getTokenPriceFromCoinGecko(symbol)
 			if (response instanceof Error) {
 				return { priceInUSD: "0", amountValueInUSD: "0" }
 			}

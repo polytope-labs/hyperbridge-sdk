@@ -1283,11 +1283,6 @@ type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"
 	updateFrequencySeconds: Int!
 
 	"""
-	Whether this token configuration is currently active
-	"""
-	isActive: Boolean!
-
-	"""
 	Timestamp when this token configuration was last updated
 	"""
 	lastUpdatedAt: BigInt! @index

@@ -10,18 +10,15 @@ import { fulfilled, safeArray } from "@/utils/data.helper"
 export class TokenRegistryService {
 	/**
 	 * Initialize token registry with default tokens from TOKEN_REGISTRY
+	 * @param currentTimestamp - Current timestamp
 	 * @param forceUpdate - Whether to update existing tokens
 	 */
 	static async initialize(currentTimestamp: bigint, forceUpdate = false): Promise<void> {
 		logger.info(`[TokenRegistryService.initialize] Initializing token registry`)
 
-		const registrationPromises = safeArray(TOKEN_REGISTRY).map(async (t) => {
-			const supported = await this.isTokenSupported(t.symbol)
+		const tokensToBeIndexed = await this.getTokensToBeIndexed()
 
-			if (!supported || forceUpdate) {
-				await this.getOrCreateToken(t, currentTimestamp, { isActive: true })
-			}
-		})
+		const registrationPromises = tokensToBeIndexed.map(async (t) => this.getOrCreateToken(t, currentTimestamp))
 
 		await Promise.allSettled(registrationPromises)
 		logger.info(`[TokenRegistryService.initialize] Initialized ${TOKEN_REGISTRY.length} tokens`)
@@ -31,13 +28,8 @@ export class TokenRegistryService {
 	 * Register or update a token in the registry
 	 * @param tokenConfig - Token configuration
 	 * @param currentTimestamp - Current timestamp
-	 * @param options - Additional options for registration
 	 */
-	static async getOrCreateToken(
-		config: TokenConfig,
-		currentTimestamp: bigint,
-		options: { isActive?: boolean } = {},
-	): Promise<TokenRegistry> {
+	static async getOrCreateToken(config: TokenConfig, currentTimestamp: bigint): Promise<TokenRegistry> {
 		const { name, symbol, updateFrequencySeconds, address } = config
 
 		let token = await this.get(symbol)
@@ -48,7 +40,6 @@ export class TokenRegistryService {
 				symbol,
 				updateFrequencySeconds,
 				address,
-				isActive: options?.isActive ?? true,
 				lastUpdatedAt: normalizeTimestamp(currentTimestamp),
 				createdAt: timestampToDate(currentTimestamp),
 			})
@@ -59,7 +50,6 @@ export class TokenRegistryService {
 		token.name = name
 		token.address = address
 		token.updateFrequencySeconds = updateFrequencySeconds
-		token.isActive = options?.isActive ?? token.isActive
 		token.lastUpdatedAt = normalizeTimestamp(currentTimestamp)
 		logger.info(`[TokenRegistryService.getOrCreateToken] Updating existing token: ${symbol}`)
 
@@ -88,31 +78,22 @@ export class TokenRegistryService {
 	}
 
 	/**
-	 * Get all active tokens from the token registry
-	 * @returns Array of active TokenRegistry entities
-	 */
-	static async getActiveTokens(): Promise<TokenRegistry[]> {
-		const tokens = await this.getTokens()
-		return tokens.filter((token) => token.isActive)
-	}
-
-	/**
 	 * Get all tokens (active and inactive) for a specific chain
 	 * @returns Array of all TokenRegistry entities
 	 */
-	private static async getTokens(): Promise<TokenRegistry[]> {
+	static async getTokens(): Promise<TokenRegistry[]> {
 		const result = await Promise.allSettled(safeArray(TOKEN_REGISTRY).map((token) => this.get(token.symbol)))
 		return fulfilled(result).filter((token): token is TokenRegistry => token !== undefined)
 	}
 
 	/**
-	 * isTokenSupported checks if a token is supported (exists and is active)
-	 * @param symbol - Token symbol
-	 * @returns Boolean indicating if token is supported
+	 * Get all token configurations to be indexed
+	 * @returns Array of TokenConfig entities
 	 */
-	private static async isTokenSupported(symbol: string): Promise<boolean> {
-		const token = await this.get(symbol)
-		return token !== undefined && token.isActive
+	private static async getTokensToBeIndexed(): Promise<TokenConfig[]> {
+		const tokens = await this.getTokens()
+		const symbols = tokens.map((token) => token.symbol)
+		return safeArray(TOKEN_REGISTRY).filter((token) => symbols.includes(token.symbol))
 	}
 
 	/**
