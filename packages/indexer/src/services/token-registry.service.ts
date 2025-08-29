@@ -9,16 +9,34 @@ import { fulfilled, safeArray } from "@/utils/data.helper"
  */
 export class TokenRegistryService {
 	/**
-	 * Initialize token registry with default tokens from TOKEN_REGISTRY
+	 * Initialize token registry with default tokens from TOKEN_REGISTRY.
+	 * Only processes new tokens that don't exist in the database.
 	 * @param currentTimestamp - Current timestamp
 	 */
 	static async initialize(currentTimestamp: bigint): Promise<void> {
-	  logger.info(`[TokenRegistryService.initialize] Initializing token registry`)
+		logger.info(`[TokenRegistryService.initialize] Initializing token registry`)
 
-		const tokensToBeIndexed = await this.getTokensToBeIndexed()
-		const registrationPromises = tokensToBeIndexed.map(async (t) => this.getOrCreateToken(t, currentTimestamp))
+		try {
+			const storedTokens = await this.getTokens()
+			const tokenConfigs = safeArray(TOKEN_REGISTRY)
 
-		await Promise.allSettled(registrationPromises)
+			const storedSymbols = new Set(storedTokens.map((token) => token.symbol))
+
+			const newTokenConfigs = tokenConfigs.filter((config) => !storedSymbols.has(config.symbol))
+			if (newTokenConfigs.length === 0) {
+				return
+			}
+
+			const promises = newTokenConfigs.map((config) => this.getOrCreateToken(config, currentTimestamp))
+
+			const results = await Promise.allSettled(promises)
+			const successful = fulfilled(results)
+
+			logger.info(`[TokenRegistryService.initialize] Successfully registered ${successful.length} new tokens`)
+		} catch (error) {
+			// @ts-ignore
+			throw new Error(`Token registry initialization failed: ${error.message}`)
+		}
 	}
 
 	/**
@@ -40,15 +58,12 @@ export class TokenRegistryService {
 				lastUpdatedAt: normalizeTimestamp(currentTimestamp),
 				createdAt: timestampToDate(currentTimestamp),
 			})
-
-			logger.info(`[TokenRegistryService.getOrCreateToken] Registering new token: ${symbol}`)
 		}
 
 		token.name = name
 		token.address = address
 		token.updateFrequencySeconds = updateFrequencySeconds
 		token.lastUpdatedAt = normalizeTimestamp(currentTimestamp)
-		logger.info(`[TokenRegistryService.getOrCreateToken] Updating existing token: ${symbol}`)
 
 		await token.save()
 
@@ -67,7 +82,7 @@ export class TokenRegistryService {
 		const frequencyMs = token.updateFrequencySeconds * 1000 // Convert to milliseconds
 		const needsUpdate = timeSinceUpdateMs >= frequencyMs
 
-		logger.info(
+		logger.debug(
 			`[TokenRegistryService.isStale] Token ${token.symbol}: timeSinceUpdate=${timeSinceUpdateMs}ms, frequency=${frequencyMs}ms, needsUpdate=${needsUpdate}`,
 		)
 
@@ -75,22 +90,40 @@ export class TokenRegistryService {
 	}
 
 	/**
-	 * Get all tokens (active and inactive) for a specific chain
-	 * @returns Array of all TokenRegistry entities
+	 * getTokens fetches all tokens from the database with pagination.
+	 * @param limit - Optional page size (defaults to 1000 for better performance)
+	 * @returns Promise<TokenRegistry[]> - Array of all tokens
 	 */
-	static async getTokens(): Promise<TokenRegistry[]> {
-		const result = await Promise.allSettled(safeArray(TOKEN_REGISTRY).map((token) => this.get(token.symbol)))
-		return fulfilled(result).filter((token): token is TokenRegistry => token !== undefined)
-	}
+	static async getTokens(limit: number = 100): Promise<TokenRegistry[]> {
+		const allTokens: TokenRegistry[] = []
+		let offset = 0
+		let totalFetched = 0
 
-	/**
-	 * Get all token configurations to be indexed
-	 * @returns Array of TokenConfig entities
-	 */
-	private static async getTokensToBeIndexed(): Promise<TokenConfig[]> {
-		const tokens = await this.getTokens()
-		const symbolsSet = new Set(tokens.map((token) => token.symbol.toLowerCase()))
-		return safeArray(TOKEN_REGISTRY).filter((token) => !symbolsSet.has(token.symbol.toLowerCase()))
+		try {
+			while (true) {
+				const startTime = Date.now()
+				const tokens = await TokenRegistry.getByFields([], { limit, offset })
+				const fetchTime = Date.now() - startTime
+
+				if (tokens.length === 0) {
+					break
+				}
+
+				allTokens.push(...tokens)
+				totalFetched += tokens.length
+				offset += limit
+
+				if (tokens.length < limit) {
+					break
+				}
+			}
+
+			logger.info(`[TokenRegistryService.getTokens] Successfully fetched ${totalFetched} tokens total`)
+			return allTokens
+		} catch (error) {
+			logger.error(`[TokenRegistryService.getTokens] Error fetching tokens at offset ${offset}:`, error)
+			throw new Error(`Failed to fetch tokens: ${error instanceof Error ? error.message : "Unknown error"}`)
+		}
 	}
 
 	/**

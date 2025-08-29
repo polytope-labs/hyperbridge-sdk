@@ -80,13 +80,11 @@ export class TokenPriceService {
 				price: price.toString(),
 				lastUpdatedAt: normalizedTimestamp,
 			})
-
-			logger.info(`[TokenPriceService.storeTokenPrice] Created new price entry: ${symbol}`)
 		}
 
 		tokenPrice.price = price.toString()
 		tokenPrice.lastUpdatedAt = normalizedTimestamp
-		logger.info(`[TokenPriceService.storeTokenPrice] Updated existing price entry: ${symbol}`)
+		logger.debug(`[TokenPriceService.storeTokenPrice] Updating price entry: ${symbol}`)
 
 		const tokenPriceLog = TokenPriceLog.create({
 			id: `${symbol}-${blockTimestamp}`,
@@ -129,6 +127,9 @@ export class TokenPriceService {
 
 		const checkResults = await Promise.allSettled(tokensToUpdate)
 		const symbolsNeedingUpdate = fulfilled(checkResults).filter((t) => t !== null)
+		if (symbolsNeedingUpdate.length === 0) {
+			return
+		}
 
 		await this.updateTokenPrices(symbolsNeedingUpdate, currentTimestamp)
 	}
