@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll } from "vitest"
 import { createQueryClient, _queryTokenPriceInternal } from "@/query-client"
 import type { IndexerQueryClient } from "@/types"
 
-describe("Token Price and Registry Integration Tests", () => {
+describe.sequential("Token Price and Registry Integration Tests", () => {
 	let queryClient: IndexerQueryClient
 
 	beforeAll(async () => {

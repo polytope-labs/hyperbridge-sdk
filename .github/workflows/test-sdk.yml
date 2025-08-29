@@ -103,39 +103,6 @@ jobs:
                   echo "GraphQL server is available!"
                   sleep 10  # Give it a few more seconds to fully initialize
 
-            - name: Wait for GraphQL server readiness (query indexer for token price data)
-              run: |
-                  echo "Wait for GraphQL server readiness (query indexer for token price data)..."
-                  timeout=300  # 5 minutes timeout
-                  elapsed=0
-                  interval=10
-
-                  while true; do
-                    if [ "$elapsed" -ge "$timeout" ]; then
-                      echo "❌ Timed out waiting for GraphQL"
-                      exit 1
-                    fi
-
-                    # Query Indexer
-                    query_result=$(curl -s -X POST http://localhost:3100/graphql \
-                      -H "Content-Type: application/json" \
-                      -d '{"query": "query TokenPrices { tokenPrices { totalCount } }"}' 2>/dev/null || echo "failed")
-
-                    if [[ "$query_result" == *"tokenPrices"* ]]; then
-                      total_count=$(echo "$query_result" | jq -r '.data.tokenPrices.totalCount // 0' 2>/dev/null)
-                      if [[ "$total_count" -gt 1 ]]; then
-                        break
-                      fi
-                    fi
-
-                    sleep $interval
-                    elapsed=$((elapsed + interval))
-                  done
-
-                  echo "Old schema verification completed successfully!"
-                  echo "Final verification details:"
-                  echo "$query_result" | jq '.' 2>/dev/null || echo "$query_result"
-
             - name: Run SDK tests
               run: pnpm --filter="@hyperbridge/sdk" test
 
