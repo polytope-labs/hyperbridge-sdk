@@ -594,7 +594,7 @@ describe.sequential("Basic", () => {
 		}
 	}, 1_000_0000)
 
-	it.skip("Should handle order filling with token swaps", async () => {
+	it.only("Should handle order filling with token swaps", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
