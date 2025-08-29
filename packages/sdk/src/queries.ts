@@ -231,3 +231,19 @@ query TokenGatewayAssetTeleportedStatus($commitment: String!) {
     }
   }
 }`
+
+export const TOKEN_PRICE = `
+query TokenPrice($symbol: String!) {
+  tokenPrices(
+    filter: { symbol: { equalTo: $symbol } }
+  ) {
+    nodes {
+      id
+      symbol
+      address
+      currency
+      price
+      lastUpdatedAt
+    }
+  }
+}`
