@@ -120,6 +120,9 @@ export interface ClientConfig {
 
 export interface RetryConfig {
 	maxRetries: number
+	/**
+	 * @description The initial backoff time in milliseconds before the first retry attempt.
+	 */
 	backoffMs: number
 	logMessage?: string
 	logger?: ConsolaInstance
@@ -1081,18 +1084,5 @@ export interface OrderResponse {
 				}>
 			}
 		}>
-	}
-}
-
-export class AbortSignalInternal extends Error {
-	constructor(message: string) {
-		super()
-
-		this.name = "AbortSignalInternal"
-		this.message = message
-	}
-
-	static isError(error: unknown): error is AbortSignalInternal {
-		return error instanceof AbortSignalInternal
 	}
 }
