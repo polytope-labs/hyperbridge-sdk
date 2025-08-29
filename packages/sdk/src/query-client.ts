@@ -13,6 +13,8 @@ import type {
 	TokenGatewayAssetTeleportedWithStatus,
 	TokenPrice,
 	TokenPricesResponse,
+	TokenRegistry,
+	TokenRegistryResponse,
 } from "./types"
 import type { ConsolaInstance } from "consola"
 import {
@@ -21,6 +23,7 @@ import {
 	ORDER_STATUS,
 	TOKEN_GATEWAY_ASSET_TELEPORTED_STATUS,
 	TOKEN_PRICE,
+	TOKEN_REGISTRY,
 } from "./queries"
 
 export function createQueryClient(config: { url: string }) {
@@ -323,9 +326,7 @@ export async function _queryTokenPriceInternal(params: TokenPriceQueryParams): P
 
 	const response = await retryPromise(
 		() => {
-			return client.request<TokenPricesResponse>(TOKEN_PRICE, {
-				symbol: symbol,
-			})
+			return client.request<TokenPricesResponse>(TOKEN_PRICE, { symbol })
 		},
 		{
 			maxRetries: 3,
@@ -340,4 +341,43 @@ export async function _queryTokenPriceInternal(params: TokenPriceQueryParams): P
 
 	logger.trace("`TokenPrice` found")
 	return item
+}
+
+type TokenRegistryQueryParams = {
+	symbol: string
+	queryClient: IndexerQueryClient
+	logger?: ConsolaInstance
+}
+
+export async function _queryTokenRegistryInternal(
+	params: TokenRegistryQueryParams,
+): Promise<TokenRegistry | undefined> {
+	const { symbol, queryClient: client, logger = DEFAULT_LOGGER } = params
+
+	const response = await retryPromise(
+		() => {
+			return client.request<TokenRegistryResponse>(TOKEN_REGISTRY, { symbol })
+		},
+		{
+			maxRetries: 3,
+			backoffMs: 1000,
+			logger,
+			logMessage: `querying 'TokenRegistry' by Symbol(${symbol})`,
+		},
+	)
+
+	const item = response.tokenRegistries.nodes?.[0]
+	if (!item) return
+
+	logger.trace("`TokenRegistry` found")
+
+	return {
+		id: item.id,
+		name: item.name,
+		symbol: item.symbol,
+		address: item.address,
+		updateFrequencySeconds: item.updateFrequencySeconds,
+		lastUpdatedAt: item.lastUpdatedAt,
+		createdAt: new Date(item.createdAt),
+	}
 }

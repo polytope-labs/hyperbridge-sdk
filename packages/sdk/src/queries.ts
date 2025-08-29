@@ -247,3 +247,20 @@ query TokenPrice($symbol: String!) {
     }
   }
 }`
+
+export const TOKEN_REGISTRY = `
+query TokenRegistry($symbol: String!) {
+  tokenRegistries(
+    filter: { symbol: { equalTo: $symbol } }
+  ) {
+    nodes {
+      id
+      name
+      symbol
+      address
+      updateFrequencySeconds
+      lastUpdatedAt
+      createdAt
+    }
+  }
+}`
