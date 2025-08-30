@@ -2,15 +2,17 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
 import { IntentGatewayService, Order } from "@/services/intentGateway.service"
-import { OrderStatus } from "@/configs/src/types"
+import { OrderStatus, ProtocolParticipant, RewardPointsActivityType } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
-import { Hex } from "viem"
+import { Hex, decodeFunctionData } from "viem"
 import { wrap } from "@/utils/event.utils"
+import IntentGatewayAbi from "@/configs/abis/IntentGateway.abi.json"
+import { PointsService } from "@/services/points.service"
 
 export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promise<void> => {
 	logger.info(`Order Placed Event: ${stringify(event)}`)
 
-	const { blockNumber, transactionHash, args, block, blockHash } = event
+	const { blockNumber, transactionHash, args, block, blockHash, transaction } = event
 
 	if (!args) return
 
@@ -60,4 +62,36 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 		blockNumber,
 		timestamp,
 	})
+
+	if (transaction?.input) {
+		try {
+			const { args } = decodeFunctionData({ abi: IntentGatewayAbi.abi, data: transaction.input as Hex })
+
+			logger.info(`Decoded function with args count: ${args?.length || 0}`)
+
+			if (args && args.length >= 2) {
+				const graffiti = args[1] as Hex
+
+				if (graffiti) {
+					logger.info(`Awarding referral points for graffiti: ${graffiti}`)
+
+					await PointsService.awardPoints(
+						graffiti,
+						chain,
+						BigInt(1),
+						ProtocolParticipant.USER,
+						RewardPointsActivityType.ORDER_PLACED_POINTS,
+						transactionHash,
+						"Referral Point Allocation",
+						timestamp,
+					)
+				}
+			}
+		} catch (error) {
+			logger.error(`Failed to decode transaction data for referral points: ${error}`, {
+				transactionHash,
+				error: stringify(error)
+			})
+		}
+	}
 })
