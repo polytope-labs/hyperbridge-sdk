@@ -1,4 +1,12 @@
-import { ChainClientManager, ContractInteractionService } from "@/services"
+import {
+	BestProtocol,
+	ChainClientManager,
+	ContractInteractionService,
+	SwapContextWithRequirements,
+	TokenAssets,
+	TokenBalances,
+	TokenType,
+} from "@/services"
 import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
@@ -23,6 +31,7 @@ import { UNISWAP_V3_POOL_ABI } from "@/config/abis/UniswapV3Pool"
 import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
 import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
 import { UNISWAP_V4_POOL_MANAGER_ABI } from "@/config/abis/UniswapV4PoolManager"
+import { isWithinThreshold } from "@/utils"
 
 export class StableSwapFiller implements FillerStrategy {
 	name = "StableSwapFiller"
@@ -374,7 +383,11 @@ export class StableSwapFiller implements FillerStrategy {
 				)
 
 				// Simulate and validate
-				const gasEstimate = await this.simulateSwapCalls(swapCalls, context)
+				const gasEstimate = await this.simulateSwapCalls(
+					swapCalls,
+					context.fillerWalletAddress,
+					context.destChain,
+				)
 				if (gasEstimate === null) continue
 
 				console.log(
@@ -477,144 +490,51 @@ export class StableSwapFiller implements FillerStrategy {
 			}
 		}
 
-		// Create swap call
-		const V2_SWAP_EXACT_OUT = 0x09
-		const V3_SWAP_EXACT_OUT = 0x01
-		const V4_SWAP = 0x10
-
-		const isPermit2 = false
-
 		let commands: HexString
 		let inputs: HexString[]
 
-		if (bestProtocol.protocol === "v2") {
-			const swapSourceAddress =
-				sourceTokenAddress === ADDRESS_ZERO ? context.assets.wethAsset : sourceTokenAddress
-			const swapTargetAddress =
-				targetTokenAddress === ADDRESS_ZERO ? context.assets.wethAsset : targetTokenAddress
-
-			const path = [swapSourceAddress, swapTargetAddress]
-			commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
-			inputs = [
-				encodeAbiParameters(
-					[
-						{ type: "address", name: "recipient" },
-						{ type: "uint256", name: "amountOut" },
-						{ type: "uint256", name: "amountInMax" },
-						{ type: "address[]", name: "path" },
-						{ type: "bool", name: "isPermit2" },
-					],
-					[context.fillerWalletAddress, maxSwappableAmount, bestProtocol.amountIn, path, isPermit2],
-				),
-			]
-		} else if (bestProtocol.protocol === "v3") {
-			const swapSourceAddress =
-				sourceTokenAddress === ADDRESS_ZERO ? context.assets.wethAsset : sourceTokenAddress
-			const swapTargetAddress =
-				targetTokenAddress === ADDRESS_ZERO ? context.assets.wethAsset : targetTokenAddress
-
-			const pathV3 = encodePacked(
-				["address", "uint24", "address"],
-				[swapSourceAddress, bestProtocol.fee!, swapTargetAddress],
-			)
-			commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
-			inputs = [
-				encodeAbiParameters(
-					[
-						{ type: "address", name: "recipient" },
-						{ type: "uint256", name: "amountOut" },
-						{ type: "uint256", name: "amountInMax" },
-						{ type: "bytes", name: "path" },
-						{ type: "bool", name: "isPermit2" },
-					],
-					[context.fillerWalletAddress, maxSwappableAmount, bestProtocol.amountIn, pathV3, isPermit2],
-				),
-			]
-		} else if (bestProtocol.protocol === "v4") {
-			const currency0 = sourceTokenAddress < targetTokenAddress ? sourceTokenAddress : targetTokenAddress
-			const currency1 = sourceTokenAddress < targetTokenAddress ? targetTokenAddress : sourceTokenAddress
-
-			const poolKey = {
-				currency0: currency0,
-				currency1: currency1,
-				fee: bestProtocol.fee!,
-				tickSpacing: this.getTickSpacing(bestProtocol.fee!),
-				hooks: ADDRESS_ZERO,
+		switch (bestProtocol.protocol) {
+			case "v2": {
+				const calldata = this.contractService.createV2SwapCalldata(
+					sourceTokenAddress,
+					targetTokenAddress,
+					maxSwappableAmount,
+					bestProtocol.amountIn,
+					context.fillerWalletAddress,
+					context.assets,
+				)
+				commands = calldata.commands
+				inputs = calldata.inputs
+				break
 			}
-
-			const zeroForOne = sourceTokenAddress === currency0
-
-			const SWAP_EXACT_OUT_SINGLE = 0x08
-			const SETTLE_ALL = 0x0c
-			const TAKE_ALL = 0x0f
-
-			const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_OUT_SINGLE, SETTLE_ALL, TAKE_ALL])
-
-			const swapParams = encodeAbiParameters(
-				[
-					{
-						type: "tuple",
-						name: "ExactOutputSingleParams",
-						components: [
-							{
-								type: "tuple",
-								name: "poolKey",
-								components: [
-									{ type: "address", name: "currency0" },
-									{ type: "address", name: "currency1" },
-									{ type: "uint24", name: "fee" },
-									{ type: "int24", name: "tickSpacing" },
-									{ type: "address", name: "hooks" },
-								],
-							},
-							{ type: "bool", name: "zeroForOne" },
-							{ type: "uint128", name: "amountOut" },
-							{ type: "uint128", name: "amountInMaximum" },
-							{ type: "bytes", name: "hookData" },
-						],
-					},
-				],
-				[
-					{
-						poolKey,
-						zeroForOne,
-						amountOut: maxSwappableAmount,
-						amountInMaximum: bestProtocol.amountIn,
-						hookData: "0x",
-					},
-				],
-			)
-
-			const settleParams = encodeAbiParameters(
-				[
-					{ type: "address", name: "currency" },
-					{ type: "uint128", name: "amount" },
-				],
-				[sourceTokenAddress, bestProtocol.amountIn],
-			)
-
-			const takeParams = encodeAbiParameters(
-				[
-					{ type: "address", name: "currency" },
-					{ type: "uint128", name: "amount" },
-				],
-				[targetTokenAddress, maxSwappableAmount],
-			)
-
-			const params = [swapParams, settleParams, takeParams]
-
-			commands = encodePacked(["uint8"], [V4_SWAP])
-			inputs = [
-				encodeAbiParameters(
-					[
-						{ type: "bytes", name: "actions" },
-						{ type: "bytes[]", name: "params" },
-					],
-					[actions, params],
-				),
-			]
-		} else {
-			throw new Error("Invalid protocol type")
+			case "v3": {
+				const calldata = this.contractService.createV3SwapCalldata(
+					sourceTokenAddress,
+					targetTokenAddress,
+					maxSwappableAmount,
+					bestProtocol.amountIn,
+					bestProtocol.fee!,
+					context.fillerWalletAddress,
+					context.assets,
+				)
+				commands = calldata.commands
+				inputs = calldata.inputs
+				break
+			}
+			case "v4": {
+				const calldata = this.contractService.createV4SwapCalldata(
+					sourceTokenAddress,
+					targetTokenAddress,
+					maxSwappableAmount,
+					bestProtocol.amountIn,
+					bestProtocol.fee!,
+				)
+				commands = calldata.commands
+				inputs = calldata.inputs
+				break
+			}
+			default:
+				throw new Error("Invalid protocol type")
 		}
 
 		const deadline = (await context.destClient.getBlock()).timestamp + 120n
@@ -672,28 +592,15 @@ export class StableSwapFiller implements FillerStrategy {
 		}
 	}
 
-	private getTickSpacing(fee: number): number {
-		switch (fee) {
-			case 100: // 0.01%
-				return 1
-			case 500: // 0.05%
-				return 10
-			case 3000: // 0.30%
-				return 60
-			case 10000: // 1.00%
-				return 200
-			default:
-				return 60 // Default to medium
-		}
-	}
-
 	private async simulateSwapCalls(
 		calls: { to: HexString; data: HexString; value: bigint }[],
-		context: SwapContextWithRequirements,
+		account: HexString,
+		destChain: string,
 	): Promise<bigint | null> {
+		const destClient = this.clientManager.getPublicClient(destChain)
 		try {
-			const { results } = await context.destClient.simulateCalls({
-				account: context.fillerWalletAddress,
+			const { results } = await destClient.simulateCalls({
+				account,
 				calls,
 			})
 			return results.reduce((acc: bigint, result: { gasUsed: bigint }) => acc + result.gasUsed, BigInt(0))
@@ -733,12 +640,6 @@ export class StableSwapFiller implements FillerStrategy {
 		)
 	}
 
-	// Returns true if candidate <= reference * (1 + thresholdBps/10000)
-	private isWithinThreshold(candidate: bigint, reference: bigint, thresholdBps: bigint): boolean {
-		const basisPoints = 10000n
-		return candidate * basisPoints <= reference * (basisPoints + thresholdBps)
-	}
-
 	// Find whether uniswap v2, v3, or v4 is the best protocol to use based on the amountIn the filler has to pay
 	async findBestProtocol(
 		tokenIn: HexString,
@@ -750,147 +651,18 @@ export class StableSwapFiller implements FillerStrategy {
 		amountIn: bigint
 		fee?: number // For V3/V4
 	}> {
-		const destClient = this.clientManager.getPublicClient(destChain)
-		let amountInV2 = maxUint256
-		let amountInV3 = maxUint256
-		let amountInV4 = maxUint256
-		let bestV3Fee = 0
-		let bestV4Fee = 0
-		const commonFees = [500, 3000, 10000]
+		// Get quotes from all protocols concurrently
+		const [amountInV2, v3Quote, v4Quote] = await Promise.all([
+			this.contractService.getV2Quote(tokenIn, tokenOut, amountOut, destChain),
+			this.contractService.getV3Quote(tokenIn, tokenOut, amountOut, destChain),
+			this.contractService.getV4Quote(tokenIn, tokenOut, amountOut, destChain),
+		])
 
-		const v2Router = this.configService.getUniswapRouterV2Address(destChain)
-		const v2Factory = this.configService.getUniswapV2FactoryAddress(destChain)
-		const v3Factory = this.configService.getUniswapV3FactoryAddress(destChain)
-		const v3Quoter = this.configService.getUniswapV3QuoterAddress(destChain)
-		const v4Quoter = this.configService.getUniswapV4QuoterAddress(destChain)
+		const { amountIn: amountInV3, fee: bestV3Fee } = v3Quote
+		const { amountIn: amountInV4, fee: bestV4Fee } = v4Quote
 
-		// For V2/V3, convert native addresses to WETH for quotes
-		const wethAsset = this.configService.getWrappedNativeAssetWithDecimals(destChain).asset
-		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
-		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
-
-		// V2 Protocol Check
-		try {
-			const v2PairExists = (await destClient.readContract({
-				address: v2Factory,
-				abi: UNISWAP_V2_FACTORY_ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
-
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountIn = (await destClient.readContract({
-					address: v2Router,
-					abi: UNISWAP_ROUTER_V2_ABI,
-					functionName: "getAmountsIn",
-					args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
-
-				amountInV2 = v2AmountIn[0]
-			}
-		} catch (error) {
-			console.warn("V2 quote failed:", error)
-		}
-
-		// V3 Protocol Check - Find the best pool with best quote
-		let bestV3AmountIn = maxUint256
-
-		for (const fee of commonFees) {
-			try {
-				const pool = await destClient.readContract({
-					address: v3Factory,
-					abi: UNISWAP_V3_FACTORY_ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await destClient.readContract({
-						address: pool,
-						abi: UNISWAP_V3_POOL_ABI,
-						functionName: "liquidity",
-					})
-
-					if (liquidity > BigInt(0)) {
-						// Use simulateContract for V3 quoter (handles revert-based returns)
-						const quoteResult = (
-							await destClient.simulateContract({
-								address: v3Quoter,
-								abi: UNISWAP_V3_QUOTER_V2_ABI,
-								functionName: "quoteExactOutputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amount: amountOut,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
-
-						const amountIn = quoteResult[0]
-
-						if (amountIn < bestV3AmountIn) {
-							bestV3AmountIn = amountIn
-							bestV3Fee = fee
-						}
-					}
-				}
-			} catch (error) {
-				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
-			}
-		}
-
-		amountInV3 = bestV3AmountIn
-
-		// V4 Protocol Check - Find the best pool with best quote (uses native addresses directly)
-		let bestV4AmountIn = maxUint256
-
-		for (const fee of commonFees) {
-			try {
-				// Create pool key for V4 - can use native addresses directly
-				const poolKey = {
-					currency0: tokenIn < tokenOut ? tokenIn : tokenOut,
-					currency1: tokenIn < tokenOut ? tokenOut : tokenIn,
-					fee: fee,
-					tickSpacing: this.getTickSpacing(fee),
-					hooks: ADDRESS_ZERO, // No hooks
-				}
-
-				// Get quote from V4 quoter
-				const quoteResult = (
-					await destClient.simulateContract({
-						address: v4Quoter,
-						abi: UNISWAP_V4_QUOTER_ABI,
-						functionName: "quoteExactOutputSingle",
-						args: [
-							{
-								poolKey: poolKey,
-								zeroForOne: tokenIn < tokenOut,
-								exactAmount: amountOut,
-								hookData: "0x", // Empty hook data
-							},
-						],
-					})
-				).result as [bigint, bigint] // [amountIn, gasEstimate]
-
-				const amountIn = quoteResult[0]
-
-				if (amountIn < bestV4AmountIn) {
-					bestV4AmountIn = amountIn
-					bestV4Fee = fee
-				}
-			} catch (error) {
-				console.warn(`V4 quote failed for fee ${fee}, continuing to next fee tier`)
-			}
-		}
-
-		amountInV4 = bestV4AmountIn
-
+		// Check if any protocol has liquidity
 		if (amountInV2 === maxUint256 && amountInV3 === maxUint256 && amountInV4 === maxUint256) {
-			// No liquidity in any protocol
 			return {
 				protocol: null,
 				amountIn: maxUint256,
@@ -900,10 +672,10 @@ export class StableSwapFiller implements FillerStrategy {
 		// Prefer V4 when V4 is close to the best of V2/V3 (within thresholdBps)
 		if (amountInV4 !== maxUint256) {
 			const thresholdBps = 100n // 1%
-			if (amountInV3 !== maxUint256 && this.isWithinThreshold(amountInV4, amountInV3, thresholdBps)) {
+			if (amountInV3 !== maxUint256 && isWithinThreshold(amountInV4, amountInV3, thresholdBps)) {
 				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
 			}
-			if (amountInV2 !== maxUint256 && this.isWithinThreshold(amountInV4, amountInV2, thresholdBps)) {
+			if (amountInV2 !== maxUint256 && isWithinThreshold(amountInV4, amountInV2, thresholdBps)) {
 				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
 			}
 		}
@@ -934,47 +706,3 @@ export class StableSwapFiller implements FillerStrategy {
 		}
 	}
 }
-
-interface TokenBalances {
-	dai: bigint
-	usdt: bigint
-	usdc: bigint
-	native: bigint
-}
-
-interface TokenAssets {
-	daiAsset: HexString
-	usdtAsset: HexString
-	usdcAsset: HexString
-	wethAsset: HexString
-}
-
-interface TokenDecimals {
-	daiDecimals: number
-	usdtDecimals: number
-	usdcDecimals: number
-}
-
-interface SwapContext {
-	contractService: ContractInteractionService
-	fillerWalletAddress: HexString
-	destClient: PublicClient
-	destChain: string
-	assets: TokenAssets
-	decimals: TokenDecimals
-	initialBalances: TokenBalances
-	universalRouterAddress: HexString
-}
-
-interface SwapContextWithRequirements extends SwapContext {
-	remainingBalances: TokenBalances
-	shortfalls: TokenBalances
-}
-
-interface BestProtocol {
-	protocol: "v2" | "v3" | "v4" | null
-	amountIn: bigint
-	fee?: number
-}
-
-type TokenType = keyof TokenBalances
