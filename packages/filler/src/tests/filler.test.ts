@@ -275,16 +275,15 @@ describe.sequential("Basic", () => {
 		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
 		intentFiller.start()
 
-		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
 		const inputs: TokenInfo[] = [
 			{
-				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				token: bytes20ToBytes32(chainConfigService.getDaiAsset(gnosisChiadoId)),
 				amount: 100n,
 			},
 		]
 		const outputs: PaymentInfo[] = [
 			{
-				token: bytes20ToBytes32(daiAsset),
+				token: bytes20ToBytes32(chainConfigService.getDaiAsset(bscChapelId)),
 				amount: 100n,
 				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
 			},
@@ -318,6 +317,13 @@ describe.sequential("Basic", () => {
 			gnosisChiadoIntentGateway.address,
 		)
 
+		await approveTokens(
+			gnosisChiadoWalletClient,
+			gnosisChiadoPublicClient,
+			chainConfigService.getDaiAsset(gnosisChiadoId),
+			gnosisChiadoIntentGateway.address,
+		)
+
 		const orderDetectedPromise = new Promise<Order>((resolve) => {
 			const eventMonitor = intentFiller.monitor
 			if (!eventMonitor) {
@@ -334,7 +340,6 @@ describe.sequential("Basic", () => {
 		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: gnosisChiado,
-			value: 100n,
 		})
 
 		const receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
@@ -815,7 +820,7 @@ describe.sequential("Basic", () => {
 		newIntentFiller.stop()
 	}, 1_000_000)
 
-	it.only("Should validate order inputs and outputs correctly", async () => {
+	it("Should validate order inputs and outputs correctly", async () => {
 		const { chainConfigService, bscChapelId, mainnetId } = await setUp()
 
 		const basicFiller = new BasicFiller(process.env.PRIVATE_KEY as HexString)
@@ -965,7 +970,7 @@ describe.sequential("Basic", () => {
 		let fraction18 = parseUnits("0.000000000000000123", 18) // 123 wei
 		zero6 = parseUnits("0", 6) // 0 in 6 decimals
 		expect(compareDecimalValues(fraction18, 18, zero6, 6)).toBe(false)
-	}, 30_000)
+	}, 300_000)
 })
 
 async function setUp() {

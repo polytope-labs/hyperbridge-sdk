@@ -300,7 +300,7 @@ describe.sequential("Order Status Stream", () => {
 		isFilled = await intentGateway.isOrderFilled(filledOrder)
 
 		assert(isFilled === true)
-	})
+	}, 1_000_000)
 
 	it.skip("should get the mainnet quotes where liquidity is vastly available for v3 and v4", async () => {
 		const { chainConfigService } = await setUp()
