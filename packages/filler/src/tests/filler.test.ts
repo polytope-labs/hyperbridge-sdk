@@ -815,7 +815,7 @@ describe.sequential("Basic", () => {
 		newIntentFiller.stop()
 	}, 1_000_000)
 
-	it.only("Should validate order inputs and outputs correctly", async () => {
+	it("Should validate order inputs and outputs correctly", async () => {
 		const { chainConfigService, bscChapelId, mainnetId } = await setUp()
 
 		const basicFiller = new BasicFiller(process.env.PRIVATE_KEY as HexString)
