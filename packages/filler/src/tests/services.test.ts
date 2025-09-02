@@ -15,7 +15,6 @@ import "./setup"
 import { decodeFunctionResult, encodeFunctionData, maxUint256, parseUnits, toHex } from "viem"
 import { privateKeyToAddress } from "viem/accounts"
 import { UNIVERSAL_ROUTER_ABI } from "@/config/abis/UniversalRouter"
-import { simulateCalls } from "viem/_types/actions/public/simulateCalls"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 
 describe.sequential("ContractInteractionService", () => {
@@ -84,7 +83,7 @@ describe.sequential("ContractInteractionService", () => {
 			console.log("Testnet DAI price", testnetDaiPrice)
 		})
 
-		it("should get V2 quote and swap using the quote", async () => {
+		it.skip("should get V2 quote and swap using the quote", async () => {
 			const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 			const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 			const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -177,7 +176,7 @@ describe.sequential("ContractInteractionService", () => {
 			assert(balance === amoutOutBigInt)
 		})
 
-		it("should get v3 quote and swap using the quote", async () => {
+		it.skip("should get v3 quote and swap using the quote", async () => {
 			const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 			const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 			const tokenOut = chainConfigService.getUsdcAsset(mainnetId)

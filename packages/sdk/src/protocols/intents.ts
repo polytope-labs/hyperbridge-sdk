@@ -7,6 +7,7 @@ import {
 	ADDRESS_ZERO,
 	MOCK_ADDRESS,
 	ERC20Method,
+	adjustFeeDecimals,
 } from "@/utils"
 import { maxUint256, parseEther, toHex } from "viem"
 import { type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
@@ -70,7 +71,7 @@ export class IntentGateway {
 		const relayerFeeInSourceFeeToken =
 			postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * RELAYER_FEE_BPS) / 10000n
 
-		const relayerFeeInDestFeeToken = this.adjustFeeDecimals(
+		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,
 			sourceChainFeeTokenDecimals,
 			destChainFeeTokenDecimals,
@@ -179,7 +180,7 @@ export class IntentGateway {
 			sourceChainFeeTokenDecimals,
 		)
 
-		const protocolFeeInSourceFeeToken = this.adjustFeeDecimals(
+		const protocolFeeInSourceFeeToken = adjustFeeDecimals(
 			// Following baseIsmpModule.sol, the protocol fee is added to the relayer fee
 			(await this.dest.quote(postRequest)) + relayerFeeInDestFeeToken,
 			destChainFeeTokenDecimals,
@@ -215,7 +216,7 @@ export class IntentGateway {
 		let amountInV4 = maxUint256
 		let bestV3Fee = 0
 		let bestV4Fee = 0
-		const commonFees = [500, 3000, 10000]
+		const commonFees = [100, 500, 3000, 10000]
 
 		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
 		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
@@ -310,9 +311,14 @@ export class IntentGateway {
 		for (const fee of commonFees) {
 			try {
 				// Create pool key for V4 - can use native addresses directly
+				const currency0 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenIn : tokenOut
+				const currency1 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenOut : tokenIn
+
+				const zeroForOne = tokenIn.toLowerCase() === currency0.toLowerCase()
+
 				const poolKey = {
-					currency0: tokenIn < tokenOut ? tokenIn : tokenOut,
-					currency1: tokenIn < tokenOut ? tokenOut : tokenIn,
+					currency0: currency0,
+					currency1: currency1,
 					fee: fee,
 					tickSpacing: this.getTickSpacing(fee),
 					hooks: ADDRESS_ZERO, // No hooks
@@ -327,7 +333,7 @@ export class IntentGateway {
 						args: [
 							{
 								poolKey: poolKey,
-								zeroForOne: tokenIn < tokenOut,
+								zeroForOne: zeroForOne,
 								exactAmount: amountOut,
 								hookData: "0x", // Empty hook data
 							},
@@ -415,7 +421,7 @@ export class IntentGateway {
 		let amountOutV4 = BigInt(0)
 		let bestV3Fee = 0
 		let bestV4Fee = 0
-		const commonFees = [500, 3000, 10000]
+		const commonFees = [100, 500, 3000, 10000]
 
 		const v2Router = this.source.config.getUniswapRouterV2Address(chain)
 		const v2Factory = this.source.config.getUniswapV2FactoryAddress(chain)
@@ -510,9 +516,14 @@ export class IntentGateway {
 		for (const fee of commonFees) {
 			try {
 				// Create pool key for V4 - can use native addresses directly
+				const currency0 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenIn : tokenOut
+				const currency1 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenOut : tokenIn
+
+				const zeroForOne = tokenIn.toLowerCase() === currency0.toLowerCase()
+
 				const poolKey = {
-					currency0: tokenIn < tokenOut ? tokenIn : tokenOut,
-					currency1: tokenIn < tokenOut ? tokenOut : tokenIn,
+					currency0: currency0,
+					currency1: currency1,
 					fee: fee,
 					tickSpacing: this.getTickSpacing(fee),
 					hooks: ADDRESS_ZERO, // No hooks
@@ -527,7 +538,7 @@ export class IntentGateway {
 						args: [
 							{
 								poolKey: poolKey,
-								zeroForOne: tokenIn < tokenOut,
+								zeroForOne: zeroForOne,
 								exactAmount: amountIn,
 								hookData: "0x", // Empty hook data
 							},
@@ -624,26 +635,6 @@ export class IntentGateway {
 		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
-	}
-
-	/**
-	 * Adjusts fee amounts between different decimal precisions.
-	 * Handles scaling up or down based on the decimal difference.
-	 *
-	 * @param feeInFeeToken - The fee amount to adjust
-	 * @param fromDecimals - The current decimal precision
-	 * @param toDecimals - The target decimal precision
-	 * @returns The adjusted fee amount with the target decimal precision
-	 */
-	adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
-		if (fromDecimals === toDecimals) return feeInFeeToken
-		if (fromDecimals < toDecimals) {
-			const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
-			return feeInFeeToken * scaleFactor
-		} else {
-			const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
-			return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
-		}
 	}
 
 	/**
