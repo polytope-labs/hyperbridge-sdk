@@ -203,10 +203,12 @@ export class IntentGatewayService {
 				)
 
 				if (orderPlaced.referrer != DEFAULT_REFERRER) {
+					const referrerPointsToAward = Math.floor(pointsToAward / 2)
+
 					await PointsService.awardPoints(
 						orderPlaced.referrer,
 						ethers.utils.toUtf8String(orderPlaced.sourceChain),
-						BigInt(pointsToAward),
+						BigInt(referrerPointsToAward),
 						ProtocolParticipantType.REFERRER,
 						PointsActivityType.ORDER_REFERRED_POINTS,
 						transactionHash,
