@@ -25,13 +25,14 @@ import { getStateCommitmentFieldSlot, type IChain } from "./chain"
 import { generateRootWithProof } from "./utils"
 import handler from "./abis/handler"
 import evmHost from "./abis/evmHost"
+import { generatePrivateKey, privateKeyToAddress } from "viem/accounts"
 
 export * from "./utils/mmr"
 export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
-export const MOCK_ADDRESS = "0xc8cb6c49f90d7024b5d4fd2ed5491dbffb80ca13" as HexString
+export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890" as HexString
 export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**

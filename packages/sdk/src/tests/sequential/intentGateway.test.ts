@@ -370,8 +370,8 @@ describe.sequential("Order Status Stream", () => {
 
 		const bscIntentGateway = new IntentGateway(bscEvmChain, mainnetEvmChain)
 
-		const bscDaiAsset = chainConfigService.getDaiAsset(bscMainnetId)
-		const mainnetDaiAsset = chainConfigService.getDaiAsset(mainnetId)
+		const bscUsdcAsset = chainConfigService.getUsdcAsset(bscMainnetId)
+		const mainnetUsdcAsset = chainConfigService.getUsdcAsset(mainnetId)
 
 		const order: Order = {
 			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
@@ -382,14 +382,14 @@ describe.sequential("Order Status Stream", () => {
 			fees: 0n,
 			outputs: [
 				{
-					token: bytes20ToBytes32(mainnetDaiAsset),
+					token: bytes20ToBytes32(mainnetUsdcAsset),
 					amount: 100n,
 					beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
 				},
 			],
 			inputs: [
 				{
-					token: bytes20ToBytes32(bscDaiAsset),
+					token: bytes20ToBytes32(bscUsdcAsset),
 					amount: 100n,
 				},
 			],
