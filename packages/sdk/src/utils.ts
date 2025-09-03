@@ -31,7 +31,7 @@ export * from "./utils/substrate"
 
 export const DEFAULT_POLL_INTERVAL = 5_000
 export const ADDRESS_ZERO = "0x0000000000000000000000000000000000000000" as HexString
-export const MOCK_ADDRESS = "0x1234567890123456789012345678901234567890" as HexString
+export const MOCK_ADDRESS = "0xc8cb6c49f90d7024b5d4fd2ed5491dbffb80ca13" as HexString
 export const DUMMY_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
@@ -513,6 +513,10 @@ export function mapTestnetToMainnet(identifier: string): string {
 	identifier = identifier.toLowerCase()
 
 	switch (identifier) {
+		case "bnb":
+			return "wbnb"
+		case "eth":
+			return "weth"
 		case "tbnb":
 			return "wbnb"
 		case "0xc043f483373072f7f27420d6e7d7ad269c018e18".toLowerCase():
