@@ -31,19 +31,21 @@ enum Status {
 """
 Types of participants in the Hyperbridge Protocol
 """
-enum ProtocolParticipant {
+enum ProtocolParticipantType {
 	RELAYER
 	FILLER
 	USER
+	REFERRER
 }
 
 """
 System activity types related to reward points
 """
-enum RewardPointsActivityType {
+enum PointsActivityType {
 	REWARD_POINTS_EARNED
 	ORDER_PLACED_POINTS
 	ORDER_FILLED_POINTS
+	ORDER_REFERRED_POINTS
 	TOKEN_TELEPORTED_POINTS
 }
 
@@ -221,17 +223,17 @@ type Relayer @entity {
 Hyperbridge Relayer Activity
 """
 type RelayerActivity @entity {
-    """
-    Unique Identifier for the activity
-    """
-    id: ID!
+	"""
+	Unique Identifier for the activity
+	"""
+	id: ID!
 
-    """
-    Relayer the activities are for
-    """
-    relayer: Relayer!
+	"""
+	Relayer the activities are for
+	"""
+	relayer: Relayer!
 
-    """
+	"""
 	Last updated at
 	"""
 	lastUpdatedAt: BigInt!
@@ -559,7 +561,7 @@ type RewardPoints @entity @compositeIndexes(fields: [["address", "chain"], ["ear
 	address: String! @index
 	chain: String! @index
 	points: BigInt! @index
-	earnerType: ProtocolParticipant!
+	earnerType: ProtocolParticipantType!
 }
 
 type RewardPointsActivityLog
@@ -570,8 +572,8 @@ type RewardPointsActivityLog
 	points: BigInt! @index
 	transactionHash: String! @index
 	earnerAddress: String! @index
-	earnerType: ProtocolParticipant!
-	activityType: RewardPointsActivityType!
+	earnerType: ProtocolParticipantType!
+	activityType: PointsActivityType!
 	description: String!
 	createdAt: Date! @index
 }
@@ -903,6 +905,11 @@ type OrderPlaced @entity {
 	statusMetadata: [OrderStatusMetadata]! @derivedFrom(field: "order")
 
 	"""
+	Referrer address that referred the user
+	"""
+	referrer: String!
+
+	"""
 	Timestamp when the order was created
 	"""
 	createdAt: Date! @index
@@ -1147,12 +1154,12 @@ type DailyVolumeUSD @entity {
 Daily Hyperbridge Protocol Fees Stats
 """
 type DailyProtocolFeesStats @entity {
-    """
-    Unique identifier of the daily protocol fees
-    """
-    id: ID!
+	"""
+	Unique identifier of the daily protocol fees
+	"""
+	id: ID!
 
-   	"""
+	"""
 	The chain on which the protocol fees are charged
 	"""
 	chain: String! @index

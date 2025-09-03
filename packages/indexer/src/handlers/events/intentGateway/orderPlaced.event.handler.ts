@@ -1,8 +1,8 @@
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayAbi"
-import { IntentGatewayService, Order } from "@/services/intentGateway.service"
-import { OrderStatus, ProtocolParticipant, RewardPointsActivityType } from "@/configs/src/types"
+import { DEFAULT_REFERRER, IntentGatewayService, Order } from "@/services/intentGateway.service"
+import { OrderStatus } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { Hex, decodeFunctionData } from "viem"
 import { wrap } from "@/utils/event.utils"
@@ -13,8 +13,31 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 	logger.info(`Order Placed Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, block, blockHash, transaction } = event
-
 	if (!args) return
+
+	const chain = getHostStateMachine(chainId)
+	const timestamp = await getBlockTimestamp(blockHash, chain)
+	let graffiti = DEFAULT_REFERRER
+
+	if (transaction?.input) {
+		try {
+			const { args } = decodeFunctionData({ abi: IntentGatewayAbi.abi, data: transaction.input as Hex })
+
+			logger.info(`Decoded function with args count: ${args?.length || 0}`)
+
+			if (args && args.length >= 2) {
+				const decodedGraffiti = args[1] as Hex
+				if (decodedGraffiti != graffiti) {
+					graffiti = decodedGraffiti
+				}
+			}
+		} catch (error) {
+			logger.error(`Failed to decode transaction data for referral points: ${error}`, {
+				transactionHash,
+				error: stringify(error),
+			})
+		}
+	}
 
 	const order: Order = {
 		id: "",
@@ -36,9 +59,6 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 		callData: args.callData as Hex,
 	}
 
-	const chain = getHostStateMachine(chainId)
-	const timestamp = await getBlockTimestamp(blockHash, chain)
-
 	logger.info(
 		`Computing Order Commitment: ${stringify({
 			order,
@@ -51,7 +71,7 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 
 	logger.info(`Order Commitment: ${commitment}`)
 
-	await IntentGatewayService.getOrCreateOrder(order, {
+	await IntentGatewayService.getOrCreateOrder(order, graffiti, {
 		transactionHash,
 		blockNumber,
 		timestamp,
@@ -62,36 +82,4 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 		blockNumber,
 		timestamp,
 	})
-
-	if (transaction?.input) {
-		try {
-			const { args } = decodeFunctionData({ abi: IntentGatewayAbi.abi, data: transaction.input as Hex })
-
-			logger.info(`Decoded function with args count: ${args?.length || 0}`)
-
-			if (args && args.length >= 2) {
-				const graffiti = args[1] as Hex
-
-				if (graffiti) {
-					logger.info(`Awarding referral points for graffiti: ${graffiti}`)
-
-					await PointsService.awardPoints(
-						graffiti,
-						chain,
-						BigInt(1),
-						ProtocolParticipant.USER,
-						RewardPointsActivityType.ORDER_PLACED_POINTS,
-						transactionHash,
-						"Referral Point Allocation",
-						timestamp,
-					)
-				}
-			}
-		} catch (error) {
-			logger.error(`Failed to decode transaction data for referral points: ${error}`, {
-				transactionHash,
-				error: stringify(error)
-			})
-		}
-	}
 })
