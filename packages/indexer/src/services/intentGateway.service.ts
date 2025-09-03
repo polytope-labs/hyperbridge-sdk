@@ -215,8 +215,6 @@ export class IntentGatewayService {
 						`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 						timestamp,
 					)
-
-					await VolumeService.updateVolume("IntentGateway.REFERRER", orderPlaced.inputUSD, timestamp)
 				}
 			}
 
