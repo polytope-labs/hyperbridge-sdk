@@ -23,9 +23,9 @@ const chainIds = Object.entries(config.chains)
 	.join(",\n")
 
 const chainNameMap = {
-	bsc: "bscTestnet",
+	"bsc-chapel": "bscTestnet",
 	"bsc-mainnet": "bsc",
-	gnosis: "gnosisChiado",
+	"gnosis-chiado": "gnosisChiado",
 	sepolia: "sepolia",
 	mainnet: "mainnet",
 }
@@ -33,9 +33,8 @@ const chainNameMap = {
 const viemChains = Object.entries(config.chains)
 	.filter(([_, data]) => data.type === "evm")
 	.map(([chain, data]) => {
-		const chainType = chain === "bsc-mainnet" ? "bsc-mainnet" : chain.split("-")[0]
 		const chainId = Number.parseInt(data.stateMachineId.split("-")[1])
-		return `\t"${chainId}": ${chainNameMap[chainType]}`
+		return `\t"${chainId}": ${chainNameMap[chain]}`
 	})
 	.join(",\n")
 
