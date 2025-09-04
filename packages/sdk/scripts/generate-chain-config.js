@@ -23,17 +23,18 @@ const chainIds = Object.entries(config.chains)
 	.join(",\n")
 
 const chainNameMap = {
-	bsc: "bscTestnet",
-	gnosis: "gnosisChiado",
+	"bsc-chapel": "bscTestnet",
+	"bsc-mainnet": "bsc",
+	"gnosis-chiado": "gnosisChiado",
 	sepolia: "sepolia",
+	mainnet: "mainnet",
 }
 
 const viemChains = Object.entries(config.chains)
 	.filter(([_, data]) => data.type === "evm")
 	.map(([chain, data]) => {
-		const chainType = chain.split("-")[0]
 		const chainId = Number.parseInt(data.stateMachineId.split("-")[1])
-		return `\t"${chainId}": ${chainNameMap[chainType]}`
+		return `\t"${chainId}": ${chainNameMap[chain]}`
 	})
 	.join(",\n")
 
@@ -89,7 +90,7 @@ const consensusStateIds = Object.entries(config.chains)
 	.join(",\n")
 
 const tsContent = `
-import { Chain, bscTestnet, gnosisChiado, sepolia } from "viem/chains"
+import { Chain, bscTestnet, gnosisChiado, sepolia, mainnet, bsc } from "viem/chains"
 
 export enum Chains {
 ${chainsEnum}

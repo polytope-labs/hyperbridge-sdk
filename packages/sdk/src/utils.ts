@@ -1,25 +1,26 @@
 import {
-	type HexString,
-	type IGetRequest,
-	type IPostRequest,
-	RequestKind,
-	RequestStatus,
-	type StateMachineHeight,
-	TimeoutStatus,
+  type HexString,
+  type IGetRequest,
+  type IPostRequest,
+  RequestKind,
+  RequestStatus,
+  type StateMachineHeight,
+  TimeoutStatus,
 } from "@/types"
 import type { Order, RequestStatusKey, RetryConfig, TimeoutStatusKey } from "@/types"
 import { LogLevels, createConsola } from "consola"
 import {
-	type CallParameters,
-	type PublicClient,
-	bytesToHex,
-	concatHex,
-	encodeAbiParameters,
-	encodePacked,
-	hexToBytes,
-	keccak256,
-	toHex,
+  type CallParameters,
+  type PublicClient,
+  bytesToHex,
+  concatHex,
+  encodeAbiParameters,
+  encodePacked,
+  hexToBytes,
+  keccak256,
+  toHex,
 } from "viem"
+import { generatePrivateKey, privateKeyToAddress } from "viem/accounts"
 import evmHost from "./abis/evmHost"
 import handler from "./abis/handler"
 import { type IChain, getStateCommitmentFieldSlot } from "./chain"
@@ -39,7 +40,7 @@ export const DUMMY_PRIVATE_KEY = "0x00000000000000000000000000000000000000000000
  * @param ms The number of milliseconds to sleep.
  */
 export function sleep(ms?: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms || DEFAULT_POLL_INTERVAL))
+  return new Promise((resolve) => setTimeout(resolve, ms || DEFAULT_POLL_INTERVAL))
 }
 
 /**
@@ -51,33 +52,33 @@ export function sleep(ms?: number): Promise<void> {
  * @returns Promise that resolves when the challenge period has elapsed
  */
 export async function waitForChallengePeriod(chain: IChain, stateMachineHeight: StateMachineHeight): Promise<void> {
-	// Get the challenge period for this state machine
-	const challengePeriod = await chain.challengePeriod(stateMachineHeight.id)
+  // Get the challenge period for this state machine
+  const challengePeriod = await chain.challengePeriod(stateMachineHeight.id)
 
-	if (challengePeriod === BigInt(0)) return
+  if (challengePeriod === BigInt(0)) return
 
-	// Get the state machine update time
-	const updateTime = await chain.stateMachineUpdateTime(stateMachineHeight)
-	// Check current timestamp
-	let currentTimestamp = await chain.timestamp()
-	// Calculate time passed since update
-	let timeElapsed = currentTimestamp - updateTime
+  // Get the state machine update time
+  const updateTime = await chain.stateMachineUpdateTime(stateMachineHeight)
+  // Check current timestamp
+  let currentTimestamp = await chain.timestamp()
+  // Calculate time passed since update
+  let timeElapsed = currentTimestamp - updateTime
 
-	if (timeElapsed > challengePeriod) return
+  if (timeElapsed > challengePeriod) return
 
-	// First sleep for the whole challenge period
-	await sleep(Number(challengePeriod) * 1000)
+  // First sleep for the whole challenge period
+  await sleep(Number(challengePeriod) * 1000)
 
-	// Keep sleeping until challenge period has fully elapsed
-	while (timeElapsed <= challengePeriod) {
-		// Sleep for remaining time
-		const remainingTime = challengePeriod - timeElapsed
-		await sleep(Number(remainingTime) * 1000)
+  // Keep sleeping until challenge period has fully elapsed
+  while (timeElapsed <= challengePeriod) {
+    // Sleep for remaining time
+    const remainingTime = challengePeriod - timeElapsed
+    await sleep(Number(remainingTime) * 1000)
 
-		// Check timestamp again
-		currentTimestamp = await chain.timestamp()
-		timeElapsed = currentTimestamp - updateTime
-	}
+    // Check timestamp again
+    currentTimestamp = await chain.timestamp()
+    timeElapsed = currentTimestamp - updateTime
+  }
 }
 
 /**
@@ -85,7 +86,7 @@ export async function waitForChallengePeriod(chain: IChain, stateMachineHeight: 
  * @param stateMachineId The state machine ID to check.
  */
 export function isEvmChain(stateMachineId: string): boolean {
-	return stateMachineId.startsWith("EVM")
+  return stateMachineId.startsWith("EVM")
 }
 
 /**
@@ -93,11 +94,11 @@ export function isEvmChain(stateMachineId: string): boolean {
  * @param stateMachineId The state machine ID to check.
  */
 export function isSubstrateChain(stateMachineId: string): boolean {
-	return (
-		stateMachineId.startsWith("POLKADOT") ||
-		stateMachineId.startsWith("KUSAMA") ||
-		stateMachineId.startsWith("SUBSTRATE")
-	)
+  return (
+    stateMachineId.startsWith("POLKADOT") ||
+    stateMachineId.startsWith("KUSAMA") ||
+    stateMachineId.startsWith("SUBSTRATE")
+  )
 }
 
 /**
@@ -112,58 +113,58 @@ export function isSubstrateChain(stateMachineId: string): boolean {
  * @returns A stateId object conforming to the StateMachineIdParams interface
  */
 export function parseStateMachineId(stateMachineId: string): {
-	stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number }
+  stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number }
 } {
-	const [type, value] = stateMachineId.split("-")
+  const [type, value] = stateMachineId.split("-")
 
-	if (!type || !value) {
-		throw new Error(
-			`Invalid state machine ID format: ${stateMachineId}. Expected format like "EVM-97" or "SUBSTRATE-cere"`,
-		)
-	}
+  if (!type || !value) {
+    throw new Error(
+      `Invalid state machine ID format: ${stateMachineId}. Expected format like "EVM-97" or "SUBSTRATE-cere"`,
+    )
+  }
 
-	const stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number } = {}
+  const stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number } = {}
 
-	switch (type.toUpperCase()) {
-		case "EVM": {
-			const evmChainId = Number.parseInt(value, 10)
-			if (Number.isNaN(evmChainId)) {
-				throw new Error(`Invalid EVM chain ID: ${value}. Expected a number.`)
-			}
-			stateId.Evm = evmChainId
-			break
-		}
+  switch (type.toUpperCase()) {
+    case "EVM": {
+      const evmChainId = Number.parseInt(value, 10)
+      if (Number.isNaN(evmChainId)) {
+        throw new Error(`Invalid EVM chain ID: ${value}. Expected a number.`)
+      }
+      stateId.Evm = evmChainId
+      break
+    }
 
-		case "SUBSTRATE": {
-			// Convert the string to hex-encoded UTF-8 bytes
-			const bytes = Buffer.from(value, "utf8")
-			stateId.Substrate = `0x${bytes.toString("hex")}` as HexString
-			break
-		}
+    case "SUBSTRATE": {
+      // Convert the string to hex-encoded UTF-8 bytes
+      const bytes = Buffer.from(value, "utf8")
+      stateId.Substrate = `0x${bytes.toString("hex")}` as HexString
+      break
+    }
 
-		case "POLKADOT": {
-			const polkadotChainId = Number.parseInt(value, 10)
-			if (Number.isNaN(polkadotChainId)) {
-				throw new Error(`Invalid Polkadot chain ID: ${value}. Expected a number.`)
-			}
-			stateId.Polkadot = polkadotChainId
-			break
-		}
+    case "POLKADOT": {
+      const polkadotChainId = Number.parseInt(value, 10)
+      if (Number.isNaN(polkadotChainId)) {
+        throw new Error(`Invalid Polkadot chain ID: ${value}. Expected a number.`)
+      }
+      stateId.Polkadot = polkadotChainId
+      break
+    }
 
-		case "KUSAMA": {
-			const kusamaChainId = Number.parseInt(value, 10)
-			if (Number.isNaN(kusamaChainId)) {
-				throw new Error(`Invalid Kusama chain ID: ${value}. Expected a number.`)
-			}
-			stateId.Kusama = kusamaChainId
-			break
-		}
+    case "KUSAMA": {
+      const kusamaChainId = Number.parseInt(value, 10)
+      if (Number.isNaN(kusamaChainId)) {
+        throw new Error(`Invalid Kusama chain ID: ${value}. Expected a number.`)
+      }
+      stateId.Kusama = kusamaChainId
+      break
+    }
 
-		default:
-			throw new Error(`Unsupported chain type: ${type}. Expected one of: EVM, SUBSTRATE, POLKADOT, KUSAMA.`)
-	}
+    default:
+      throw new Error(`Unsupported chain type: ${type}. Expected one of: EVM, SUBSTRATE, POLKADOT, KUSAMA.`)
+  }
 
-	return { stateId }
+  return { stateId }
 }
 
 /**
@@ -171,7 +172,7 @@ export function parseStateMachineId(stateMachineId: string): {
  * @param str The string to check.
  */
 export function isValidUTF8(str: string): boolean {
-	return Buffer.from(str).toString("utf8") === str
+  return Buffer.from(str).toString("utf8") === str
 }
 
 /**
@@ -180,71 +181,71 @@ export function isValidUTF8(str: string): boolean {
  * @returns The commitment hash and the encode packed data.
  */
 export function postRequestCommitment(post: IPostRequest): { commitment: HexString; encodePacked: HexString } {
-	const data = encodePacked(
-		["bytes", "bytes", "uint64", "uint64", "bytes", "bytes", "bytes"],
-		[toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
-	)
+  const data = encodePacked(
+    ["bytes", "bytes", "uint64", "uint64", "bytes", "bytes", "bytes"],
+    [toHex(post.source), toHex(post.dest), post.nonce, post.timeoutTimestamp, post.from, post.to, post.body],
+  )
 
-	return {
-		commitment: keccak256(data),
-		encodePacked: data,
-	}
+  return {
+    commitment: keccak256(data),
+    encodePacked: data,
+  }
 }
 
 export function orderCommitment(order: Order): HexString {
-	const encodedOrder = encodeAbiParameters(
-		[
-			{
-				name: "order",
-				type: "tuple",
-				components: [
-					{ name: "user", type: "bytes32" },
-					{ name: "sourceChain", type: "bytes" },
-					{ name: "destChain", type: "bytes" },
-					{ name: "deadline", type: "uint256" },
-					{ name: "nonce", type: "uint256" },
-					{ name: "fees", type: "uint256" },
-					{
-						name: "outputs",
-						type: "tuple[]",
-						components: [
-							{ name: "token", type: "bytes32" },
-							{ name: "amount", type: "uint256" },
-							{ name: "beneficiary", type: "bytes32" },
-						],
-					},
-					{
-						name: "inputs",
-						type: "tuple[]",
-						components: [
-							{ name: "token", type: "bytes32" },
-							{ name: "amount", type: "uint256" },
-						],
-					},
-					{ name: "callData", type: "bytes" },
-				],
-			},
-		],
-		[
-			{
-				user: order.user,
-				sourceChain: order.sourceChain.startsWith("0x")
-					? (order.sourceChain as `0x${string}`)
-					: toHex(order.sourceChain),
-				destChain: order.destChain.startsWith("0x")
-					? (order.destChain as `0x${string}`)
-					: toHex(order.destChain),
-				deadline: order.deadline,
-				nonce: order.nonce,
-				fees: order.fees,
-				outputs: order.outputs,
-				inputs: order.inputs,
-				callData: order.callData,
-			},
-		],
-	)
+  const encodedOrder = encodeAbiParameters(
+    [
+      {
+        name: "order",
+        type: "tuple",
+        components: [
+          { name: "user", type: "bytes32" },
+          { name: "sourceChain", type: "bytes" },
+          { name: "destChain", type: "bytes" },
+          { name: "deadline", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "fees", type: "uint256" },
+          {
+            name: "outputs",
+            type: "tuple[]",
+            components: [
+              { name: "token", type: "bytes32" },
+              { name: "amount", type: "uint256" },
+              { name: "beneficiary", type: "bytes32" },
+            ],
+          },
+          {
+            name: "inputs",
+            type: "tuple[]",
+            components: [
+              { name: "token", type: "bytes32" },
+              { name: "amount", type: "uint256" },
+            ],
+          },
+          { name: "callData", type: "bytes" },
+        ],
+      },
+    ],
+    [
+      {
+        user: order.user,
+        sourceChain: order.sourceChain.startsWith("0x")
+          ? (order.sourceChain as `0x${string}`)
+          : toHex(order.sourceChain),
+        destChain: order.destChain.startsWith("0x")
+          ? (order.destChain as `0x${string}`)
+          : toHex(order.destChain),
+        deadline: order.deadline,
+        nonce: order.nonce,
+        fees: order.fees,
+        outputs: order.outputs,
+        inputs: order.inputs,
+        callData: order.callData,
+      },
+    ],
+  )
 
-	return keccak256(encodedOrder)
+  return keccak256(encodedOrder)
 }
 
 /**
@@ -252,32 +253,32 @@ export function orderCommitment(order: Order): HexString {
  * This removes the extra padded zeros from the address
  */
 export function bytes32ToBytes20(bytes32Address: string): HexString {
-	if (bytes32Address === ADDRESS_ZERO) {
-		return ADDRESS_ZERO
-	}
+  if (bytes32Address === ADDRESS_ZERO) {
+    return ADDRESS_ZERO
+  }
 
-	const bytes = hexToBytes(bytes32Address as HexString)
-	const addressBytes = bytes.slice(12)
-	return bytesToHex(addressBytes) as HexString
+  const bytes = hexToBytes(bytes32Address as HexString)
+  const addressBytes = bytes.slice(12)
+  return bytesToHex(addressBytes) as HexString
 }
 
 export function bytes20ToBytes32(bytes20Address: string): HexString {
-	return `0x${bytes20Address.slice(2).padStart(64, "0")}` as HexString
+  return `0x${bytes20Address.slice(2).padStart(64, "0")}` as HexString
 }
 
 export function hexToString(hex: string): string {
-	const hexWithoutPrefix = hex.startsWith("0x") ? hex.slice(2) : hex
+  const hexWithoutPrefix = hex.startsWith("0x") ? hex.slice(2) : hex
 
-	const bytes = new Uint8Array(hexWithoutPrefix.length / 2)
-	for (let i = 0; i < hexWithoutPrefix.length; i += 2) {
-		bytes[i / 2] = Number.parseInt(hexWithoutPrefix.slice(i, i + 2), 16)
-	}
+  const bytes = new Uint8Array(hexWithoutPrefix.length / 2)
+  for (let i = 0; i < hexWithoutPrefix.length; i += 2) {
+    bytes[i / 2] = Number.parseInt(hexWithoutPrefix.slice(i, i + 2), 16)
+  }
 
-	return new TextDecoder().decode(bytes)
+  return new TextDecoder().decode(bytes)
 }
 
 export const DEFAULT_LOGGER = createConsola({
-	level: LogLevels.silent,
+  level: LogLevels.silent,
 })
 
 /**
@@ -290,20 +291,20 @@ export const DEFAULT_LOGGER = createConsola({
  * @returns Promise that resolves with the operation result or rejects with the last error
  */
 export async function retryPromise<T>(operation: () => Promise<T>, retryConfig: RetryConfig): Promise<T> {
-	const { logger = DEFAULT_LOGGER, logMessage = "Retry operation failed" } = retryConfig
+  const { logger = DEFAULT_LOGGER, logMessage = "Retry operation failed" } = retryConfig
 
-	let lastError: unknown
-	for (let i = 0; i < retryConfig.maxRetries; i++) {
-		try {
-			return await operation()
-		} catch (error) {
-			logger.trace(`Retrying(${i}) > ${logMessage}`)
-			lastError = error
-			await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * 2 ** i))
-		}
-	}
+  let lastError: unknown
+  for (let i = 0; i < retryConfig.maxRetries; i++) {
+    try {
+      return await operation()
+    } catch (error) {
+      logger.trace(`Retrying(${i}) > ${logMessage}`)
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, retryConfig.backoffMs * 2 ** i))
+    }
+  }
 
-	throw lastError
+  throw lastError
 }
 
 /**
@@ -312,22 +313,22 @@ export async function retryPromise<T>(operation: () => Promise<T>, retryConfig: 
  * @returns The commitment hash.
  */
 export function getRequestCommitment(get: IGetRequest): HexString {
-	const keysEncoding = "0x".concat(get.keys.map((key) => key.slice(2)).join(""))
-	return keccak256(
-		encodePacked(
-			["bytes", "bytes", "uint64", "uint64", "uint64", "bytes", "bytes", "bytes"],
-			[
-				toHex(get.source),
-				toHex(get.dest),
-				get.nonce,
-				get.height,
-				get.timeoutTimestamp,
-				get.from,
-				keysEncoding as HexString,
-				get.context,
-			],
-		),
-	)
+  const keysEncoding = "0x".concat(get.keys.map((key) => key.slice(2)).join(""))
+  return keccak256(
+    encodePacked(
+      ["bytes", "bytes", "uint64", "uint64", "uint64", "bytes", "bytes", "bytes"],
+      [
+        toHex(get.source),
+        toHex(get.dest),
+        get.nonce,
+        get.height,
+        get.timeoutTimestamp,
+        get.from,
+        keysEncoding as HexString,
+        get.context,
+      ],
+    ),
+  )
 }
 
 /**
@@ -337,13 +338,13 @@ export function getRequestCommitment(get: IGetRequest): HexString {
  * @returns A record mapping each RequestStatus to its corresponding weight value.
  */
 export const REQUEST_STATUS_WEIGHTS: Record<RequestStatusKey, number> = {
-	[RequestStatus.SOURCE]: 0,
-	[RequestStatus.SOURCE_FINALIZED]: 1,
-	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
-	[RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
-	[RequestStatus.DESTINATION]: 4,
-	[RequestStatus.HYPERBRIDGE_TIMED_OUT]: 5,
-	[RequestStatus.TIMED_OUT]: 6,
+  [RequestStatus.SOURCE]: 0,
+  [RequestStatus.SOURCE_FINALIZED]: 1,
+  [RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
+  [RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
+  [RequestStatus.DESTINATION]: 4,
+  [RequestStatus.HYPERBRIDGE_TIMED_OUT]: 5,
+  [RequestStatus.TIMED_OUT]: 6,
 }
 
 /**
@@ -353,11 +354,11 @@ export const REQUEST_STATUS_WEIGHTS: Record<RequestStatusKey, number> = {
  * @returns A record mapping each TimeoutStatus to its corresponding weight value.
  */
 export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatusKey, number> = {
-	[TimeoutStatus.PENDING_TIMEOUT]: 1,
-	[TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 2,
-	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 3,
-	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 4,
-	[TimeoutStatus.TIMED_OUT]: 5,
+  [TimeoutStatus.PENDING_TIMEOUT]: 1,
+  [TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 2,
+  [TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 3,
+  [TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 4,
+  [TimeoutStatus.TIMED_OUT]: 5,
 }
 
 /**
@@ -373,16 +374,16 @@ export const TIMEOUT_STATUS_WEIGHTS: Record<TimeoutStatusKey, number> = {
  * @returns A record mapping each RequestStatus and TimeoutStatus to its corresponding weight value.
  */
 export const COMBINED_STATUS_WEIGHTS: Record<RequestStatusKey | TimeoutStatusKey, number> = {
-	[RequestStatus.SOURCE]: 0,
-	[RequestStatus.SOURCE_FINALIZED]: 1,
-	[RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
-	[RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
-	[RequestStatus.DESTINATION]: 4,
-	[TimeoutStatus.PENDING_TIMEOUT]: 5,
-	[TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 6,
-	[TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 7,
-	[TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
-	[TimeoutStatus.TIMED_OUT]: 9,
+  [RequestStatus.SOURCE]: 0,
+  [RequestStatus.SOURCE_FINALIZED]: 1,
+  [RequestStatus.HYPERBRIDGE_DELIVERED]: 2,
+  [RequestStatus.HYPERBRIDGE_FINALIZED]: 3,
+  [RequestStatus.DESTINATION]: 4,
+  [TimeoutStatus.PENDING_TIMEOUT]: 5,
+  [TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT]: 6,
+  [TimeoutStatus.HYPERBRIDGE_TIMED_OUT]: 7,
+  [TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT]: 8,
+  [TimeoutStatus.TIMED_OUT]: 9,
 }
 
 /**
@@ -391,68 +392,68 @@ export const COMBINED_STATUS_WEIGHTS: Record<RequestStatusKey | TimeoutStatusKey
  * the gas cost for executing the transaction on the source chain.
  */
 export async function estimateGasForPost(params: {
-	postRequest: IPostRequest
-	sourceClient: PublicClient
-	hostLatestStateMachineHeight: bigint
-	hostAddress: HexString
+  postRequest: IPostRequest
+  sourceClient: PublicClient
+  hostLatestStateMachineHeight: bigint
+  hostAddress: HexString
 }): Promise<bigint> {
-	const hostParams = await params.sourceClient.readContract({
-		address: params.hostAddress,
-		abi: evmHost.ABI,
-		functionName: "hostParams",
-	})
+  const hostParams = await params.sourceClient.readContract({
+    address: params.hostAddress,
+    abi: evmHost.ABI,
+    functionName: "hostParams",
+  })
 
-	const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(params.postRequest, 2n ** 10n)
-	const latestStateMachineHeight = params.hostLatestStateMachineHeight
-	const overlayRootSlot = getStateCommitmentFieldSlot(
-		BigInt(4009n), // Hyperbridge chain id
-		latestStateMachineHeight, // Hyperbridge chain height
-		1, // For overlayRoot
-	)
-	const postParams = {
-		height: {
-			stateMachineId: BigInt(4009n),
-			height: latestStateMachineHeight,
-		},
-		multiproof: proof,
-		leafCount: treeSize,
-	}
+  const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(params.postRequest, 2n ** 10n)
+  const latestStateMachineHeight = params.hostLatestStateMachineHeight
+  const overlayRootSlot = getStateCommitmentFieldSlot(
+    BigInt(4009n), // Hyperbridge chain id
+    latestStateMachineHeight, // Hyperbridge chain height
+    1, // For overlayRoot
+  )
+  const postParams = {
+    height: {
+      stateMachineId: BigInt(4009n),
+      height: latestStateMachineHeight,
+    },
+    multiproof: proof,
+    leafCount: treeSize,
+  }
 
-	const gas = await params.sourceClient.estimateContractGas({
-		address: hostParams.handler,
-		abi: handler.ABI,
-		functionName: "handlePostRequests",
-		args: [
-			params.hostAddress,
-			{
-				proof: postParams,
-				requests: [
-					{
-						request: {
-							...params.postRequest,
-							source: toHex(params.postRequest.source),
-							dest: toHex(params.postRequest.dest),
-						},
-						index,
-						kIndex,
-					},
-				],
-			},
-		],
-		stateOverride: [
-			{
-				address: params.hostAddress,
-				stateDiff: [
-					{
-						slot: overlayRootSlot,
-						value: root,
-					},
-				],
-			},
-		],
-	})
+  const gas = await params.sourceClient.estimateContractGas({
+    address: hostParams.handler,
+    abi: handler.ABI,
+    functionName: "handlePostRequests",
+    args: [
+      params.hostAddress,
+      {
+        proof: postParams,
+        requests: [
+          {
+            request: {
+              ...params.postRequest,
+              source: toHex(params.postRequest.source),
+              dest: toHex(params.postRequest.dest),
+            },
+            index,
+            kIndex,
+          },
+        ],
+      },
+    ],
+    stateOverride: [
+      {
+        address: params.hostAddress,
+        stateDiff: [
+          {
+            slot: overlayRootSlot,
+            value: root,
+          },
+        ],
+      },
+    ],
+  })
 
-	return gas
+  return gas
 }
 
 /**
@@ -461,56 +462,56 @@ export async function estimateGasForPost(params: {
  * to match the format expected by the IntentGateway contract.
  */
 export function constructRedeemEscrowRequestBody(order: Order, beneficiary: HexString): HexString {
-	const commitment = order.id as HexString
-	const inputs = order.inputs
+  const commitment = order.id as HexString
+  const inputs = order.inputs
 
-	// RequestKind.RedeemEscrow is 0 as defined in the contract
-	const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
+  // RequestKind.RedeemEscrow is 0 as defined in the contract
+  const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
 
-	const requestBody = {
-		commitment: commitment as HexString,
-		beneficiary: bytes20ToBytes32(beneficiary),
-		tokens: inputs,
-	}
+  const requestBody = {
+    commitment: commitment as HexString,
+    beneficiary: bytes20ToBytes32(beneficiary),
+    tokens: inputs,
+  }
 
-	const encodedRequestBody = encodeAbiParameters(
-		[
-			{
-				name: "requestBody",
-				type: "tuple",
-				components: [
-					{ name: "commitment", type: "bytes32" },
-					{ name: "beneficiary", type: "bytes32" },
-					{
-						name: "tokens",
-						type: "tuple[]",
-						components: [
-							{ name: "token", type: "bytes32" },
-							{ name: "amount", type: "uint256" },
-						],
-					},
-				],
-			},
-		],
-		[requestBody],
-	)
+  const encodedRequestBody = encodeAbiParameters(
+    [
+      {
+        name: "requestBody",
+        type: "tuple",
+        components: [
+          { name: "commitment", type: "bytes32" },
+          { name: "beneficiary", type: "bytes32" },
+          {
+            name: "tokens",
+            type: "tuple[]",
+            components: [
+              { name: "token", type: "bytes32" },
+              { name: "amount", type: "uint256" },
+            ],
+          },
+        ],
+      },
+    ],
+    [requestBody],
+  )
 
-	return concatHex([requestKind, encodedRequestBody]) as HexString
+  return concatHex([requestKind, encodedRequestBody]) as HexString
 }
 
 export const normalizeTimestamp = (timestamp: bigint): bigint => {
-	if (timestamp.toString().length <= 11) {
-		return timestamp * 1000n
-	}
-	return timestamp
+  if (timestamp.toString().length <= 11) {
+    return timestamp * 1000n
+  }
+  return timestamp
 }
 
 /// Convert ensure a date string is in iso format before getting it's timestamp
 export const dateStringtoTimestamp = (date: string): number => {
-	if (!date.endsWith("Z")) {
-		date = `${date}Z`
-	}
-	return new Date(date).getTime()
+  if (!date.endsWith("Z")) {
+    date = `${date}Z`
+  }
+  return new Date(date).getTime()
 }
 
 /**
@@ -519,26 +520,30 @@ export const dateStringtoTimestamp = (date: string): number => {
  * @returns The mapped mainnet identifier
  */
 export function mapTestnetToMainnet(identifier: string): string {
-	identifier = identifier.toLowerCase()
+  identifier = identifier.toLowerCase()
 
-	switch (identifier) {
-		case "tbnb":
-			return "wbnb"
-		case "0xc043f483373072f7f27420d6e7d7ad269c018e18".toLowerCase():
-			return "dai"
-		case "0xae13d989dac2f0debff460ac112a837c89baa7cd".toLowerCase():
-			return "wbnb"
-		case "0x1938165569A5463327fb206bE06d8D9253aa06b7".toLowerCase():
-			return "dai"
-		case "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92".toLowerCase():
-			return "dai"
-		case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
-			return "dai"
-		case "0xa801da100bf16d07f668f4a49e1f71fc54d05177".toLowerCase():
-			return "dai"
-		default:
-			return identifier
-	}
+  switch (identifier) {
+    case "bnb":
+      return "wbnb"
+    case "eth":
+      return "weth"
+    case "tbnb":
+      return "wbnb"
+    case "0xc043f483373072f7f27420d6e7d7ad269c018e18".toLowerCase():
+      return "dai"
+    case "0xae13d989dac2f0debff460ac112a837c89baa7cd".toLowerCase():
+      return "wbnb"
+    case "0x1938165569A5463327fb206bE06d8D9253aa06b7".toLowerCase():
+      return "dai"
+    case "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92".toLowerCase():
+      return "dai"
+    case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
+      return "dai"
+    case "0xa801da100bf16d07f668f4a49e1f71fc54d05177".toLowerCase():
+      return "dai"
+    default:
+      return identifier
+  }
 }
 
 /**
@@ -548,90 +553,90 @@ export function mapTestnetToMainnet(identifier: string): string {
  * @returns The USD price of the token as a number (preserves decimals)
  */
 export async function fetchTokenUsdPrice(identifier: string): Promise<number> {
-	// First try CoinGecko
-	try {
-		const coinGeckoPrice = await fetchFromCoinGecko(identifier)
-		return coinGeckoPrice
-	} catch (error) {
-		// Fallback to Defillama
-		try {
-			const defillamaPrice = await fetchFromDefillama(identifier)
-			return defillamaPrice
-		} catch (fallbackError) {
-			console.log(
-				`Both APIs failed for ${identifier}. CoinGecko: ${error}, Defillama: ${fallbackError}. Returning 1`,
-			)
-			return 1
-		}
-	}
+  // First try CoinGecko
+  try {
+    const coinGeckoPrice = await fetchFromCoinGecko(identifier)
+    return coinGeckoPrice
+  } catch (error) {
+    // Fallback to Defillama
+    try {
+      const defillamaPrice = await fetchFromDefillama(identifier)
+      return defillamaPrice
+    } catch (fallbackError) {
+      console.log(
+        `Both APIs failed for ${identifier}. CoinGecko: ${error}, Defillama: ${fallbackError}. Returning 1`,
+      )
+      return 1
+    }
+  }
 }
 
 /**
  * Fetches price from CoinGecko API
  */
 async function fetchFromCoinGecko(identifier: string): Promise<number> {
-	const mappedIdentifier = mapTestnetToMainnet(identifier)
+  const mappedIdentifier = mapTestnetToMainnet(identifier)
 
-	const url = mappedIdentifier.startsWith("0x")
-		? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
-		: `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
+  const url = mappedIdentifier.startsWith("0x")
+    ? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
+    : `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
 
-	const response = await fetch(url)
+  const response = await fetch(url)
 
-	if (!response.ok) {
-		throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
-	}
+  if (!response.ok) {
+    throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
+  }
 
-	const data = await response.json()
+  const data = await response.json()
 
-	// For contract addresses, the key is the contract address
-	// For symbols, the key is the symbol
-	const key = mappedIdentifier.toLowerCase()
+  // For contract addresses, the key is the contract address
+  // For symbols, the key is the symbol
+  const key = mappedIdentifier.toLowerCase()
 
-	if (!data[key]?.usd) {
-		throw new Error(`Price not found for token: ${mappedIdentifier}`)
-	}
+  if (!data[key]?.usd) {
+    throw new Error(`Price not found for token: ${mappedIdentifier}`)
+  }
 
-	return data[key].usd
+  return data[key].usd
 }
 
 /**
  * Fetches price from Defillama API
  */
 async function fetchFromDefillama(identifier: string): Promise<number> {
-	const mappedIdentifier = mapTestnetToMainnet(identifier)
+  const mappedIdentifier = mapTestnetToMainnet(identifier)
 
-	// Format the coin ID for Defillama
-	const coinId = mappedIdentifier.startsWith("0x")
-		? `ethereum:${mappedIdentifier}` // Contract address format
-		: `coingecko:${mappedIdentifier}` // Symbol format (uses CoinGecko IDs)
+  // Format the coin ID for Defillama
+  const coinId = mappedIdentifier.startsWith("0x")
+    ? `ethereum:${mappedIdentifier}` // Contract address format
+    : `coingecko:${mappedIdentifier}` // Symbol format (uses CoinGecko IDs)
 
-	const url = `https://coins.llama.fi/prices/current/${coinId}`
+  const url = `https://coins.llama.fi/prices/current/${coinId}`
 
-	const response = await fetch(url)
+  const response = await fetch(url)
 
-	if (!response.ok) {
-		throw new Error(`Defillama API error: ${response.status} ${response.statusText}`)
-	}
+  if (!response.ok) {
+    throw new Error(`Defillama API error: ${response.status} ${response.statusText}`)
+  }
 
-	const data = await response.json()
-	const price = data.coins?.[coinId]?.price
+  const data = await response.json()
+  const price = data.coins?.[coinId]?.price
 
-	if (!price && price !== 0) {
-		throw new Error(`Price not found for token: ${mappedIdentifier}`)
-	}
+  if (!price && price !== 0) {
+    throw new Error(`Price not found for token: ${mappedIdentifier}`)
+  }
 
-	return price
+  return price
 }
 
 /**
  * ERC20 method signatures used for storage slot detection
  */
 export enum ERC20Method {
-	/** ERC20 balanceOf(address) method signature */
-	BALANCE_OF = "0x70a08231",
-	/** ERC20 allowance(address,address) method signature */
-	ALLOWANCE = "0xdd62ed3e",
+  /** ERC20 balanceOf(address) method signature */
+  BALANCE_OF = "0x70a08231",
+  /** ERC20 allowance(address,address) method signature */
+  ALLOWANCE = "0xdd62ed3e",
 }
 
 /**
@@ -672,42 +677,62 @@ export enum ERC20Method {
  * ```
  */
 export async function getStorageSlot(
-	client: PublicClient,
-	contractAddress: HexString,
-	data: HexString,
+  client: PublicClient,
+  contractAddress: HexString,
+  data: HexString,
 ): Promise<string> {
-	const traceCallClient = client.extend((client) => ({
-		async traceCall(args: CallParameters) {
-			return client.request({
-				// @ts-ignore
-				method: "debug_traceCall",
-				// @ts-ignore
-				params: [args, "latest", {}],
-			})
-		},
-	}))
+  const traceCallClient = client.extend((client) => ({
+    async traceCall(args: CallParameters) {
+      return client.request({
+        // @ts-ignore
+        method: "debug_traceCall",
+        // @ts-ignore
+        params: [args, "latest", {}],
+      })
+    },
+  }))
 
-	// Make trace call
-	const response = await traceCallClient.traceCall({
-		to: contractAddress,
-		data: data,
-	})
-	const methodSignature = data.slice(0, 10) as HexString
+  // Make trace call
+  const response = await traceCallClient.traceCall({
+    to: contractAddress,
+    data: data,
+  })
+  const methodSignature = data.slice(0, 10) as HexString
 
-	// @ts-ignore
-	const logs = response.structLogs
-	for (let i = logs.length - 1; i >= 0; i--) {
-		const log = logs[i]
-		if (log.op === "SLOAD" && log.stack?.length >= 3) {
-			const sigHash = log.stack[0]
-			const slotHex = log.stack[log.stack.length - 1]
+  // @ts-ignore
+  const logs = response.structLogs
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i]
+    if (log.op === "SLOAD" && log.stack?.length >= 3) {
+      const sigHash = log.stack[0]
+      const slotHex = log.stack[log.stack.length - 1]
 
-			// Extract method signature from data (first 4 bytes)
-			if (sigHash === methodSignature && slotHex.length === 66) {
-				return slotHex
-			}
-		}
-	}
+      // Extract method signature from data (first 4 bytes)
+      if (sigHash === methodSignature && slotHex.length === 66) {
+        return slotHex
+      }
+    }
+  }
 
-	throw new Error(`Storage slot not found for data: ${methodSignature}`)
+  throw new Error(`Storage slot not found for data: ${methodSignature}`)
+}
+
+/**
+ * Adjusts fee amounts between different decimal precisions.
+ * Handles scaling up or down based on the decimal difference.
+ *
+ * @param feeInFeeToken - The fee amount to adjust
+ * @param fromDecimals - The current decimal precision
+ * @param toDecimals - The target decimal precision
+ * @returns The adjusted fee amount with the target decimal precision
+ */
+export function adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
+  if (fromDecimals === toDecimals) return feeInFeeToken
+  if (fromDecimals < toDecimals) {
+    const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
+    return feeInFeeToken * scaleFactor
+  } else {
+    const scaleFactor = BigInt(10 ** (fromDecimals - toDecimals))
+    return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
+  }
 }
