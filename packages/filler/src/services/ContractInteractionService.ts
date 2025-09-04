@@ -186,6 +186,7 @@ export class ContractInteractionService {
 				})
 
 				const tx = await walletClient.writeContract(request)
+				await destClient.waitForTransactionReceipt({ hash: tx })
 				console.log(`Approval confirmed for ${tokenAddress}`)
 			}
 		}
