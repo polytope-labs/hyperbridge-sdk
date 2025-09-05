@@ -1,92 +1,60 @@
 import {
-	bytesToBigInt,
-	bytesToHex,
-	createPublicClient,
-	encodeFunctionData,
-	hexToBytes,
-	http,
-	type PublicClient,
-	toHex,
-	keccak256,
-	toBytes,
-	pad,
-	erc20Abi,
-	encodePacked,
-	encodeAbiParameters,
-	maxUint256,
-	hexToString,
+  http,
+  type PublicClient,
+  bytesToBigInt,
+  bytesToHex,
+  createPublicClient, encodeFunctionData, erc20Abi,
+  hexToBytes, keccak256, pad,
+  toBytes,
+  toHex
 } from "viem"
 import {
-	mainnet,
-	arbitrum,
-	arbitrumSepolia,
-	optimism,
-	optimismSepolia,
-	base,
-	baseSepolia,
-	soneium,
-	bsc,
-	bscTestnet,
-	gnosis,
-	gnosisChiado,
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  bsc,
+  bscTestnet,
+  gnosis,
+  gnosisChiado,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  soneium,
 } from "viem/chains"
 
-import type { GetProofParameters, Hex } from "viem"
-import { zip, flatten } from "lodash-es"
+import { flatten, zip } from "lodash-es"
 import { match } from "ts-pattern"
+import type { GetProofParameters, Hex } from "viem"
 
 import EvmHost from "@/abis/evmHost"
-import type { IChain, IIsmpMessage } from "@/chain"
-import HandlerV1 from "@/abis/handler"
-import UniversalRouter from "@/abis/universalRouter"
-import UniswapV2Factory from "@/abis/uniswapV2Factory"
-import UniswapRouterV2 from "@/abis/uniswapRouterV2"
-import UniswapV3Factory from "@/abis/uniswapV3Factory"
-import UniswapV3Pool from "@/abis/uniswapV3Pool"
-import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
-import IntentGatewayABI from "@/abis/IntentGateway"
-import {
-	ADDRESS_ZERO,
-	bytes32ToBytes20,
-	calculateMMRSize,
-	constructRedeemEscrowRequestBody,
-	EvmStateProof,
-	fetchTokenUsdPrice,
-	generateRootWithProof,
-	getStorageSlot,
-	mmrPositionToKIndex,
-	MmrProof,
-	MOCK_ADDRESS,
-	orderCommitment,
-	SubstrateStateProof,
-} from "@/utils"
-import {
-	DispatchPost,
-	HostParams,
-	type FillOptions,
-	type HexString,
-	type IMessage,
-	type IPostRequest,
-	type Order,
-	type StateMachineHeight,
-	type StateMachineIdParams,
-} from "@/types"
 import evmHost from "@/abis/evmHost"
+import HandlerV1 from "@/abis/handler"
+import type { IChain, IIsmpMessage } from "@/chain"
 import { ChainConfigService } from "@/configs/ChainConfigService"
+import type {
+  HexString, IMessage,
+  IPostRequest, StateMachineHeight,
+  StateMachineIdParams
+} from "@/types"
+import {
+  EvmStateProof, MmrProof,
+  SubstrateStateProof, calculateMMRSize, generateRootWithProof, mmrPositionToKIndex
+} from "@/utils"
 
 const chains = {
-	[mainnet.id]: mainnet,
-	[arbitrum.id]: arbitrum,
-	[arbitrumSepolia.id]: arbitrumSepolia,
-	[optimism.id]: optimism,
-	[optimismSepolia.id]: optimismSepolia,
-	[base.id]: base,
-	[baseSepolia.id]: baseSepolia,
-	[soneium.id]: soneium,
-	[bsc.id]: bsc,
-	[bscTestnet.id]: bscTestnet,
-	[gnosis.id]: gnosis,
-	[gnosisChiado.id]: gnosisChiado,
+  [mainnet.id]: mainnet,
+  [arbitrum.id]: arbitrum,
+  [arbitrumSepolia.id]: arbitrumSepolia,
+  [optimism.id]: optimism,
+  [optimismSepolia.id]: optimismSepolia,
+  [base.id]: base,
+  [baseSepolia.id]: baseSepolia,
+  [soneium.id]: soneium,
+  [bsc.id]: bsc,
+  [bscTestnet.id]: bscTestnet,
+  [gnosis.id]: gnosis,
+  [gnosisChiado.id]: gnosisChiado,
 }
 
 /**
@@ -99,18 +67,18 @@ export const DEFAULT_ADDRESS = "0x0000000000000000000000000000000000000000"
  * Parameters for an EVM chain.
  */
 export interface EvmChainParams {
-	/**
-	 * The chain ID of the EVM chain.
-	 */
-	chainId: number
-	/**
-	 * The host address of the EVM chain.
-	 */
-	host: HexString
-	/**
-	 * The URL of the EVM chain.
-	 */
-	url: string
+  /**
+   * The chain ID of the EVM chain.
+   */
+  chainId: number
+  /**
+   * The host address of the EVM chain.
+   */
+  host: HexString
+  /**
+   * The URL of the EVM chain.
+   */
+  url: string
 }
 
 /**
@@ -614,40 +582,40 @@ export const RESPONSE_RECEIPTS_SLOT = 3n
 export const STATE_COMMITMENTS_SLOT = 5n
 
 function requestCommitmentKey(key: Hex): Hex {
-	// First derive the map key
-	const keyBytes = hexToBytes(key)
-	const slot = REQUEST_COMMITMENTS_SLOT
-	const mappedKey = deriveMapKey(keyBytes, slot)
+  // First derive the map key
+  const keyBytes = hexToBytes(key)
+  const slot = REQUEST_COMMITMENTS_SLOT
+  const mappedKey = deriveMapKey(keyBytes, slot)
 
-	// Convert the derived key to BigInt and add 1
-	const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
+  // Convert the derived key to BigInt and add 1
+  const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
 
-	// Convert back to 32-byte hex
-	return pad(`0x${number.toString(16)}`, { size: 32 })
+  // Convert back to 32-byte hex
+  return pad(`0x${number.toString(16)}`, { size: 32 })
 }
 
 function responseCommitmentKey(key: Hex): Hex {
-	// First derive the map key
-	const keyBytes = hexToBytes(key)
-	const slot = RESPONSE_COMMITMENTS_SLOT
-	const mappedKey = deriveMapKey(keyBytes, slot)
+  // First derive the map key
+  const keyBytes = hexToBytes(key)
+  const slot = RESPONSE_COMMITMENTS_SLOT
+  const mappedKey = deriveMapKey(keyBytes, slot)
 
-	// Convert the derived key to BigInt and add 1
-	const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
+  // Convert the derived key to BigInt and add 1
+  const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
 
-	// Convert back to 32-byte hex
-	return pad(`0x${number.toString(16)}`, { size: 32 })
+  // Convert back to 32-byte hex
+  return pad(`0x${number.toString(16)}`, { size: 32 })
 }
 
 function deriveMapKey(key: Uint8Array, slot: bigint): Hex {
-	// Convert slot to 32-byte big-endian representation
-	const slotBytes = pad(`0x${slot.toString(16)}`, { size: 32 })
+  // Convert slot to 32-byte big-endian representation
+  const slotBytes = pad(`0x${slot.toString(16)}`, { size: 32 })
 
-	// Combine key and slot bytes
-	const combined = new Uint8Array([...key, ...toBytes(slotBytes)])
+  // Combine key and slot bytes
+  const combined = new Uint8Array([...key, ...toBytes(slotBytes)])
 
-	// Calculate keccak256 hash
-	return keccak256(combined)
+  // Calculate keccak256 hash
+  return keccak256(combined)
 }
 
 /**
@@ -665,37 +633,37 @@ function deriveMapKey(key: Uint8Array, slot: bigint): Hex {
  * @returns The storage slot for the specific field
  */
 export function getStateCommitmentFieldSlot(stateMachineId: bigint, height: bigint, field: 0 | 1 | 2): HexString {
-	const baseSlot = getStateCommitmentSlot(stateMachineId, height)
-	const slotNumber = bytesToBigInt(toBytes(baseSlot)) + BigInt(field)
-	return pad(`0x${slotNumber.toString(16)}`, { size: 32 })
+  const baseSlot = getStateCommitmentSlot(stateMachineId, height)
+  const slotNumber = bytesToBigInt(toBytes(baseSlot)) + BigInt(field)
+  return pad(`0x${slotNumber.toString(16)}`, { size: 32 })
 }
 
 export function getStateCommitmentSlot(stateMachineId: bigint, height: bigint): HexString {
-	// First level mapping: keccak256(stateMachineId . STATE_COMMITMENTS_SLOT)
-	const firstLevelSlot = deriveFirstLevelSlot(stateMachineId, STATE_COMMITMENTS_SLOT)
+  // First level mapping: keccak256(stateMachineId . STATE_COMMITMENTS_SLOT)
+  const firstLevelSlot = deriveFirstLevelSlot(stateMachineId, STATE_COMMITMENTS_SLOT)
 
-	// Second level mapping: keccak256(height . firstLevelSlot)
-	return deriveSecondLevelSlot(height, firstLevelSlot)
+  // Second level mapping: keccak256(height . firstLevelSlot)
+  return deriveSecondLevelSlot(height, firstLevelSlot)
 }
 
 function deriveFirstLevelSlot(key: bigint, slot: bigint): HexString {
-	const keyHex = pad(`0x${key.toString(16)}`, { size: 32 })
-	const keyBytes = toBytes(keyHex)
+  const keyHex = pad(`0x${key.toString(16)}`, { size: 32 })
+  const keyBytes = toBytes(keyHex)
 
-	const slotBytes = toBytes(pad(`0x${slot.toString(16)}`, { size: 32 }))
+  const slotBytes = toBytes(pad(`0x${slot.toString(16)}`, { size: 32 }))
 
-	const combined = new Uint8Array([...keyBytes, ...slotBytes])
+  const combined = new Uint8Array([...keyBytes, ...slotBytes])
 
-	return keccak256(combined)
+  return keccak256(combined)
 }
 
 function deriveSecondLevelSlot(key: bigint, firstLevelSlot: HexString): HexString {
-	const keyHex = pad(`0x${key.toString(16)}`, { size: 32 })
-	const keyBytes = toBytes(keyHex)
+  const keyHex = pad(`0x${key.toString(16)}`, { size: 32 })
+  const keyBytes = toBytes(keyHex)
 
-	const slotBytes = toBytes(firstLevelSlot)
+  const slotBytes = toBytes(firstLevelSlot)
 
-	const combined = new Uint8Array([...keyBytes, ...slotBytes])
+  const combined = new Uint8Array([...keyBytes, ...slotBytes])
 
-	return keccak256(combined)
+  return keccak256(combined)
 }
