@@ -10,7 +10,7 @@ import {
 	adjustFeeDecimals,
 } from "@/utils"
 import { maxUint256, toHex } from "viem"
-import { type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
+import { DispatchPost, type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapV2Factory from "@/abis/uniswapV2Factory"
 import UniswapRouterV2 from "@/abis/uniswapRouterV2"
@@ -57,7 +57,8 @@ export class IntentGateway {
 			to: this.source.config.getIntentGatewayAddress(order.sourceChain),
 		}
 
-		const { decimals: sourceChainFeeTokenDecimals } = await this.source.getFeeTokenWithDecimals()
+		const { decimals: sourceChainFeeTokenDecimals, address: sourceChainFeeTokenAddress } =
+			await this.source.getFeeTokenWithDecimals()
 		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
 			await this.dest.getFeeTokenWithDecimals()
 
@@ -128,32 +129,7 @@ export class IntentGateway {
 			}),
 		).then((results) => results.filter(Boolean))
 
-		const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
-		const destFeeTokenBalanceSlot = await getStorageSlot(
-			this.dest.client,
-			destChainFeeTokenAddress,
-			destFeeTokenBalanceData as HexString,
-		)
-		const destFeeTokenAllowanceData =
-			ERC20Method.ALLOWANCE +
-			bytes20ToBytes32(MOCK_ADDRESS).slice(2) +
-			bytes20ToBytes32(intentGatewayAddress).slice(2)
-		const destFeeTokenAllowanceSlot = await getStorageSlot(
-			this.dest.client,
-			destChainFeeTokenAddress,
-			destFeeTokenAllowanceData as HexString,
-		)
-		const feeTokenStateDiffs = [
-			{ slot: destFeeTokenBalanceSlot, value: testValue },
-			{ slot: destFeeTokenAllowanceSlot, value: testValue },
-		]
-
-		orderOverrides.push({
-			address: destChainFeeTokenAddress,
-			stateDiff: feeTokenStateDiffs as any,
-		})
-
-		const stateOverride = [
+		let stateOverrides = [
 			// Mock address with ETH balance so that any chain estimation runs
 			// even when the address doesn't hold any native token in that chain
 			{
@@ -166,15 +142,57 @@ export class IntentGateway {
 			})),
 		]
 
-		const destChainFillGas = await this.dest.client.estimateContractGas({
-			abi: IntentGatewayABI.ABI,
-			address: intentGatewayAddress,
-			functionName: "fillOrder",
-			args: [transformOrderForContract(order), fillOptions as any],
-			account: MOCK_ADDRESS,
-			value: totalEthValue,
-			stateOverride: stateOverride as any,
-		})
+		let destChainFillGas = 0n
+
+		try {
+			const protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken)
+			destChainFillGas = await this.dest.client.estimateContractGas({
+				abi: IntentGatewayABI.ABI,
+				address: intentGatewayAddress,
+				functionName: "fillOrder",
+				args: [transformOrderForContract(order), fillOptions as any],
+				account: MOCK_ADDRESS,
+				value: totalEthValue + protocolFeeInNativeToken,
+				stateOverride: stateOverrides as any,
+			})
+		} catch {
+			console.warn("Fill gas estimate failed using native token for fees, now trying with fee token as fees")
+
+			const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
+			const destFeeTokenBalanceSlot = await getStorageSlot(
+				this.dest.client,
+				destChainFeeTokenAddress,
+				destFeeTokenBalanceData as HexString,
+			)
+			const destFeeTokenAllowanceData =
+				ERC20Method.ALLOWANCE +
+				bytes20ToBytes32(MOCK_ADDRESS).slice(2) +
+				bytes20ToBytes32(intentGatewayAddress).slice(2)
+			const destFeeTokenAllowanceSlot = await getStorageSlot(
+				this.dest.client,
+				destChainFeeTokenAddress,
+				destFeeTokenAllowanceData as HexString,
+			)
+			const feeTokenStateDiffs = [
+				{ slot: destFeeTokenBalanceSlot, value: testValue },
+				{ slot: destFeeTokenAllowanceSlot, value: testValue },
+			]
+
+			stateOverrides.push({
+				address: destChainFeeTokenAddress,
+				stateDiff: feeTokenStateDiffs as any,
+			})
+
+			destChainFillGas = await this.dest.client.estimateContractGas({
+				abi: IntentGatewayABI.ABI,
+				address: intentGatewayAddress,
+				functionName: "fillOrder",
+				args: [transformOrderForContract(order), fillOptions as any],
+				account: MOCK_ADDRESS,
+				value: totalEthValue,
+				stateOverride: stateOverrides as any,
+			})
+		}
 
 		const fillGasInSourceFeeToken = await this.convertGasToFeeToken(
 			destChainFillGas,
@@ -269,6 +287,26 @@ export class IntentGateway {
 		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
+	}
+
+	async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
+		const dispatchPost: DispatchPost = {
+			dest: toHex(postRequest.dest),
+			to: postRequest.to,
+			body: postRequest.body,
+			timeout: postRequest.timeoutTimestamp,
+			fee: fee,
+			payer: postRequest.from,
+		}
+
+		const quoteNative = await this.dest.client.readContract({
+			address: this.dest.config.getIntentGatewayAddress(postRequest.dest),
+			abi: IntentGatewayABI.ABI,
+			functionName: "quoteNative",
+			args: [dispatchPost] as any,
+		})
+
+		return quoteNative
 	}
 
 	/**

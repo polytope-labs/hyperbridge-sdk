@@ -263,7 +263,7 @@ export class ContractInteractionService {
 	 */
 	async estimateGasFillPost(
 		order: Order,
-	): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint; filledWithNative: boolean }> {
+	): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint; relayerFeeInNativeToken: bigint }> {
 		try {
 			// Check cache first
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -290,7 +290,9 @@ export class ContractInteractionService {
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 
-			const { decimals: destFeeTokenDecimals } = await this.getFeeTokenWithDecimals(order.destChain)
+			const { decimals: destFeeTokenDecimals, address: destFeeTokenAddress } = await this.getFeeTokenWithDecimals(
+				order.destChain,
+			)
 
 			// Add 2% markup
 			postGasEstimate = postGasEstimate + (postGasEstimate * 200n) / 10000n
@@ -361,10 +363,11 @@ export class ContractInteractionService {
 			]
 
 			let gas = 0n
-			let filledWithNative = false
+			let relayerFeeInNativeToken = 0n
 
 			try {
-				const feeAmountInNativeToken = await this.convertFeeTokenToNative(
+				const protocolFeeInNativeToken = await this.quoteNative(
+					postRequest,
 					postGasEstimateInDestFeeToken,
 					order.destChain,
 				)
@@ -375,10 +378,10 @@ export class ContractInteractionService {
 					functionName: "fillOrder",
 					args: [this.transformOrderForContract(order), fillOptions as any],
 					account: privateKeyToAccount(this.privateKey),
-					value: ethValue + feeAmountInNativeToken,
+					value: ethValue + protocolFeeInNativeToken,
 					stateOverride: stateOverride as any,
 				})
-				filledWithNative = true
+				relayerFeeInNativeToken = protocolFeeInNativeToken
 			} catch {
 				console.warn(
 					`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
@@ -427,20 +430,41 @@ export class ContractInteractionService {
 				gas,
 				postGasEstimate,
 				postGasEstimateInDestFeeToken,
-				filledWithNative,
+				relayerFeeInNativeToken,
 			)
 
 			return {
 				fillGas: gas,
 				postGas: postGasEstimate,
 				relayerFeeInFeeToken: postGasEstimateInDestFeeToken,
-				filledWithNative,
+				relayerFeeInNativeToken,
 			}
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n, filledWithNative: false }
+			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n, relayerFeeInNativeToken: 0n }
 		}
+	}
+
+	async quoteNative(postRequest: IPostRequest, fee: bigint, chain: string): Promise<bigint> {
+		const client = this.clientManager.getPublicClient(chain)
+
+		const dispatchPost: DispatchPost = {
+			dest: toHex(postRequest.dest),
+			to: postRequest.to,
+			body: postRequest.body,
+			timeout: postRequest.timeoutTimestamp,
+			fee: fee,
+			payer: postRequest.from,
+		}
+
+		const quoteNative = await client.readContract({
+			abi: INTENT_GATEWAY_ABI,
+			address: this.configService.getIntentGatewayAddress(postRequest.dest),
+			functionName: "quoteNative",
+			args: [dispatchPost] as any,
+		})
+		return quoteNative
 	}
 
 	/**
@@ -477,34 +501,6 @@ export class ContractInteractionService {
 		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
-	}
-
-	/**
-	 * Converts fee token amounts back to the equivalent amount in native token.
-	 * Uses USD pricing to convert between fee token amounts and native token costs.
-	 *
-	 * @param feeTokenAmount - The amount in fee token (DAI)
-	 * @param publicClient - The client for the chain to get native token info
-	 * @param feeTokenDecimals - The decimal places of the fee token
-	 * @returns The fee token amount converted to native token amount
-	 */
-	async convertFeeTokenToNative(feeTokenAmount: bigint, chain: string): Promise<bigint> {
-		const client = this.clientManager.getPublicClient(chain)
-		const nativeToken = client.chain?.nativeCurrency
-
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
-		}
-
-		const { decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals(chain)
-
-		const feeTokenAmountNumber = Number(feeTokenAmount) / Math.pow(10, feeTokenDecimals)
-
-		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
-
-		const totalCostInNativeToken = feeTokenAmountNumber / nativeTokenPriceUsd
-
-		return BigInt(Math.floor(totalCostInNativeToken * Math.pow(10, nativeToken.decimals)))
 	}
 
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
@@ -721,7 +717,12 @@ export class ContractInteractionService {
 		}
 	}
 
-	async getV2Quote(tokenIn: HexString, tokenOut: HexString, amountOut: bigint, destChain: string): Promise<bigint> {
+	async getV2QuoteWithAmountOut(
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		destChain: string,
+	): Promise<bigint> {
 		try {
 			const v2Router = this.configService.getUniswapRouterV2Address(destChain)
 			const v2Factory = this.configService.getUniswapV2FactoryAddress(destChain)
@@ -757,7 +758,7 @@ export class ContractInteractionService {
 		}
 	}
 
-	async getV3Quote(
+	async getV3QuoteWithAmountOut(
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
@@ -827,7 +828,7 @@ export class ContractInteractionService {
 		return { amountIn: bestAmountIn, fee: bestFee }
 	}
 
-	async getV4Quote(
+	async getV4QuoteWithAmountOut(
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,

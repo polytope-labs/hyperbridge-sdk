@@ -118,17 +118,13 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 
-			const { relayerFeeInFeeToken, filledWithNative } = await this.contractService.estimateGasFillPost(order)
+			const { relayerFeeInFeeToken, relayerFeeInNativeToken } =
+				await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
 				relayerFee: relayerFeeInFeeToken,
 			}
 
 			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)
-
-			const relayerFeeInNativeToken = await this.contractService.convertFeeTokenToNative(
-				relayerFeeInFeeToken,
-				order.destChain,
-			)
 
 			await this.contractService.approveTokensIfNeeded(order)
 
@@ -138,7 +134,7 @@ export class BasicFiller implements FillerStrategy {
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
-				value: filledWithNative ? ethValue + relayerFeeInNativeToken : ethValue,
+				value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
 			})
 
 			const tx = await walletClient.writeContract(request)
