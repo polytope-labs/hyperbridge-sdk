@@ -263,7 +263,7 @@ export class ContractInteractionService {
 	 */
 	async estimateGasFillPost(
 		order: Order,
-	): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint }> {
+	): Promise<{ fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint; filledWithNative: boolean }> {
 		try {
 			// Check cache first
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -361,6 +361,7 @@ export class ContractInteractionService {
 			]
 
 			let gas = 0n
+			let filledWithNative = false
 
 			try {
 				const feeAmountInNativeToken = await this.convertFeeTokenToNative(
@@ -375,8 +376,9 @@ export class ContractInteractionService {
 					args: [this.transformOrderForContract(order), fillOptions as any],
 					account: privateKeyToAccount(this.privateKey),
 					value: ethValue + feeAmountInNativeToken,
-					stateOverride: overrides as any,
+					stateOverride: stateOverride as any,
 				})
+				filledWithNative = true
 			} catch {
 				console.warn(
 					`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
@@ -415,18 +417,29 @@ export class ContractInteractionService {
 					args: [this.transformOrderForContract(order), fillOptions as any],
 					account: privateKeyToAccount(this.privateKey),
 					value: ethValue,
-					stateOverride: overrides as any,
+					stateOverride: stateOverride as any,
 				})
 			}
 
 			// Cache the results
-			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, postGasEstimateInDestFeeToken)
+			this.cacheService.setGasEstimate(
+				order.id!,
+				gas,
+				postGasEstimate,
+				postGasEstimateInDestFeeToken,
+				filledWithNative,
+			)
 
-			return { fillGas: gas, postGas: postGasEstimate, relayerFeeInFeeToken: postGasEstimateInDestFeeToken }
+			return {
+				fillGas: gas,
+				postGas: postGasEstimate,
+				relayerFeeInFeeToken: postGasEstimateInDestFeeToken,
+				filledWithNative,
+			}
 		} catch (error) {
 			console.error(`Error estimating gas:`, error)
 			// Return a conservative estimate if we can't calculate precisely
-			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n }
+			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n, filledWithNative: false }
 		}
 	}
 

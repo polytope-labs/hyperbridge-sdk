@@ -118,7 +118,7 @@ export class BasicFiller implements FillerStrategy {
 		try {
 			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
 
-			const { relayerFeeInFeeToken } = await this.contractService.estimateGasFillPost(order)
+			const { relayerFeeInFeeToken, filledWithNative } = await this.contractService.estimateGasFillPost(order)
 			const fillOptions: FillOptions = {
 				relayerFee: relayerFeeInFeeToken,
 			}
@@ -132,41 +132,14 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			console.log("Attempting simulation")
-
-			const results = await Promise.allSettled([
-				destClient.simulateContract({
-					abi: INTENT_GATEWAY_ABI,
-					address: this.configService.getIntentGatewayAddress(order.destChain),
-					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-					account: privateKeyToAccount(this.privateKey),
-					value: ethValue + relayerFeeInNativeToken,
-				}),
-				destClient.simulateContract({
-					abi: INTENT_GATEWAY_ABI,
-					address: this.configService.getIntentGatewayAddress(order.destChain),
-					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-					account: privateKeyToAccount(this.privateKey),
-					value: ethValue,
-				}),
-			])
-
-			const [nativeResult, feeResult] = results
-			const fillWithNativeToken = nativeResult.status === "fulfilled" ? nativeResult.value : null
-			const fillWithFeeToken = feeResult.status === "fulfilled" ? feeResult.value : null
-
-			let request
-			if (fillWithNativeToken && fillWithFeeToken) {
-				request = fillWithNativeToken.request
-			} else if (fillWithNativeToken) {
-				request = fillWithNativeToken.request
-			} else if (fillWithFeeToken) {
-				request = fillWithFeeToken.request
-			} else {
-				throw new Error(`Final order execution failed`)
-			}
+			const { request } = await destClient.simulateContract({
+				abi: INTENT_GATEWAY_ABI,
+				address: this.configService.getIntentGatewayAddress(order.destChain),
+				functionName: "fillOrder",
+				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+				account: privateKeyToAccount(this.privateKey),
+				value: filledWithNative ? ethValue + relayerFeeInNativeToken : ethValue,
+			})
 
 			const tx = await walletClient.writeContract(request)
 
