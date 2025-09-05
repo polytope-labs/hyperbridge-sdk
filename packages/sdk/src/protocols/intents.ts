@@ -42,7 +42,7 @@ export class IntentGateway {
 	 * protocol fees, and swap operations.
 	 *
 	 * @param order - The order to estimate fill costs for
-	 * @returns An object containing the estimated cost in both fee token and native token
+	 * @returns An object containing the estimated cost in both fee token and native token, plus the post request calldata
 	 */
 	async estimateFillOrder(
 		order: Order,
@@ -272,14 +272,14 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Finds the best Uniswap protocol (V2 or V3) for swapping tokens given a desired output amount.
+	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given a desired output amount.
 	 * Compares liquidity and pricing across different protocols and fee tiers.
 	 *
 	 * @param chain - The chain identifier where the swap will occur
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountOut - The desired output amount
-	 * @returns Object containing the best protocol, required input amount, and fee tier (for V3)
+	 * @returns Object containing the best protocol, required input amount, and fee tier (for V3/V4)
 	 */
 	async findBestProtocolWithAmountOut(
 		chain: string,
@@ -477,14 +477,14 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Finds the best Uniswap protocol (V2 or V3) for swapping tokens given an input amount.
+	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given an input amount.
 	 * Compares liquidity and pricing across different protocols and fee tiers.
 	 *
 	 * @param chain - The chain identifier where the swap will occur
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountIn - The input amount to swap
-	 * @returns Object containing the best protocol, expected output amount, and fee tier (for V3)
+	 * @returns Object containing the best protocol, expected output amount, and fee tier (for V3/V4)
 	 */
 	async findBestProtocolWithAmountIn(
 		chain: string,
