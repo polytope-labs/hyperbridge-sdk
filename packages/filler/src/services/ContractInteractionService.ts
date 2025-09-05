@@ -349,42 +349,75 @@ export class ContractInteractionService {
 				)
 			).filter(Boolean)
 
-			const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
-
-			const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
-			const destFeeTokenBalanceSlot = await getStorageSlot(
-				destClient as any,
-				destChainFeeTokenAddress,
-				destFeeTokenBalanceData as HexString,
-			)
-			const destFeeTokenAllowanceData =
-				ERC20Method.ALLOWANCE +
-				bytes20ToBytes32(userAddress).slice(2) +
-				bytes20ToBytes32(intentGatewayAddress).slice(2)
-			const destFeeTokenAllowanceSlot = await getStorageSlot(
-				destClient as any,
-				destChainFeeTokenAddress,
-				destFeeTokenAllowanceData as HexString,
-			)
-			const feeTokenStateDiffs = [
-				{ slot: destFeeTokenBalanceSlot, value: testValue },
-				{ slot: destFeeTokenAllowanceSlot, value: testValue },
+			const stateOverride = [
+				{
+					address: userAddress,
+					balance: maxUint256,
+				},
+				...overrides.map((override) => ({
+					address: override!.address,
+					stateDiff: override!.stateDiff,
+				})),
 			]
 
-			overrides.push({
-				address: destChainFeeTokenAddress,
-				stateDiff: feeTokenStateDiffs as any,
-			})
+			let gas = 0n
 
-			const gas = await destClient.estimateContractGas({
-				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
-				functionName: "fillOrder",
-				args: [this.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: ethValue,
-				stateOverride: overrides as any,
-			})
+			try {
+				const feeAmountInNativeToken = await this.convertFeeTokenToNative(
+					postGasEstimateInDestFeeToken,
+					order.destChain,
+				)
+
+				gas = await destClient.estimateContractGas({
+					abi: INTENT_GATEWAY_ABI,
+					address: this.configService.getIntentGatewayAddress(order.destChain),
+					functionName: "fillOrder",
+					args: [this.transformOrderForContract(order), fillOptions as any],
+					account: privateKeyToAccount(this.privateKey),
+					value: ethValue + feeAmountInNativeToken,
+					stateOverride: overrides as any,
+				})
+			} catch {
+				console.warn(
+					`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
+				)
+				const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
+
+				const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+				const destFeeTokenBalanceSlot = await getStorageSlot(
+					destClient as any,
+					destChainFeeTokenAddress,
+					destFeeTokenBalanceData as HexString,
+				)
+				const destFeeTokenAllowanceData =
+					ERC20Method.ALLOWANCE +
+					bytes20ToBytes32(userAddress).slice(2) +
+					bytes20ToBytes32(intentGatewayAddress).slice(2)
+				const destFeeTokenAllowanceSlot = await getStorageSlot(
+					destClient as any,
+					destChainFeeTokenAddress,
+					destFeeTokenAllowanceData as HexString,
+				)
+				const feeTokenStateDiffs = [
+					{ slot: destFeeTokenBalanceSlot, value: testValue },
+					{ slot: destFeeTokenAllowanceSlot, value: testValue },
+				]
+
+				overrides.push({
+					address: destChainFeeTokenAddress,
+					stateDiff: feeTokenStateDiffs as any,
+				})
+
+				gas = await destClient.estimateContractGas({
+					abi: INTENT_GATEWAY_ABI,
+					address: this.configService.getIntentGatewayAddress(order.destChain),
+					functionName: "fillOrder",
+					args: [this.transformOrderForContract(order), fillOptions as any],
+					account: privateKeyToAccount(this.privateKey),
+					value: ethValue,
+					stateOverride: overrides as any,
+				})
+			}
 
 			// Cache the results
 			this.cacheService.setGasEstimate(order.id!, gas, postGasEstimate, postGasEstimateInDestFeeToken)
