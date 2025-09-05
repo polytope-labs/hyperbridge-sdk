@@ -1,6 +1,13 @@
 import type { ConsolaInstance } from "consola"
 import type { GraphQLClient } from "graphql-request"
-import type { Hex, Log } from "viem"
+import type { ContractFunctionArgs, Hex, Log } from "viem"
+import type HandlerV1 from "@/abis/handler"
+
+export type EstimateGasCallData = ContractFunctionArgs<
+  typeof HandlerV1.ABI,
+  'nonpayable' | 'payable',
+  "handlePostRequests"
+>
 
 export type HexString = `0x${string}`
 

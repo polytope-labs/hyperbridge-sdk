@@ -7,7 +7,7 @@ import {
   type StateMachineHeight,
   TimeoutStatus,
 } from "@/types"
-import type { Order, RequestStatusKey, RetryConfig, TimeoutStatusKey } from "@/types"
+import type { EstimateGasCallData, Order, RequestStatusKey, RetryConfig, TimeoutStatusKey } from "@/types"
 import { LogLevels, createConsola } from "consola"
 import {
   type CallParameters,
@@ -396,7 +396,7 @@ export async function estimateGasForPost(params: {
   sourceClient: PublicClient
   hostLatestStateMachineHeight: bigint
   hostAddress: HexString
-}): Promise<bigint> {
+}): Promise<{ gas_fee: bigint, call_data: EstimateGasCallData }> {
   const hostParams = await params.sourceClient.readContract({
     address: params.hostAddress,
     abi: evmHost.ABI,
@@ -419,27 +419,29 @@ export async function estimateGasForPost(params: {
     leafCount: treeSize,
   }
 
-  const gas = await params.sourceClient.estimateContractGas({
+  const call_data: EstimateGasCallData = [
+    params.hostAddress,
+    {
+      proof: postParams,
+      requests: [
+        {
+          request: {
+            ...params.postRequest,
+            source: toHex(params.postRequest.source),
+            dest: toHex(params.postRequest.dest),
+          },
+          index,
+          kIndex,
+        },
+      ],
+    },
+  ];
+
+  const gas_fee = await params.sourceClient.estimateContractGas({
     address: hostParams.handler,
     abi: handler.ABI,
     functionName: "handlePostRequests",
-    args: [
-      params.hostAddress,
-      {
-        proof: postParams,
-        requests: [
-          {
-            request: {
-              ...params.postRequest,
-              source: toHex(params.postRequest.source),
-              dest: toHex(params.postRequest.dest),
-            },
-            index,
-            kIndex,
-          },
-        ],
-      },
-    ],
+    args: call_data,
     stateOverride: [
       {
         address: params.hostAddress,
@@ -453,7 +455,7 @@ export async function estimateGasForPost(params: {
     ],
   })
 
-  return gas
+  return { gas_fee, call_data }
 }
 
 /**
