@@ -353,7 +353,7 @@ describe.sequential("Order Status Stream", () => {
 		assert(mainnetQuote3.amountIn > 0n)
 	}, 1_000_000)
 
-	it.only("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
+	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 		const bscMainnetId = "EVM-56"
 		const mainnetId = "EVM-1"

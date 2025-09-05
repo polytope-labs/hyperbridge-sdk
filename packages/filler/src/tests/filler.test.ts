@@ -250,7 +250,7 @@ describe.sequential("Basic", () => {
 		intentFiller.stop()
 	}, 1_000_000)
 
-	it.only("Should listen, place order, fill order at BSC Chapel, and check if filled at Gnosis Chiado", async () => {
+	it("Should listen, place order, fill order at BSC Chapel, and check if filled at Gnosis Chiado", async () => {
 		const {
 			bscIntentGateway,
 			gnosisChiadoIntentGateway,
