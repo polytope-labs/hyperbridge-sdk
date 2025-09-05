@@ -165,7 +165,7 @@ export class ContractInteractionService {
 		}
 
 		// Approve each token
-		for (const tokenAddress of [...uniqueTokens, (await this.getFeeTokenWithDecimals(order.destChain)).address]) {
+		for (const tokenAddress of uniqueTokens) {
 			const currentAllowance = await destClient.readContract({
 				abi: ERC20_ABI,
 				address: tokenAddress as HexString,
@@ -431,6 +431,34 @@ export class ContractInteractionService {
 		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
+	}
+
+	/**
+	 * Converts fee token amounts back to the equivalent amount in native token.
+	 * Uses USD pricing to convert between fee token amounts and native token costs.
+	 *
+	 * @param feeTokenAmount - The amount in fee token (DAI)
+	 * @param publicClient - The client for the chain to get native token info
+	 * @param feeTokenDecimals - The decimal places of the fee token
+	 * @returns The fee token amount converted to native token amount
+	 */
+	async convertFeeTokenToNative(feeTokenAmount: bigint, chain: string): Promise<bigint> {
+		const client = this.clientManager.getPublicClient(chain)
+		const nativeToken = client.chain?.nativeCurrency
+
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const { decimals: feeTokenDecimals } = await this.getFeeTokenWithDecimals(chain)
+
+		const feeTokenAmountNumber = Number(feeTokenAmount) / Math.pow(10, feeTokenDecimals)
+
+		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+
+		const totalCostInNativeToken = feeTokenAmountNumber / nativeTokenPriceUsd
+
+		return BigInt(Math.floor(totalCostInNativeToken * Math.pow(10, nativeToken.decimals)))
 	}
 
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {

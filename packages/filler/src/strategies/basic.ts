@@ -125,6 +125,11 @@ export class BasicFiller implements FillerStrategy {
 
 			const ethValue = this.contractService.calculateRequiredEthValue(order.outputs)
 
+			const relayerFeeInNativeToken = await this.contractService.convertFeeTokenToNative(
+				relayerFeeInFeeToken,
+				order.destChain,
+			)
+
 			await this.contractService.approveTokensIfNeeded(order)
 
 			const { request } = await destClient.simulateContract({
@@ -133,7 +138,7 @@ export class BasicFiller implements FillerStrategy {
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
-				value: ethValue,
+				value: ethValue + relayerFeeInNativeToken,
 			})
 
 			const tx = await walletClient.writeContract(request)

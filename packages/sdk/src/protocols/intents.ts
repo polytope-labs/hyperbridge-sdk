@@ -42,9 +42,11 @@ export class IntentGateway {
 	 * protocol fees, and swap operations.
 	 *
 	 * @param order - The order to estimate fill costs for
-	 * @returns The estimated total cost in the source chain's fee token
+	 * @returns An object containing the estimated cost in both fee token and native token
 	 */
-	async estimateFillOrder(order: Order): Promise<bigint> {
+	async estimateFillOrder(
+		order: Order,
+	): Promise<{ feeTokenAmount: bigint; nativeTokenAmount: bigint; postRequestCalldata: HexString }> {
 		const postRequest: IPostRequest = {
 			source: order.destChain,
 			dest: order.sourceChain,
@@ -59,7 +61,7 @@ export class IntentGateway {
 		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
 			await this.dest.getFeeTokenWithDecimals()
 
-		const postGasEstimate = await this.source.estimateGas(postRequest)
+		const { gas: postGasEstimate, postRequestCalldata } = await this.source.estimateGas(postRequest)
 
 		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
 			postGasEstimate,
@@ -191,7 +193,82 @@ export class IntentGateway {
 
 		const SWAP_OPERATIONS_BPS = 2500n
 		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
-		return totalEstimate + swapOperationsInFeeToken
+		const totalFeeTokenAmount = totalEstimate + swapOperationsInFeeToken
+
+		const totalNativeTokenAmount = await this.convertFeeTokenToNative(
+			totalFeeTokenAmount,
+			this.source.client,
+			sourceChainFeeTokenDecimals,
+		)
+
+		return {
+			feeTokenAmount: totalFeeTokenAmount,
+			nativeTokenAmount: totalNativeTokenAmount,
+			postRequestCalldata,
+		}
+	}
+
+	/**
+	 * Converts fee token amounts back to the equivalent amount in native token.
+	 * Uses USD pricing to convert between fee token amounts and native token costs.
+	 *
+	 * @param feeTokenAmount - The amount in fee token (DAI)
+	 * @param publicClient - The client for the chain to get native token info
+	 * @param feeTokenDecimals - The decimal places of the fee token
+	 * @returns The fee token amount converted to native token amount
+	 * @private
+	 */
+	private async convertFeeTokenToNative(
+		feeTokenAmount: bigint,
+		publicClient: PublicClient,
+		feeTokenDecimals: number,
+	): Promise<bigint> {
+		const nativeToken = publicClient.chain?.nativeCurrency
+
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const feeTokenAmountNumber = Number(feeTokenAmount) / Math.pow(10, feeTokenDecimals)
+
+		const nativeTokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+
+		const totalCostInNativeToken = feeTokenAmountNumber / nativeTokenPriceUsd
+
+		return BigInt(Math.floor(totalCostInNativeToken * Math.pow(10, nativeToken.decimals)))
+	}
+
+	/**
+	 * Converts gas costs to the equivalent amount in the fee token (DAI).
+	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
+	 *
+	 * @param gasEstimate - The estimated gas units
+	 * @param publicClient - The client for the chain to get gas prices
+	 * @param targetDecimals - The decimal places of the target fee token
+	 * @returns The gas cost converted to fee token amount
+	 * @private
+	 */
+	private async convertGasToFeeToken(
+		gasEstimate: bigint,
+		publicClient: PublicClient,
+		targetDecimals: number,
+	): Promise<bigint> {
+		const gasPrice = await publicClient.getGasPrice()
+		const gasCostInWei = gasEstimate * gasPrice
+		const nativeToken = publicClient.chain?.nativeCurrency
+
+		if (!nativeToken?.symbol || !nativeToken?.decimals) {
+			throw new Error("Chain native currency information not available")
+		}
+
+		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
+		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
+		const gasCostUsd = gasCostInToken * tokenPriceUsd
+
+		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI")
+		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+
+		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
 	}
 
 	/**
@@ -602,39 +679,6 @@ export class IntentGateway {
 				fee: bestV4Fee,
 			}
 		}
-	}
-
-	/**
-	 * Converts gas costs to the equivalent amount in the fee token (DAI).
-	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
-	 *
-	 * @param gasEstimate - The estimated gas units
-	 * @param publicClient - The client for the chain to get gas prices
-	 * @param targetDecimals - The decimal places of the target fee token
-	 * @returns The gas cost converted to fee token amount
-	 * @private
-	 */
-	private async convertGasToFeeToken(
-		gasEstimate: bigint,
-		publicClient: PublicClient,
-		targetDecimals: number,
-	): Promise<bigint> {
-		const gasPrice = await publicClient.getGasPrice()
-		const gasCostInWei = gasEstimate * gasPrice
-		const nativeToken = publicClient.chain?.nativeCurrency
-
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
-		}
-
-		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
-		const tokenPriceUsd = await fetchTokenUsdPrice(nativeToken.symbol)
-		const gasCostUsd = gasCostInToken * tokenPriceUsd
-
-		const feeTokenPriceUsd = await fetchTokenUsdPrice("DAI")
-		const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
-
-		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
 	}
 
 	/**
