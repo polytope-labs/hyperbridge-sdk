@@ -4,9 +4,9 @@ import type { ContractFunctionArgs, Hex, Log } from "viem"
 import type HandlerV1 from "@/abis/handler"
 
 export type EstimateGasCallData = ContractFunctionArgs<
-  typeof HandlerV1.ABI,
-  'nonpayable' | 'payable',
-  "handlePostRequests"
+	typeof HandlerV1.ABI,
+	"nonpayable" | "payable",
+	"handlePostRequests"
 >
 
 export type HexString = `0x${string}`

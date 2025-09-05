@@ -391,70 +391,70 @@ export const COMBINED_STATUS_WEIGHTS: Record<RequestStatusKey | TimeoutStatusKey
  * the gas cost for executing the transaction on the source chain.
  */
 export async function estimateGasForPost(params: {
-  postRequest: IPostRequest
-  sourceClient: PublicClient
-  hostLatestStateMachineHeight: bigint
-  hostAddress: HexString
-}): Promise<{ gas_fee: bigint, call_data: EstimateGasCallData }> {
-  const hostParams = await params.sourceClient.readContract({
-    address: params.hostAddress,
-    abi: evmHost.ABI,
-    functionName: "hostParams",
-  })
+	postRequest: IPostRequest
+	sourceClient: PublicClient
+	hostLatestStateMachineHeight: bigint
+	hostAddress: HexString
+}): Promise<{ gas_fee: bigint; call_data: EstimateGasCallData }> {
+	const hostParams = await params.sourceClient.readContract({
+		address: params.hostAddress,
+		abi: evmHost.ABI,
+		functionName: "hostParams",
+	})
 
-  const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(params.postRequest, 2n ** 10n)
-  const latestStateMachineHeight = params.hostLatestStateMachineHeight
-  const overlayRootSlot = getStateCommitmentFieldSlot(
-    BigInt(4009n), // Hyperbridge chain id
-    latestStateMachineHeight, // Hyperbridge chain height
-    1, // For overlayRoot
-  )
-  const postParams = {
-    height: {
-      stateMachineId: BigInt(4009n),
-      height: latestStateMachineHeight,
-    },
-    multiproof: proof,
-    leafCount: treeSize,
-  }
+	const { root, proof, index, kIndex, treeSize } = await generateRootWithProof(params.postRequest, 2n ** 10n)
+	const latestStateMachineHeight = params.hostLatestStateMachineHeight
+	const overlayRootSlot = getStateCommitmentFieldSlot(
+		BigInt(4009n), // Hyperbridge chain id
+		latestStateMachineHeight, // Hyperbridge chain height
+		1, // For overlayRoot
+	)
+	const postParams = {
+		height: {
+			stateMachineId: BigInt(4009n),
+			height: latestStateMachineHeight,
+		},
+		multiproof: proof,
+		leafCount: treeSize,
+	}
 
-  const call_data: EstimateGasCallData = [
-    params.hostAddress,
-    {
-      proof: postParams,
-      requests: [
-        {
-          request: {
-            ...params.postRequest,
-            source: toHex(params.postRequest.source),
-            dest: toHex(params.postRequest.dest),
-          },
-          index,
-          kIndex,
-        },
-      ],
-    },
-  ];
+	const call_data: EstimateGasCallData = [
+		params.hostAddress,
+		{
+			proof: postParams,
+			requests: [
+				{
+					request: {
+						...params.postRequest,
+						source: toHex(params.postRequest.source),
+						dest: toHex(params.postRequest.dest),
+					},
+					index,
+					kIndex,
+				},
+			],
+		},
+	]
 
-  const gas_fee = await params.sourceClient.estimateContractGas({
-    address: hostParams.handler,
-    abi: handler.ABI,
-    functionName: "handlePostRequests",
-    args: call_data,
-    stateOverride: [
-      {
-        address: params.hostAddress,
-        stateDiff: [
-          {
-            slot: overlayRootSlot,
-            value: root,
-          },
-        ],
-      },
-    ],
-  })
+	const gas_fee = await params.sourceClient.estimateContractGas({
+		address: hostParams.handler,
+		abi: handler.ABI,
+		functionName: "handlePostRequests",
+		args: call_data,
+		stateOverride: [
+			{
+				address: params.hostAddress,
+				stateDiff: [
+					{
+						slot: overlayRootSlot,
+						value: root,
+					},
+				],
+			},
+		],
+	})
 
-  return { gas_fee, call_data }
+	return { gas_fee, call_data }
 }
 
 /**
