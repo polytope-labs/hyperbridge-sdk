@@ -156,7 +156,9 @@ export class IntentGateway {
 				stateOverride: stateOverrides as any,
 			})
 		} catch {
-			console.warn("Fill gas estimate failed using native token for fees, now trying with fee token as fees")
+			console.warn(
+				`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
+			)
 
 			const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
 			const destFeeTokenBalanceSlot = await getStorageSlot(
