@@ -165,7 +165,7 @@ export class ContractInteractionService {
 		}
 
 		// Approve each token
-		for (const tokenAddress of uniqueTokens) {
+		for (const tokenAddress of [...uniqueTokens, (await this.getFeeTokenWithDecimals(order.destChain)).address]) {
 			const currentAllowance = await destClient.readContract({
 				abi: ERC20_ABI,
 				address: tokenAddress as HexString,
