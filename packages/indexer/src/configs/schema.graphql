@@ -561,7 +561,7 @@ type RewardPoints @entity @compositeIndexes(fields: [["address", "chain"], ["ear
 	address: String! @index
 	chain: String! @index
 	points: BigInt! @index
-	earnerType: ProtocolParticipantType!
+	earnerType: ProtocolParticipantType
 }
 
 type RewardPointsActivityLog
@@ -572,8 +572,8 @@ type RewardPointsActivityLog
 	points: BigInt! @index
 	transactionHash: String! @index
 	earnerAddress: String! @index
-	earnerType: ProtocolParticipantType!
-	activityType: PointsActivityType!
+	earnerType: ProtocolParticipantType
+	activityType: PointsActivityType
 	description: String!
 	createdAt: Date! @index
 }

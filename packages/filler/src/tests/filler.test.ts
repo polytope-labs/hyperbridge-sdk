@@ -19,6 +19,7 @@ import {
 	postRequestCommitment,
 	EvmChain,
 	IntentGateway,
+	DEFAULT_GRAFFITI,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -151,7 +152,7 @@ describe.sequential("Basic", () => {
 			})
 		})
 
-		const hash = await bscIntentGateway.write.placeOrder([order], {
+		const hash = await bscIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
 		})
@@ -337,7 +338,7 @@ describe.sequential("Basic", () => {
 			})
 		})
 
-		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
+		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: gnosisChiado,
 		})
@@ -479,7 +480,7 @@ describe.sequential("Basic", () => {
 
 		await approveTokens(bscWalletClient, bscPublicClient, feeTokenBscAddress, bscIntentGateway.address)
 
-		let hash = await bscIntentGateway.write.placeOrder([order], {
+		let hash = await bscIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
 		})
@@ -718,7 +719,7 @@ describe.sequential("Basic", () => {
 		await clearOutputTokenBalance(bscWalletClient, bscPublicClient, [usdtAsset], [pairAddress])
 
 		// Place the order
-		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order], {
+		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: gnosisChiado,
 			value: 100n,
