@@ -12,6 +12,7 @@ import { PointsService } from "./points.service"
 import { VolumeService } from "./volume.service"
 import PriceHelper from "@/utils/price.helpers"
 import { TokenPriceService } from "./token-price.service"
+import stringify from "safe-stable-stringify"
 
 export interface TokenInfo {
 	token: Hex
@@ -79,6 +80,14 @@ export class IntentGatewayService {
 				transactionHash,
 			})
 			await orderPlaced.save()
+
+			logger.info(
+				`Order Placed Event successfully saved: ${stringify({
+					orderPlaced,
+				})}`,
+			)
+
+			logger.info("Now awarding points for the Order Placed Event")
 
 			// Award points for order placement - using USD value directly
 			const orderValue = new Decimal(inputUSD)

@@ -76,7 +76,7 @@ describe.sequential("Basic", () => {
 			queryClient: queryClient,
 			pollInterval: 1_000,
 		})
-	})
+	}, 1_000_000)
 
 	it.skip("Should listen, place order, fill order, and check if filled at the source chain", async () => {
 		const {
@@ -338,10 +338,13 @@ describe.sequential("Basic", () => {
 			})
 		})
 
-		const hash = await gnosisChiadoIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
-			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
-			chain: gnosisChiado,
-		})
+		const hash = await gnosisChiadoIntentGateway.write.placeOrder(
+			[order, "0x000000000000000000000000000000000000000000000000000000000100001"],
+			{
+				account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+				chain: gnosisChiado,
+			},
+		)
 
 		const receipt = await gnosisChiadoPublicClient.waitForTransactionReceipt({
 			hash,

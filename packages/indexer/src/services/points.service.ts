@@ -12,6 +12,7 @@ export class PointsService {
 		let rewardPoints = await RewardPoints.get(rewardPointsId)
 
 		if (!rewardPoints) {
+			logger.info(`Creating Reward Points for ${address} on ${chain} with earner type ${earnerType}`)
 			rewardPoints = await RewardPoints.create({
 				id: rewardPointsId,
 				address,
@@ -20,6 +21,10 @@ export class PointsService {
 				earnerType,
 			})
 		}
+
+		await rewardPoints.save()
+
+		logger.info(`Reward Points for ${address} on ${chain} with earner type ${earnerType} saved`)
 
 		return rewardPoints
 	}
@@ -35,6 +40,8 @@ export class PointsService {
 		timestamp: bigint,
 	): Promise<void> {
 		const rewardPoints = await this.getOrCreate(address, chain, earnerType)
+
+		logger.info(`Awarding ${points} points to ${address} on ${chain} with earner type ${earnerType}`)
 
 		rewardPoints.points = rewardPoints.points + points
 		await rewardPoints.save()
@@ -64,6 +71,8 @@ export class PointsService {
 		timestamp: bigint,
 	): Promise<void> {
 		const rewardPoints = await this.getOrCreate(address, chain, earnerType)
+
+		logger.info(`Deducting ${points} points from ${address} on ${chain} with earner type ${earnerType}`)
 
 		rewardPoints.points = rewardPoints.points - points
 		await rewardPoints.save()
