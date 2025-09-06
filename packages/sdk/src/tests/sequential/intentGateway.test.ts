@@ -16,7 +16,14 @@ import { bsc, bscTestnet, gnosisChiado, mainnet } from "viem/chains"
 
 import { IndexerClient } from "@/client"
 import { ChainConfig, FillerConfig, type HexString, IPostRequest, Order, OrderStatus } from "@/types"
-import { orderCommitment, hexToString, bytes20ToBytes32, constructRedeemEscrowRequestBody, ADDRESS_ZERO } from "@/utils"
+import {
+	orderCommitment,
+	hexToString,
+	bytes20ToBytes32,
+	constructRedeemEscrowRequestBody,
+	ADDRESS_ZERO,
+	DEFAULT_GRAFFITI,
+} from "@/utils"
 
 import ERC6160 from "@/abis/erc6160"
 import INTENT_GATEWAY_ABI from "@/abis/IntentGateway"
@@ -112,7 +119,7 @@ describe.sequential("Order Status Stream", () => {
 
 		await approveTokens(bscWalletClient, bscPublicClient, bscFeeToken.address, bscIntentGateway.address)
 
-		const hash = await bscIntentGateway.write.placeOrder([order as any], {
+		const hash = await bscIntentGateway.write.placeOrder([order as any, DEFAULT_GRAFFITI], {
 			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 			chain: bscTestnet,
 		})
