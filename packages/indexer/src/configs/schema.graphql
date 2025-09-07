@@ -907,7 +907,7 @@ type OrderPlaced @entity {
 	"""
 	Referrer address that referred the user
 	"""
-	referrer: String!
+	referrer: String
 
 	"""
 	Timestamp when the order was created
@@ -967,7 +967,7 @@ type OrderStatusMetadata @entity {
 	"""
 	The order that owns this status change
 	"""
-	order: OrderPlaced!
+	order: OrderPlaced
 
 	"""
 	The filler of the order if the order has been filled
