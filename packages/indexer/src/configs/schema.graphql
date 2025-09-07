@@ -45,8 +45,8 @@ enum PointsActivityType {
 	REWARD_POINTS_EARNED
 	ORDER_PLACED_POINTS
 	ORDER_FILLED_POINTS
-	ORDER_REFERRED_POINTS
 	TOKEN_TELEPORTED_POINTS
+	ORDER_REFERRED_POINTS
 }
 
 """
@@ -813,7 +813,7 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 Represents an order placed through the IntentGateway contract.
 This entity tracks cross-chain orders.
 """
-type OrderPlaced @entity {
+type Order @entity {
 	"""
 	Unique identifier for the order (commitment)
 	"""
@@ -967,7 +967,7 @@ type OrderStatusMetadata @entity {
 	"""
 	The order that owns this status change
 	"""
-	order: OrderPlaced
+	order: Order
 
 	"""
 	The filler of the order if the order has been filled

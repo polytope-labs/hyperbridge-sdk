@@ -5,7 +5,7 @@ import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters } from "viem"
 
 import { OrderStatus, OrderStatusMetadata, ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
-import { OrderPlaced } from "@/configs/src/types/models/OrderPlaced"
+import { Order as OrderPlaced } from "@/configs/src/types/models/Order"
 import { timestampToDate } from "@/utils/date.helpers"
 
 import { PointsService } from "./points.service"
