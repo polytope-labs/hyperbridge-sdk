@@ -339,7 +339,7 @@ describe.sequential("Basic", () => {
 		})
 
 		const hash = await gnosisChiadoIntentGateway.write.placeOrder(
-			[order, "0x000000000000000000000000000000000000000000000000000000000100001"],
+			[order, bytes20ToBytes32("0x7f5f2cf1aec83bf0c74df566a41aa7ed65ea84ea")],
 			{
 				account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
 				chain: gnosisChiado,
