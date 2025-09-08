@@ -84,6 +84,13 @@ export async function getEvmBlockTimestamp(blockHash: string, chain: string): Pr
 	return BigInt(block.result.timestamp)
 }
 
+interface ETHGetCodeResponse {
+	jsonrpc: "2.0"
+	id: 1
+	error?: { message: string }
+	result?: string
+}
+
 /**
  * Get Substrate Block Timestamp is a function that retrieves the timestamp of a block given its hash and chain.
  * @param storageKey The storage key for the state item

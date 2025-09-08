@@ -1,5 +1,5 @@
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Status, Transfer } from "@/configs/src/types"
+import { Status, Transfer, Request } from "@/configs/src/types"
 import { PostRequestHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { RequestService } from "@/services/request.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
@@ -7,9 +7,11 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
 import { VolumeService } from "@/services/volume.service"
-import { getPriceDataFromEthereumLog, isERC20TransferEvent } from "@/utils/transfer.helpers"
+import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTopic } from "@/utils/transfer.helpers"
 import { TransferService } from "@/services/transfer.service"
 import { safeArray } from "@/utils/data.helper"
+import { findNextIsmpEventIndex, isWithinCurrentIsmpEventWindow } from "@/utils/ismp.helpers"
+import { normalizeToEvmAddress } from "@/utils/transfer.helpers"
 
 /**
  * Handles the PostRequestHandled event from Hyperbridge
@@ -43,7 +45,10 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			transactionHash,
 		})
 
+		const currentIndex = event.logIndex as number
+		const nextIndex = findNextIsmpEventIndex(safeArray(transaction.logs), currentIndex, event.address)
 		for (const log of safeArray(transaction.logs)) {
+			if (!isWithinCurrentIsmpEventWindow(log as any, currentIndex, nextIndex)) continue
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -52,7 +57,9 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			const transfer = await Transfer.get(log.transactionHash)
 
 			if (!transfer) {
-				const [_, from, to] = log.topics
+				const [_, fromTopic, toTopic] = log.topics
+				const from = extractAddressFromTopic(fromTopic)
+				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
 					transactionHash: log.transactionHash,
 					chain,
@@ -67,6 +74,13 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 					blockTimestamp,
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+
+				// Contract (target) volume via ISMP Request 'to'
+				const req = await Request.get(commitment)
+				const contractTo = normalizeToEvmAddress(req?.to)
+				if (contractTo) {
+					await VolumeService.updateVolume(`Contract.${contractTo}`, amountValueInUSD, blockTimestamp)
+				}
 			}
 		}
 	} catch (error) {

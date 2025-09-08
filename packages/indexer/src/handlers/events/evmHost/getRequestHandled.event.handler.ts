@@ -6,10 +6,11 @@ import { GetRequestService } from "@/services/getRequest.service"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
-import { getPriceDataFromEthereumLog, isERC20TransferEvent } from "@/utils/transfer.helpers"
+import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTopic } from "@/utils/transfer.helpers"
 import { TransferService } from "@/services/transfer.service"
 import { VolumeService } from "@/services/volume.service"
 import { safeArray } from "@/utils/data.helper"
+import { findNextIsmpEventIndex, isWithinCurrentIsmpEventWindow } from "@/utils/ismp.helpers"
 
 /**
  * Handles the GetRequestHandled event from EVMHost
@@ -43,7 +44,10 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			transactionHash,
 		})
 
+		const currentIndex = event.logIndex as number
+		const nextIndex = findNextIsmpEventIndex(safeArray(transaction?.logs), currentIndex, event.address)
 		for (const log of safeArray(transaction?.logs)) {
+			if (!isWithinCurrentIsmpEventWindow(log as any, currentIndex, nextIndex)) continue
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -52,7 +56,9 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			const transfer = await Transfer.get(log.transactionHash)
 
 			if (!transfer) {
-				const [_, from, to] = log.topics
+				const [_, fromTopic, toTopic] = log.topics
+				const from = extractAddressFromTopic(fromTopic)
+				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
 					transactionHash: log.transactionHash,
 					chain,
