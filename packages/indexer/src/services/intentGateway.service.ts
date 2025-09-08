@@ -194,7 +194,7 @@ export class IntentGatewayService {
 					}
 				})
 				let outputUSD = await this.getOutputValuesUSD(outputPaymentInfo)
-				await VolumeService.updateVolume("IntentGateway.FILLER", outputUSD.total, timestamp)
+				await VolumeService.updateVolume(`IntentGateway.FILLER.${filler}`, outputUSD.total, timestamp)
 
 				const orderValue = new Decimal(orderPlaced.inputUSD)
 				const pointsToAward = orderValue.floor().toNumber()
