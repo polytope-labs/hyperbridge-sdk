@@ -29,27 +29,6 @@ enum Status {
 }
 
 """
-Types of participants in the Hyperbridge Protocol
-"""
-enum ProtocolParticipantType {
-	RELAYER
-	FILLER
-	USER
-	REFERRER
-}
-
-"""
-System activity types related to reward points
-"""
-enum PointsActivityType {
-	REWARD_POINTS_EARNED
-	ORDER_PLACED_POINTS
-	ORDER_FILLED_POINTS
-	TOKEN_TELEPORTED_POINTS
-	ORDER_REFERRED_POINTS
-}
-
-"""
 The status of an order
 """
 enum OrderStatus {
@@ -87,6 +66,27 @@ enum TeleportStatus {
 	The asset has been refunded due to failed teleport
 	"""
 	REFUNDED
+}
+
+"""
+Types of participants in the Hyperbridge Protocol
+"""
+enum ProtocolParticipantType {
+	RELAYER
+	FILLER
+	USER
+	REFERRER
+}
+
+"""
+System activity types related to reward points
+"""
+enum PointsActivityType {
+	REWARD_POINTS_EARNED
+	ORDER_PLACED_POINTS
+	ORDER_FILLED_POINTS
+	TOKEN_TELEPORTED_POINTS
+	ORDER_REFERRED_POINTS
 }
 
 """
@@ -556,7 +556,7 @@ type ResponseStatusMetadata @entity {
 """
 Reward points earned by participants in the hyperbridge protocol
 """
-type RewardPoints @entity @compositeIndexes(fields: [["address", "chain"], ["earnerType", "chain"]]) {
+type Rewards @entity @compositeIndexes(fields: [["address", "chain"], ["earnerType", "chain"]]) {
 	id: ID!
 	address: String! @index
 	chain: String! @index
@@ -564,7 +564,7 @@ type RewardPoints @entity @compositeIndexes(fields: [["address", "chain"], ["ear
 	earnerType: ProtocolParticipantType
 }
 
-type RewardPointsActivityLog
+type RewardsActivityLog
 	@entity
 	@compositeIndexes(fields: [["earnerAddress", "chain"], ["earnerType", "chain"], ["activityType", "chain"]]) {
 	id: ID!

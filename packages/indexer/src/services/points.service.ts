@@ -1,4 +1,4 @@
-import { RewardPoints, RewardPointsActivityLog } from "@/configs/src/types"
+import { Rewards as RewardPoints, RewardsActivityLog as RewardPointsActivityLog } from "@/configs/src/types"
 import { ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
 
