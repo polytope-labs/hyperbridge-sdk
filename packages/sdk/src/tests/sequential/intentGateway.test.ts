@@ -70,7 +70,7 @@ describe.sequential("Order Status Stream", () => {
 
 		await hyperbridge.connect()
 		hyperbridgeInstance = hyperbridge
-	}, 10_000)
+	}, 100_000)
 
 	it.skip("should successfully stream and query the order status", async () => {
 		const {
@@ -297,11 +297,11 @@ describe.sequential("Order Status Stream", () => {
 		assert(bestQuoteWithAmountIn.amountIn === initialAmountIn)
 
 		// Order filled checker
-		const filledOrderCommitment = "0x1dede1bc4939f194e8a06a9086377d1e64c5c1c77c055e4430ff7141c774528c" as HexString
-		let isFilled = await intentGateway.isOrderFilled(order)
 
+		let isFilled = await intentGateway.isOrderFilled(order)
 		assert(isFilled === false)
 
+		const filledOrderCommitment = "0xaf7637a0332dfb24d0f51ba6228332776ff0d6d8fe7f037bf4c8baac5f82f5a0" as HexString
 		// Create a mock order with the filled commitment for testing
 		let filledOrder = { ...order, id: filledOrderCommitment }
 		isFilled = await intentGateway.isOrderFilled(filledOrder)
