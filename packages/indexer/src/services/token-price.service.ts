@@ -52,7 +52,10 @@ export class TokenPriceService {
 			if (!tokenPrice) {
 				const updatedTokenPrices = await this.updateTokenPrices([symbol], currentTimestamp)
 				if (updatedTokenPrices instanceof Error) {
-					logger.error(`[TokenPriceService.getPrice] Failed to update token price for ${symbol}`, updatedTokenPrices)
+					logger.error(
+						`[TokenPriceService.getPrice] Failed to update token price for ${symbol}`,
+						updatedTokenPrices,
+					)
 					return 0
 				}
 				if (updatedTokenPrices.length === 0) {
@@ -67,7 +70,10 @@ export class TokenPriceService {
 
 			const updatedTokenPrices = await this.updateTokenPrices([symbol], currentTimestamp)
 			if (updatedTokenPrices instanceof Error) {
-				logger.error(`[TokenPriceService.getPrice] Failed to update stale token price for ${symbol}`, updatedTokenPrices)
+				logger.error(
+					`[TokenPriceService.getPrice] Failed to update stale token price for ${symbol}`,
+					updatedTokenPrices,
+				)
 				return 0
 			}
 			if (updatedTokenPrices.length === 0) {

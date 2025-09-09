@@ -69,7 +69,7 @@ const generateSubstrateYaml = async (chain: string, config: Configuration) => {
 
 	// Check if this is a Hyperbridge chain (stateMachineId is KUSAMA-4009 or POLKADOT-3367)
 	const isHyperbridgeChain = ["KUSAMA-4009", "POLKADOT-3367"].includes(config.stateMachineId)
-	
+
 	// Check if price indexing should be enabled (Hyperbridge chain but not testnet)
 	const enablePriceIndexing = isHyperbridgeChain && currentEnv !== "testnet"
 
@@ -276,7 +276,7 @@ const generateTestnetStateMachineIds = () => {
 		})
 	}
 
-	const value = `// Auto-generated, DO NOT EDIT \nexport const TESTNET_STATE_MACHINE_IDS = ${JSON.stringify(Array.from(testnetStateMachineIds), null, 2)}`
+	const value = `// Auto-generated, DO NOT EDIT \nexport const TESTNET_STATE_MACHINE_IDS: string[] = ${JSON.stringify(Array.from(testnetStateMachineIds), null, 2)}`
 
 	fs.writeFileSync(root + "/src/testnet-state-machine-ids.ts", value)
 	console.log("Generated testnet-state-machine-ids.ts")
