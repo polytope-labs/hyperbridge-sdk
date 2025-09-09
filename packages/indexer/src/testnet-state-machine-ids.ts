@@ -1,0 +1,11 @@
+// Auto-generated, DO NOT EDIT 
+export const TESTNET_STATE_MACHINE_IDS = [
+  "KUSAMA-4009",
+  "KUSAMA-2030",
+  "EVM-11155111",
+  "EVM-421614",
+  "EVM-11155420",
+  "EVM-84532",
+  "EVM-97",
+  "EVM-10200"
+]
