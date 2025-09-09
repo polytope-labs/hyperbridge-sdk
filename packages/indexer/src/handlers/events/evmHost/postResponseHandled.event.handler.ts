@@ -12,7 +12,7 @@ import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTo
 import { TransferService } from "@/services/transfer.service"
 import { safeArray } from "@/utils/data.helper"
 import { decodeFunctionData, Hex } from "viem"
-import EthereumHostAbi from "@/configs/abis/EthereumHost.abi.json"
+import HandlerV1Abi from "@/configs/abis/HandlerV1.abi.json"
 import { IPostResponse } from "@/types/ismp"
 
 /**
@@ -76,17 +76,27 @@ export const handlePostResponseHandledEvent = wrap(async (event: PostResponseHan
 
 				if (transaction?.input) {
 					const { functionName, args } = decodeFunctionData({
-						abi: EthereumHostAbi,
+						abi: HandlerV1Abi,
 						data: transaction.input as Hex,
 					})
 
-					const {
-						post: { from: postRequestFrom, to: postRequestTo },
-					} = args![0] as unknown as IPostResponse
-
-					await VolumeService.updateVolume(`Contract.${postRequestFrom}`, amountValueInUSD, blockTimestamp)
-
-					await VolumeService.updateVolume(`Contract.${postRequestTo}`, amountValueInUSD, blockTimestamp)
+					if (functionName === "handlePostResponses" && args && args.length > 0) {
+						const postResponses = args[1] as any[] // Second argument is the array of post responses
+						for (const postResponse of postResponses) {
+							const { post } = postResponse
+							const { from: postRequestFrom, to: postRequestTo } = post
+							await VolumeService.updateVolume(
+								`Contract.${postRequestFrom}`,
+								amountValueInUSD,
+								blockTimestamp,
+							)
+							await VolumeService.updateVolume(
+								`Contract.${postRequestTo}`,
+								amountValueInUSD,
+								blockTimestamp,
+							)
+						}
+					}
 				}
 			}
 		}

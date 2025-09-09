@@ -11,7 +11,7 @@ import { TransferService } from "@/services/transfer.service"
 import { VolumeService } from "@/services/volume.service"
 import { safeArray } from "@/utils/data.helper"
 import { decodeFunctionData, Hex } from "viem"
-import EthereumHostAbi from "@/configs/abis/EthereumHost.abi.json"
+import HandlerV1Abi from "@/configs/abis/HandlerV1.abi.json"
 import { IGetResponse } from "@/types/ismp"
 
 /**
@@ -75,15 +75,23 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
 				if (transaction?.input) {
-					const { args } = decodeFunctionData({
-						abi: EthereumHostAbi,
+					const { functionName, args } = decodeFunctionData({
+						abi: HandlerV1Abi,
 						data: transaction.input as Hex,
 					})
 
-					const {
-						get: { from: getRequestFrom },
-					} = args![0] as unknown as IGetResponse
-					await VolumeService.updateVolume(`Contract.${getRequestFrom}`, amountValueInUSD, blockTimestamp)
+					if (functionName === "handleGetResponses" && args && args.length > 0) {
+						const getResponses = args[1] as any[] // Second argument is the array of get responses
+						for (const getResponse of getResponses) {
+							const { get } = getResponse
+							const { from: getRequestFrom } = get
+							await VolumeService.updateVolume(
+								`Contract.${getRequestFrom}`,
+								amountValueInUSD,
+								blockTimestamp,
+							)
+						}
+					}
 				}
 			}
 		}

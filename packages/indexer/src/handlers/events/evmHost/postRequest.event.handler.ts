@@ -108,23 +108,25 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 
 		if (!transfer) {
 			const [_, fromTopic, toTopic] = log.topics
-			const from = extractAddressFromTopic(fromTopic)
-			const to = extractAddressFromTopic(toTopic)
+			const logFrom = extractAddressFromTopic(fromTopic)
+			const logTo = extractAddressFromTopic(toTopic)
+
+			// Store all transfers for volume tracking
 			await TransferService.storeTransfer({
 				transactionHash: log.transactionHash,
 				chain,
 				value,
-				from,
-				to,
+				from: logFrom,
+				to: logTo,
 			})
 
 			const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, value, blockTimestamp)
 			await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-			// Count the volume for the contract that initiated the post request
-			// Doesn't require decoding since the event already includes `from`
-
-			await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+			// Only update contract volume for transfers associated with the request's from address
+			if (logFrom.toLowerCase() === from.toLowerCase() || logTo.toLowerCase() === from.toLowerCase()) {
+				await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+			}
 		}
 	}
 })
