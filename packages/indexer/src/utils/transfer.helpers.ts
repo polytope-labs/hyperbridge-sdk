@@ -56,15 +56,3 @@ export function extractAddressFromTopic(topic: string): string {
 	}
 	return topic.toLowerCase()
 }
-
-/**
- * normalizeToEvmAddress coerces an arbitrary hex string to a 20-byte EVM address if possible
- */
-export function normalizeToEvmAddress(input?: string | null): string | undefined {
-	if (!input) return undefined
-	const hex = input.toLowerCase()
-	if (!hex.startsWith("0x")) return undefined
-	const clean = hex.slice(2)
-	if (clean.length < 40) return undefined
-	return ("0x" + clean.slice(clean.length - 40)) as string
-}

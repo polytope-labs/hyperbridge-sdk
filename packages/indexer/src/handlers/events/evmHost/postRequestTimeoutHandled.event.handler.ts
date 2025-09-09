@@ -10,8 +10,9 @@ import { VolumeService } from "@/services/volume.service"
 import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTopic } from "@/utils/transfer.helpers"
 import { TransferService } from "@/services/transfer.service"
 import { safeArray } from "@/utils/data.helper"
-import { findNextIsmpEventIndex, isWithinCurrentIsmpEventWindow } from "@/utils/ismp.helpers"
-import { normalizeToEvmAddress } from "@/utils/transfer.helpers"
+import { decodeFunctionData, Hex } from "viem"
+import EthereumHostAbi from "@/configs/abis/EthereumHost.abi.json"
+import { IPostRequest } from "@/types/ismp"
 
 /**
  * Handles the PostRequestTimeoutHandled event
@@ -45,10 +46,7 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 			transactionHash,
 		})
 
-		const currentIndex = event.logIndex as number
-		const nextIndex = findNextIsmpEventIndex(safeArray(transaction.logs), currentIndex, event.address)
 		for (const log of safeArray(transaction.logs)) {
-			if (!isWithinCurrentIsmpEventWindow(log as any, currentIndex, nextIndex)) continue
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -75,11 +73,15 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				// Contract (target) volume via ISMP Request 'to'
-				const req = await Request.get(commitment)
-				const contractTo = normalizeToEvmAddress(req?.to)
-				if (contractTo) {
-					await VolumeService.updateVolume(`Contract.${contractTo}`, amountValueInUSD, blockTimestamp)
+				if (transaction?.input) {
+					const { functionName, args } = decodeFunctionData({
+						abi: EthereumHostAbi,
+						data: transaction.input as Hex,
+					})
+
+					const { from: postRequestFrom } = args![0] as unknown as IPostRequest
+
+					await VolumeService.updateVolume(`Contract.${postRequestFrom}`, amountValueInUSD, blockTimestamp)
 				}
 			}
 		}

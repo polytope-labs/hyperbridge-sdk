@@ -1,12 +1,16 @@
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { RequestService } from "@/services/request.service"
-import { RequestStatusMetadata, Status } from "@/configs/src/types"
+import { RequestStatusMetadata, Status, Transfer } from "@/configs/src/types"
 import { PostRequestEventLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
+import { extractAddressFromTopic, getPriceDataFromEthereumLog, isERC20TransferEvent } from "@/utils/transfer.helpers"
+import { TransferService } from "@/services/transfer.service"
+import { safeArray } from "@/utils/data.helper"
+import { VolumeService } from "@/services/volume.service"
 
 /**
  * Handles the PostRequest event from Evm Hosts
@@ -93,4 +97,34 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 	})
 
 	await requestStatusMetadata.save()
+
+	for (const log of safeArray(transaction?.logs)) {
+		if (!isERC20TransferEvent(log)) {
+			continue
+		}
+
+		const value = BigInt(log.data)
+		const transfer = await Transfer.get(log.transactionHash)
+
+		if (!transfer) {
+			const [_, fromTopic, toTopic] = log.topics
+			const from = extractAddressFromTopic(fromTopic)
+			const to = extractAddressFromTopic(toTopic)
+			await TransferService.storeTransfer({
+				transactionHash: log.transactionHash,
+				chain,
+				value,
+				from,
+				to,
+			})
+
+			const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, value, blockTimestamp)
+			await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+
+			// Count the volume for the contract that initiated the post request
+			// Doesn't require decoding since the event already includes `from`
+
+			await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+		}
+	}
 })

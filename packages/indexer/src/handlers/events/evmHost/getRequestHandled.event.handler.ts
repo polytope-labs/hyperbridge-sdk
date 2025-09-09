@@ -10,7 +10,9 @@ import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTo
 import { TransferService } from "@/services/transfer.service"
 import { VolumeService } from "@/services/volume.service"
 import { safeArray } from "@/utils/data.helper"
-import { findNextIsmpEventIndex, isWithinCurrentIsmpEventWindow } from "@/utils/ismp.helpers"
+import { decodeFunctionData, Hex } from "viem"
+import EthereumHostAbi from "@/configs/abis/EthereumHost.abi.json"
+import { IGetResponse } from "@/types/ismp"
 
 /**
  * Handles the GetRequestHandled event from EVMHost
@@ -19,6 +21,7 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 	if (!event.args) return
 
 	const { args, block, transaction, transactionHash, blockNumber, blockHash } = event
+
 	const { relayer: relayer_id, commitment } = args
 
 	logger.info(
@@ -44,10 +47,7 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			transactionHash,
 		})
 
-		const currentIndex = event.logIndex as number
-		const nextIndex = findNextIsmpEventIndex(safeArray(transaction?.logs), currentIndex, event.address)
 		for (const log of safeArray(transaction?.logs)) {
-			if (!isWithinCurrentIsmpEventWindow(log as any, currentIndex, nextIndex)) continue
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -73,6 +73,18 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 					blockTimestamp,
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+
+				if (transaction?.input) {
+					const { args } = decodeFunctionData({
+						abi: EthereumHostAbi,
+						data: transaction.input as Hex,
+					})
+
+					const {
+						get: { from: getRequestFrom },
+					} = args![0] as unknown as IGetResponse
+					await VolumeService.updateVolume(`Contract.${getRequestFrom}`, amountValueInUSD, blockTimestamp)
+				}
 			}
 		}
 	} catch (error) {
