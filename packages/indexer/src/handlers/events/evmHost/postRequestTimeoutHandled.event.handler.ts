@@ -11,7 +11,7 @@ import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTo
 import { TransferService } from "@/services/transfer.service"
 import { safeArray } from "@/utils/data.helper"
 import { decodeFunctionData, Hex } from "viem"
-import EthereumHostAbi from "@/configs/abis/EthereumHost.abi.json"
+import HandlerV1Abi from "@/configs/abis/HandlerV1.abi.json"
 import { IPostRequest } from "@/types/ismp"
 
 /**
@@ -46,6 +46,19 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 			transactionHash,
 		})
 
+		let postRequestFrom
+
+		if (transaction?.input) {
+			const { args } = decodeFunctionData({
+				abi: HandlerV1Abi,
+				data: transaction.input as Hex,
+			})
+
+			const { from } = args![0] as unknown as IPostRequest
+
+			postRequestFrom = from
+		}
+
 		for (const log of safeArray(transaction.logs)) {
 			if (!isERC20TransferEvent(log)) {
 				continue
@@ -73,14 +86,10 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				if (transaction?.input) {
-					const { functionName, args } = decodeFunctionData({
-						abi: EthereumHostAbi,
-						data: transaction.input as Hex,
-					})
-
-					const { from: postRequestFrom } = args![0] as unknown as IPostRequest
-
+				if (
+					postRequestFrom.toLowerCase() === from.toLowerCase() ||
+					postRequestFrom.toLowerCase() === to.toLowerCase()
+				) {
 					await VolumeService.updateVolume(`Contract.${postRequestFrom}`, amountValueInUSD, blockTimestamp)
 				}
 			}

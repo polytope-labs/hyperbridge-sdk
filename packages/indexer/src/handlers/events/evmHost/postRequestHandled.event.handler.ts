@@ -46,6 +46,25 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			transactionHash,
 		})
 
+		let fromAddresses = [] as Hex[]
+		let toAddresses = [] as Hex[]
+
+		if (transaction?.input) {
+			const { functionName, args } = decodeFunctionData({
+				abi: HandlerV1Abi,
+				data: transaction.input as Hex,
+			})
+
+			if (functionName === "handlePostRequests" && args && args.length > 0) {
+				const postRequests = args[1] as IPostRequest[] // Second argument is the array of post requests
+				for (const postRequest of postRequests) {
+					const { from: postRequestFrom, to: postRequestTo } = postRequest
+					fromAddresses.push(postRequestFrom)
+					toAddresses.push(postRequestTo)
+				}
+			}
+		}
+
 		for (const log of safeArray(transaction.logs)) {
 			if (!isERC20TransferEvent(log)) {
 				continue
@@ -73,27 +92,21 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				if (transaction?.input) {
-					const { functionName, args } = decodeFunctionData({
-						abi: HandlerV1Abi,
-						data: transaction.input as Hex,
-					})
+				for (const fromAddress of fromAddresses) {
+					if (
+						fromAddress.toLowerCase() === from.toLowerCase() ||
+						fromAddress.toLowerCase() === to.toLowerCase()
+					) {
+						await VolumeService.updateVolume(`Contract.${fromAddress}`, amountValueInUSD, blockTimestamp)
+					}
+				}
 
-					if (functionName === "handlePostRequests" && args && args.length > 0) {
-						const postRequests = args[1] as any[] // Second argument is the array of post requests
-						for (const postRequest of postRequests) {
-							const { from: postRequestFrom, to: postRequestTo } = postRequest
-							await VolumeService.updateVolume(
-								`Contract.${postRequestFrom}`,
-								amountValueInUSD,
-								blockTimestamp,
-							)
-							await VolumeService.updateVolume(
-								`Contract.${postRequestTo}`,
-								amountValueInUSD,
-								blockTimestamp,
-							)
-						}
+				for (const toAddress of toAddresses) {
+					if (
+						toAddress.toLowerCase() === from.toLowerCase() ||
+						toAddress.toLowerCase() === to.toLowerCase()
+					) {
+						await VolumeService.updateVolume(`Contract.${toAddress}`, amountValueInUSD, blockTimestamp)
 					}
 				}
 			}

@@ -47,6 +47,24 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			transactionHash,
 		})
 
+		let fromAddresses = [] as Hex[]
+
+		if (transaction?.input) {
+			const { functionName, args } = decodeFunctionData({
+				abi: HandlerV1Abi,
+				data: transaction.input as Hex,
+			})
+
+			if (functionName === "handleGetResponses" && args && args.length > 0) {
+				const getResponses = args[1] as IGetResponse[] // Second argument is the array of get responses
+				for (const getResponse of getResponses) {
+					const { get } = getResponse
+					const { from: getRequestFrom } = get
+					fromAddresses.push(getRequestFrom)
+				}
+			}
+		}
+
 		for (const log of safeArray(transaction?.logs)) {
 			if (!isERC20TransferEvent(log)) {
 				continue
@@ -74,24 +92,8 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				if (transaction?.input) {
-					const { functionName, args } = decodeFunctionData({
-						abi: HandlerV1Abi,
-						data: transaction.input as Hex,
-					})
-
-					if (functionName === "handleGetResponses" && args && args.length > 0) {
-						const getResponses = args[1] as any[] // Second argument is the array of get responses
-						for (const getResponse of getResponses) {
-							const { get } = getResponse
-							const { from: getRequestFrom } = get
-							await VolumeService.updateVolume(
-								`Contract.${getRequestFrom}`,
-								amountValueInUSD,
-								blockTimestamp,
-							)
-						}
-					}
+				if (fromAddresses.some((address) => address.toLowerCase() === from.toLowerCase())) {
+					await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
 				}
 			}
 		}
