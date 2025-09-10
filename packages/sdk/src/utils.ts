@@ -579,11 +579,16 @@ export async function fetchTokenUsdPrice(identifier: string): Promise<number> {
 async function fetchFromCoinGecko(identifier: string): Promise<number> {
 	const mappedIdentifier = mapTestnetToMainnet(identifier)
 
-	const url = mappedIdentifier.startsWith("0x")
-		? `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
-		: `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
+	const apiKey = typeof process !== "undefined" ? (process as any)?.env?.Coingecko : undefined
+	const baseUrl = apiKey ? "https://pro-api.coingecko.com/api/v3" : "https://api.coingecko.com/api/v3"
 
-	const response = await fetch(url)
+	const url = mappedIdentifier.startsWith("0x")
+		? `${baseUrl}/simple/token_price/ethereum?contract_addresses=${mappedIdentifier}&vs_currencies=usd`
+		: `${baseUrl}/simple/price?ids=${mappedIdentifier}&vs_currencies=usd`
+
+	const headers = apiKey ? { "x-cg-pro-api-key": apiKey as string } : undefined
+
+	const response = await fetch(url, { headers })
 
 	if (!response.ok) {
 		throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`)
