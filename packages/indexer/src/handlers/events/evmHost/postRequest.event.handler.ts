@@ -98,7 +98,7 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 
 	await requestStatusMetadata.save()
 
-	for (const log of safeArray(transaction?.logs)) {
+	for (const [index, log] of safeArray(transaction?.logs).entries()) {
 		if (!isERC20TransferEvent(log)) {
 			continue
 		}
@@ -113,7 +113,7 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 
 			// Store all transfers for volume tracking
 			await TransferService.storeTransfer({
-				transactionHash: log.transactionHash,
+				transactionHash: `${log.transactionHash}-index-${index}`,
 				chain,
 				value,
 				from: logFrom,

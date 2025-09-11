@@ -59,7 +59,7 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 			postRequestFrom = from
 		}
 
-		for (const log of safeArray(transaction.logs)) {
+		for (const [index, log] of safeArray(transaction.logs).entries()) {
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -72,7 +72,7 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 				const from = extractAddressFromTopic(fromTopic)
 				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
-					transactionHash: log.transactionHash,
+					transactionHash: `${log.transactionHash}-index-${index}`,
 					chain,
 					value,
 					from,

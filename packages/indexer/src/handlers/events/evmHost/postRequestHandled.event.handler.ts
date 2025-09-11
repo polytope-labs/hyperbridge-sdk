@@ -46,7 +46,6 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			transactionHash,
 		})
 
-		let fromAddresses = [] as Hex[]
 		let toAddresses = [] as Hex[]
 
 		if (transaction?.input) {
@@ -58,8 +57,8 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 			if (functionName === "handlePostRequests" && args && args.length > 0) {
 				const postRequests = args[1] as IPostRequest[] // Second argument is the array of post requests
 				for (const postRequest of postRequests) {
-					const { from: postRequestFrom, to: postRequestTo } = postRequest
-					fromAddresses.push(postRequestFrom)
+					const { to: postRequestTo } = postRequest
+
 					toAddresses.push(postRequestTo)
 				}
 			}
@@ -91,15 +90,6 @@ export const handlePostRequestHandledEvent = wrap(async (event: PostRequestHandl
 					blockTimestamp,
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
-
-				for (const fromAddress of fromAddresses) {
-					if (
-						fromAddress.toLowerCase() === from.toLowerCase() ||
-						fromAddress.toLowerCase() === to.toLowerCase()
-					) {
-						await VolumeService.updateVolume(`Contract.${fromAddress}`, amountValueInUSD, blockTimestamp)
-					}
-				}
 
 				for (const toAddress of toAddresses) {
 					if (

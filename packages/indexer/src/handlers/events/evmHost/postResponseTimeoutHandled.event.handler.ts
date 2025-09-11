@@ -47,7 +47,6 @@ export const handlePostResponseTimeoutHandledEvent = wrap(
 				transactionHash,
 			})
 
-			let fromAddresses = [] as Hex[]
 			let toAddresses = [] as Hex[]
 
 			if (transaction?.input) {
@@ -57,14 +56,13 @@ export const handlePostResponseTimeoutHandledEvent = wrap(
 				})
 
 				const {
-					post: { from: postRequestFrom, to: postRequestTo },
+					post: { to: postRequestTo },
 				} = args![0] as unknown as IPostResponse
 
-				fromAddresses.push(postRequestFrom)
 				toAddresses.push(postRequestTo)
 			}
 
-			for (const log of safeArray(transaction?.logs)) {
+			for (const [index, log] of safeArray(transaction?.logs).entries()) {
 				if (!isERC20TransferEvent(log)) {
 					continue
 				}
@@ -77,7 +75,7 @@ export const handlePostResponseTimeoutHandledEvent = wrap(
 					const from = extractAddressFromTopic(fromTopic)
 					const to = extractAddressFromTopic(toTopic)
 					await TransferService.storeTransfer({
-						transactionHash: log.transactionHash,
+						transactionHash: `${log.transactionHash}-index-${index}`,
 						chain,
 						value,
 						from,
@@ -90,19 +88,6 @@ export const handlePostResponseTimeoutHandledEvent = wrap(
 						blockTimestamp,
 					)
 					await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
-
-					for (const fromAddress of fromAddresses) {
-						if (
-							fromAddress.toLowerCase() === from.toLowerCase() ||
-							fromAddress.toLowerCase() === to.toLowerCase()
-						) {
-							await VolumeService.updateVolume(
-								`Contract.${fromAddress}`,
-								amountValueInUSD,
-								blockTimestamp,
-							)
-						}
-					}
 
 					for (const toAddress of toAddresses) {
 						if (

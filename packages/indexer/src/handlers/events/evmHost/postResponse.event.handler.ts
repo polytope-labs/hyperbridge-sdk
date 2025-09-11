@@ -108,7 +108,7 @@ export const handlePostResponseEvent = wrap(async (event: PostResponseEventLog):
 		blockTimestamp,
 	})
 
-	for (const log of safeArray(transaction.logs)) {
+	for (const [index, log] of safeArray(transaction.logs).entries()) {
 		if (!isERC20TransferEvent(log)) {
 			continue
 		}
@@ -123,7 +123,7 @@ export const handlePostResponseEvent = wrap(async (event: PostResponseEventLog):
 
 			// Store all transfers for volume tracking
 			await TransferService.storeTransfer({
-				transactionHash: log.transactionHash,
+				transactionHash: `${log.transactionHash}-index-${index}`,
 				chain,
 				value,
 				from: logFrom,
@@ -132,10 +132,6 @@ export const handlePostResponseEvent = wrap(async (event: PostResponseEventLog):
 
 			const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, value, blockTimestamp)
 			await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
-
-			if (logFrom.toLowerCase() === eventFrom.toLowerCase() || logTo.toLowerCase() === eventFrom.toLowerCase()) {
-				await VolumeService.updateVolume(`Contract.${eventFrom}`, amountValueInUSD, blockTimestamp)
-			}
 
 			if (logFrom.toLowerCase() === eventTo.toLowerCase() || logTo.toLowerCase() === eventTo.toLowerCase()) {
 				await VolumeService.updateVolume(`Contract.${eventTo}`, amountValueInUSD, blockTimestamp)

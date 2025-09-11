@@ -100,7 +100,7 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 	await getRequestStatusMetadata.save()
 
 	// Process transfer logs associated with the get request
-	for (const log of safeArray(transaction?.logs)) {
+	for (const [index, log] of safeArray(transaction?.logs).entries()) {
 		if (!isERC20TransferEvent(log)) {
 			continue
 		}
@@ -115,7 +115,7 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 
 			// Store all transfers for volume tracking
 			await TransferService.storeTransfer({
-				transactionHash: log.transactionHash,
+				transactionHash: `${log.transactionHash}-index-${index}`,
 				chain,
 				value,
 				from: logFrom,

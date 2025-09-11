@@ -48,7 +48,6 @@ export const handlePostResponseHandledEvent = wrap(async (event: PostResponseHan
 		})
 
 		let fromAddresses = [] as Hex[]
-		let toAddresses = [] as Hex[]
 
 		if (transaction?.input) {
 			const { functionName, args } = decodeFunctionData({
@@ -60,14 +59,13 @@ export const handlePostResponseHandledEvent = wrap(async (event: PostResponseHan
 				const postResponses = args[1] as IPostResponse[] // Second argument is the array of post responses
 				for (const postResponse of postResponses) {
 					const { post } = postResponse
-					const { from: postRequestFrom, to: postRequestTo } = post
+					const { from: postRequestFrom } = post
 					fromAddresses.push(postRequestFrom)
-					toAddresses.push(postRequestTo)
 				}
 			}
 		}
 
-		for (const log of safeArray(transaction?.logs)) {
+		for (const [index, log] of safeArray(transaction?.logs).entries()) {
 			if (!isERC20TransferEvent(log)) {
 				continue
 			}
@@ -80,7 +78,7 @@ export const handlePostResponseHandledEvent = wrap(async (event: PostResponseHan
 				const from = extractAddressFromTopic(fromTopic)
 				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
-					transactionHash: log.transactionHash,
+					transactionHash: `${log.transactionHash}-index-${index}`,
 					chain,
 					value,
 					from,
@@ -100,15 +98,6 @@ export const handlePostResponseHandledEvent = wrap(async (event: PostResponseHan
 						fromAddress.toLowerCase() === to.toLowerCase()
 					) {
 						await VolumeService.updateVolume(`Contract.${fromAddress}`, amountValueInUSD, blockTimestamp)
-					}
-				}
-
-				for (const toAddress of toAddresses) {
-					if (
-						toAddress.toLowerCase() === from.toLowerCase() ||
-						toAddress.toLowerCase() === to.toLowerCase()
-					) {
-						await VolumeService.updateVolume(`Contract.${toAddress}`, amountValueInUSD, blockTimestamp)
 					}
 				}
 			}
