@@ -1,6 +1,9 @@
 import { Hex } from "viem"
 
-export interface IGetRequest {
+/**
+ * Read-only storage query description for a cross-chain GET request.
+ */
+export interface GetRequest {
 	// The source state machine of this request.
 	source: string
 	// The destination state machine of this request.
@@ -28,23 +31,32 @@ export interface IGetRequest {
 	context: Hex
 }
 
+/**
+ * A single key/value pair returned in a GET response.
+ */
 export interface GetResponseStorageValues {
 	key: Hex
 	value: Hex
 }
 
-export interface IGetResponse {
+/**
+ * Response payload to a prior {@link GetRequest}.
+ */
+export interface GetResponse {
 	/**
 	 * The request that triggered this response.
 	 */
-	get: IGetRequest
+	get: GetRequest
 	/**
 	 * The response message.
 	 */
 	values: GetResponseStorageValues[]
 }
 
-export interface IPostRequest {
+/**
+ * Executable POST request to a destination module.
+ */
+export interface PostRequest {
 	// The source state machine of this request.
 	source: string
 	// The destination state machine of this request.
@@ -62,46 +74,84 @@ export interface IPostRequest {
 }
 
 /**
- * Represents a dispatch post for cross-chain communication
+ * Response payload to a prior {@link PostRequest}.
  */
-export interface DispatchPost {
-	/**
-	 * Bytes representation of the destination state machine
-	 */
-	dest: Hex
-
-	/**
-	 * The destination module
-	 */
-	to: Hex
-
-	/**
-	 * The request body
-	 */
-	body: Hex
-
-	/**
-	 * Timeout for this request in seconds
-	 */
-	timeout: bigint
-
-	/**
-	 * The amount put up to be paid to the relayer,
-	 * this is charged in `IIsmpHost.feeToken` to `msg.sender`
-	 */
-	fee: bigint
-
-	/**
-	 * Who pays for this request?
-	 */
-	payer: Hex
-}
-
-export interface IPostResponse {
+export interface PostResponse {
 	// The request that triggered this response.
-	post: IPostRequest
+	post: PostRequest
 	// The response message.
 	response: string
 	// Timestamp at which this response expires in seconds.
 	timeoutTimestamp: bigint
+}
+
+/**
+ * Batched POST request timeouts with proof for verification at a given height.
+ */
+export interface PostRequestTimeoutMessage {
+	timeouts: PostRequest[]
+	height: StateMachineHeight
+	proof: Hex[]
+}
+
+/**
+ * Batched POST response timeouts with proof for verification at a given height.
+ */
+export interface PostResponseTimeoutMessage {
+	timeouts: PostResponse[]
+	height: StateMachineHeight
+	proof: Hex[]
+}
+
+/**
+ * Chain-unique state machine identifier and block height.
+ */
+export interface StateMachineHeight {
+	stateMachineId: bigint
+	height: bigint
+}
+
+/**
+ * Batch of GET responses accompanied by inclusion proof.
+ */
+export interface GetResponseMessage {
+	proof: Proof
+	responses: {
+		response: GetResponse
+		index: bigint
+		kIndex: bigint
+	}[]
+}
+
+/**
+ * Batch of POST requests accompanied by inclusion proof.
+ */
+export interface PostRequestMessage {
+	proof: Proof
+	requests: {
+		request: PostRequest
+		index: bigint
+		kIndex: bigint
+	}[]
+}
+
+/**
+ * Batch of POST responses accompanied by inclusion proof.
+ */
+export interface PostResponseMessage {
+	proof: Proof
+	responses: {
+		response: PostResponse
+		index: bigint
+		kIndex: bigint
+	}[]
+}
+
+/**
+ * Merkle multiproof and metadata to verify inclusion at a specific height.
+ */
+export interface Proof {
+	height: StateMachineHeight
+	multiproof: Hex[]
+	leafCount: bigint
 }

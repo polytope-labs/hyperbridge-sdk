@@ -114,7 +114,8 @@ export const handlePostResponseEvent = wrap(async (event: PostResponseEventLog):
 		}
 
 		const value = BigInt(log.data)
-		const transfer = await Transfer.get(log.transactionHash)
+		const transferId = `${log.transactionHash}-index-${index}`
+		const transfer = await Transfer.get(transferId)
 
 		if (!transfer) {
 			const [_, fromTopic, toTopic] = log.topics
@@ -123,7 +124,7 @@ export const handlePostResponseEvent = wrap(async (event: PostResponseEventLog):
 
 			// Store all transfers for volume tracking
 			await TransferService.storeTransfer({
-				transactionHash: `${log.transactionHash}-index-${index}`,
+				transactionHash: transferId,
 				chain,
 				value,
 				from: logFrom,

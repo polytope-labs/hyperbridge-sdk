@@ -10,9 +10,9 @@ import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTo
 import { TransferService } from "@/services/transfer.service"
 import { VolumeService } from "@/services/volume.service"
 import { safeArray } from "@/utils/data.helper"
-import { decodeFunctionData, Hex } from "viem"
 import HandlerV1Abi from "@/configs/abis/HandlerV1.abi.json"
-import { IGetResponse } from "@/types/ismp"
+import { GetResponseMessage } from "@/types/ismp"
+import { Interface } from "@ethersproject/abi"
 
 /**
  * Handles the GetRequestHandled event from EVMHost
@@ -47,18 +47,15 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			transactionHash,
 		})
 
-		let fromAddresses = [] as Hex[]
+		let fromAddresses = [] as string[]
 
 		if (transaction?.input) {
-			const { functionName, args } = decodeFunctionData({
-				abi: HandlerV1Abi,
-				data: transaction.input as Hex,
-			})
+			const { name, args } = new Interface(HandlerV1Abi).parseTransaction({ data: transaction.input })
 
-			if (functionName === "handleGetResponses" && args && args.length > 0) {
-				const getResponses = args[1] as IGetResponse[] // Second argument is the array of get responses
-				for (const getResponse of getResponses) {
-					const { get } = getResponse
+			if (name === "handleGetResponses" && args && args.length > 1) {
+				const getResponses = args[1] as GetResponseMessage
+				for (const getResponse of getResponses.responses) {
+					const { get } = getResponse.response
 					const { from: getRequestFrom } = get
 					fromAddresses.push(getRequestFrom)
 				}
@@ -71,14 +68,15 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 			}
 
 			const value = BigInt(log.data)
-			const transfer = await Transfer.get(log.transactionHash)
+			const transferId = `${log.transactionHash}-index-${index}`
+			const transfer = await Transfer.get(transferId)
 
 			if (!transfer) {
 				const [_, fromTopic, toTopic] = log.topics
 				const from = extractAddressFromTopic(fromTopic)
 				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
-					transactionHash: `${log.transactionHash}-index-${index}`,
+					transactionHash: transferId,
 					chain,
 					value,
 					from,
@@ -92,8 +90,12 @@ export const handleGetRequestHandledEvent = wrap(async (event: GetRequestHandled
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				if (fromAddresses.some((address) => address.toLowerCase() === from.toLowerCase())) {
-					await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+				const matchingContract = fromAddresses.find(
+					(addr) => addr.toLowerCase() === from.toLowerCase() || addr.toLowerCase() === to.toLowerCase(),
+				)
+
+				if (matchingContract) {
+					await VolumeService.updateVolume(`Contract.${matchingContract}`, amountValueInUSD, blockTimestamp)
 				}
 			}
 		}

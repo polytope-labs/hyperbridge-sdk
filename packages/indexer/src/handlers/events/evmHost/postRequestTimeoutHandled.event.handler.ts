@@ -10,9 +10,9 @@ import { VolumeService } from "@/services/volume.service"
 import { getPriceDataFromEthereumLog, isERC20TransferEvent, extractAddressFromTopic } from "@/utils/transfer.helpers"
 import { TransferService } from "@/services/transfer.service"
 import { safeArray } from "@/utils/data.helper"
-import { decodeFunctionData, Hex } from "viem"
 import HandlerV1Abi from "@/configs/abis/HandlerV1.abi.json"
-import { IPostRequest } from "@/types/ismp"
+import { PostRequestTimeoutMessage } from "@/types/ismp"
+import { Interface } from "@ethersproject/abi"
 
 /**
  * Handles the PostRequestTimeoutHandled event
@@ -46,17 +46,18 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 			transactionHash,
 		})
 
-		let postRequestFrom
+		let fromAddresses = [] as string[]
 
 		if (transaction?.input) {
-			const { args } = decodeFunctionData({
-				abi: HandlerV1Abi,
-				data: transaction.input as Hex,
-			})
+			const { name, args } = new Interface(HandlerV1Abi).parseTransaction({ data: transaction.input })
 
-			const { from } = args![0] as unknown as IPostRequest
-
-			postRequestFrom = from
+			if (name === "handlePostRequestTimeouts" && args && args.length > 1) {
+				const { timeouts } = args[1] as PostRequestTimeoutMessage
+				for (const timeout of timeouts) {
+					const { from } = timeout
+					fromAddresses.push(from)
+				}
+			}
 		}
 
 		for (const [index, log] of safeArray(transaction.logs).entries()) {
@@ -65,14 +66,15 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 			}
 
 			const value = BigInt(log.data)
-			const transfer = await Transfer.get(log.transactionHash)
+			const transferId = `${log.transactionHash}-index-${index}`
+			const transfer = await Transfer.get(transferId)
 
 			if (!transfer) {
 				const [_, fromTopic, toTopic] = log.topics
 				const from = extractAddressFromTopic(fromTopic)
 				const to = extractAddressFromTopic(toTopic)
 				await TransferService.storeTransfer({
-					transactionHash: `${log.transactionHash}-index-${index}`,
+					transactionHash: transferId,
 					chain,
 					value,
 					from,
@@ -86,11 +88,12 @@ export const handlePostRequestTimeoutHandledEvent = wrap(async (event: PostReque
 				)
 				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
 
-				if (
-					postRequestFrom.toLowerCase() === from.toLowerCase() ||
-					postRequestFrom.toLowerCase() === to.toLowerCase()
-				) {
-					await VolumeService.updateVolume(`Contract.${postRequestFrom}`, amountValueInUSD, blockTimestamp)
+				const matchingContract = fromAddresses.find(
+					(addr) => addr.toLowerCase() === from.toLowerCase() || addr.toLowerCase() === to.toLowerCase(),
+				)
+
+				if (matchingContract) {
+					await VolumeService.updateVolume(`Contract.${matchingContract}`, amountValueInUSD, blockTimestamp)
 				}
 			}
 		}
