@@ -7,7 +7,7 @@ concurrency:
 
 on:
     push:
-        branches: [main]
+        branches: [roy/coingecko-premium]
         paths:
             - "packages/sdk/**"
             - "packages/indexer/**"
