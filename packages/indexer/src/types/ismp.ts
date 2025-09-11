@@ -86,6 +86,15 @@ export interface PostResponse {
 }
 
 /**
+ * Batched GET request timeouts with proof for verification at a given height.
+ */
+export interface GetTimeoutMessage {
+	timeouts: GetRequest[]
+	height: StateMachineHeight
+	proof: Hex[]
+}
+
+/**
  * Batched POST request timeouts with proof for verification at a given height.
  */
 export interface PostRequestTimeoutMessage {
