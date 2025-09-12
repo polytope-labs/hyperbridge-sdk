@@ -35,7 +35,7 @@ export class HyperBridgeService {
 			await this.incrementNumberOfSentMessages(chain)
 		} catch (error) {
 			logger.error(
-				`Error computing protocol fee: ${JSON.stringify({
+				`Error updating Hyperbridge stats related to PostRequest/PostResponse event: ${JSON.stringify({
 					error,
 					address,
 					body,
