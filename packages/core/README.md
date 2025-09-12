@@ -1,6 +1,6 @@
 # @hyperbridge/core
 
-![Unit Tests](https://github.com/polytope-labs/hyperbridge-sdk/actions/workflows/test.yml/badge.svg)
+![Unit Tests](https://github.com/polytope-labs/hyperbridge-sdk/actions/workflows/test-core.yml/badge.svg)
 [![NPM](https://img.shields.io/npm/v/@hyperbridge/core?label=%40hyperbridge%2Fcore)](https://www.npmjs.com/package/@hyperbridge/core)
 
 [ISMP](https://docs.hyperbridge.network/protocol/ismp) protocol specification for EVM environments.
