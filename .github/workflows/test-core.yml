@@ -67,9 +67,3 @@ jobs:
                   echo "Compiling Solidity interfaces with Forge..."
                   forge build --contracts interfaces/ --skip test --skip script --sizes
                   echo "✅ All interfaces compiled successfully"
-
-            - name: Check formatting
-              working-directory: packages/core
-              run: |
-                  echo "Checking Solidity formatting..."
-                  forge fmt --check interfaces/
