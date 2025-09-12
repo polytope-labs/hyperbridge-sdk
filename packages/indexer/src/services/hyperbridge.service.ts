@@ -181,7 +181,7 @@ export class HyperBridgeService {
 	}
 
 	static async updateDailyProtocolFees(blockHash: string, protocolFeeAmount: bigint, chain: string): Promise<void> {
-		const stateMachineId = getHostStateMachine(chain)
+		const stateMachineId = chain
 
 		try {
 			const timestamp = await getBlockTimestamp(blockHash, chain)
