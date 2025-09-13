@@ -4,6 +4,7 @@ import { readFileSync } from "fs"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { parse } from "toml"
+import { ChainClientManager } from "../index"
 import { IntentFiller } from "../core/filler.js"
 import { BasicFiller } from "../strategies/basic.js"
 import { StableSwapFiller } from "../strategies/swap.js"
@@ -82,6 +83,8 @@ program
 				intentGatewayAddress: chain.intentGatewayAddress as HexString,
 			}))
 
+			const clientManager = new ChainClientManager(config.filler.privateKey, chainConfigs)
+
 			// Initialize confirmation policy
 			const confirmationPolicy = new ConfirmationPolicy(config.confirmationPolicies)
 
@@ -100,7 +103,7 @@ program
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
 					case "basic":
-						return new BasicFiller(strategyConfig.privateKey as HexString)
+						return new BasicFiller(strategyConfig.privateKey as HexString, clientManager)
 					case "stable-swap":
 						return new StableSwapFiller(strategyConfig.privateKey as HexString)
 					default:
@@ -110,7 +113,7 @@ program
 
 			// Initialize and start the intent filler
 			console.log("🏃 Starting intent filler...")
-			const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+			const intentFiller = new IntentFiller(clientManager, strategies, fillerConfig)
 			// Start the filler
 			intentFiller.start()
 

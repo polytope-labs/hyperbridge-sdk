@@ -1,6 +1,6 @@
 import { PublicClient, WalletClient, createPublicClient, createWalletClient, http, type Chain } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
-import { Order, HexString, ChainConfig, ChainConfigService } from "@hyperbridge/sdk"
+import { Order, HexString, ChainConfig } from "@hyperbridge/sdk"
 import { viemChains } from "@hyperbridge/sdk"
 
 /**
@@ -59,22 +59,28 @@ export const viemClientFactory = new ViemClientFactory()
  */
 export class ChainClientManager {
 	private privateKey: HexString
-	private configService: ChainConfigService
+	public chainConfigs: Map<string, ChainConfig>
 	private clientFactory: ViemClientFactory
 
-	constructor(privateKey: HexString) {
+	constructor(privateKey: HexString, chainConfigs: ChainConfig[]) {
 		this.privateKey = privateKey
-		this.configService = new ChainConfigService()
+		this.chainConfigs = new Map(chainConfigs.map((config) => [`EVM-${config.chainId}`, config]))
 		this.clientFactory = viemClientFactory
 	}
 
 	getPublicClient(chain: string): PublicClient {
-		const config = this.configService.getChainConfig(chain)
+		const config = this.chainConfigs.get(chain)
+		if (!config) {
+			throw new Error(`Chain config not found for ${chain}`)
+		}
 		return this.clientFactory.getPublicClient(config)
 	}
 
 	getWalletClient(chain: string): WalletClient {
-		const config = this.configService.getChainConfig(chain)
+		const config = this.chainConfigs.get(chain)
+		if (!config) {
+			throw new Error(`Chain config not found for ${chain}`)
+		}
 		return this.clientFactory.getWalletClient(config, this.privateKey)
 	}
 

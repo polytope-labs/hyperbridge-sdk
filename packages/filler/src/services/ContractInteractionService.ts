@@ -19,11 +19,10 @@ import {
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
-import { ChainConfigService } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { orderCommitment } from "@hyperbridge/sdk"
-import { ApiPromise, WsProvider } from "@polkadot/api"
+import { WsProvider } from "@polkadot/api"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { Chains } from "@hyperbridge/sdk"
 import { CacheService } from "./CacheService"
@@ -37,15 +36,14 @@ import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
  * Handles contract interactions for tokens and other contracts
  */
 export class ContractInteractionService {
-	private configService: ChainConfigService
-	private api: ApiPromise | null = null
+	private api: ChainClientManager
 	public cacheService: CacheService
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 	) {
-		this.configService = new ChainConfigService()
+		this.api = clientManager
 		this.cacheService = new CacheService()
 	}
 

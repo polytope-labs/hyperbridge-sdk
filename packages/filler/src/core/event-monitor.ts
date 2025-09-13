@@ -18,12 +18,13 @@ export class EventMonitor extends EventEmitter {
 	private unwatchFunctions: Map<number, () => void> = new Map()
 	private clientManager: ChainClientManager
 
-	constructor(chainConfigs: ChainConfig[]) {
+	constructor(chainClientManager: ChainClientManager) {
 		super()
 
-		this.clientManager = new ChainClientManager(DUMMY_PRIVATE_KEY)
+		this.clientManager = chainClientManager
 
-		chainConfigs.forEach((config) => {
+		const chains = [...chainClientManager.chainConfigs.values()]
+		chains.forEach((config) => {
 			const chainName = `EVM-${config.chainId}`
 			const client = this.clientManager.getPublicClient(chainName)
 			this.clients.set(config.chainId, client)
