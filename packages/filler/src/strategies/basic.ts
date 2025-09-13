@@ -1,9 +1,9 @@
 import { FillerStrategy } from "@/strategies/base"
 import { Order, ExecutionResult, HexString, FillOptions, adjustFeeDecimals, bytes32ToBytes20 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
+import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService } from "@/services"
-import { ChainConfigService } from "@hyperbridge/sdk"
+import { FillerConfigService } from "@/services/FillerConfigService"
 import { compareDecimalValues } from "@/utils"
 
 export class BasicFiller implements FillerStrategy {
@@ -11,13 +11,13 @@ export class BasicFiller implements FillerStrategy {
 	private privateKey: HexString
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
-	private configService: ChainConfigService
+	private configService: FillerConfigService
 
-	constructor(privateKey: HexString) {
+	constructor(privateKey: HexString, configService: FillerConfigService) {
 		this.privateKey = privateKey
-		this.configService = new ChainConfigService()
-		this.clientManager = new ChainClientManager(privateKey)
-		this.contractService = new ContractInteractionService(this.clientManager, privateKey)
+		this.configService = configService
+		this.clientManager = new ChainClientManager(configService, privateKey)
+		this.contractService = new ContractInteractionService(this.clientManager, privateKey, configService)
 	}
 
 	/**
@@ -177,13 +177,16 @@ export class BasicFiller implements FillerStrategy {
 			}
 
 			const getTokenType = (tokenAddress: string, chain: string): string | null => {
-				tokenAddress = bytes32ToBytes20(tokenAddress)
+				tokenAddress = bytes32ToBytes20(tokenAddress).toLowerCase()
 				const assets = {
-					DAI: this.configService.getDaiAsset(chain),
-					USDT: this.configService.getUsdtAsset(chain),
-					USDC: this.configService.getUsdcAsset(chain),
+					DAI: this.configService.getDaiAsset(chain).toLowerCase(),
+					USDT: this.configService.getUsdtAsset(chain).toLowerCase(),
+					USDC: this.configService.getUsdcAsset(chain).toLowerCase(),
 				}
-				return Object.keys(assets).find((type) => assets[type as keyof typeof assets] === tokenAddress) || null
+				const result =
+					Object.keys(assets).find((type) => assets[type as keyof typeof assets] === tokenAddress) || null
+
+				return result
 			}
 
 			for (let i = 0; i < order.inputs.length; i++) {

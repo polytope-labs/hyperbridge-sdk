@@ -9,6 +9,12 @@ import { BasicFiller } from "../strategies/basic.js"
 import { StableSwapFiller } from "../strategies/swap.js"
 import { ConfirmationPolicy } from "../config/confirmation-policy.js"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
+import {
+	FillerConfigService,
+	FillerChainConfig,
+	HyperbridgeConfig,
+	FillerConfig as FillerServiceConfig,
+} from "../services/FillerConfigService.js"
 
 // Get package.json path
 const __filename = fileURLToPath(import.meta.url)
@@ -37,6 +43,36 @@ interface ChainConfigToml {
 	chainId: number
 	rpcUrl: string
 	intentGatewayAddress: string
+	hostAddress?: string
+	consensusStateId?: string
+	coingeckoId?: string
+	wrappedNativeDecimals?: number
+	assets?: {
+		WETH?: string
+		DAI?: string
+		USDC?: string
+		USDT?: string
+	}
+	addresses?: {
+		UniswapRouter02?: string
+		UniswapV2Factory?: string
+		BatchExecutor?: string
+		UniversalRouter?: string
+		UniswapV3Router?: string
+		UniswapV3Factory?: string
+		UniswapV3Quoter?: string
+		UniswapV4PoolManager?: string
+		UniswapV4Quoter?: string
+	}
+}
+
+interface HyperbridgeConfigToml {
+	chainId: number
+	rpcUrl: string
+}
+
+interface CoinGeckoConfigToml {
+	apiKey?: string
 }
 
 interface FillerTomlConfig {
@@ -44,9 +80,11 @@ interface FillerTomlConfig {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
+		coingecko?: CoinGeckoConfigToml
 	}
 	strategies: StrategyConfig[]
 	chains: ChainConfigToml[]
+	hyperbridge?: HyperbridgeConfigToml
 	confirmationPolicies: Record<string, ChainConfirmationPolicy>
 }
 
@@ -75,7 +113,40 @@ program
 			// Initialize services
 			console.log("🔧 Initializing services...")
 
-			// Convert TOML chain configs to ChainConfig format
+			// Convert TOML chain configs to FillerChainConfig format
+			const fillerChainConfigs: FillerChainConfig[] = config.chains.map((chain) => ({
+				chainId: chain.chainId,
+				rpcUrl: chain.rpcUrl,
+				intentGatewayAddress: chain.intentGatewayAddress,
+				hostAddress: chain.hostAddress,
+				consensusStateId: chain.consensusStateId,
+				coingeckoId: chain.coingeckoId,
+				wrappedNativeDecimals: chain.wrappedNativeDecimals,
+				assets: chain.assets,
+				addresses: chain.addresses,
+			}))
+
+			// Convert TOML hyperbridge config
+			const hyperbridgeConfig: HyperbridgeConfig | undefined = config.hyperbridge
+				? {
+						chainId: config.hyperbridge.chainId,
+						rpcUrl: config.hyperbridge.rpcUrl,
+					}
+				: undefined
+
+			// Convert TOML filler config including CoinGecko
+			const fillerConfigForService: FillerServiceConfig | undefined = config.filler.coingecko
+				? {
+						privateKey: config.filler.privateKey,
+						maxConcurrentOrders: config.filler.maxConcurrentOrders,
+						coingecko: config.filler.coingecko,
+					}
+				: undefined
+
+			// Create custom config service
+			const configService = new FillerConfigService(fillerChainConfigs, hyperbridgeConfig, fillerConfigForService)
+
+			// Convert to ChainConfig format for compatibility
 			const chainConfigs: ChainConfig[] = config.chains.map((chain) => ({
 				chainId: chain.chainId,
 				rpcUrl: chain.rpcUrl,
@@ -100,9 +171,9 @@ program
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
 					case "basic":
-						return new BasicFiller(strategyConfig.privateKey as HexString)
+						return new BasicFiller(strategyConfig.privateKey as HexString, configService)
 					case "stable-swap":
-						return new StableSwapFiller(strategyConfig.privateKey as HexString)
+						return new StableSwapFiller(strategyConfig.privateKey as HexString, configService)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}
@@ -110,7 +181,7 @@ program
 
 			// Initialize and start the intent filler
 			console.log("🏃 Starting intent filler...")
-			const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+			const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig, configService)
 			// Start the filler
 			intentFiller.start()
 

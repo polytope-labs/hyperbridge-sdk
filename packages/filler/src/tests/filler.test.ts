@@ -1,5 +1,11 @@
 import { IntentFiller } from "@/core/filler"
-import { ChainClientManager, ContractInteractionService } from "@/services"
+import {
+	ChainClientManager,
+	ContractInteractionService,
+	FillerConfigService,
+	FillerChainConfig,
+	HyperbridgeConfig,
+} from "@/services"
 import { BasicFiller } from "@/strategies/basic"
 import { StableSwapFiller } from "@/strategies/swap"
 import {
@@ -44,7 +50,6 @@ import { ERC20_ABI } from "@/config/abis/ERC20"
 import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
-import { ChainConfigService } from "@hyperbridge/sdk"
 import { compareDecimalValues } from "@/utils"
 describe.sequential("Basic", () => {
 	let indexer: IndexerClient
@@ -97,8 +102,8 @@ describe.sequential("Basic", () => {
 		} = await setUp()
 
 		const intentGatewayHelper = new IntentGateway(bscEvmHelper, gnosisChiadoEvmHelper)
-		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
-		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString, chainConfigService)]
+		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig, chainConfigService)
 		intentFiller.start()
 
 		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
@@ -272,8 +277,8 @@ describe.sequential("Basic", () => {
 		} = await setUp()
 
 		const intentGatewayHelper = new IntentGateway(gnosisChiadoEvmHelper, bscEvmHelper)
-		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString)]
-		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+		const strategies = [new BasicFiller(process.env.PRIVATE_KEY as HexString, chainConfigService)]
+		const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig, chainConfigService)
 		intentFiller.start()
 
 		const inputs: TokenInfo[] = [
@@ -628,8 +633,8 @@ describe.sequential("Basic", () => {
 
 		// Create a new intent filler with StableSwapFiller strategy
 		const intentGatewayHelper = new IntentGateway(gnosisChiadoEvmHelper, bscEvmHelper)
-		const strategies = [new StableSwapFiller(process.env.PRIVATE_KEY as HexString)]
-		const newIntentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
+		const strategies = [new StableSwapFiller(process.env.PRIVATE_KEY as HexString, chainConfigService)]
+		const newIntentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig, chainConfigService)
 
 		newIntentFiller.start()
 
@@ -827,7 +832,7 @@ describe.sequential("Basic", () => {
 	it("Should validate order inputs and outputs correctly", async () => {
 		const { chainConfigService, bscChapelId, mainnetId } = await setUp()
 
-		const basicFiller = new BasicFiller(process.env.PRIVATE_KEY as HexString)
+		const basicFiller = new BasicFiller(process.env.PRIVATE_KEY as HexString, chainConfigService)
 
 		// Get token assets for both chains
 		const sourceDaiAsset = chainConfigService.getDaiAsset(bscChapelId)
@@ -985,7 +990,121 @@ async function setUp() {
 
 	const chains = [bscMainnet, mainnetId, gnosisChiadoId, bscChapelId]
 
-	let chainConfigService = new ChainConfigService()
+	// Create test chain configurations for FillerConfigService
+	const testChainConfigs: FillerChainConfig[] = [
+		{
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL!,
+			intentGatewayAddress: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
+			hostAddress: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+			consensusStateId: "BSC0",
+			coingeckoId: "binance-smart-chain",
+			wrappedNativeDecimals: 18,
+			assets: {
+				WETH: "0xae13d989dac2f0debff460ac112a837c89baa7cd",
+				DAI: "0x1938165569A5463327fb206bE06d8D9253aa06b7",
+				USDC: "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92",
+				USDT: "0xc043f483373072f7f27420d6e7d7ad269c018e18",
+			},
+			addresses: {
+				UniswapRouter02: "0x9639379819420704457B07A0C33B678D9E0F8Df0",
+				UniswapV2Factory: "0x12e036669DA18F4A2777853d6e2136b32AceEC86",
+				BatchExecutor: "0x4CC58B5D8FBf838d062E4b21F75C327835B5F0ef",
+				UniversalRouter: "0xcc6d5ece3d4a57245bf5a2f64f3ed9179b81f714",
+				UniswapV3Router: "0x0000000000000000000000000000000000000000",
+				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
+				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
+				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
+				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
+			},
+		},
+		{
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO!,
+			intentGatewayAddress: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
+			hostAddress: "0x58a41b89f4871725e5d898d98ef4bf917601c5eb",
+			consensusStateId: "GNO0",
+			coingeckoId: "gnosis",
+			wrappedNativeDecimals: 18,
+			assets: {
+				WETH: "0x0000000000000000000000000000000000000000",
+				DAI: "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9",
+				USDC: "0x0000000000000000000000000000000000000000",
+				USDT: "0x0000000000000000000000000000000000000000",
+			},
+			addresses: {
+				UniswapRouter02: "0x0000000000000000000000000000000000000000",
+				UniswapV2Factory: "0x0000000000000000000000000000000000000000",
+				BatchExecutor: "0x0000000000000000000000000000000000000000",
+				UniversalRouter: "0x0000000000000000000000000000000000000000",
+				UniswapV3Router: "0x0000000000000000000000000000000000000000",
+				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
+				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
+				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
+				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
+			},
+		},
+		{
+			chainId: 1,
+			rpcUrl: process.env.ETH_MAINNET || "https://eth-mainnet.g.alchemy.com/v2/demo",
+			intentGatewayAddress: "0xd54165e45926720b062C192a5bacEC64d5bB08DA",
+			hostAddress: "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20",
+			consensusStateId: "ETH0",
+			coingeckoId: "ethereum",
+			wrappedNativeDecimals: 18,
+			assets: {
+				WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+				DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+				USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+				USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+			},
+			addresses: {
+				UniswapRouter02: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+				UniswapV2Factory: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+				BatchExecutor: "0x0000000000000000000000000000000000000000",
+				UniversalRouter: "0x0000000000000000000000000000000000000000",
+				UniswapV3Router: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+				UniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+				UniswapV3Quoter: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
+				UniswapV4Quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
+			},
+		},
+		{
+			chainId: 56,
+			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
+			intentGatewayAddress: "0xd54165e45926720b062C192a5bacEC64d5bB08DA",
+			hostAddress: "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7",
+			consensusStateId: "BSC0",
+			coingeckoId: "binance-smart-chain",
+			wrappedNativeDecimals: 18,
+			assets: {
+				WETH: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+				DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
+				USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+				USDT: "0x55d398326f99059fF775485246999027B3197955",
+			},
+			addresses: {
+				UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
+				UniswapV2Factory: "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
+				BatchExecutor: "0x0000000000000000000000000000000000000000",
+				UniversalRouter: "0x0000000000000000000000000000000000000000",
+				UniswapV3Router: "0x0000000000000000000000000000000000000000",
+				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
+				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
+				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
+				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
+			},
+		},
+	]
+
+	const hyperbridgeConfig: HyperbridgeConfig = {
+		chainId: 4009,
+		rpcUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+	}
+
+	// Create the custom config service
+	const chainConfigService = new FillerConfigService(testChainConfigs, hyperbridgeConfig)
 	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
 	const confirmationPolicy = new ConfirmationPolicy({
@@ -1015,10 +1134,11 @@ async function setUp() {
 		},
 	}
 
-	const chainClientManager = new ChainClientManager(process.env.PRIVATE_KEY as HexString)
+	const chainClientManager = new ChainClientManager(chainConfigService, process.env.PRIVATE_KEY as HexString)
 	const contractInteractionService = new ContractInteractionService(
 		chainClientManager,
 		process.env.PRIVATE_KEY as HexString,
+		chainConfigService,
 	)
 	const bscWalletClient = chainClientManager.getWalletClient(bscChapelId)
 	const gnosisChiadoWalletClient = chainClientManager.getWalletClient(gnosisChiadoId)
