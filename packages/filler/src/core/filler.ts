@@ -65,6 +65,7 @@ export class IntentFiller {
 		// Use the global queue for the initial analysis
 		// This can happen in parallel for PublicClient orders
 		this.globalQueue.add(async () => {
+			console.log("📦 New order detected:", order)
 			try {
 				const sourceClient = this.chainClientManager.getPublicClient(order.sourceChain)
 				const orderValue = await this.contractService.getTokenUsdValue(order)

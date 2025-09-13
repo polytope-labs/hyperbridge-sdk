@@ -1,0 +1,72 @@
+# Hyperbridge Intent Filler Configuration Example
+# This is a sample configuration file for the Hyperbridge Intent Filler
+# Copy this file to filler-config.toml and update with your actual values
+
+# Filler configuration
+[filler]
+privateKey = "0x0000000000000000000000000000000000000000000000000000000000000000"  # Replace with your actual private key
+maxConcurrentOrders = 5
+
+# Pending queue configuration
+[filler.pendingQueue]
+maxRechecks = 10
+recheckDelayMs = 30000  # 30 seconds
+
+# Strategy configuration
+# You can configure multiple strategies
+[[strategies]]
+type = "basic"
+privateKey = "0x0000000000000000000000000000000000000000000000000000000000000000"  # Replace with your actual private key
+
+# Uncomment to add a stable swap strategy
+# [[strategies]]
+# type = "stable-swap"
+# privateKey = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+# Chain configurations
+# Each chain needs chainId, rpcUrl, and intentGatewayAddress
+[[chains]]
+chainId = 97
+rpcUrl = "https://bsc-testnet.public.blastapi.io"
+intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"
+
+[[chains]]
+chainId = 10200
+rpcUrl = "https://rpc.chiadochain.net"
+intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"
+
+[[chains]]
+chainId = 1
+rpcUrl = "https://mainnet.infura.io/v3/YOUR_INFURA_KEY"  # Replace with your Infura key
+intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"  # Replace with actual address
+
+[[chains]]
+chainId = 56
+rpcUrl = "https://bsc-dataseed.binance.org/"
+intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"  # Replace with actual address
+
+# Confirmation policies per chain
+# The chain ID should match the numeric ID from the chain configuration
+[confirmationPolicies."97"]  # BSC Testnet
+minAmount = "1000000000000000000"      # 1 USD with 18 decimals
+maxAmount = "1000000000000000000000"   # 1000 USD with 18 decimals
+minConfirmations = 1
+maxConfirmations = 5
+
+[confirmationPolicies."10200"]  # Gnosis Chiado
+minAmount = "1000000000000000000"      # 1 USD with 18 decimals
+maxAmount = "1000000000000000000000"   # 1000 USD with 18 decimals
+minConfirmations = 1
+maxConfirmations = 5
+
+[confirmationPolicies."1"]  # Ethereum Mainnet
+minAmount = "5000000000000000000"      # 5 USD with 18 decimals
+maxAmount = "10000000000000000000000"  # 10000 USD with 18 decimals
+minConfirmations = 3
+maxConfirmations = 12
+
+[confirmationPolicies."56"]  # BSC Mainnet
+minAmount = "1000000000000000000"      # 1 USD with 18 decimals
+maxAmount = "5000000000000000000000"   # 5000 USD with 18 decimals
+minConfirmations = 3
+maxConfirmations = 15
