@@ -51,6 +51,40 @@ import { HandlerV1_ABI } from "@/config/abis/HandlerV1"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
 import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
 import { compareDecimalValues } from "@/utils"
+import { readFileSync } from "fs"
+import { resolve, dirname } from "path"
+import { fileURLToPath } from "url"
+import { parse } from "toml"
+
+// Helper function to load test configuration from TOML
+function loadTestConfig() {
+	const __filename = fileURLToPath(import.meta.url)
+	const __dirname = dirname(__filename)
+	const configPath = resolve(__dirname, "test-config.toml")
+	let tomlContent = readFileSync(configPath, "utf-8")
+
+	// Replace environment variable placeholders with actual values
+	tomlContent = tomlContent.replace(
+		/\$\{BSC_CHAPEL\}/g,
+		process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+	)
+	tomlContent = tomlContent.replace(
+		/\$\{GNOSIS_CHIADO\}/g,
+		process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+	)
+	tomlContent = tomlContent.replace(
+		/\$\{ETH_MAINNET\}/g,
+		process.env.ETH_MAINNET || "https://eth-mainnet.g.alchemy.com/v2/demo",
+	)
+	tomlContent = tomlContent.replace(/\$\{BSC_MAINNET\}/g, process.env.BSC_MAINNET || "https://binance.llamarpc.com")
+	tomlContent = tomlContent.replace(
+		/\$\{HYPERBRIDGE_GARGANTUA\}/g,
+		process.env.HYPERBRIDGE_GARGANTUA || "wss://gargantua.hyperbridge.xyz",
+	)
+
+	return parse(tomlContent)
+}
+
 describe.sequential("Basic", () => {
 	let indexer: IndexerClient
 
@@ -990,148 +1024,51 @@ async function setUp() {
 
 	const chains = [bscMainnet, mainnetId, gnosisChiadoId, bscChapelId]
 
-	// Create test chain configurations for FillerConfigService
-	const testChainConfigs: FillerChainConfig[] = [
-		{
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL!,
-			intentGatewayAddress: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
-			hostAddress: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
-			consensusStateId: "BSC0",
-			coingeckoId: "binance-smart-chain",
-			wrappedNativeDecimals: 18,
-			assets: {
-				WETH: "0xae13d989dac2f0debff460ac112a837c89baa7cd",
-				DAI: "0x1938165569A5463327fb206bE06d8D9253aa06b7",
-				USDC: "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92",
-				USDT: "0xc043f483373072f7f27420d6e7d7ad269c018e18",
-			},
-			addresses: {
-				UniswapRouter02: "0x9639379819420704457B07A0C33B678D9E0F8Df0",
-				UniswapV2Factory: "0x12e036669DA18F4A2777853d6e2136b32AceEC86",
-				BatchExecutor: "0x4CC58B5D8FBf838d062E4b21F75C327835B5F0ef",
-				UniversalRouter: "0xcc6d5ece3d4a57245bf5a2f64f3ed9179b81f714",
-				UniswapV3Router: "0x0000000000000000000000000000000000000000",
-				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
-				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
-				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
-				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
-			},
-		},
-		{
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO!,
-			intentGatewayAddress: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
-			hostAddress: "0x58a41b89f4871725e5d898d98ef4bf917601c5eb",
-			consensusStateId: "GNO0",
-			coingeckoId: "gnosis",
-			wrappedNativeDecimals: 18,
-			assets: {
-				WETH: "0x0000000000000000000000000000000000000000",
-				DAI: "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9",
-				USDC: "0x0000000000000000000000000000000000000000",
-				USDT: "0x0000000000000000000000000000000000000000",
-			},
-			addresses: {
-				UniswapRouter02: "0x0000000000000000000000000000000000000000",
-				UniswapV2Factory: "0x0000000000000000000000000000000000000000",
-				BatchExecutor: "0x0000000000000000000000000000000000000000",
-				UniversalRouter: "0x0000000000000000000000000000000000000000",
-				UniswapV3Router: "0x0000000000000000000000000000000000000000",
-				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
-				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
-				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
-				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
-			},
-		},
-		{
-			chainId: 1,
-			rpcUrl: process.env.ETH_MAINNET || "https://eth-mainnet.g.alchemy.com/v2/demo",
-			intentGatewayAddress: "0xd54165e45926720b062C192a5bacEC64d5bB08DA",
-			hostAddress: "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20",
-			consensusStateId: "ETH0",
-			coingeckoId: "ethereum",
-			wrappedNativeDecimals: 18,
-			assets: {
-				WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-				DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-				USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-				USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-			},
-			addresses: {
-				UniswapRouter02: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-				UniswapV2Factory: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
-				BatchExecutor: "0x0000000000000000000000000000000000000000",
-				UniversalRouter: "0x0000000000000000000000000000000000000000",
-				UniswapV3Router: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-				UniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-				UniswapV3Quoter: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
-				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
-				UniswapV4Quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
-			},
-		},
-		{
-			chainId: 56,
-			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
-			intentGatewayAddress: "0xd54165e45926720b062C192a5bacEC64d5bB08DA",
-			hostAddress: "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7",
-			consensusStateId: "BSC0",
-			coingeckoId: "binance-smart-chain",
-			wrappedNativeDecimals: 18,
-			assets: {
-				WETH: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-				DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
-				USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-				USDT: "0x55d398326f99059fF775485246999027B3197955",
-			},
-			addresses: {
-				UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
-				UniswapV2Factory: "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
-				BatchExecutor: "0x0000000000000000000000000000000000000000",
-				UniversalRouter: "0x0000000000000000000000000000000000000000",
-				UniswapV3Router: "0x0000000000000000000000000000000000000000",
-				UniswapV3Factory: "0x0000000000000000000000000000000000000000",
-				UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
-				UniswapV4PoolManager: "0x0000000000000000000000000000000000000000",
-				UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
-			},
-		},
-	]
+	// Load test configuration from TOML file
+	const config = loadTestConfig()
 
+	// Convert TOML chain configs to FillerChainConfig format
+	const testChainConfigs: FillerChainConfig[] = config.chains.map((chain: any) => ({
+		chainId: chain.chainId,
+		rpcUrl: chain.rpcUrl,
+		intentGatewayAddress: chain.intentGatewayAddress,
+		hostAddress: chain.hostAddress,
+		consensusStateId: chain.consensusStateId,
+		coingeckoId: chain.coingeckoId,
+		wrappedNativeDecimals: chain.wrappedNativeDecimals,
+		assets: chain.assets,
+		addresses: chain.addresses,
+	}))
+
+	// Convert TOML hyperbridge config
 	const hyperbridgeConfig: HyperbridgeConfig = {
-		chainId: 4009,
-		rpcUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+		chainId: config.hyperbridge.chainId,
+		rpcUrl: config.hyperbridge.rpcUrl,
 	}
 
+	// Convert TOML filler config including CoinGecko
+	const fillerConfigForService = config.filler.coingecko
+		? {
+				privateKey: config.filler.privateKey,
+				maxConcurrentOrders: config.filler.maxConcurrentOrders,
+				coingecko: config.filler.coingecko,
+			}
+		: undefined
+
 	// Create the custom config service
-	const chainConfigService = new FillerConfigService(testChainConfigs, hyperbridgeConfig)
+	const chainConfigService = new FillerConfigService(testChainConfigs, hyperbridgeConfig, fillerConfigForService)
 	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
-	const confirmationPolicy = new ConfirmationPolicy({
-		"97": {
-			minAmount: "1000000000000000000", // 1 USD with 18 decimals
-			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
-			minConfirmations: 1,
-			maxConfirmations: 5,
-		},
-		"10200": {
-			minAmount: "1000000000000000000", // 1 USD with 18 decimals
-			maxAmount: "1000000000000000000000", // 1000 USD with 18 decimals
-			minConfirmations: 1,
-			maxConfirmations: 5,
-		},
-	})
+	// Use confirmation policies from TOML config
+	const confirmationPolicy = new ConfirmationPolicy(config.confirmationPolicies)
 
 	const fillerConfig: FillerConfig = {
 		confirmationPolicy: {
 			getConfirmationBlocks: (chainId: number, amount: bigint) =>
 				confirmationPolicy.getConfirmationBlocks(chainId, BigInt(amount)),
 		},
-		maxConcurrentOrders: 5,
-		pendingQueueConfig: {
-			maxRechecks: 10,
-			recheckDelayMs: 30000,
-		},
+		maxConcurrentOrders: config.filler.maxConcurrentOrders,
+		pendingQueueConfig: config.filler.pendingQueue,
 	}
 
 	const chainClientManager = new ChainClientManager(chainConfigService, process.env.PRIVATE_KEY as HexString)
