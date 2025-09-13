@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+    filler:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: hyperbridge-filler
+        restart: unless-stopped
+        volumes:
+            - ./filler-config.toml:/app/config/filler-config.toml:ro
+            - filler-data:/app/data
+        environment:
+            - NODE_ENV=production
+            - LOG_LEVEL=${LOG_LEVEL:-info}
+        networks:
+            - filler-network
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
+        healthcheck:
+            test: ["CMD", "pgrep", "node"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+
+volumes:
+    filler-data:
+        driver: local
+
+networks:
+    filler-network:
+        driver: bridge

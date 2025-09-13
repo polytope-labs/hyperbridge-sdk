@@ -13,10 +13,10 @@ export class BasicFiller implements FillerStrategy {
 	private contractService: ContractInteractionService
 	private configService: ChainConfigService
 
-	constructor(privateKey: HexString) {
+	constructor(privateKey: HexString, clientManager: ChainClientManager) {
 		this.privateKey = privateKey
 		this.configService = new ChainConfigService()
-		this.clientManager = new ChainClientManager(privateKey)
+		this.clientManager = clientManager
 		this.contractService = new ContractInteractionService(this.clientManager, privateKey)
 	}
 
