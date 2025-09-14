@@ -23,6 +23,7 @@ packages/indexer/docker/mainnet/
 .claude/
 
 packages/filler/src/config/chain.ts
+packages/filler/src/filler-config.toml
 # Compiled Java class files
 *.class
 

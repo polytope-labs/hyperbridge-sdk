@@ -9,19 +9,21 @@ import {
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { PublicClient } from "viem"
-import { addresses } from "@hyperbridge/sdk"
 import { ChainClientManager } from "@/services"
+import { FillerConfigService } from "@/services/FillerConfigService"
 
 export class EventMonitor extends EventEmitter {
 	private clients: Map<number, PublicClient> = new Map()
 	private listening: boolean = false
 	private unwatchFunctions: Map<number, () => void> = new Map()
 	private clientManager: ChainClientManager
+	private configService: FillerConfigService
 
-	constructor(chainConfigs: ChainConfig[]) {
+	constructor(chainConfigs: ChainConfig[], configService: FillerConfigService) {
 		super()
 
-		this.clientManager = new ChainClientManager(DUMMY_PRIVATE_KEY)
+		this.configService = configService
+		this.clientManager = new ChainClientManager(configService)
 
 		chainConfigs.forEach((config) => {
 			const chainName = `EVM-${config.chainId}`
@@ -40,8 +42,9 @@ export class EventMonitor extends EventEmitter {
 					(item) => item.type === "event" && item.name === "OrderPlaced",
 				)
 
+				const intentGatewayAddress = this.configService.getIntentGatewayAddress(`EVM-${chainId}`)
 				const unwatch = client.watchEvent({
-					address: addresses.IntentGateway[`EVM-${chainId}` as keyof typeof addresses.IntentGateway],
+					address: intentGatewayAddress,
 					event: orderPlacedEvent,
 					onLogs: (logs) => {
 						for (const log of logs) {

@@ -7,15 +7,8 @@ import {
 	TokenBalances,
 	TokenType,
 } from "@/services"
-import {
-	ADDRESS_ZERO,
-	bytes32ToBytes20,
-	ChainConfigService,
-	ExecutionResult,
-	FillOptions,
-	HexString,
-	Order,
-} from "@hyperbridge/sdk"
+import { ADDRESS_ZERO, bytes32ToBytes20, ExecutionResult, FillOptions, HexString, Order } from "@hyperbridge/sdk"
+import { FillerConfigService } from "@/services/FillerConfigService"
 import { FillerStrategy } from "./base"
 import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
@@ -31,13 +24,13 @@ export class StableSwapFiller implements FillerStrategy {
 	private privateKey: HexString
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
-	private configService: ChainConfigService
+	private configService: FillerConfigService
 
-	constructor(privateKey: HexString) {
+	constructor(privateKey: HexString, configService: FillerConfigService) {
 		this.privateKey = privateKey
-		this.configService = new ChainConfigService()
-		this.clientManager = new ChainClientManager(privateKey)
-		this.contractService = new ContractInteractionService(this.clientManager, privateKey)
+		this.configService = configService
+		this.clientManager = new ChainClientManager(configService, privateKey)
+		this.contractService = new ContractInteractionService(this.clientManager, privateKey, configService)
 	}
 
 	/**

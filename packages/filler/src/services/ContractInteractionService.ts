@@ -9,7 +9,6 @@ import {
 	DispatchPost,
 	bytes32ToBytes20,
 	bytes20ToBytes32,
-	HostParams,
 	estimateGasForPost,
 	constructRedeemEscrowRequestBody,
 	IPostRequest,
@@ -19,13 +18,12 @@ import {
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
-import { ChainConfigService } from "@hyperbridge/sdk"
+import { FillerConfigService } from "./FillerConfigService"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { EVM_HOST } from "@/config/abis/EvmHost"
 import { orderCommitment } from "@hyperbridge/sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { keccakAsU8a } from "@polkadot/util-crypto"
-import { Chains } from "@hyperbridge/sdk"
 import { CacheService } from "./CacheService"
 import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
@@ -37,15 +35,16 @@ import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
  * Handles contract interactions for tokens and other contracts
  */
 export class ContractInteractionService {
-	private configService: ChainConfigService
+	private configService: FillerConfigService
 	private api: ApiPromise | null = null
 	public cacheService: CacheService
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
+		configService: FillerConfigService,
 	) {
-		this.configService = new ChainConfigService()
+		this.configService = configService
 		this.cacheService = new CacheService()
 	}
 
@@ -364,11 +363,14 @@ export class ContractInteractionService {
 			let relayerFeeInNativeToken = 0n
 
 			try {
-				const protocolFeeInNativeToken = await this.quoteNative(
+				let protocolFeeInNativeToken = await this.quoteNative(
 					postRequest,
 					postGasEstimateInDestFeeToken,
 					order.destChain,
 				)
+
+				// Add 0.5% markup
+				protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
 
 				gas = await destClient.estimateContractGas({
 					abi: INTENT_GATEWAY_ABI,
@@ -386,30 +388,38 @@ export class ContractInteractionService {
 				)
 				const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
 
-				const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
-				const destFeeTokenBalanceSlot = await getStorageSlot(
-					destClient as any,
-					destChainFeeTokenAddress,
-					destFeeTokenBalanceData as HexString,
+				// Check if fee token matches any order output
+				const feeTokenMatchesOrderOutput = order.outputs.some(
+					(output) => bytes32ToBytes20(output.token.toLowerCase()) === destChainFeeTokenAddress.toLowerCase(),
 				)
-				const destFeeTokenAllowanceData =
-					ERC20Method.ALLOWANCE +
-					bytes20ToBytes32(userAddress).slice(2) +
-					bytes20ToBytes32(intentGatewayAddress).slice(2)
-				const destFeeTokenAllowanceSlot = await getStorageSlot(
-					destClient as any,
-					destChainFeeTokenAddress,
-					destFeeTokenAllowanceData as HexString,
-				)
-				const feeTokenStateDiffs = [
-					{ slot: destFeeTokenBalanceSlot, value: testValue },
-					{ slot: destFeeTokenAllowanceSlot, value: testValue },
-				]
 
-				overrides.push({
-					address: destChainFeeTokenAddress,
-					stateDiff: feeTokenStateDiffs as any,
-				})
+				if (!feeTokenMatchesOrderOutput) {
+					// Only create fee token overrides if it doesn't match any order output
+					const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+					const destFeeTokenBalanceSlot = await getStorageSlot(
+						destClient as any,
+						destChainFeeTokenAddress,
+						destFeeTokenBalanceData as HexString,
+					)
+					const destFeeTokenAllowanceData =
+						ERC20Method.ALLOWANCE +
+						bytes20ToBytes32(userAddress).slice(2) +
+						bytes20ToBytes32(intentGatewayAddress).slice(2)
+					const destFeeTokenAllowanceSlot = await getStorageSlot(
+						destClient as any,
+						destChainFeeTokenAddress,
+						destFeeTokenAllowanceData as HexString,
+					)
+					const feeTokenStateDiffs = [
+						{ slot: destFeeTokenBalanceSlot, value: testValue },
+						{ slot: destFeeTokenAllowanceSlot, value: testValue },
+					]
+
+					stateOverride.push({
+						address: destChainFeeTokenAddress,
+						stateDiff: feeTokenStateDiffs as any,
+					})
+				}
 
 				gas = await destClient.estimateContractGas({
 					abi: INTENT_GATEWAY_ABI,
@@ -477,7 +487,11 @@ export class ContractInteractionService {
 			throw new Error("Chain native currency information not available")
 		}
 
-		const nativeTokenPriceUsd = await fetchPrice(nativeToken.symbol, chainId)
+		const nativeTokenPriceUsd = await fetchPrice(
+			nativeToken.symbol,
+			chainId,
+			this.configService.getCoinGeckoApiKey(),
+		)
 
 		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
 	}
@@ -494,10 +508,10 @@ export class ContractInteractionService {
 		}
 
 		const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeToken.decimals)
-		const tokenPriceUsd = await fetchPrice(nativeToken.symbol, chainId)
+		const tokenPriceUsd = await fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey())
 		const gasCostUsd = gasCostInToken * tokenPriceUsd
 
-		const feeTokenPriceUsd = await fetchPrice("DAI") // Using DAI as default
+		const feeTokenPriceUsd = await fetchPrice("DAI", chainId, this.configService.getCoinGeckoApiKey()) // Using DAI as default
 		let gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
 
 		return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, targetDecimals)))
@@ -505,12 +519,11 @@ export class ContractInteractionService {
 
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
 		const client = this.clientManager.getPublicClient(chain)
-		const hostParams = await client.readContract({
+		const feeTokenAddress = await client.readContract({
 			abi: EVM_HOST,
 			address: this.configService.getHostAddress(chain),
-			functionName: "hostParams",
+			functionName: "feeToken",
 		})
-		const feeTokenAddress = hostParams.feeToken
 		const feeTokenDecimals = await client.readContract({
 			address: feeTokenAddress,
 			abi: ERC20_ABI,
@@ -571,8 +584,11 @@ export class ContractInteractionService {
 	 */
 	async getHostLatestStateMachineHeight(chain?: string): Promise<bigint> {
 		if (!this.api) {
+			// Get hyperbridge RPC URL from config service
+			const hyperbridgeRpcUrl = this.configService.getHyperbridgeRpcUrl()
+
 			this.api = await ApiPromise.create({
-				provider: new WsProvider(this.configService.getRpcUrl(Chains.HYPERBRIDGE_GARGANTUA)),
+				provider: new WsProvider(hyperbridgeRpcUrl),
 				typesBundle: {
 					spec: {
 						gargantua: {
@@ -654,7 +670,7 @@ export class ContractInteractionService {
 	}
 
 	async getTokenPrice(tokenAddress: string, decimals: number, chainId: number): Promise<bigint> {
-		const usdValue = await fetchPrice(tokenAddress, chainId)
+		const usdValue = await fetchPrice(tokenAddress, chainId, this.configService.getCoinGeckoApiKey())
 		return BigInt(Math.floor(usdValue * Math.pow(10, decimals)))
 	}
 
