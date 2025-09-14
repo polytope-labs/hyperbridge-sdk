@@ -5,6 +5,7 @@ import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { compareDecimalValues } from "@/utils"
+import { formatUnits } from "viem"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -95,10 +96,10 @@ export class BasicFiller implements FillerStrategy {
 					: BigInt(0)
 
 			console.log({
-				orderFees: order.fees.toString(),
-				totalGasEstimateInFeeToken: totalGasEstimateInFeeToken.toString(),
+				orderFeesUSD: formatUnits(orderFeeInDestFeeToken, destFeeTokenDecimals),
+				totalGasEstimateUSD: formatUnits(totalGasEstimateInFeeToken, destFeeTokenDecimals),
 				profitable: profit > 0,
-				profitInFeeToken: profit.toString(),
+				profitUSD: formatUnits(profit, destFeeTokenDecimals),
 			})
 			return profit
 		} catch (error) {

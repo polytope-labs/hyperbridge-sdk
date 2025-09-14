@@ -11,9 +11,9 @@ import { ConfirmationPolicy } from "../config/confirmation-policy.js"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
 import {
 	FillerConfigService,
-	FillerChainConfig,
-	HyperbridgeConfig,
+	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
+	CoinGeckoConfig,
 } from "../services/FillerConfigService.js"
 
 // Get package.json path
@@ -39,52 +39,15 @@ interface PendingQueueConfig {
 	recheckDelayMs: number
 }
 
-interface ChainConfigToml {
-	chainId: number
-	rpcUrl: string
-	intentGatewayAddress: string
-	hostAddress?: string
-	consensusStateId?: string
-	coingeckoId?: string
-	wrappedNativeDecimals?: number
-	assets?: {
-		WETH?: string
-		DAI?: string
-		USDC?: string
-		USDT?: string
-	}
-	addresses?: {
-		UniswapRouter02?: string
-		UniswapV2Factory?: string
-		BatchExecutor?: string
-		UniversalRouter?: string
-		UniswapV3Router?: string
-		UniswapV3Factory?: string
-		UniswapV3Quoter?: string
-		UniswapV4PoolManager?: string
-		UniswapV4Quoter?: string
-	}
-}
-
-interface HyperbridgeConfigToml {
-	chainId: number
-	rpcUrl: string
-}
-
-interface CoinGeckoConfigToml {
-	apiKey?: string
-}
-
 interface FillerTomlConfig {
 	filler: {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
-		coingecko?: CoinGeckoConfigToml
+		coingecko?: CoinGeckoConfig
 	}
 	strategies: StrategyConfig[]
-	chains: ChainConfigToml[]
-	hyperbridge?: HyperbridgeConfigToml
+	chains: UserProvidedChainConfig[]
 	confirmationPolicies: Record<string, ChainConfirmationPolicy>
 }
 
@@ -100,41 +63,21 @@ program
 		try {
 			console.log("🚀 Starting Hyperbridge IntentGateway Filler...")
 
-			// Load and parse TOML configuration
 			const configPath = resolve(process.cwd(), options.config)
 			console.log(`📄 Loading configuration from: ${configPath}`)
 
 			const tomlContent = readFileSync(configPath, "utf-8")
 			const config = parse(tomlContent) as FillerTomlConfig
 
-			// Validate required configuration
 			validateConfig(config)
 
-			// Initialize services
 			console.log("🔧 Initializing services...")
 
-			// Convert TOML chain configs to FillerChainConfig format
-			const fillerChainConfigs: FillerChainConfig[] = config.chains.map((chain) => ({
+			const fillerChainConfigs: UserProvidedChainConfig[] = config.chains.map((chain) => ({
 				chainId: chain.chainId,
 				rpcUrl: chain.rpcUrl,
-				intentGatewayAddress: chain.intentGatewayAddress,
-				hostAddress: chain.hostAddress,
-				consensusStateId: chain.consensusStateId,
-				coingeckoId: chain.coingeckoId,
-				wrappedNativeDecimals: chain.wrappedNativeDecimals,
-				assets: chain.assets,
-				addresses: chain.addresses,
 			}))
 
-			// Convert TOML hyperbridge config
-			const hyperbridgeConfig: HyperbridgeConfig | undefined = config.hyperbridge
-				? {
-						chainId: config.hyperbridge.chainId,
-						rpcUrl: config.hyperbridge.rpcUrl,
-					}
-				: undefined
-
-			// Convert TOML filler config including CoinGecko
 			const fillerConfigForService: FillerServiceConfig | undefined = config.filler.coingecko
 				? {
 						privateKey: config.filler.privateKey,
@@ -143,15 +86,13 @@ program
 					}
 				: undefined
 
-			// Create custom config service
-			const configService = new FillerConfigService(fillerChainConfigs, hyperbridgeConfig, fillerConfigForService)
+			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
 
-			// Convert to ChainConfig format for compatibility
-			const chainConfigs: ChainConfig[] = config.chains.map((chain) => ({
-				chainId: chain.chainId,
-				rpcUrl: chain.rpcUrl,
-				intentGatewayAddress: chain.intentGatewayAddress as HexString,
-			}))
+			const chainConfigs: ChainConfig[] = config.chains.map((chain) => {
+				// Get the chain name from chain ID for SDK compatibility
+				const chainName = `EVM-${chain.chainId}`
+				return configService.getChainConfig(chainName)
+			})
 
 			// Initialize confirmation policy
 			const confirmationPolicy = new ConfirmationPolicy(config.confirmationPolicies)
@@ -228,11 +169,14 @@ function validateConfig(config: FillerTomlConfig): void {
 
 	// Validate chain configurations
 	for (const chain of config.chains) {
-		if (!chain.chainId || !chain.rpcUrl || !chain.intentGatewayAddress) {
-			throw new Error(`Chain configuration must have chainId, rpcUrl, and intentGatewayAddress`)
+		if (!chain.chainId) {
+			throw new Error(`Chain configuration must have chainId`)
 		}
 		if (typeof chain.chainId !== "number") {
 			throw new Error(`Chain ${chain.chainId} chainId must be a number`)
+		}
+		if (!chain.rpcUrl) {
+			throw new Error(`Chain ${chain.chainId} must have rpcUrl`)
 		}
 	}
 
