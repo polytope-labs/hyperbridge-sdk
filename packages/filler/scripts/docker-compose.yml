@@ -8,11 +8,7 @@ services:
         container_name: hyperbridge-filler
         restart: unless-stopped
         volumes:
-            - ./filler-config.toml:/app/config/filler-config.toml:ro
-            - filler-data:/app/data
-        environment:
-            - NODE_ENV=production
-            - LOG_LEVEL=${LOG_LEVEL:-info}
+            - ${CONFIG_PATH:-../config.toml}:/app/config/config.toml:ro
         networks:
             - filler-network
         logging:
@@ -21,11 +17,11 @@ services:
                 max-size: "10m"
                 max-file: "3"
         healthcheck:
-            test: ["CMD", "pgrep", "node"]
+            test: ["CMD", "sh", "-c", "ps -ef | grep -v grep | grep run.sh"]
             interval: 30s
             timeout: 10s
             retries: 3
-            start_period: 40s
+            start_period: 5s
 
 volumes:
     filler-data:

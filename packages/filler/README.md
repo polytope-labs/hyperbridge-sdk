@@ -38,19 +38,19 @@ filler run -c filler-config.toml
 
 ## Docker Usage
 
-### Build Image
-```bash
-./scripts/docker-build.sh
-```
+We provide a simple script for Docker operations:
 
-### Run Container
 ```bash
-./scripts/docker-run.sh -c filler-config.toml
-```
+# Build Docker image
+./scripts/docker.sh build
 
-### Docker Compose
-```bash
-docker-compose up -d
+# Run as container
+./scripts/docker.sh run
+
+# Use Docker Compose
+./scripts/docker.sh up
+./scripts/docker.sh down
+./scripts/docker.sh logs
 ```
 
 ## Configuration

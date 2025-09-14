@@ -1,12 +1,12 @@
 {
 	"name": "@hyperbridge/filler",
 	"version": "0.1.1",
-	"description": "Intent filler package for hyperbridge",
+	"description": "IntentGateway filler package for hyperbridge",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
 	"bin": {
-		"filler": "./dist/bin/filler-cli.js"
+		"filler": "./dist/bin/filler.js"
 	},
 	"exports": {
 		".": {
@@ -26,8 +26,8 @@
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",
 		"format": "prettier --write \"src/**/*.ts\"",
-		"cli": "tsx src/bin/filler-cli.ts",
-		"cli:dev": "nodemon --watch src --ext ts --exec tsx src/bin/filler-cli.ts"
+		"cli": "tsx src/bin/filler.ts",
+		"cli:dev": "nodemon --watch src --ext ts --exec tsx src/bin/filler.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
