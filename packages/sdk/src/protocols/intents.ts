@@ -145,7 +145,11 @@ export class IntentGateway {
 		let destChainFillGas = 0n
 
 		try {
-			const protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken)
+			let protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken)
+
+			// Add 0.5% markup
+			protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
+
 			destChainFillGas = await this.dest.client.estimateContractGas({
 				abi: IntentGatewayABI.ABI,
 				address: intentGatewayAddress,

@@ -128,16 +128,15 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const { request } = await destClient.simulateContract({
+			const tx = await walletClient.writeContract({
 				abi: INTENT_GATEWAY_ABI,
 				address: this.configService.getIntentGatewayAddress(order.destChain),
 				functionName: "fillOrder",
 				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
 				value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
+				chain: walletClient.chain,
 			})
-
-			const tx = await walletClient.writeContract(request)
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime

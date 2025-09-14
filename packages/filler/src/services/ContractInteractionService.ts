@@ -363,11 +363,14 @@ export class ContractInteractionService {
 			let relayerFeeInNativeToken = 0n
 
 			try {
-				const protocolFeeInNativeToken = await this.quoteNative(
+				let protocolFeeInNativeToken = await this.quoteNative(
 					postRequest,
 					postGasEstimateInDestFeeToken,
 					order.destChain,
 				)
+
+				// Add 0.5% markup
+				protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
 
 				gas = await destClient.estimateContractGas({
 					abi: INTENT_GATEWAY_ABI,
@@ -385,30 +388,38 @@ export class ContractInteractionService {
 				)
 				const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
 
-				const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
-				const destFeeTokenBalanceSlot = await getStorageSlot(
-					destClient as any,
-					destChainFeeTokenAddress,
-					destFeeTokenBalanceData as HexString,
+				// Check if fee token matches any order output
+				const feeTokenMatchesOrderOutput = order.outputs.some(
+					(output) => bytes32ToBytes20(output.token.toLowerCase()) === destChainFeeTokenAddress.toLowerCase(),
 				)
-				const destFeeTokenAllowanceData =
-					ERC20Method.ALLOWANCE +
-					bytes20ToBytes32(userAddress).slice(2) +
-					bytes20ToBytes32(intentGatewayAddress).slice(2)
-				const destFeeTokenAllowanceSlot = await getStorageSlot(
-					destClient as any,
-					destChainFeeTokenAddress,
-					destFeeTokenAllowanceData as HexString,
-				)
-				const feeTokenStateDiffs = [
-					{ slot: destFeeTokenBalanceSlot, value: testValue },
-					{ slot: destFeeTokenAllowanceSlot, value: testValue },
-				]
 
-				overrides.push({
-					address: destChainFeeTokenAddress,
-					stateDiff: feeTokenStateDiffs as any,
-				})
+				if (!feeTokenMatchesOrderOutput) {
+					// Only create fee token overrides if it doesn't match any order output
+					const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(userAddress).slice(2)
+					const destFeeTokenBalanceSlot = await getStorageSlot(
+						destClient as any,
+						destChainFeeTokenAddress,
+						destFeeTokenBalanceData as HexString,
+					)
+					const destFeeTokenAllowanceData =
+						ERC20Method.ALLOWANCE +
+						bytes20ToBytes32(userAddress).slice(2) +
+						bytes20ToBytes32(intentGatewayAddress).slice(2)
+					const destFeeTokenAllowanceSlot = await getStorageSlot(
+						destClient as any,
+						destChainFeeTokenAddress,
+						destFeeTokenAllowanceData as HexString,
+					)
+					const feeTokenStateDiffs = [
+						{ slot: destFeeTokenBalanceSlot, value: testValue },
+						{ slot: destFeeTokenAllowanceSlot, value: testValue },
+					]
+
+					stateOverride.push({
+						address: destChainFeeTokenAddress,
+						stateDiff: feeTokenStateDiffs as any,
+					})
+				}
 
 				gas = await destClient.estimateContractGas({
 					abi: INTENT_GATEWAY_ABI,
@@ -508,12 +519,11 @@ export class ContractInteractionService {
 
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
 		const client = this.clientManager.getPublicClient(chain)
-		const hostParams = await client.readContract({
+		const feeTokenAddress = await client.readContract({
 			abi: EVM_HOST,
 			address: this.configService.getHostAddress(chain),
-			functionName: "hostParams",
+			functionName: "feeToken",
 		})
-		const feeTokenAddress = hostParams.feeToken
 		const feeTokenDecimals = await client.readContract({
 			address: feeTokenAddress,
 			abi: ERC20_ABI,
