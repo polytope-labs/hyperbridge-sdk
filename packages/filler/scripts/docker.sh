@@ -49,7 +49,8 @@ shift
 case "$COMMAND" in
     build)
         echo -e "${YELLOW}Building Docker image...${NC}"
-        docker build -t hyperbridge/filler:latest -f "$DOCKERFILE" "$ROOT_DIR"
+        echo -e "$(dirname "$(dirname "$ROOT_DIR")")"
+        docker build -t polytopelabs/hyperbridge-filler:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
         echo -e "${GREEN}✓ Docker image built successfully!${NC}"
         ;;
 
@@ -63,21 +64,21 @@ case "$COMMAND" in
         fi
 
         # Check if image exists
-        if ! docker image inspect hyperbridge/filler:latest &> /dev/null; then
+        if ! docker image inspect polytopelabs/hyperbridge-filler:latest &> /dev/null; then
             echo -e "${YELLOW}Image not found, building first...${NC}"
-            docker build -t hyperbridge/filler:latest -f "$DOCKERFILE" "$ROOT_DIR"
+            docker build -t polytopelabs/hyperbridge-filler:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
         fi
 
         # Run the container
         docker run -d \
             --name hyperbridge-filler \
             --restart unless-stopped \
-            -v "$CONFIG_FILE:/app/config/config.toml:ro" \
+            -v "$CONFIG_FILE:/app/packages/filler/config/config.toml:ro" \
             -e NODE_ENV=production \
             --log-driver json-file \
             --log-opt max-size=10m \
             --log-opt max-file=3 \
-            hyperbridge/filler:latest
+            polytopelabs/hyperbridge-filler:latest
 
         echo -e "${GREEN}✓ Container started!${NC}"
         echo "  View logs:   docker logs -f hyperbridge-filler"
@@ -100,7 +101,7 @@ case "$COMMAND" in
         fi
 
         # Start with Docker Compose
-        CONFIG_PATH="$CONFIG_FILE" docker compose -f "$COMPOSE_FILE" up -d
+        CONFIG_PATH="$CONFIG_FILE" docker-compose -f "$COMPOSE_FILE" up -d
         echo -e "${GREEN}✓ Services started!${NC}"
         echo "  View logs:   $0 logs"
         echo "  Stop:        $0 down"
@@ -108,13 +109,13 @@ case "$COMMAND" in
 
     down)
         echo -e "${YELLOW}Stopping Docker Compose services...${NC}"
-        docker compose -f "$COMPOSE_FILE" down
+        docker-compose -f "$COMPOSE_FILE" down
         echo -e "${GREEN}✓ Services stopped${NC}"
         ;;
 
     logs)
         echo -e "${YELLOW}Showing logs (Ctrl+C to exit)...${NC}"
-        docker compose -f "$COMPOSE_FILE" logs -f
+        docker-compose -f "$COMPOSE_FILE" logs -f
         ;;
 
     help)
