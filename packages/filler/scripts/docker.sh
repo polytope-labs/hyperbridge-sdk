@@ -69,6 +69,12 @@ case "$COMMAND" in
             docker build -t polytopelabs/hyperbridge-filler:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
         fi
 
+        # Remove existing container if it exists
+        if docker ps -a | grep -q hyperbridge-filler; then
+            echo -e "${YELLOW}Removing existing container...${NC}"
+            docker rm -f hyperbridge-filler
+        fi
+
         # Run the container
         docker run -d \
             --name hyperbridge-filler \

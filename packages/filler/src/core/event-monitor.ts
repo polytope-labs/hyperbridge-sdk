@@ -82,7 +82,7 @@ export class EventMonitor extends EventEmitter {
 
 								this.emit("newOrder", { order })
 							} catch (error) {
-								console.error(`Error parsing event log:`, error)
+								this.logger.error({ err: error }, "Error parsing event log")
 							}
 						}
 					},

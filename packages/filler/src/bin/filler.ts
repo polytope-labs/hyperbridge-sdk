@@ -18,6 +18,17 @@ import {
 import { getLogger } from "../services/Logger.js"
 const logger = getLogger("cli")
 
+// ASCII art header
+const ASCII_HEADER = `
+██╗███╗   ██╗████████╗███████╗███╗   ██╗████████╗ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
+██║████╗  ██║╚══██╔══╝██╔════╝████╗  ██║╚══██╔══╝██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
+██║██╔██╗ ██║   ██║   █████╗  ██╔██╗ ██║   ██║   ██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
+██║██║╚██╗██║   ██║   ██╔══╝  ██║╚██╗██║   ██║   ██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
+██║██║ ╚████║   ██║   ███████╗██║ ╚████║   ██║   ╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
+╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
+
+`
+
 // Get package.json path
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -63,6 +74,9 @@ program
 	.requiredOption("-c, --config <path>", "Path to TOML configuration file")
 	.action(async (options: { config: string }) => {
 		try {
+			// Display ASCII art header
+			process.stdout.write(ASCII_HEADER)
+
 			logger.info("Starting Hyperbridge IntentGateway Filler...")
 
 			const configPath = resolve(process.cwd(), options.config)

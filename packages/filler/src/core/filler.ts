@@ -89,9 +89,9 @@ export class IntentFiller {
 					chainIds[order.sourceChain as keyof typeof chainIds],
 					orderValue.inputUsdValue,
 				)
-				console.log(
-					`For order ${order.id}, required confirmations: ${requiredConfirmations},
-					current confirmations: ${currentConfirmations}`,
+				this.logger.info(
+					{ orderId: order.id, requiredConfirmations, currentConfirmations },
+					"Order confirmation requirements",
 				)
 
 				while (currentConfirmations < requiredConfirmations) {
@@ -99,7 +99,7 @@ export class IntentFiller {
 					currentConfirmations = await sourceClient.getTransactionConfirmations({
 						hash: order.transactionHash!,
 					})
-					console.log(`Order ${order.id} current confirmations: ${currentConfirmations}`)
+					this.logger.debug({ orderId: order.id, currentConfirmations }, "Order confirmation progress")
 				}
 
 				this.logger.info({ orderId: order.id, currentConfirmations }, "Order confirmed on source chain")
@@ -151,7 +151,7 @@ export class IntentFiller {
 
 					try {
 						const result = await bestStrategy.executeOrder(order)
-						console.log(`Order execution result:`, result)
+						this.logger.info({ orderId: order.id, result }, "Order execution completed")
 						if (result.success) {
 							this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
 						}
