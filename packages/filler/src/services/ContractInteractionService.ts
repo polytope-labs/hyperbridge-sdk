@@ -31,6 +31,7 @@ import { UNISWAP_V3_FACTORY_ABI } from "@/config/abis/UniswapV3Factory"
 import { UNISWAP_V3_POOL_ABI } from "@/config/abis/UniswapV3Pool"
 import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
 import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
+import { getLogger } from "@/services/Logger"
 /**
  * Handles contract interactions for tokens and other contracts
  */
@@ -38,6 +39,7 @@ export class ContractInteractionService {
 	private configService: FillerConfigService
 	private api: ApiPromise | null = null
 	public cacheService: CacheService
+	private logger = getLogger("contract-service")
 
 	constructor(
 		private clientManager: ChainClientManager,
@@ -90,7 +92,7 @@ export class ContractInteractionService {
 
 			return decimals
 		} catch (error) {
-			console.warn(`Error getting token decimals, defaulting to 18:`, error)
+			this.logger.warn({ err: error }, "Error getting token decimals, defaulting to 18")
 			return 18 // Default to 18 if we can't determine
 		}
 	}
@@ -117,8 +119,9 @@ export class ContractInteractionService {
 					const balance = await this.getTokenBalance(tokenAddress, fillerWalletAddress, destChain)
 
 					if (balance < amount) {
-						console.debug(
-							`Insufficient ${tokenAddress} balance. Have ${balance.toString()}, need ${amount.toString()}`,
+						this.logger.debug(
+							{ tokenAddress, balance: balance.toString(), need: amount.toString() },
+							"Insufficient token balance",
 						)
 						return false
 					}
@@ -130,8 +133,9 @@ export class ContractInteractionService {
 				const nativeBalance = await destClient.getBalance({ address: fillerWalletAddress })
 
 				if (BigInt(nativeBalance.toString()) < totalNativeTokenNeeded) {
-					console.debug(
-						`Insufficient native token balance. Have ${nativeBalance.toString()}, need ${totalNativeTokenNeeded.toString()}`,
+					this.logger.debug(
+						{ have: nativeBalance.toString(), need: totalNativeTokenNeeded.toString() },
+						"Insufficient native token balance",
 					)
 					return false
 				}
@@ -139,7 +143,7 @@ export class ContractInteractionService {
 
 			return true
 		} catch (error) {
-			console.error(`Error checking token balances:`, error)
+			this.logger.error({ err: error }, "Error checking token balances")
 			return false
 		}
 	}
@@ -170,7 +174,7 @@ export class ContractInteractionService {
 			})
 
 			if (allowance < token.amount) {
-				console.log(`Approving ${token.address}`)
+				this.logger.info({ token: token.address }, "Approving token")
 				const gasPrice = await destClient.getGasPrice()
 
 				const tx = await walletClient.writeContract({
@@ -184,7 +188,7 @@ export class ContractInteractionService {
 				})
 
 				await destClient.waitForTransactionReceipt({ hash: tx })
-				console.log(`Approved ${token.address}`)
+				this.logger.info({ token: token.address }, "Approved token")
 			}
 		}
 	}
@@ -249,7 +253,7 @@ export class ContractInteractionService {
 			})
 			return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 		} catch (error) {
-			console.error(`Error checking if order filled:`, error)
+			this.logger.error({ err: error, orderId: order.id }, "Error checking if order filled")
 			// Default to assuming it's not filled if we can't check
 			return false
 		}
@@ -265,7 +269,7 @@ export class ContractInteractionService {
 			// Check cache first
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
 			if (cachedEstimate) {
-				console.log(`Using cached gas estimate for order ${order.id}`)
+				this.logger.debug({ orderId: order.id }, "Using cached gas estimate for order")
 				return cachedEstimate
 			}
 
@@ -291,13 +295,24 @@ export class ContractInteractionService {
 				order.destChain,
 			)
 
-			// Add 2% markup
-			postGasEstimate = postGasEstimate + (postGasEstimate * 200n) / 10000n
-
-			const postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
+			let postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
 				postGasEstimate,
 				order.sourceChain,
 				destFeeTokenDecimals,
+			)
+
+			// Add 25 cents on top of execution fees
+
+			postGasEstimateInDestFeeToken += 25n * 10n ** BigInt(destFeeTokenDecimals - 2)
+
+			this.logger.debug(
+				{
+					orderId: order.id,
+					postGasWei: postGasEstimate.toString(),
+					postGasInDestFeeToken: postGasEstimateInDestFeeToken.toString(),
+					destFeeTokenDecimals,
+				},
+				"Relayer fee estimates",
 			)
 
 			const fillOptions: FillOptions = {
@@ -336,12 +351,12 @@ export class ContractInteractionService {
 								)
 								stateDiffs.push({ slot: allowanceSlot as HexString, value: testValue })
 							} catch (e) {
-								console.warn(`Could not find allowance slot for token ${tokenAddress}`, e)
+								this.logger.warn({ tokenAddress, err: e }, "Could not find allowance slot for token")
 							}
 
 							return { address: tokenAddress, stateDiff: stateDiffs }
 						} catch (e) {
-							console.warn(`Could not find balance slot for token ${tokenAddress}`, e)
+							this.logger.warn({ tokenAddress, err: e }, "Could not find balance slot for token")
 							return null
 						}
 					}),
@@ -381,10 +396,15 @@ export class ContractInteractionService {
 					value: ethValue + protocolFeeInNativeToken,
 					stateOverride: stateOverride as any,
 				})
+				this.logger.debug(
+					{ orderId: order.id, fillGas: gas.toString(), feeMode: "native" },
+					"Estimated fill gas",
+				)
 				relayerFeeInNativeToken = protocolFeeInNativeToken
 			} catch {
-				console.warn(
-					`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
+				this.logger.warn(
+					{ chain: order.destChain },
+					"Could not estimate gas with native token fees; trying fee token",
 				)
 				const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
 
@@ -430,6 +450,10 @@ export class ContractInteractionService {
 					value: ethValue,
 					stateOverride: stateOverride as any,
 				})
+				this.logger.debug(
+					{ orderId: order.id, fillGas: gas.toString(), feeMode: "feeToken" },
+					"Estimated fill gas",
+				)
 			}
 
 			// Cache the results
@@ -448,7 +472,7 @@ export class ContractInteractionService {
 				relayerFeeInNativeToken,
 			}
 		} catch (error) {
-			console.error(`Error estimating gas:`, error)
+			this.logger.error({ err: error }, "Error estimating gas")
 			// Return a conservative estimate if we can't calculate precisely
 			return { fillGas: 3000000n, postGas: 270000n, relayerFeeInFeeToken: 10000000n, relayerFeeInNativeToken: 0n }
 		}
@@ -770,7 +794,7 @@ export class ContractInteractionService {
 
 			return maxUint256
 		} catch (error) {
-			console.warn("V2 quote failed:", error)
+			this.logger.warn({ err: error }, "V2 quote failed")
 			return maxUint256
 		}
 	}
@@ -838,7 +862,7 @@ export class ContractInteractionService {
 					}
 				}
 			} catch (error) {
-				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
+				this.logger.warn({ fee, err: error }, "V3 quote failed; continuing")
 			}
 		}
 
@@ -892,12 +916,12 @@ export class ContractInteractionService {
 				const amountIn = quoteResult[0]
 
 				if (amountIn < bestAmountIn) {
-					console.log("Found a better amountIn with fee", amountIn, fee)
+					this.logger.debug({ amountIn: amountIn.toString(), fee }, "Found a better V4 quote")
 					bestAmountIn = amountIn
 					bestFee = fee
 				}
 			} catch (error) {
-				console.warn(`V4 quote failed for fee ${fee}, continuing to next fee tier`)
+				this.logger.warn({ fee, err: error }, "V4 quote failed; continuing")
 			}
 		}
 

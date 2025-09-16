@@ -15,6 +15,8 @@ import {
 	FillerConfig as FillerServiceConfig,
 	CoinGeckoConfig,
 } from "../services/FillerConfigService.js"
+import { getLogger } from "../services/Logger.js"
+const logger = getLogger("cli")
 
 // Get package.json path
 const __filename = fileURLToPath(import.meta.url)
@@ -61,17 +63,17 @@ program
 	.requiredOption("-c, --config <path>", "Path to TOML configuration file")
 	.action(async (options: { config: string }) => {
 		try {
-			console.log("🚀 Starting Hyperbridge IntentGateway Filler...")
+			logger.info("Starting Hyperbridge IntentGateway Filler...")
 
 			const configPath = resolve(process.cwd(), options.config)
-			console.log(`📄 Loading configuration from: ${configPath}`)
+			logger.info({ configPath }, "Loading configuration")
 
 			const tomlContent = readFileSync(configPath, "utf-8")
 			const config = parse(tomlContent) as FillerTomlConfig
 
 			validateConfig(config)
 
-			console.log("🔧 Initializing services...")
+			logger.info("Initializing services...")
 
 			const fillerChainConfigs: UserProvidedChainConfig[] = config.chains.map((chain) => ({
 				chainId: chain.chainId,
@@ -108,7 +110,7 @@ program
 			}
 
 			// Initialize strategies
-			console.log("🎯 Initializing strategies...")
+			logger.info("Initializing strategies...")
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
 					case "basic":
@@ -121,26 +123,29 @@ program
 			})
 
 			// Initialize and start the intent filler
-			console.log("🏃 Starting intent filler...")
+			logger.info("Starting intent filler...")
 			const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig, configService)
 			// Start the filler
 			intentFiller.start()
 
-			console.log("✨ Intent filler is running...")
-			console.log("📊 Configuration:")
-			console.log(`   - Chains: ${config.chains.map((c) => `Chain ${c.chainId}`).join(", ")}`)
-			console.log(`   - Strategies: ${config.strategies.map((s) => s.type).join(", ")}`)
-			console.log(`   - Max concurrent orders: ${config.filler.maxConcurrentOrders}`)
+			logger.info(
+				{
+					chains: config.chains.map((c) => c.chainId),
+					strategies: config.strategies.map((s) => s.type),
+					maxConcurrentOrders: config.filler.maxConcurrentOrders,
+				},
+				"Intent filler is running",
+			)
 
 			// Handle graceful shutdown
 			process.on("SIGINT", () => {
-				console.log("\n🛑 Shutting down intent filler...")
+				logger.warn("Shutting down intent filler (SIGINT)...")
 				intentFiller.stop()
 				process.exit(0)
 			})
 
 			process.on("SIGTERM", () => {
-				console.log("\n🛑 Shutting down intent filler...")
+				logger.warn("Shutting down intent filler (SIGTERM)...")
 				intentFiller.stop()
 				process.exit(0)
 			})
@@ -148,7 +153,7 @@ program
 			// Keep the process running
 			process.stdin.resume()
 		} catch (error) {
-			console.error("❌ Failed to start filler:", error)
+			logger.error({ err: error }, "Failed to start filler")
 			process.exit(1)
 		}
 	})
