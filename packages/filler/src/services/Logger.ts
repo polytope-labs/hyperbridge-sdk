@@ -16,7 +16,8 @@ const baseLogger = pino({
 				options: {
 					colorize: true,
 					singleLine: true,
-					ignore: "pid,hostname",
+					ignore: "pid,hostname,moduleTag",
+					messageFormat: "{moduleTag}: {msg}",
 				},
 			}
 		: undefined,
@@ -26,7 +27,7 @@ export function getLogger(moduleOrOptions?: string | LoggerOptions) {
 	const options: LoggerOptions =
 		typeof moduleOrOptions === "string" ? { module: moduleOrOptions } : moduleOrOptions || {}
 	if (options.module) {
-		return baseLogger.child({ module: options.module })
+		return baseLogger.child({ moduleTag: `[${options.module}]` })
 	}
 	return baseLogger
 }

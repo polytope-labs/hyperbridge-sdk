@@ -215,7 +215,7 @@ export class IntentGateway {
 
 		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
-		const SWAP_OPERATIONS_BPS = 2500n
+		const SWAP_OPERATIONS_BPS = 3500n
 		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
 		const totalFeeTokenAmount = totalEstimate + swapOperationsInFeeToken
 
