@@ -72,7 +72,7 @@ export class IntentGateway {
 		)
 
 		const relayerFeeInSourceFeeToken =
-			postGasEstimateInSourceFeeToken + 25n * 10n ** BigInt(Math.max(0, sourceChainFeeTokenDecimals - 2))
+			postGasEstimateInSourceFeeToken + 25n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
 
 		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,
