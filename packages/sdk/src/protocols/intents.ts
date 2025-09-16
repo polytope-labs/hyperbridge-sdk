@@ -59,6 +59,7 @@ export class IntentGateway {
 
 		const { decimals: sourceChainFeeTokenDecimals, address: sourceChainFeeTokenAddress } =
 			await this.source.getFeeTokenWithDecimals()
+
 		const { address: destChainFeeTokenAddress, decimals: destChainFeeTokenDecimals } =
 			await this.dest.getFeeTokenWithDecimals()
 
@@ -70,9 +71,8 @@ export class IntentGateway {
 			sourceChainFeeTokenDecimals,
 		)
 
-		const RELAYER_FEE_BPS = 200n
 		const relayerFeeInSourceFeeToken =
-			postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * RELAYER_FEE_BPS) / 10000n
+			postGasEstimateInSourceFeeToken + 25n * 10n ** BigInt(Math.max(0, sourceChainFeeTokenDecimals - 2))
 
 		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,

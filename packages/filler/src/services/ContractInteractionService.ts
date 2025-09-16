@@ -291,14 +291,15 @@ export class ContractInteractionService {
 				order.destChain,
 			)
 
-			// Add 2% markup
-			postGasEstimate = postGasEstimate + (postGasEstimate * 200n) / 10000n
-
-			const postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
+			let postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
 				postGasEstimate,
 				order.sourceChain,
 				destFeeTokenDecimals,
 			)
+
+			// Add 25 cents on top of execution fees
+
+			postGasEstimateInDestFeeToken += 25n * 10n ** BigInt(Math.max(0, destFeeTokenDecimals - 2))
 
 			const fillOptions: FillOptions = {
 				relayerFee: postGasEstimateInDestFeeToken,
