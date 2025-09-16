@@ -42,4 +42,4 @@ export { handleSubstrateGetRequestHandledEvent } from "@/handlers/events/substra
 export { handleSubstrateGetRequestTimeoutHandledEvent } from "@/handlers/events/substrateChains/handleGetRequestTimeoutHandledEvent.handler"
 
 // Price Handlers
-export { handlePriceIndexing } from "@/handlers/events/price/handlePriceIndexing.event.handler"
+export { handlePriceAndTokenSupplyIndexing } from "@/handlers/events/price/handlePriceAndSupplyIndexing.event.handler"

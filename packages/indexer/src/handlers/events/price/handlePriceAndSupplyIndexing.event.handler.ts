@@ -3,11 +3,12 @@ import { wrap } from "@/utils/event.utils"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { TokenPriceService } from "@/services/token-price.service"
+import { BridgeTokenSupplyService } from "@/services/bridgeTokenSupply.service"
 
 /**
  * Handle Price Indexing for all registered tokens on a supported chain
  */
-export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
+export const handlePriceAndTokenSupplyIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
 	try {
 		const chain = getHostStateMachine(chainId)
 
@@ -25,8 +26,10 @@ export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<v
 		await TokenPriceService.initializePriceIndexing(timestamp)
 
 		logger.info(`Price update completed for chain: ${chain}`)
+
+		await BridgeTokenSupplyService.updateTokenSupply(timestamp)
 	} catch (error) {
 		// @ts-ignore
-		logger.error(`[handlePriceIndexing] failed ${error.message}`)
+		logger.error(`[handlePriceAndTokenSupplyIndexing] failed ${error.message}`)
 	}
 })
