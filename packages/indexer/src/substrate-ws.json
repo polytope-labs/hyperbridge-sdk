@@ -1,5 +1,0 @@
-{
-  "POLKADOT-3367": "ws://0.0.0.0:9123",
-  "POLKADOT-2030": "wss://bifrost-polkadot.ibp.network",
-  "SUBSTRATE-cere": "wss://archive.mainnet.cere.network/ws"
-}
