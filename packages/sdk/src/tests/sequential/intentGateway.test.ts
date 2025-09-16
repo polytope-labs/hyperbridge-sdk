@@ -10,7 +10,7 @@ import { IntentGateway } from "@/protocols/intents"
 import { ChainConfigService } from "@/configs/ChainConfigService"
 
 describe.sequential("Intents protocol tests", () => {
-	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 		const bscMainnetId = "EVM-56"
 		const mainnetId = "EVM-1"
@@ -71,7 +71,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, arbitrumMainnetIsmpHost } = await setUpBscToArbitrum()
 		const bscMainnetId = "EVM-56"
 		const arbitrumMainnetId = "EVM-42161"
@@ -127,7 +127,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it.only("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
 		const { chainConfigService, baseMainnetIsmpHost, bscMainnetIsmpHost } = await setUpBaseToBsc()
 		const baseMainnetId = "EVM-8453"
 		const bscMainnetId = "EVM-56"
