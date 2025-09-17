@@ -27,6 +27,6 @@ export const handlePriceIndexing = wrap(async (event: SubstrateBlock): Promise<v
 		logger.info(`Price update completed for chain: ${chain}`)
 	} catch (error) {
 		// @ts-ignore
-		logger.error(`[handlePriceAndTokenSupplyIndexing] failed ${error.message}`)
+		logger.error(`[handlePriceIndexing] failed ${error.message}`)
 	}
 })
