@@ -81,7 +81,7 @@ export class StableSwapFiller implements FillerStrategy {
 	 * Calculates the USD value of the order's inputs, outputs, fees and compares
 	 * what will the filler receive and what will the filler pay
 	 * @param order The order to calculate the USD value for
-	 * @returns The profit in USD (BigInt)
+	 * @returns The profit in USD (Number)
 	 */
 	async calculateProfitability(order: Order): Promise<number> {
 		try {
