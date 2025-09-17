@@ -2,13 +2,12 @@ import { SubstrateBlock } from "@subql/types"
 import { wrap } from "@/utils/event.utils"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
-import { TokenPriceService } from "@/services/token-price.service"
 import { BridgeTokenSupplyService } from "@/services/bridgeTokenSupply.service"
 
 /**
- * Handle Price Indexing for all registered tokens on a supported chain
+ * Handle Bridge Token Supply Indexing for Hyperbridge token
  */
-export const handlePriceAndTokenSupplyIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
+export const handleBridgeTokenSupplyIndexing = wrap(async (event: SubstrateBlock): Promise<void> => {
 	try {
 		const chain = getHostStateMachine(chainId)
 
@@ -21,15 +20,13 @@ export const handlePriceAndTokenSupplyIndexing = wrap(async (event: SubstrateBlo
 		const blockHash = hash.toHex()
 		const timestamp = await getBlockTimestamp(blockHash, chain)
 
-		logger.info(`[handlePriceIndexing] Updating prices ${timestamp} via ${chain}`)
-
-		await TokenPriceService.initializePriceIndexing(timestamp)
-
-		logger.info(`Price update completed for chain: ${chain}`)
+		logger.info(`[handleBridgeTokenSupplyIndexing] Updating bridge token supply ${timestamp} via ${chain}`)
 
 		await BridgeTokenSupplyService.updateTokenSupply(timestamp)
+
+		logger.info(`Bridge token supply update completed for chain: ${chain}`)
 	} catch (error) {
 		// @ts-ignore
-		logger.error(`[handlePriceAndTokenSupplyIndexing] failed ${error.message}`)
+		logger.error(`[handleBridgeTokenSupplyIndexing] failed ${error.message}`)
 	}
 })

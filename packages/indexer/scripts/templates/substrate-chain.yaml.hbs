@@ -17,9 +17,13 @@ dataSources:
           filter:
             module: xcmGateway
             method: AssetTeleported
+        - handler: handleBridgeTokenSupplyIndexing
+          kind: substrate/BlockHandler
+          filter:
+            modulo: 3600 # Indexings 1 block every 6 hours (6 seconds per block indexing).
 {{/if}}
 {{#if enablePriceIndexing}}
-        - handler: handlePriceAndTokenSupplyIndexing
+        - handler: handlePriceIndexing
           kind: substrate/BlockHandler
           filter:
             modulo: 10 # Indexings 1 block every minute (6 seconds per block indexing).
