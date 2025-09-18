@@ -385,6 +385,28 @@ export const TimeoutMessage = Enum({
 	}),
 })
 
+export const GetRequestsWithProof = Struct({
+	/*
+	 * Requests to be fetched
+	 */
+	requests: Vector(GetRequest),
+
+	/*
+	 * Membership batch proof for these requests
+	 */
+	source: Proof,
+
+	/*
+	 * Storage proof for these responses
+	 */
+	response: Proof,
+
+	/*
+	 * Signer information. Ideally should be their account identifier
+	 */
+	signer: Vector(u8),
+})
+
 export const Message = Enum({
 	/*
 	 * A consensus update message
