@@ -17,7 +17,6 @@ import UniswapV3Factory from "@/abis/uniswapV3Factory"
 import UniswapV3Pool from "@/abis/uniswapV3Pool"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
-import { type PublicClient } from "viem"
 import { EvmChain } from "@/chains/evm"
 
 /**
@@ -202,22 +201,21 @@ export class IntentGateway {
 		)
 
 		const protocolFeeInSourceFeeToken = adjustFeeDecimals(
-			// Following baseIsmpModule.sol, the protocol fee is added to the relayer fee
-			(await this.dest.quote(postRequest)) + relayerFeeInDestFeeToken,
+			await this.dest.quote(postRequest),
 			destChainFeeTokenDecimals,
 			sourceChainFeeTokenDecimals,
 		)
 
-		const totalEstimate = fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
+		let totalEstimateInSourceFeeToken =
+			fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
-		const SWAP_OPERATIONS_BPS = 3500n
-		const swapOperationsInFeeToken = (totalEstimate * SWAP_OPERATIONS_BPS) / 10000n
-		const totalFeeTokenAmount = totalEstimate + swapOperationsInFeeToken
+		let totalNativeTokenAmount = await this.convertFeeTokenToNative(totalEstimateInSourceFeeToken, "source")
 
-		const totalNativeTokenAmount = await this.convertFeeTokenToNative(totalFeeTokenAmount, "source")
+		// 1.5% buffer to avoid close call with filler's internal calculations
+		totalNativeTokenAmount = totalNativeTokenAmount + (totalNativeTokenAmount * 150n) / 10000n
 
 		return {
-			feeTokenAmount: totalFeeTokenAmount,
+			feeTokenAmount: totalEstimateInSourceFeeToken,
 			nativeTokenAmount: totalNativeTokenAmount,
 			postRequestCalldata,
 		}

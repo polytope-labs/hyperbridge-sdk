@@ -575,7 +575,7 @@ export class ContractInteractionService {
 	 * multiplied by the size of the request body.
 	 *
 	 * @param request - The post request to calculate the fee for
-	 * @returns The total fee in wei required to send the post request
+	 * @returns The total fee in fee token required to send the post request
 	 */
 	async quote(order: Order): Promise<bigint> {
 		const { destClient } = this.clientManager.getClientsForOrder(order)
