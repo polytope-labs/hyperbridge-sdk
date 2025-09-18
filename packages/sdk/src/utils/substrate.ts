@@ -251,6 +251,10 @@ export const GetRequest = Struct({
 	 */
 	keys: Vector(Vector(u8)),
 	/*
+	 * The height of the state machine
+	 */
+	height: u64,
+	/*
 	 * Some application-specific metadata relating to this request
 	 */
 	context: Vector(u8),
