@@ -7,6 +7,7 @@ import {
 	MOCK_ADDRESS,
 	ERC20Method,
 	adjustFeeDecimals,
+	fetchPrice,
 } from "@/utils"
 import { maxUint256, toHex } from "viem"
 import { DispatchPost, type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
@@ -136,6 +137,7 @@ export class IntentGateway {
 		]
 
 		let destChainFillGas = 0n
+		let filledWithNativeToken = false
 
 		try {
 			let protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken)
@@ -152,6 +154,7 @@ export class IntentGateway {
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
 			})
+			filledWithNativeToken = true
 		} catch {
 			console.warn(
 				`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
@@ -209,10 +212,16 @@ export class IntentGateway {
 		let totalEstimateInSourceFeeToken =
 			fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
+		if (!filledWithNativeToken) {
+			// Testnet block
+			totalEstimateInSourceFeeToken =
+				totalEstimateInSourceFeeToken + (totalEstimateInSourceFeeToken * 200n) / 10000n
+		}
+
 		let totalNativeTokenAmount = await this.convertFeeTokenToNative(totalEstimateInSourceFeeToken, "source")
 
-		// 1.5% buffer to avoid close call with filler's internal calculations
-		totalNativeTokenAmount = totalNativeTokenAmount + (totalNativeTokenAmount * 150n) / 10000n
+		// 2% buffer to avoid close call with filler's internal calculations
+		totalNativeTokenAmount = totalNativeTokenAmount + (totalNativeTokenAmount * 200n) / 10000n
 
 		return {
 			feeTokenAmount: totalEstimateInSourceFeeToken,
@@ -237,15 +246,28 @@ export class IntentGateway {
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[getQuoteIn].getFeeTokenWithDecimals()
 
-		const { amountOut } = await this.findBestProtocolWithAmountIn(
-			getQuoteIn,
-			feeToken.address,
-			wethAsset,
-			feeTokenAmount,
-			"v2",
-		)
+		try {
+			const { amountOut } = await this.findBestProtocolWithAmountIn(
+				getQuoteIn,
+				feeToken.address,
+				wethAsset,
+				feeTokenAmount,
+				"v2",
+			)
 
-		return amountOut
+			if (amountOut === 0n) {
+				throw new Error()
+			}
+			return amountOut
+		} catch {
+			// Testnet block
+			const nativeCurrency = client.chain?.nativeCurrency
+			const chainId = client.chain?.id
+			const feeTokenAmountNumber = Number(feeTokenAmount) / Math.pow(10, feeToken.decimals)
+			const nativeTokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
+			const totalCostInNativeToken = feeTokenAmountNumber / nativeTokenPriceUsd
+			return BigInt(Math.floor(totalCostInNativeToken * Math.pow(10, nativeCurrency?.decimals!)))
+		}
 	}
 
 	/**
@@ -266,15 +288,29 @@ export class IntentGateway {
 		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
 
-		const { amountOut } = await this.findBestProtocolWithAmountIn(
-			gasEstimateIn,
-			wethAddr,
-			feeToken.address,
-			gasCostInWei,
-			"v2",
-		)
-
-		return amountOut
+		try {
+			const { amountOut } = await this.findBestProtocolWithAmountIn(
+				gasEstimateIn,
+				wethAddr,
+				feeToken.address,
+				gasCostInWei,
+				"v2",
+			)
+			if (amountOut === 0n) {
+				throw new Error()
+			}
+			return amountOut
+		} catch {
+			// Testnet block
+			const nativeCurrency = client.chain?.nativeCurrency
+			const chainId = client.chain?.id
+			const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeCurrency?.decimals!)
+			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
+			const gasCostUsd = gasCostInToken * tokenPriceUsd
+			const feeTokenPriceUsd = await fetchPrice("DAI")
+			const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
+			return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, 18)))
+		}
 	}
 
 	async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
