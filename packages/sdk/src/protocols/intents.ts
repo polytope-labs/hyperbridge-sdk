@@ -9,7 +9,7 @@ import {
 	adjustFeeDecimals,
 	fetchPrice,
 } from "@/utils"
-import { maxUint256, toHex } from "viem"
+import { formatUnits, maxUint256, parseUnits, toHex } from "viem"
 import { DispatchPost, type FillOptions, type HexString, type IPostRequest, type Order } from "@/types"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapV2Factory from "@/abis/uniswapV2Factory"
@@ -19,6 +19,7 @@ import UniswapV3Pool from "@/abis/uniswapV3Pool"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
 import { EvmChain } from "@/chains/evm"
+import { Decimal } from "decimal.js"
 
 /**
  * IntentGateway handles cross-chain intent operations between EVM chains.
@@ -235,8 +236,7 @@ export class IntentGateway {
 	 * Uses USD pricing to convert between fee token amounts and native token costs.
 	 *
 	 * @param feeTokenAmount - The amount in fee token (DAI)
-	 * @param publicClient - The client for the chain to get native token info
-	 * @param feeTokenDecimals - The decimal places of the fee token
+	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the conversion
 	 * @returns The fee token amount converted to native token amount
 	 * @private
 	 */
@@ -263,10 +263,10 @@ export class IntentGateway {
 			// Testnet block
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = client.chain?.id
-			const feeTokenAmountNumber = Number(feeTokenAmount) / Math.pow(10, feeToken.decimals)
-			const nativeTokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
-			const totalCostInNativeToken = feeTokenAmountNumber / nativeTokenPriceUsd
-			return BigInt(Math.floor(totalCostInNativeToken * Math.pow(10, nativeCurrency?.decimals!)))
+			const feeTokenAmountDecimal = new Decimal(formatUnits(feeTokenAmount, feeToken.decimals))
+			const nativeTokenPriceUsd = new Decimal(await fetchPrice(nativeCurrency?.symbol!, chainId))
+			const totalCostInNativeToken = feeTokenAmountDecimal.dividedBy(nativeTokenPriceUsd)
+			return parseUnits(totalCostInNativeToken.toFixed(nativeCurrency?.decimals!), nativeCurrency?.decimals!)
 		}
 	}
 
@@ -275,8 +275,7 @@ export class IntentGateway {
 	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
 	 *
 	 * @param gasEstimate - The estimated gas units
-	 * @param publicClient - The client for the chain to get gas prices
-	 * @param targetDecimals - The decimal places of the target fee token
+	 * @param gasEstimateIn - Whether to use "source" or "dest" chain for the conversion
 	 * @returns The gas cost converted to fee token amount
 	 * @private
 	 */
@@ -304,15 +303,22 @@ export class IntentGateway {
 			// Testnet block
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = client.chain?.id
-			const gasCostInToken = Number(gasCostInWei) / Math.pow(10, nativeCurrency?.decimals!)
+			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
 			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
-			const gasCostUsd = gasCostInToken * tokenPriceUsd
-			const feeTokenPriceUsd = await fetchPrice("DAI")
-			const gasCostInFeeToken = gasCostUsd / feeTokenPriceUsd
-			return BigInt(Math.floor(gasCostInFeeToken * Math.pow(10, 18)))
+			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
+			const feeTokenPriceUsd = new Decimal(1) // stable coin
+			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
+			return parseUnits(gasCostInFeeToken.toFixed(feeToken.decimals), feeToken.decimals)
 		}
 	}
 
+	/**
+	 * Gets a quote for the native token cost of dispatching a post request.
+	 *
+	 * @param postRequest - The post request to quote
+	 * @param fee - The fee amount in fee token
+	 * @returns The native token amount required
+	 */
 	async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
 		const dispatchPost: DispatchPost = {
 			dest: toHex(postRequest.dest),
@@ -337,7 +343,7 @@ export class IntentGateway {
 	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given a desired output amount.
 	 * Compares liquidity and pricing across different protocols and fee tiers.
 	 *
-	 * @param chain - The chain identifier where the swap will occur
+	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the swap
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountOut - The desired output amount
@@ -543,10 +549,11 @@ export class IntentGateway {
 	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given an input amount.
 	 * Compares liquidity and pricing across different protocols and fee tiers.
 	 *
-	 * @param chain - The chain identifier where the swap will occur
+	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the swap
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountIn - The input amount to swap
+	 * @param selectedProtocol - Optional specific protocol to use ("v2", "v3", or "v4")
 	 * @returns Object containing the best protocol, expected output amount, and fee tier (for V3/V4)
 	 */
 	async findBestProtocolWithAmountIn(
