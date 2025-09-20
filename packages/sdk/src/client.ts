@@ -1556,22 +1556,14 @@ export class IndexerClient {
 	 * @param dest - The destination chain ID
 	 * @returns The asset teleported event if found, undefined otherwise
 	 */
-	async queryAssetTeleported(
-		from: string,
-		to: string,
-		dest: string,
-		blockNumber: number,
-	): Promise<AssetTeleported | undefined> {
+	async queryAssetTeleported(id: string): Promise<AssetTeleported | undefined> {
 		const response = await this.withRetry(() =>
 			this.client.request<AssetTeleportedResponse>(ASSET_TELEPORTED_BY_PARAMS, {
-				from,
-				to,
-				dest,
-				blockNumber,
+				id,
 			}),
 		)
 
-		return response.assetTeleporteds.nodes[0]
+		return response.assetTeleported
 	}
 
 	/**
