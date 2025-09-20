@@ -1,26 +1,40 @@
 import type { ApiPromise } from "@polkadot/api"
 import type { HexString } from "@/types"
 import type { SignerOptions } from "@polkadot/api/types"
-import { u8aToHex } from "@polkadot/util"
-import { decodeAddress } from "@polkadot/util-crypto"
+import { u8aToHex, hexToU8a } from "@polkadot/util"
+import { decodeAddress, keccakAsHex } from "@polkadot/util-crypto"
 import { parseUnits } from "viem"
 import type { IndexerClient } from "@/client"
-import { sleep } from "@/utils"
+import { sleep, StateMachine } from "@/utils"
+import { Bytes, Struct, Tuple, u128, u64, u8 } from "scale-ts"
+
+const MultiAccount = Struct({
+	substrate_account: Bytes(32),
+	evm_account: Bytes(20),
+	dest_state_machine: StateMachine,
+	timeout: u64,
+	account_nonce: u64,
+})
+
+const MessageEncoding = Tuple(MultiAccount, u128)
 
 export type HyperbridgeTxEvents =
 	| {
 			kind: "Ready"
 			transaction_hash: HexString
+			message_id?: HexString
 	  }
 	| {
 			kind: "Dispatched"
 			transaction_hash: HexString
 			block_number: bigint
+			message_id?: HexString
 			commitment: HexString
 	  }
 	| {
 			kind: "Finalized"
 			transaction_hash: HexString
+			message_id?: HexString
 			block_number?: bigint
 			commitment?: HexString
 	  }
@@ -90,33 +104,44 @@ export type XcmGatewayParams = {
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  */
 export async function teleportDot(param_: {
-	relayApi: ApiPromise
-	hyperbridge: ApiPromise
+	sourceApi: ApiPromise
+	sourceIsAssetHub: boolean
 	who: string
 	xcmGatewayParams: XcmGatewayParams
 	indexerClient: IndexerClient
 	pollInterval?: number
 	options: Partial<SignerOptions>
 }): Promise<ReadableStream<HyperbridgeTxEvents>> {
-	const { relayApi, hyperbridge, who, options, xcmGatewayParams: params, indexerClient, pollInterval = 2000 } = param_
+	const {
+		sourceApi,
+		sourceIsAssetHub,
+		who,
+		options,
+		xcmGatewayParams: params,
+		indexerClient,
+		pollInterval = 2000,
+	} = param_
+	let { nonce: accountNonce } = (await sourceApi.query.system.account(who)) as any
+
+	let encoded_message = MessageEncoding.enc([
+		{
+			substrate_account: decodeAddress(who),
+			evm_account: hexToU8a(params.recipient),
+			dest_state_machine: { tag: "Evm", value: params.destination },
+			timeout: params.timeout,
+			account_nonce: accountNonce,
+		},
+		parseUnits(params.amount.toString(), DECIMALS),
+	])
+
+	let message_id = keccakAsHex(encoded_message)
 
 	// Set up the transaction parameters
-	const destination = {
-		V3: {
-			parents: 0,
-			interior: {
-				X1: {
-					Parachain: params.paraId,
-				},
-			},
-		},
-	}
-
 	const beneficiary = {
 		V3: {
 			parents: 0,
 			interior: {
-				X3: [
+				X4: [
 					{
 						AccountId32: {
 							id: u8aToHex(decodeAddress(who)),
@@ -136,39 +161,83 @@ export async function teleportDot(param_: {
 					{
 						GeneralIndex: params.timeout,
 					},
+					{
+						GeneralIndex: accountNonce,
+					},
 				],
 			},
 		},
 	}
-	const assets = {
-		V3: [
-			{
-				id: {
-					Concrete: {
-						parents: 0,
-						interior: "Here",
+
+	let assets
+	let destination
+
+	if (sourceIsAssetHub) {
+		destination = {
+			V3: {
+				parents: 1,
+				interior: {
+					X1: {
+						Parachain: params.paraId,
 					},
 				},
-				fun: {
-					Fungible: parseUnits(params.amount.toString(), DECIMALS),
+			},
+		}
+
+		assets = {
+			V3: [
+				{
+					id: {
+						Concrete: {
+							parents: 1,
+							interior: "Here",
+						},
+					},
+					fun: {
+						Fungible: parseUnits(params.amount.toString(), DECIMALS),
+					},
+				},
+			],
+		}
+	} else {
+		destination = {
+			V3: {
+				parents: 0,
+				interior: {
+					X1: {
+						Parachain: params.paraId,
+					},
 				},
 			},
-		],
+		}
+
+		assets = {
+			V3: [
+				{
+					id: {
+						Concrete: {
+							parents: 0,
+							interior: "Here",
+						},
+					},
+					fun: {
+						Fungible: parseUnits(params.amount.toString(), DECIMALS),
+					},
+				},
+			],
+		}
 	}
 
 	const feeAssetItem = 0
 	const weightLimit = "Unlimited"
 
-	const tx = relayApi.tx.xcmPallet.limitedReserveTransferAssets(
+	const tx = sourceApi.tx.xcmPallet.limitedReserveTransferAssets(
 		destination,
 		beneficiary,
 		assets,
 		feeAssetItem,
 		weightLimit,
 	)
-
-	const finalized_hash = await hyperbridge.rpc.chain.getFinalizedHead()
-	const hyperbridgeBlock = (await hyperbridge.rpc.chain.getHeader(finalized_hash)).number.toNumber()
 
 	let closed = false
 	// Create the stream to report events
@@ -196,11 +265,9 @@ export async function teleportDot(param_: {
 							controller.enqueue({
 								kind: "Ready",
 								transaction_hash: txHash.toHex(),
+								message_id,
 							})
 						} else if (status.isInBlock || status.isFinalized) {
-							// Get the sender address in hex format for the indexer query
-							const decodedWho = u8aToHex(decodeAddress(who, false))
-
 							// Poll the indexer until we find the AssetTeleported event
 							let assetTeleported = undefined
 							let attempts = 0
@@ -219,12 +286,7 @@ export async function teleportDot(param_: {
 							while (!assetTeleported && attempts < maxAttempts) {
 								await sleep(pollInterval)
 
-								assetTeleported = await indexerClient.queryAssetTeleported(
-									decodedWho,
-									params.recipient.toLowerCase(),
-									params.destination.toString(),
-									hyperbridgeBlock,
-								)
+								assetTeleported = await indexerClient.queryAssetTeleported(message_id)
 
 								attempts++
 							}
@@ -246,7 +308,8 @@ export async function teleportDot(param_: {
 								kind: "Finalized",
 								transaction_hash: txHash.toHex(),
 								block_number: blockNumber,
-								commitment: commitment,
+								commitment,
+								message_id,
 							})
 
 							// We can end the stream because indexer only indexes finalized events from hyperbridge
