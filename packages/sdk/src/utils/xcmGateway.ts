@@ -231,13 +231,25 @@ export async function teleportDot(param_: {
 	const feeAssetItem = 0
 	const weightLimit = "Unlimited"
 
-	const tx = sourceApi.tx.xcmPallet.limitedReserveTransferAssets(
-		destination,
-		beneficiary,
-		assets,
-		feeAssetItem,
-		weightLimit,
-	)
+	let tx
+
+	if (sourceIsAssetHub) {
+		tx = sourceApi.tx.polkadotXcm.limitedReserveTransferAssets(
+			destination,
+			beneficiary,
+			assets,
+			feeAssetItem,
+			weightLimit,
+		)
+	} else {
+		tx = sourceApi.tx.xcmPallet.limitedReserveTransferAssets(
+			destination,
+			beneficiary,
+			assets,
+			feeAssetItem,
+			weightLimit,
+		)
+	}
 
 	let closed = false
 	// Create the stream to report events
@@ -245,7 +257,7 @@ export async function teleportDot(param_: {
 	const stream = new ReadableStream<HyperbridgeTxEvents>(
 		{
 			async start(controller) {
-				unsubscribe = await tx.signAndSend(who, options, async (result) => {
+				unsubscribe = await tx.signAndSend(who, options, async (result: any) => {
 					try {
 						const { status, dispatchError, txHash } = result
 
