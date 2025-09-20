@@ -16,8 +16,6 @@ const MultiAccount = Struct({
 	account_nonce: u64,
 })
 
-const MessageEncoding = Tuple(MultiAccount, u128)
-
 export type HyperbridgeTxEvents =
 	| {
 			kind: "Ready"
@@ -123,16 +121,13 @@ export async function teleportDot(param_: {
 	} = param_
 	let { nonce: accountNonce } = (await sourceApi.query.system.account(who)) as any
 
-	let encoded_message = MessageEncoding.enc([
-		{
-			substrate_account: decodeAddress(who),
-			evm_account: hexToU8a(params.recipient),
-			dest_state_machine: { tag: "Evm", value: params.destination },
-			timeout: params.timeout,
-			account_nonce: accountNonce,
-		},
-		parseUnits(params.amount.toString(), DECIMALS),
-	])
+	let encoded_message = MultiAccount.enc({
+		substrate_account: decodeAddress(who),
+		evm_account: hexToU8a(params.recipient),
+		dest_state_machine: { tag: "Evm", value: params.destination },
+		timeout: params.timeout,
+		account_nonce: accountNonce,
+	})
 
 	let message_id = keccakAsHex(encoded_message)
 
