@@ -118,7 +118,7 @@ query StateMachineUpdatesByTimestamp($statemachineId: String!, $commitmentTimest
 `
 
 export const ASSET_TELEPORTED_BY_PARAMS = `
-query AssetTeleportedByParams(id: String!) {
+query AssetTeleportedByParams($id: String!) {
   assetTeleported(id: $id) {
       id
       from
