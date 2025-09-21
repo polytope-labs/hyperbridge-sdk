@@ -26,7 +26,7 @@ import type { KeyringPair } from "@polkadot/keyring/types"
 import type { SignerPayloadRaw } from "@polkadot/types/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { normalizeTimestamp, postRequestCommitment } from "@/utils"
-import { createQueryClient } from "@/query-client"
+import { createQueryClient, queryAssetTeleported } from "@/query-client"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 const query_client = createQueryClient({
@@ -99,8 +99,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
-				indexerClient: indexer,
-				pollInterval: 2000,
 			})
 
 			for await (const event of result) {
@@ -115,8 +113,7 @@ describe.sequential("Hyperbridge Requests", () => {
 
 				if (event.kind === "Finalized") {
 					// Verify that required fields are present
-					expect(event.commitment).toBeDefined()
-					expect(event.block_number).toBeDefined()
+					expect(event.message_id).toBeDefined()
 					console.log(event)
 				}
 			}
@@ -153,8 +150,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
-				indexerClient: indexer,
-				pollInterval: 2000,
 			})
 
 			let commitment
@@ -169,7 +164,9 @@ describe.sequential("Hyperbridge Requests", () => {
 
 				if (event.kind === "Finalized") {
 					console.log(event)
-					commitment = event.commitment
+					expect(event.message_id).toBeDefined()
+					commitment = (await queryAssetTeleported({ id: event.message_id!, queryClient: query_client }))
+						?.commitment! as HexString
 					break
 				}
 			}
@@ -259,8 +256,6 @@ describe.sequential("Hyperbridge Requests", () => {
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
-				indexerClient: indexer,
-				pollInterval: 2000,
 			})
 
 			let commitment
@@ -275,7 +270,9 @@ describe.sequential("Hyperbridge Requests", () => {
 
 				if (event.kind === "Finalized") {
 					console.log(event)
-					commitment = event.commitment
+					expect(event.message_id).toBeDefined()
+					commitment = (await queryAssetTeleported({ id: event.message_id!, queryClient: query_client }))
+						?.commitment! as HexString
 					break
 				}
 			}
@@ -499,7 +496,6 @@ describe.sequential("Hyperbridge Requests", () => {
 			who: bob.address,
 			options: { signer },
 			xcmGatewayParams: params,
-			indexerClient: indexer,
 		})
 
 		let hyp_commitment
@@ -514,7 +510,9 @@ describe.sequential("Hyperbridge Requests", () => {
 
 			if (event.kind === "Finalized") {
 				console.log(event)
-				hyp_commitment = event.commitment
+				expect(event.message_id).toBeDefined()
+				hyp_commitment = (await queryAssetTeleported({ id: event.message_id!, queryClient: query_client }))
+					?.commitment! as HexString
 				break
 			}
 		}

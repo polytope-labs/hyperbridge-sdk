@@ -4,7 +4,6 @@ import type { SignerOptions } from "@polkadot/api/types"
 import { u8aToHex, hexToU8a } from "@polkadot/util"
 import { decodeAddress, keccakAsHex } from "@polkadot/util-crypto"
 import { parseUnits } from "viem"
-import type { IndexerClient } from "@/client"
 import { sleep, StateMachine } from "@/utils"
 import { Bytes, Struct, Tuple, u128, u64, u8 } from "scale-ts"
 
@@ -106,19 +105,9 @@ export async function teleportDot(param_: {
 	sourceIsAssetHub: boolean
 	who: string
 	xcmGatewayParams: XcmGatewayParams
-	indexerClient: IndexerClient
-	pollInterval?: number
 	options: Partial<SignerOptions>
 }): Promise<ReadableStream<HyperbridgeTxEvents>> {
-	const {
-		sourceApi,
-		sourceIsAssetHub,
-		who,
-		options,
-		xcmGatewayParams: params,
-		indexerClient,
-		pollInterval = 2000,
-	} = param_
+	const { sourceApi, sourceIsAssetHub, who, options, xcmGatewayParams: params } = param_
 	let { nonce: accountNonce } = (await sourceApi.query.system.account(who)) as any
 
 	let encoded_message = MultiAccount.enc({
@@ -275,47 +264,10 @@ export async function teleportDot(param_: {
 								message_id,
 							})
 						} else if (status.isInBlock || status.isFinalized) {
-							// Poll the indexer until we find the AssetTeleported event
-							let assetTeleported = undefined
-							let attempts = 0
-							// Calculate max attempts for 5 minutes of polling (300 seconds)
-							const maxAttempts = Math.ceil(300000 / pollInterval) // 5 minutes in milliseconds / poll interval
-
-							// If indexerClient is not defined, throw an error
-							if (!indexerClient) {
-								controller.enqueue({
-									kind: "Error",
-									error: "IndexerClient is required but not provided",
-								})
-								return
-							}
-
-							while (!assetTeleported && attempts < maxAttempts) {
-								await sleep(pollInterval)
-
-								assetTeleported = await indexerClient.queryAssetTeleported(message_id)
-
-								attempts++
-							}
-
-							if (!assetTeleported) {
-								controller.enqueue({
-									kind: "Error",
-									error: "Failed to locate AssetTeleported event in the indexer after maximum attempts",
-								})
-								return
-							}
-
-							// We found the asset teleported event through the indexer
-							const commitment = assetTeleported.commitment as HexString
-							const blockNumber = BigInt(assetTeleported.blockNumber)
-
 							// Send event with the status kind (either Dispatched or Finalized)
 							controller.enqueue({
 								kind: "Finalized",
 								transaction_hash: txHash.toHex(),
-								block_number: blockNumber,
-								commitment,
 								message_id,
 							})
 
