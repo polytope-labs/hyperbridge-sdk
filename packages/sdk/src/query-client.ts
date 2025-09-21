@@ -71,7 +71,7 @@ export async function queryAssetTeleported(params: {
 		if (response?.assetTeleported) {
 			return response.assetTeleported
 		} else {
-			sleep(2000)
+			await sleep(2000)
 		}
 	}
 }
