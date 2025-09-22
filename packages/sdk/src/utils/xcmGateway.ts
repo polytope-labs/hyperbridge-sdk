@@ -91,7 +91,7 @@ export type XcmGatewayParams = {
  * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
  * Consumers should listen for either one of these events instead of expecting both.
  *
- * @param sourceApi - Polkadot API instance connected to the relay chain
+ * @param sourceApi - Polkadot API instance connected to the relay chain or asset hub
  * @param sourceIsAssetHub - If `true` uses AssetHub Network for teleport
  * @param who - Sender's SS58Address address
  * @param options - Transaction signing options
