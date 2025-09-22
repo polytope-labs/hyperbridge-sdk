@@ -31,10 +31,8 @@ import { privateKeyToAccount } from "viem/accounts"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import erc6160 from "@/abis/erc6160"
 import handler from "@/abis/handler"
-import { ConfirmationPolicy } from "@/configs/confirmation-policy"
 import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
-import Decimal from "decimal.js"
 
 describe.sequential("Intents protocol tests", () => {
 	it.skip("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
@@ -228,7 +226,7 @@ describe("Order Cancellation tests", () => {
 			},
 			dest: {
 				consensusStateId: "ETH0",
-				rpcUrl: process.env.ETH_SEPOLIA!,
+				rpcUrl: process.env.SEPOLIA!,
 				stateMachineId: "EVM-11155111",
 				host: ethSepoliaIsmpHost.address,
 			},
@@ -267,7 +265,7 @@ describe("Order Cancellation tests", () => {
 		let ethSepoliaEvmStructParams: EvmChainParams = {
 			chainId: 11155111,
 			host: "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
-			url: process.env.ETH_SEPOLIA!,
+			url: process.env.SEPOLIA!,
 		}
 
 		let bscEvmChain = new EvmChain(bscChapelEvmStructParams) // Source Chain
@@ -555,33 +553,6 @@ async function setUpBscToSepoliaOrder() {
 	let chainConfigService = new ChainConfigService()
 	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
-	const confirmationPolicy = new ConfirmationPolicy({
-		"97": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
-			minConfirmations: 1,
-			maxConfirmations: 5,
-		},
-		"11155111": {
-			minAmount: "1000000000000000000", // 1 token
-			maxAmount: "1000000000000000000000", // 1000 tokens
-			minConfirmations: 1,
-			maxConfirmations: 5,
-		},
-	})
-
-	const fillerConfig: FillerConfig = {
-		confirmationPolicy: {
-			getConfirmationBlocks: (chainId: number, amount: number) =>
-				confirmationPolicy.getConfirmationBlocks(chainId, new Decimal(amount)),
-		},
-		maxConcurrentOrders: 5,
-		pendingQueueConfig: {
-			maxRechecks: 10,
-			recheckDelayMs: 30000,
-		},
-	}
-
 	const account = privateKeyToAccount(process.env.PRIVATE_KEY as any)
 
 	const bscChapelWalletClient = createWalletClient({
@@ -597,7 +568,7 @@ async function setUpBscToSepoliaOrder() {
 
 	const ethSepoliaPublicClient = createPublicClient({
 		chain: sepolia,
-		transport: http(process.env.ETH_SEPOLIA!),
+		transport: http(process.env.SEPOLIA!),
 	})
 
 	const bscChapelIntentGateway = getContract({
@@ -646,7 +617,6 @@ async function setUpBscToSepoliaOrder() {
 		account,
 		hyperbridge,
 		chainConfigs,
-		fillerConfig,
 		chainConfigService,
 		bscChapelId,
 		ethSepoliaIsmpHost,
