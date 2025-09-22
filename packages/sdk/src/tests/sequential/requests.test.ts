@@ -482,7 +482,7 @@ async function setUp() {
 
 	const ethSepoliaClient = createPublicClient({
 		chain: sepolia,
-		transport: http(process.env.ETH_SEPOLIA),
+		transport: http(process.env.SEPOLIA),
 	})
 
 	const bscPing = getContract({
