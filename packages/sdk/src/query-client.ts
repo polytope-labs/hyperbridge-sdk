@@ -52,13 +52,11 @@ export function queryPostRequest(params: { commitmentHash: string; queryClient: 
 
 /**
  * Query for asset teleported events by sender, recipient, and destination chain
- * @param from - The sender address
- * @param to - The recipient address
- * @param dest - The destination chain ID
+ * @param id - Encoded Message Id
  * @returns The asset teleported event if found, undefined otherwise
  */
 export async function queryAssetTeleported(params: {
-	id: string
+	id: HexString
 	queryClient: IndexerQueryClient
 }): Promise<AssetTeleported | undefined> {
 	const { id, queryClient } = params
@@ -70,9 +68,9 @@ export async function queryAssetTeleported(params: {
 
 		if (response?.assetTeleported) {
 			return response.assetTeleported
-		} else {
-			await sleep(2000)
 		}
+
+		await sleep(2000)
 	}
 }
 
