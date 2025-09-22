@@ -931,10 +931,12 @@ export class IntentGateway {
 					console.log("No receipt found. Attempting to submit...")
 					try {
 						await hyperbridge.submitUnsigned(getRequestMessage)
-						await sleep(30000)
 					} catch {
-						console.warn("Submission failed - Likely a race condition")
+						console.warn("Submission failed. Awaiting network confirmation...")
 					}
+
+					console.log("Waiting for network state update...")
+					await sleep(30000)
 
 					storageValue = await hyperbridge.api.rpc.childstate.getStorage(
 						":child_storage:default:ISMP",
@@ -942,9 +944,7 @@ export class IntentGateway {
 					)
 
 					if (storageValue.isNone) {
-						throw new Error(
-							"Failed to process GetRequest: Receipt still not present after submission attempt.",
-						)
+						throw new Error("Failed to process GetRequest: Receipt still not present after 30s wait.")
 					}
 				}
 
