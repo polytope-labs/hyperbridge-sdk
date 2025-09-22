@@ -73,8 +73,8 @@ export async function queryAssetTeleported(params: {
 		},
 		{
 			logMessage: "queryingAssetTeleported",
-			backoffMs: 2000,
-			maxRetries: 10,
+			backoffMs: 15000,
+			maxRetries: 15,
 		},
 	)
 }
