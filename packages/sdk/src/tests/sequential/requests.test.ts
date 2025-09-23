@@ -67,7 +67,7 @@ describe.sequential("Get and Post Requests", () => {
 		await hyperbridgeInstance.disconnect()
 	})
 
-	describe("Post Request", () => {
+	describe.sequential("Post Request", () => {
 		it.skip("should stream and query the timeout status", async () => {
 			const { bscTestnetClient, bscHandler, bscPing, gnosisChiadoHost } = await setUp()
 			console.log("\n\nSending Post Request\n\n")
@@ -300,7 +300,7 @@ describe.sequential("Get and Post Requests", () => {
 		}, 1_000_000)
 	})
 
-	describe("Get Request", () => {
+	describe.sequential("Get Request", () => {
 		it("should successfully stream and query the get request status", async () => {
 			const { bscTestnetClient, bscPing, ethSepoliaHost, bscIsmpHost, bscHandler } = await setUp()
 			console.log("\n\nSending Get Request\n\n")
