@@ -13,6 +13,7 @@ import {
 	sleep,
 	getRequestCommitment,
 	waitForChallengePeriod,
+	retryPromise,
 } from "@/utils"
 import { formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
 import {
@@ -868,7 +869,7 @@ export class IntentGateway {
 
 		this.destStateproofCache.set(order.id as HexString, destIProof)
 
-		yield { status: "STATE_PROOF_RECIEVED", data: { proof, height: latestHeight } }
+		yield { status: "STATE_PROOF_RECEIVED", data: { proof, height: latestHeight } }
 
 		const getRequest = (yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest | undefined
 
@@ -918,14 +919,13 @@ export class IntentGateway {
 
 				const receiptKey = hyperbridge.requestReceiptKey(commitment)
 
-				if (!hyperbridge.api) {
+				const { api } = hyperbridge
+
+				if (!api) {
 					throw new Error("Hyperbridge API is not available")
 				}
 
-				let storageValue = await hyperbridge.api.rpc.childstate.getStorage(
-					":child_storage:default:ISMP",
-					receiptKey,
-				)
+				let storageValue = await api.rpc.childstate.getStorage(":child_storage:default:ISMP", receiptKey)
 
 				if (storageValue.isNone) {
 					console.log("No receipt found. Attempting to submit...")
@@ -935,32 +935,26 @@ export class IntentGateway {
 						console.warn("Submission failed. Awaiting network confirmation...")
 					}
 
-					// Exponential backoff with 10 retries
-					const maxRetries = 10
-					const baseDelay = 5000
+					console.log("Waiting for network state update...")
+					await sleep(30000)
 
-					for (let attempt = 1; attempt <= maxRetries; attempt++) {
-						const delay = baseDelay + 5000 * (attempt - 1)
+					storageValue = await retryPromise(
+						async () => {
+							const value = await api.rpc.childstate.getStorage(":child_storage:default:ISMP", receiptKey)
 
-						console.log(`Waiting ${delay}ms before retry ${attempt}/${maxRetries}...`)
-						await sleep(delay)
+							if (value.isNone) {
+								throw new Error("Receipt not found")
+							}
 
-						storageValue = await hyperbridge.api.rpc.childstate.getStorage(
-							":child_storage:default:ISMP",
-							receiptKey,
-						)
-
-						if (!storageValue.isNone) {
-							console.log(`Receipt found after ${attempt} attempts`)
-							break
-						}
-					}
-
-					if (storageValue.isNone) {
-						throw new Error(`Failed to process GetRequest: Receipt not found after ${maxRetries} retries`)
-					}
+							return value
+						},
+						{
+							maxRetries: 10,
+							backoffMs: 5000,
+							logMessage: "Checking for receipt",
+						},
+					)
 				}
-
 				console.log("Receipt confirmed on Hyperbridge. Proceeding.")
 			}
 

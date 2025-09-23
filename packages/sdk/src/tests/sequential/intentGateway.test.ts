@@ -341,22 +341,22 @@ describe("Order Cancellation tests", () => {
 			result = await cancelGenerator.next()
 		}
 
-		if (result.done || result.value?.status !== "DESTINATION_FINALIZED") {
-			throw new Error("Failed to reach DESTINATION_FINALIZED status")
-		}
-
-		if (!result.value || !("data" in result.value) || (result.value as any).data?.height === undefined) {
-			throw new Error("DESTINATION_FINALIZED did not include a height")
-		}
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+		expect((result.value as any).data).toBeDefined()
 
 		const finalizedHeight = (result.value as any).data.height as bigint
 		console.log("DESTINATION_FINALIZED height:", finalizedHeight)
 
 		result = await cancelGenerator.next()
-		while (!result.done && result.value?.status !== "AWAITING_GET_REQUEST") {
-			console.log("Status:", result.value?.status)
-			result = await cancelGenerator.next()
-		}
+
+		expect(result.value?.status).toBe("STATE_PROOF_RECEIVED")
+		expect((result.value as any).data?.height).toBe(finalizedHeight)
+		expect((result.value as any).data?.proof).toBeDefined()
+
+		result = await cancelGenerator.next()
+
+		expect(result.done).toBe(false)
+		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
 
 		const cancelOptions = {
 			relayerFee: 10000000000n,
