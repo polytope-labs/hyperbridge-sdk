@@ -1,31 +1,34 @@
+import type { ConsolaInstance } from "consola"
 import { GraphQLClient } from "graphql-request"
-import { DEFAULT_LOGGER, REQUEST_STATUS_WEIGHTS, retryPromise } from "./utils"
+import {
+	ASSET_TELEPORTED_BY_PARAMS,
+	GET_REQUEST_STATUS,
+	ORDER_STATUS,
+	POST_REQUEST_STATUS,
+	TOKEN_GATEWAY_ASSET_TELEPORTED_STATUS,
+	TOKEN_PRICE,
+	TOKEN_REGISTRY,
+} from "./queries"
 import type {
+	AssetTeleported,
+	AssetTeleportedResponse,
 	GetRequestResponse,
 	GetRequestWithStatus,
+	HexString,
 	IndexerQueryClient,
-	RequestResponse,
-	RequestStatusKey,
-	PostRequestWithStatus,
 	OrderResponse,
 	OrderWithStatus,
+	PostRequestWithStatus,
+	RequestResponse,
+	RequestStatusKey,
 	TokenGatewayAssetTeleportedResponse,
 	TokenGatewayAssetTeleportedWithStatus,
 	TokenPrice,
 	TokenPricesResponse,
 	TokenRegistry,
 	TokenRegistryResponse,
-	HexString,
 } from "./types"
-import type { ConsolaInstance } from "consola"
-import {
-	GET_REQUEST_STATUS,
-	POST_REQUEST_STATUS,
-	ORDER_STATUS,
-	TOKEN_GATEWAY_ASSET_TELEPORTED_STATUS,
-	TOKEN_PRICE,
-	TOKEN_REGISTRY,
-} from "./queries"
+import { DEFAULT_LOGGER, REQUEST_STATUS_WEIGHTS, retryPromise, sleep } from "./utils"
 
 export function createQueryClient(config: { url: string }) {
 	return new GraphQLClient(config.url)
@@ -45,6 +48,35 @@ export function createQueryClient(config: { url: string }) {
  */
 export function queryPostRequest(params: { commitmentHash: string; queryClient: IndexerQueryClient }) {
 	return _queryRequestInternal(params)
+}
+
+/**
+ * Query for asset teleported events by sender, recipient, and destination chain
+ * @param id - Encoded Message Id
+ * @returns The asset teleported event if found, undefined otherwise
+ */
+export async function queryAssetTeleported(params: {
+	id: HexString
+	queryClient: IndexerQueryClient
+}): Promise<AssetTeleported | undefined> {
+	const { id, queryClient } = params
+
+	return await retryPromise(
+		async () => {
+			const response = await queryClient.request<AssetTeleportedResponse>(ASSET_TELEPORTED_BY_PARAMS, { id })
+
+			if (!response?.assetTeleported) {
+				throw new Error(`AssetTeleportedEvent not found for ${id}`)
+			}
+
+			return response.assetTeleported
+		},
+		{
+			logMessage: "queryingAssetTeleported",
+			backoffMs: 15000,
+			maxRetries: 15,
+		},
+	)
 }
 
 /**

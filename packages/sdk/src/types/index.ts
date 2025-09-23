@@ -492,15 +492,13 @@ export interface AssetTeleported {
 	to: string
 	amount: bigint
 	dest: string
-	commitment: string
+	commitment: HexString
 	createdAt: Date
 	blockNumber: number
 }
 
 export interface AssetTeleportedResponse {
-	assetTeleporteds: {
-		nodes: AssetTeleported[]
-	}
+	assetTeleported: AssetTeleported
 }
 
 export interface StateMachineIdParams {
