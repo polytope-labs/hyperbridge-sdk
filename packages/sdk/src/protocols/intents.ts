@@ -935,16 +935,29 @@ export class IntentGateway {
 						console.warn("Submission failed. Awaiting network confirmation...")
 					}
 
-					console.log("Waiting for network state update...")
-					await sleep(30000)
+					// Exponential backoff with 10 retries
+					const maxRetries = 10
+					const baseDelay = 5000
 
-					storageValue = await hyperbridge.api.rpc.childstate.getStorage(
-						":child_storage:default:ISMP",
-						receiptKey,
-					)
+					for (let attempt = 1; attempt <= maxRetries; attempt++) {
+						const delay = baseDelay + 5000 * (attempt - 1)
+
+						console.log(`Waiting ${delay}ms before retry ${attempt}/${maxRetries}...`)
+						await sleep(delay)
+
+						storageValue = await hyperbridge.api.rpc.childstate.getStorage(
+							":child_storage:default:ISMP",
+							receiptKey,
+						)
+
+						if (!storageValue.isNone) {
+							console.log(`Receipt found after ${attempt} attempts`)
+							break
+						}
+					}
 
 					if (storageValue.isNone) {
-						throw new Error("Failed to process GetRequest: Receipt still not present after 30s wait.")
+						throw new Error(`Failed to process GetRequest: Receipt not found after ${maxRetries} retries`)
 					}
 				}
 

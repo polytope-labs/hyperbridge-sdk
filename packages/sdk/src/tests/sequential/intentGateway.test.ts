@@ -327,15 +327,40 @@ describe("Order Cancellation tests", () => {
 
 		console.log("Order placed on BSC:", orderPlaced)
 
-		// Now cancel the order
-		const latestHeightDestChain = await hyperbridgeInstance.latestStateMachineHeight({
-			stateId: { Evm: 11155111 },
-			consensusStateId: toHex("ETH0"),
-		})
+		const hyperbridgeConfig: IHyperbridgeConfig = {
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+		}
+
+		const cancelGenerator = intentGateway.cancelOrder(order, hyperbridgeConfig, indexer)
+
+		let result = await cancelGenerator.next()
+		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			console.log("Status:", result.value?.status)
+			result = await cancelGenerator.next()
+		}
+
+		if (result.done || result.value?.status !== "DESTINATION_FINALIZED") {
+			throw new Error("Failed to reach DESTINATION_FINALIZED status")
+		}
+
+		if (!result.value || !("data" in result.value) || (result.value as any).data?.height === undefined) {
+			throw new Error("DESTINATION_FINALIZED did not include a height")
+		}
+
+		const finalizedHeight = (result.value as any).data.height as bigint
+		console.log("DESTINATION_FINALIZED height:", finalizedHeight)
+
+		result = await cancelGenerator.next()
+		while (!result.done && result.value?.status !== "AWAITING_GET_REQUEST") {
+			console.log("Status:", result.value?.status)
+			result = await cancelGenerator.next()
+		}
 
 		const cancelOptions = {
 			relayerFee: 10000000000n,
-			height: latestHeightDestChain,
+			height: finalizedHeight,
 		}
 
 		hash = await bscChapelIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
@@ -350,7 +375,7 @@ describe("Order Cancellation tests", () => {
 
 		console.log("Order cancelled on BSC:", receipt.transactionHash)
 
-		// parse EvmHost GetRequestEvent emitted in the transcation logs
+		// parse EvmHost GetRequestEvent emitted in the transaction logs
 		const event = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })[0]
 
 		if (event.eventName !== "GetRequestEvent") {
@@ -372,21 +397,7 @@ describe("Order Cancellation tests", () => {
 
 		console.log("Get Request:", getRequest)
 
-		const hyperbridgeConfig: IHyperbridgeConfig = {
-			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-			consensusStateId: "PAS0",
-			stateMachineId: "KUSAMA-4009",
-		}
-
-		const cancelGenerator = intentGateway.cancelOrder(order, hyperbridgeConfig, indexer)
-
-		let result = await cancelGenerator.next()
-
-		while (!result.done && result.value?.status !== "AWAITING_GET_REQUEST") {
-			console.log("Status:", result.value?.status)
-			result = await cancelGenerator.next()
-		}
-
+		// Resume generator with the GetRequest and continue until finalized
 		result = await cancelGenerator.next(getRequest)
 
 		console.log("Result after SOURCE FINALIZED:", result)
@@ -394,7 +405,6 @@ describe("Order Cancellation tests", () => {
 		while (!result.done) {
 			console.log("Status:", result.value?.status)
 
-			// Check if we've reached HYPERBRIDGE_FINALIZED
 			if (result.value?.status === "HYPERBRIDGE_FINALIZED") {
 				if ("metadata" in result.value && result.value.metadata) {
 					console.log(
