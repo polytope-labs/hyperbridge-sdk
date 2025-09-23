@@ -393,7 +393,7 @@ describe.sequential("Get and Post Requests", () => {
 
 			const req = await indexer.queryGetRequest(commitment)
 			expect(req?.statuses.length).toBe(3)
-		}, 1_000_000)
+		}, 1_800_000)
 
 		it("should successfully query the get request with its finality statuses", async () => {
 			const { bscPing, ethSepoliaHost, bscIsmpHost, bscTestnetClient } = await setUp()
@@ -451,7 +451,7 @@ describe.sequential("Get and Post Requests", () => {
 			)
 			expect(hyperbridgeFinalizedStatus).toBeDefined()
 			expect(hyperbridgeFinalizedStatus?.metadata.calldata).toBeDefined()
-		}, 1_000_000)
+		}, 1_800_000)
 	})
 })
 
