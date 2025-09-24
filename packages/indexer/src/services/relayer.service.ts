@@ -1,4 +1,4 @@
-import { Relayer, RelayerActivity, Transfer } from "@/configs/src/types/models"
+import { Relayer, RelayerActivity, Transfer, DailyRelayerReward } from "@/configs/src/types/models"
 import { RelayerChainStatsService } from "@/services/relayerChainStats.service"
 // import {
 //  HandlePostRequestsTransaction,
@@ -66,6 +66,39 @@ export class RelayerService {
 
 		activity.lastUpdatedAt = timestamp
 		await activity.save()
+	}
+
+	/**
+	 * Updates the total and daily rewards for a relayer.
+	 */
+	static async updateReward(relayerAddress: string, rewardAmount: bigint, timestamp: Date): Promise<void> {
+		let relayer = await Relayer.get(relayerAddress)
+		if (!relayer) {
+			relayer = Relayer.create({
+				id: relayerAddress,
+				totalRewardAmount: BigInt(0),
+			})
+		}
+
+		relayer.totalRewardAmount = (relayer.totalRewardAmount || BigInt(0)) + rewardAmount
+		await relayer.save()
+
+		const date = new Date(timestamp)
+		date.setUTCHours(0, 0, 0, 0)
+		const dailyRecordId = `${relayerAddress}-${date.toISOString().slice(0, 10)}`
+
+		let dailyReward = await DailyRelayerReward.get(dailyRecordId)
+		if (!dailyReward) {
+			dailyReward = DailyRelayerReward.create({
+				id: dailyRecordId,
+				date: date,
+				dailyRewardAmount: rewardAmount,
+				relayerId: relayerAddress,
+			})
+		} else {
+			dailyReward.dailyRewardAmount += rewardAmount
+		}
+		await dailyReward.save()
 	}
 
 	//  /**

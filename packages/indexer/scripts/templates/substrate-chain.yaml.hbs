@@ -12,6 +12,11 @@ dataSources:
       handlers:
       {{> handlers}}
 {{#if isHyperbridgeChain}}
+        - handler: handleRelayerRewardedEvent
+          kind: substrate/EventHandler
+          filter:
+            module: consensusIncentives
+            method: RelayerRewarded
         - handler: handleSubstrateAssetTeleportedEvent
           kind: substrate/EventHandler
           filter:
