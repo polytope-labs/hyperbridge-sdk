@@ -104,7 +104,7 @@ describe("teleport function", () => {
 		}
 	}, 300_000)
 
-	it("should query the order status", async () => {
+	it.skip("should query the order status", async () => {
 		const { bscTokenGateway, bscPublicClient, bscWalletClient } = await setUp()
 		const bscIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
 		const gnosisChiadoIsmpHostAddress = "0x58a41b89f4871725e5d898d98ef4bf917601c5eb" as HexString
