@@ -29,6 +29,12 @@
 		"startBlock": 9081787,
 		"stateMachineId": "POLKADOT-2086"
 	},
+	"zkverify-mainnet": {
+		"type": "substrate",
+		"chainId": "0x060e3dd3fa2904d031206bb913c954687a2bcc350e5a83d33d9e273ad21460f1",
+		"startBlock": 124841,
+		"stateMachineId": "SUBSTRATE-zkv_"
+	},
 	"ethereum-mainnet": {
 		"type": "evm",
 		"chainId": "1",
