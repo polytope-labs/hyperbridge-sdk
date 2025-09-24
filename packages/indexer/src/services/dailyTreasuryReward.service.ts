@@ -65,6 +65,9 @@ export class DailyTreasuryRewardService {
 		await record.save()
 	}
 
+	/**
+	 * Fetches reputation asset balance for a given relayer account
+	 */
 	static async getReputationAssetBalance(accountId: string): Promise<bigint> {
 		try {
 			const hyperbridgeChain = getHostStateMachine(chainId)
@@ -106,6 +109,9 @@ export class DailyTreasuryRewardService {
 		}
 	}
 
+	/**
+	 * Generates the assets account stprage key
+	 */
 	private static generateAssetsAccountStorageKey(assetId: `0x${string}`, accountId: string): string {
 		const palletHash = xxhashAsHex("Assets", 128)
 		const storageHash = xxhashAsHex("Account", 128)
