@@ -153,6 +153,10 @@ export class BasicFiller implements FillerStrategy {
 
 			if (receipt.status !== "success") {
 				this.logger.error({ txHash: receipt.transactionHash, status: receipt.status }, "Could not fill order")
+				return {
+					success: false,
+					txHash: tx,
+				}
 			}
 
 			return {
