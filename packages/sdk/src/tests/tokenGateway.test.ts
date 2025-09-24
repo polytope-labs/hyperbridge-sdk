@@ -162,9 +162,13 @@ describe("teleport function", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, erc6160, bscTokenGateway.address)
 		await dripTokensIfNeeded(bscWalletClient, bscPublicClient, amount)
 
+		let gasPrice = await bscPublicClient.getGasPrice()
+		gasPrice = gasPrice + (gasPrice * 5n) / 100n
+
 		const tx = await bscTokenGateway.write.teleport([params], {
 			account: bscWalletClient.account!,
 			chain: bscTestnet,
+			gasPrice: gasPrice,
 		})
 
 		const receipt = await bscPublicClient.waitForTransactionReceipt({
