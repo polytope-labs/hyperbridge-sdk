@@ -1,7 +1,7 @@
 import { SubstrateEvent } from "@subql/types"
 import { RelayerReward } from "@/configs/src/types"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
-import { handleRelayerRewardedEvent } from "../incentives/relayerRewarded.event.handler"
+import { handleFeeRewardedEvent } from "../incentives/feeRewarded.event.handler"
 
 jest.mock("@/configs/src/types", () => ({
 	RelayerReward: {
@@ -25,21 +25,21 @@ jest.mock("@/services/dailyTreasuryReward.service", () => ({
 const RelayerRewardMock = RelayerReward as jest.Mocked<typeof RelayerReward>
 const DailyTreasuryRewardServiceMock = DailyTreasuryRewardService as jest.Mocked<typeof DailyTreasuryRewardService>
 
-describe("handleRelayerRewardedEvent (Unit Test)", () => {
+describe("handleFeeRewardedEvent (Unit Test)", () => {
 	beforeEach(() => {
 		jest.clearAllMocks()
 	})
 
 	it("should create a new RelayerReward record if one does not exist", async () => {
 		const relayerAddress = "12rx6bPnDypLve7o89VsXDZrUioRU5Hqw8W5E9LNWZ5XEBF1"
-		const rewardAmount = BigInt(1000)
+		const rewardAmount = BigInt(2000)
 		const mockReputationBalance = BigInt(500)
 
 		const mockSave = jest.fn()
 		const mockNewEntity = {
 			id: relayerAddress,
 			relayer: relayerAddress,
-			totalConsensusRewardAmount: BigInt(0),
+			totalMessagingRewardAmount: BigInt(0),
 			totalRewardAmount: BigInt(0),
 			totalReputationAssetAmount: BigInt(0),
 			save: mockSave,
@@ -57,11 +57,11 @@ describe("handleRelayerRewardedEvent (Unit Test)", () => {
 			},
 			event: {
 				data: [{ toString: () => relayerAddress }, { toBigInt: () => rewardAmount }],
-				method: "RelayerRewarded",
+				method: "FeeRewarded",
 			},
 		} as unknown as SubstrateEvent
 
-		await handleRelayerRewardedEvent(mockEvent)
+		await handleFeeRewardedEvent(mockEvent)
 
 		expect(RelayerRewardMock.get).toHaveBeenCalledWith(relayerAddress)
 		expect(RelayerRewardMock.create).toHaveBeenCalledWith({
@@ -70,7 +70,7 @@ describe("handleRelayerRewardedEvent (Unit Test)", () => {
 
 		expect(DailyTreasuryRewardService.getReputationAssetBalance).toHaveBeenCalledWith(relayerAddress)
 
-		expect(mockNewEntity.totalConsensusRewardAmount).toBe(rewardAmount)
+		expect(mockNewEntity.totalMessagingRewardAmount).toBe(rewardAmount)
 		expect(mockNewEntity.totalRewardAmount).toBe(rewardAmount)
 		expect(mockNewEntity.totalReputationAssetAmount).toBe(mockReputationBalance)
 		expect(mockSave).toHaveBeenCalledTimes(1)
@@ -78,15 +78,15 @@ describe("handleRelayerRewardedEvent (Unit Test)", () => {
 
 	it("should update an existing RelayerReward record if one exists", async () => {
 		const relayerAddress = "12rx6bPnDypLve7o89VsXDZrUioRU5Hqw8W5E9LNWZ5XEBF1"
-		const initialAmount = BigInt(5000)
-		const newRewardAmount = BigInt(1000)
+		const initialAmount = BigInt(3000)
+		const newRewardAmount = BigInt(2000)
 		const mockReputationBalance = BigInt(500)
 
 		const mockSave = jest.fn()
 		const mockExistingEntity = {
 			id: relayerAddress,
 			relayer: relayerAddress,
-			totalConsensusRewardAmount: initialAmount,
+			totalMessagingRewardAmount: initialAmount,
 			totalRewardAmount: initialAmount,
 			totalReputationAssetAmount: BigInt(0),
 			save: mockSave,
@@ -103,11 +103,11 @@ describe("handleRelayerRewardedEvent (Unit Test)", () => {
 			},
 			event: {
 				data: [{ toString: () => relayerAddress }, { toBigInt: () => newRewardAmount }],
-				method: "RelayerRewarded",
+				method: "FeeRewarded",
 			},
 		} as unknown as SubstrateEvent
 
-		await handleRelayerRewardedEvent(mockEvent)
+		await handleFeeRewardedEvent(mockEvent)
 
 		expect(RelayerRewardMock.get).toHaveBeenCalledWith(relayerAddress)
 		expect(RelayerRewardMock.create).not.toHaveBeenCalled()
@@ -115,7 +115,7 @@ describe("handleRelayerRewardedEvent (Unit Test)", () => {
 		expect(DailyTreasuryRewardService.getReputationAssetBalance).toHaveBeenCalledWith(relayerAddress)
 
 		const expectedTotal = initialAmount + newRewardAmount
-		expect(mockExistingEntity.totalConsensusRewardAmount).toBe(expectedTotal)
+		expect(mockExistingEntity.totalMessagingRewardAmount).toBe(expectedTotal)
 		expect(mockExistingEntity.totalRewardAmount).toBe(expectedTotal)
 		expect(mockExistingEntity.totalReputationAssetAmount).toBe(mockReputationBalance)
 		expect(mockSave).toHaveBeenCalledTimes(1)

@@ -17,6 +17,11 @@ dataSources:
           filter:
             module: consensusIncentives
             method: RelayerRewarded
+        - handler: handleFeeRewardedEvent
+          kind: substrate/EventHandler
+          filter:
+            module: messagingFees
+            method: FeeRewarded
         - handler: handleSubstrateAssetTeleportedEvent
           kind: substrate/EventHandler
           filter:

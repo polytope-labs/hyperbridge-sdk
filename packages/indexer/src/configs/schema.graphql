@@ -217,17 +217,6 @@ type Relayer @entity {
 	Latest activity for this relayer
 	"""
 	latestActivity: RelayerActivity @derivedFrom(field: "relayer")
-
-	"""
-    The total amount of rewards this relayer has ever received.
-    """
-    totalRewardAmount: BigInt
-
-    """
-    A list of daily reward summaries for this relayer.
-    """
-    dailyRewards: [DailyRelayerReward] @derivedFrom(field: "relayer")
-
 }
 
 """
@@ -248,16 +237,6 @@ type RelayerActivity @entity {
 	Last updated at
 	"""
 	lastUpdatedAt: BigInt!
-}
-
-"""
-Stores the total rewards for a relayer on a specific day.
-"""
-type DailyRelayerReward @entity {
-    id: ID! # ID is: {relayerAddress}-{YYYY-MM-DD}
-    date: Date!
-    dailyRewardAmount: BigInt!
-    relayer: Relayer!
 }
 
 """
@@ -1352,7 +1331,7 @@ type BridgeTokenSupply @entity {
 }
 
 """
-Record of consensus rewards for Relayers
+Record of rewards for Relayers
 """
 type RelayerReward @entity {
 	"""
@@ -1361,42 +1340,31 @@ type RelayerReward @entity {
 	id: ID!
 
 	"""
-	The account address of the relayer who was rewarded
-	"""
-	relayer: String! @index
-
-	"""
-	The incentives amount
-	"""
-	amount: BigInt!
-
-	"""
-	A readable String identifying the state machine
-	"""
-	stateMachine: String!
-
-	"""
-	The consensus state identifier for the state machine
-	"""
-	consensusStateId: String!
-
-	"""
-    The block height of the state machine that was incentivized
+    The total amount of rewards this relayer has ever received.
     """
-    height: BigInt!
+    totalRewardAmount: BigInt
 
-	"""
-	The timestamp of the event
-	"""
-	createdAt: Date! @index
-
-	"""
-	The block in which the event occurred
-	"""
-	blockNumber: BigInt!
-
-	"""
-    The transaction hash for the incentives event
     """
-    transactionHash: String!
+    The total amount of messaging rewards this relayer has ever received.
+    """
+    totalMessagingRewardAmount: BigInt
+
+    """
+    The total amount of consensus rewards this relayer has ever received.
+    """
+    totalConsensusRewardAmount: BigInt
+
+     """
+     The total amount of reputation assets accrued.
+     """
+     totalReputationAssetAmount: BigInt
+}
+
+"""
+Record of daily relayer rewards paid out by the treasury
+"""
+type DailyTreasuryRelayerReward @entity {
+	id: ID! # ID is: {YYYY-MM-DD}
+    date: Date!
+    dailyRewardAmount: BigInt!
 }

@@ -1,18 +1,15 @@
 import { SubstrateEvent } from "@subql/types"
 import { RelayerReward } from "@/configs/src/types"
-import { wrap } from "@/utils/event.utils"
 import { Balance } from "@polkadot/types/interfaces"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 
-export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
+export async function handleFeeRewardedEvent(event: SubstrateEvent): Promise<void> {
 	const {
-		event: { data, method },
+		event: { data },
 		block,
 	} = event
-	logger.info(`Relayer Rewarded Event ${method} event at block: ${block.block.header.number.toString()}`)
 
-	const [relayer, amount, stateMachineHeight] = data
-
+	const [relayer, amount] = data
 	const relayerAddress = relayer.toString()
 	const rewardAmount = (amount as unknown as Balance).toBigInt()
 
@@ -23,9 +20,7 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 		})
 	}
 
-	logger.info(`Saving Relayer Rewarded Event ${method} event at block: ${record}`)
-
-	record.totalConsensusRewardAmount = (record.totalConsensusRewardAmount ?? BigInt(0)) + rewardAmount
+	record.totalMessagingRewardAmount = (record.totalMessagingRewardAmount ?? BigInt(0)) + rewardAmount
 	record.totalRewardAmount = (record.totalRewardAmount ?? BigInt(0)) + rewardAmount
 	record.totalReputationAssetAmount = await DailyTreasuryRewardService.getReputationAssetBalance(relayerAddress)
 
@@ -33,4 +28,4 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 
 	const timestamp = new Date(block.timestamp!)
 	await DailyTreasuryRewardService.update(timestamp, rewardAmount)
-})
+}
