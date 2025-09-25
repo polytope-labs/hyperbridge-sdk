@@ -1333,9 +1333,9 @@ type BridgeTokenSupply @entity {
 """
 Record of rewards for Relayers
 """
-type RelayerReward @entity {
+type HyperbridgeRelayerReward @entity {
 	"""
-	Unique identifier for the consensus incentive entry, {blockNumber}-{eventIndex}
+	Unique identifier for the incentive entry, this is the relayer address
 	"""
 	id: ID!
 
@@ -1354,10 +1354,10 @@ type RelayerReward @entity {
     """
     totalConsensusRewardAmount: BigInt
 
-     """
-     The total amount of reputation assets accrued.
-     """
-     totalReputationAssetAmount: BigInt
+    """
+    The balance of reputation assets accrued.
+    """
+    reputationAssetBalance: BigInt
 }
 
 """

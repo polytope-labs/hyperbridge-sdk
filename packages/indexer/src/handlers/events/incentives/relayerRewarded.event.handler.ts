@@ -1,8 +1,10 @@
 import { SubstrateEvent } from "@subql/types"
-import { RelayerReward } from "@/configs/src/types"
+import { HyperbridgeRelayerReward } from "@/configs/src/types"
 import { wrap } from "@/utils/event.utils"
 import { Balance } from "@polkadot/types/interfaces"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
 	const {
@@ -16,9 +18,9 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 	const relayerAddress = relayer.toString()
 	const rewardAmount = (amount as unknown as Balance).toBigInt()
 
-	let record = await RelayerReward.get(relayerAddress)
+	let record = await HyperbridgeRelayerReward.get(relayerAddress)
 	if (!record) {
-		record = RelayerReward.create({
+		record = HyperbridgeRelayerReward.create({
 			id: relayerAddress,
 		})
 	}
@@ -27,10 +29,11 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 
 	record.totalConsensusRewardAmount = (record.totalConsensusRewardAmount ?? BigInt(0)) + rewardAmount
 	record.totalRewardAmount = (record.totalRewardAmount ?? BigInt(0)) + rewardAmount
-	record.totalReputationAssetAmount = await DailyTreasuryRewardService.getReputationAssetBalance(relayerAddress)
+	record.reputationAssetBalance = await DailyTreasuryRewardService.getReputationAssetBalance(relayerAddress)
 
 	await record.save()
 
-	const timestamp = new Date(block.timestamp!)
-	await DailyTreasuryRewardService.update(timestamp, rewardAmount)
+	const hyperbridgeChain = getHostStateMachine(chainId)
+	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), hyperbridgeChain)
+	await DailyTreasuryRewardService.update(blockTimestamp, rewardAmount)
 })

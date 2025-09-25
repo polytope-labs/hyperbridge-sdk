@@ -1,10 +1,12 @@
 import { SubstrateEvent } from "@subql/types"
-import { RelayerReward } from "@/configs/src/types"
+import { HyperbridgeRelayerReward } from "@/configs/src/types"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 import { handleFeeRewardedEvent } from "../incentives/feeRewarded.event.handler"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 jest.mock("@/configs/src/types", () => ({
-	RelayerReward: {
+	HyperbridgeRelayerReward: {
 		get: jest.fn(),
 		create: jest.fn(),
 	},
@@ -17,12 +19,22 @@ jest.mock("@/services/dailyTreasuryReward.service", () => ({
 	},
 }))
 
+jest.mock("@/utils/rpc.helpers", () => ({
+	getBlockTimestamp: jest.fn(),
+}))
+
+jest.mock("@/utils/substrate.helpers", () => ({
+	getHostStateMachine: jest.fn(),
+}))
+
 ;(global as any).logger = {
 	info: jest.fn(),
 	error: jest.fn(),
 } as any
 
-const RelayerRewardMock = RelayerReward as jest.Mocked<typeof RelayerReward>
+;(global as any).chainId = "hyperbridge-gargantua-1234"
+
+const RelayerRewardMock = HyperbridgeRelayerReward as jest.Mocked<typeof HyperbridgeRelayerReward>
 const DailyTreasuryRewardServiceMock = DailyTreasuryRewardService as jest.Mocked<typeof DailyTreasuryRewardService>
 
 describe("handleFeeRewardedEvent (Unit Test)", () => {
@@ -41,9 +53,9 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 			relayer: relayerAddress,
 			totalMessagingRewardAmount: BigInt(0),
 			totalRewardAmount: BigInt(0),
-			totalReputationAssetAmount: BigInt(0),
+			reputationAssetBalance: BigInt(0),
 			save: mockSave,
-			_name: "RelayerReward",
+			_name: "HyperbridgeRelayerReward",
 		}
 
 		RelayerRewardMock.get.mockResolvedValue(undefined)
@@ -53,7 +65,7 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 		const mockEvent = {
 			block: {
 				timestamp: new Date(),
-				block: { header: { number: { toString: () => "12345" } } },
+				block: { header: { number: { toString: () => "12345" }, hash: { toString: () => "12345" } } },
 			},
 			event: {
 				data: [{ toString: () => relayerAddress }, { toBigInt: () => rewardAmount }],
@@ -72,7 +84,7 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 
 		expect(mockNewEntity.totalMessagingRewardAmount).toBe(rewardAmount)
 		expect(mockNewEntity.totalRewardAmount).toBe(rewardAmount)
-		expect(mockNewEntity.totalReputationAssetAmount).toBe(mockReputationBalance)
+		expect(mockNewEntity.reputationAssetBalance).toBe(mockReputationBalance)
 		expect(mockSave).toHaveBeenCalledTimes(1)
 	})
 
@@ -88,9 +100,9 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 			relayer: relayerAddress,
 			totalMessagingRewardAmount: initialAmount,
 			totalRewardAmount: initialAmount,
-			totalReputationAssetAmount: BigInt(0),
+			reputationAssetBalance: BigInt(0),
 			save: mockSave,
-			_name: "RelayerReward",
+			_name: "HyperbridgeRelayerReward",
 		}
 
 		RelayerRewardMock.get.mockResolvedValue(mockExistingEntity as any)
@@ -99,7 +111,7 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 		const mockEvent = {
 			block: {
 				timestamp: new Date(),
-				block: { header: { number: { toString: () => "12346" } } },
+				block: { header: { number: { toString: () => "12346" }, hash: { toString: () => "12345" } } },
 			},
 			event: {
 				data: [{ toString: () => relayerAddress }, { toBigInt: () => newRewardAmount }],
@@ -117,7 +129,7 @@ describe("handleFeeRewardedEvent (Unit Test)", () => {
 		const expectedTotal = initialAmount + newRewardAmount
 		expect(mockExistingEntity.totalMessagingRewardAmount).toBe(expectedTotal)
 		expect(mockExistingEntity.totalRewardAmount).toBe(expectedTotal)
-		expect(mockExistingEntity.totalReputationAssetAmount).toBe(mockReputationBalance)
+		expect(mockExistingEntity.reputationAssetBalance).toBe(mockReputationBalance)
 		expect(mockSave).toHaveBeenCalledTimes(1)
 	})
 })

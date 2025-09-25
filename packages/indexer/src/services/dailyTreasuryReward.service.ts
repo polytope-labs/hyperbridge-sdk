@@ -1,5 +1,4 @@
 import { DailyTreasuryRelayerReward } from "@/configs/src/types"
-import { ApiPromise, WsProvider } from "@polkadot/api"
 import { replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
@@ -7,6 +6,7 @@ import { Struct, u128, bool, _void } from "scale-ts"
 import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
+import { timestampToDate } from "@/utils/date.helpers"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
 
@@ -23,31 +23,13 @@ const AssetAccount = Struct({
 	extra: _void,
 })
 
-let localApiInstance: ApiPromise | null = null
-
-async function getApiInstance(): Promise<ApiPromise> {
-	if (localApiInstance && localApiInstance.isConnected) {
-		return localApiInstance
-	}
-
-	const hyperbridgeChain = getHostStateMachine(chainId)
-	const rpcUrl = ENV_CONFIG[hyperbridgeChain] || ""
-	if (!rpcUrl) {
-		throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
-	}
-
-	const provider = new WsProvider(rpcUrl)
-	localApiInstance = await ApiPromise.create({ provider })
-	await localApiInstance.isReady
-	return localApiInstance
-}
 export class DailyTreasuryRewardService {
 	/**
 	 * Finds the daily treasury reward record for a given date and adds to the amount
 	 * Creates a new record if one doesn't exist.
 	 */
-	static async update(date: Date, amount: bigint): Promise<void> {
-		const day = new Date(date)
+	static async update(date: bigint, amount: bigint): Promise<void> {
+		const day = timestampToDate(date)
 		day.setUTCHours(0, 0, 0, 0)
 		const id = day.toISOString().slice(0, 10)
 
