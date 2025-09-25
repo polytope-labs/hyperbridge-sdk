@@ -22,6 +22,11 @@ dataSources:
           filter:
             module: messagingFees
             method: FeeRewarded
+       - handler: handleTreasuryTransfer
+         kind: substrate/EventHandler
+         filter:
+           module: balances
+           method: Transfer
         - handler: handleSubstrateAssetTeleportedEvent
           kind: substrate/EventHandler
           filter:
