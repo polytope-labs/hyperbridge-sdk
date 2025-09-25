@@ -46,3 +46,4 @@ export { handlePriceIndexing } from "@/handlers/events/price/handlePriceIndexing
 export { handleBridgeTokenSupplyIndexing } from "@/handlers/events/supply/handleBridgeTokenSupplyIndexing.event.handler"
 
 export { handleRelayerRewardedEvent } from "@/handlers/events/incentives/relayerRewarded.event.handler"
+export { handleFeeRewardedEvent } from "@/handlers/events/incentives/feeRewarded.event.handler"
