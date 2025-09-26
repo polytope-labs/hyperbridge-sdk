@@ -314,7 +314,18 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The latest state machine height.
 	 */
 	async latestStateMachineHeight(stateMachineId: StateMachineIdParams): Promise<bigint> {
-		const latestHeight: number = await this.rpcClient.call("ismp_queryStateMachineLatestHeight", [stateMachineId])
+		const state_id = convertStateIdToStateMachineId(stateMachineId.stateId)
+
+		const consensusStateIdToBytes = hexToBytes(stateMachineId.consensusStateId)
+		const decoder = new TextDecoder("utf-8")
+		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
+
+		const payload = {
+			state_id,
+			consensus_state_id: decodedConsensusStateId,
+		}
+
+		const latestHeight: number = await this.rpcClient.call("ismp_queryStateMachineLatestHeight", [payload])
 		return BigInt(latestHeight)
 	}
 
@@ -324,10 +335,22 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The statemachine update time in seconds.
 	 */
 	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
+		const state_id = convertStateIdToStateMachineId(stateMachineHeight.id.stateId)
+
+		const consensusStateIdToBytes = hexToBytes(stateMachineHeight.id.consensusStateId)
+		const decoder = new TextDecoder("utf-8")
+		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
+
+		const stateMachineId = {
+			state_id,
+			consensus_state_id: decodedConsensusStateId,
+		}
+
 		const payload = {
-			id: stateMachineHeight.id,
+			id: stateMachineId,
 			height: Number(stateMachineHeight.height),
 		}
+
 		const updateTime: number = await this.rpcClient.call("ismp_queryStateMachineUpdateTime", [payload])
 		return BigInt(updateTime)
 	}
@@ -338,7 +361,18 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The challenge period in seconds.
 	 */
 	async challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
-		const challengePeriod: number = await this.rpcClient.call("ismp_queryChallengePeriod", [stateMachineId])
+		const state_id = convertStateIdToStateMachineId(stateMachineId.stateId)
+
+		const consensusStateIdToBytes = hexToBytes(stateMachineId.consensusStateId)
+		const decoder = new TextDecoder("utf-8")
+		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
+
+		const payload = {
+			state_id,
+			consensus_state_id: decodedConsensusStateId,
+		}
+
+		const challengePeriod: number = await this.rpcClient.call("ismp_queryChallengePeriod", [payload])
 		return BigInt(challengePeriod)
 	}
 
@@ -415,6 +449,35 @@ export function convertStateMachineIdToEnum(id: string): IStateMachine {
 	}
 
 	return { tag, value }
+}
+
+/**
+ * Converts a stateId object back to the state_id format used by the RPC.
+ * @param stateId - The stateId object from StateMachineIdParams
+ * @returns The string representation like "EVM-11155111" or "SUBSTRATE-cere"
+ */
+export function convertStateIdToStateMachineId(stateId: {
+	Evm?: number
+	Substrate?: HexString
+	Polkadot?: number
+	Kusama?: number
+}): string {
+	switch (true) {
+		case stateId.Evm !== undefined:
+			return `EVM-${stateId.Evm}`
+		case stateId.Polkadot !== undefined:
+			return `POLKADOT-${stateId.Polkadot}`
+		case stateId.Kusama !== undefined:
+			return `KUSAMA-${stateId.Kusama}`
+		case stateId.Substrate !== undefined: {
+			const bytes = hexToBytes(stateId.Substrate as HexString)
+			const decoder = new TextDecoder("utf-8")
+			const decoded = decoder.decode(bytes)
+			return `SUBSTRATE-${decoded}`
+		}
+		default:
+			throw new Error("Unsupported stateId variant")
+	}
 }
 
 /**
