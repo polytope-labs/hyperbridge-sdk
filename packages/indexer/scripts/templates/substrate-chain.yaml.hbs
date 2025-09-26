@@ -22,9 +22,9 @@ dataSources:
           filter:
             module: messagingFees
             method: FeeRewarded
-       - handler: handleTreasuryTransfer
-         kind: substrate/EventHandler
-         filter:
+        - handler: handleTreasuryTransferEvent
+          kind: substrate/EventHandler
+          filter:
            module: balances
            method: Transfer
         - handler: handleSubstrateAssetTeleportedEvent

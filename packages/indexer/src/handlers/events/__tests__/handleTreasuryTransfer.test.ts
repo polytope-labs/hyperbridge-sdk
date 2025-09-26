@@ -1,11 +1,18 @@
 import { SubstrateEvent } from "@subql/types"
 import { Treasury } from "@/configs/src/types"
-import { handleTreasuryTransfer } from "../treasury/transfer.event.handler"
+import { handleTreasuryTransferEvent } from "../treasury/treasuryTransfer.event.handler"
+import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 
 jest.mock("@/configs/src/types", () => ({
 	Treasury: {
 		get: jest.fn(),
 		create: jest.fn(),
+	},
+}))
+
+jest.mock("@/services/dailyTreasuryReward.service", () => ({
+	DailyTreasuryRewardService: {
+		getTreasuryBalance: jest.fn(),
 	},
 }))
 
@@ -29,6 +36,7 @@ jest.mock("@/utils/date.helpers", () => ({
 ;(global as any).chainId = "hyperbridge-gargantua-1234"
 
 const TreasuryMock = Treasury as jest.Mocked<typeof Treasury>
+const DailyTreasuryRewardServiceMock = DailyTreasuryRewardService as jest.Mocked<typeof DailyTreasuryRewardService>
 
 const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
 const OTHER_ADDRESS = "12rx6bPnDypLve7o89VsXDZrUioRU5Hqw8W5E9LNWZ5XEBF1"
@@ -54,6 +62,7 @@ describe("handleTreasuryTransfer (Unit Test)", () => {
 
 		TreasuryMock.get.mockResolvedValue(undefined)
 		TreasuryMock.create.mockReturnValue(mockNewEntity as any)
+		DailyTreasuryRewardServiceMock.getTreasuryBalance.mockResolvedValue(transferAmount)
 
 		const mockEvent = {
 			block: {
@@ -69,7 +78,7 @@ describe("handleTreasuryTransfer (Unit Test)", () => {
 			},
 		} as unknown as SubstrateEvent
 
-		await handleTreasuryTransfer(mockEvent)
+		await handleTreasuryTransferEvent(mockEvent)
 
 		expect(TreasuryMock.get).toHaveBeenCalledWith(TREASURY_ADDRESS)
 		expect(TreasuryMock.create).toHaveBeenCalledTimes(1)
@@ -95,8 +104,11 @@ describe("handleTreasuryTransfer (Unit Test)", () => {
 			save: mockSave,
 			_name: "Treasury",
 		}
+		const mockTreasuryBalance = BigInt(5000)
 
 		TreasuryMock.get.mockResolvedValue(mockExistingEntity as any)
+		DailyTreasuryRewardServiceMock.getTreasuryBalance.mockResolvedValue(mockTreasuryBalance)
+
 
 		const mockEvent = {
 			block: {
@@ -112,7 +124,7 @@ describe("handleTreasuryTransfer (Unit Test)", () => {
 			},
 		} as unknown as SubstrateEvent
 
-		await handleTreasuryTransfer(mockEvent)
+		await handleTreasuryTransferEvent(mockEvent)
 
 		expect(TreasuryMock.get).toHaveBeenCalledWith(TREASURY_ADDRESS)
 		expect(TreasuryMock.create).not.toHaveBeenCalled()

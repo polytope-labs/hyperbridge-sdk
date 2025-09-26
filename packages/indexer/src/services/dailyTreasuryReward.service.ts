@@ -2,14 +2,14 @@ import { DailyTreasuryRelayerReward } from "@/configs/src/types"
 import { replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
-import { Struct, u128, bool, _void } from "scale-ts"
+import { Struct, u32, u128, bool, _void } from "scale-ts"
 import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
-
+const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3";
 interface SubstrateStorageResponse {
 	jsonrpc: "2.0"
 	id: number
@@ -21,6 +21,21 @@ const AssetAccount = Struct({
 	isFrozen: bool,
 	reason: _void,
 	extra: _void,
+})
+
+const AccountData = Struct( {
+	free: u128,
+	reserved: u32,
+	frozen: u32,
+	flags: u128
+})
+
+const AccountInfo = Struct( {
+	nonce: u32,
+	consumers: u32,
+	providers: u32,
+	sufficients: u32,
+	data: AccountData
 })
 
 export class DailyTreasuryRewardService {
@@ -92,6 +107,47 @@ export class DailyTreasuryRewardService {
 	}
 
 	/**
+	 * Fetches BRIDGE balance for the treasury
+	 */
+	static async getTreasuryBalance(): Promise<bigint> {
+		try {
+			const hyperbridgeChain = getHostStateMachine(chainId);
+			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
+			if (!rpcUrl) {
+				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
+			}
+
+			const storageKey = this.generateSystemAccountStorageKey(TREASURY_ADDRESS);
+
+			const response = await fetch(rpcUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					method: "state_getStorage",
+					params: [storageKey],
+				}),
+			});
+
+			const result: SubstrateStorageResponse = await response.json();
+			if (!result.result) {
+				return BigInt(0);
+			}
+
+			const bytes = hexToBytes(result.result as `0x${string}`);
+			const decoded = AccountInfo.dec(bytes);
+
+			return decoded.data.free;
+
+		} catch (e) {
+			const errorMessage = e instanceof Error ? e.message : String(e);
+			logger.error(`Failed to fetch treasury balance: ${errorMessage}`);
+			return BigInt(0);
+		}
+	}
+
+	/**
 	 * Generates the assets account stprage key
 	 */
 	private static generateAssetsAccountStorageKey(assetId: `0x${string}`, accountId: string): string {
@@ -114,5 +170,25 @@ export class DailyTreasuryRewardService {
 		])
 
 		return `0x${Buffer.from(finalKey).toString("hex")}`
+	}
+
+	/**
+	 *
+	 * Generates System Account storage Key
+	 */
+	private static generateSystemAccountStorageKey(accountId: string): string {
+		const palletHash = xxhashAsHex("System", 128);
+		const storageHash = xxhashAsHex("Account", 128);
+		const accountIdBytes = decodeAddress(accountId);
+		const accountIdHashed = blake2AsU8a(accountIdBytes, 128);
+
+		const finalKey = new Uint8Array([
+			...hexToBytes(palletHash),
+			...hexToBytes(storageHash),
+			...accountIdHashed,
+			...accountIdBytes,
+		]);
+
+		return `0x${Buffer.from(finalKey).toString("hex")}`;
 	}
 }

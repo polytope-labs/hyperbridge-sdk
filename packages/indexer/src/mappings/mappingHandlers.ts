@@ -48,4 +48,4 @@ export { handleBridgeTokenSupplyIndexing } from "@/handlers/events/supply/handle
 export { handleRelayerRewardedEvent } from "@/handlers/events/incentives/relayerRewarded.event.handler"
 export { handleFeeRewardedEvent } from "@/handlers/events/incentives/feeRewarded.event.handler"
 
-export { handleTreasuryTransfer } from "@/handlers/events/treasury/transfer.event.handler"
+export { handleTreasuryTransferEvent } from "@/handlers/events/treasury/treasuryTransfer.event.handler"
