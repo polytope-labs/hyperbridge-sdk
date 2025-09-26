@@ -1,6 +1,5 @@
-import { ApiPromise, WsProvider } from "@polkadot/api"
+import { ApiPromise, HttpProvider } from "@polkadot/api"
 import { capitalize } from "lodash-es"
-import { RpcWebSocketClient } from "rpc-websocket-client"
 import { Vector, u8 } from "scale-ts"
 import { match } from "ts-pattern"
 import { bytesToHex, hexToBytes, toBytes, toHex } from "viem"
@@ -15,15 +14,24 @@ import {
 	SubstrateStateProof,
 	isEvmChain,
 	isSubstrateChain,
+	replaceWebsocketWithHttp,
 } from "@/utils"
 import { ExpectedError } from "@/utils/exceptions"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
 	/*
-	 * ws: The WebSocket URL for the Substrate chain.
+	 * http: The HTTP URL for the Substrate chain RPC endpoint.
+	 * Can also accept WebSocket URLs which will be automatically converted to HTTP.
 	 */
-	ws: string
+	http?: string
+
+	/*
+	 * ws: The WebSocket URL for the Substrate chain (legacy support).
+	 * Will be automatically converted to HTTP. Use 'http' parameter instead.
+	 * @deprecated Use 'http' parameter instead
+	 */
+	ws?: string
 
 	/*
 	 * hasher: The hashing algorithm used by the Substrate chain.
@@ -31,18 +39,83 @@ export interface SubstrateChainParams {
 	hasher: "Keccak" | "Blake2"
 }
 
+/**
+ * HTTP RPC Client for making JSON-RPC calls over HTTP
+ */
+class HttpRpcClient {
+	constructor(private readonly url: string) {}
+
+	/**
+	 * Make an RPC call over HTTP
+	 * @param method - The RPC method name
+	 * @param params - The parameters for the RPC call
+	 * @returns Promise resolving to the RPC response
+	 */
+	async call(method: string, params: any[] = []): Promise<any> {
+		const body = JSON.stringify({
+			jsonrpc: "2.0",
+			id: Date.now(),
+			method,
+			params,
+		})
+
+		const response = await fetch(this.url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body,
+		})
+
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`)
+		}
+
+		const result = await response.json()
+
+		if (result.error) {
+			throw new Error(`RPC error: ${result.error.message}`)
+		}
+
+		return result.result
+	}
+}
+
 export class SubstrateChain implements IChain {
 	/*
 	 * api: The Polkadot API instance for the Substrate chain.
 	 */
 	api?: ApiPromise
-	constructor(private readonly params: SubstrateChainParams) {}
+	private rpcClient: HttpRpcClient
+
+	constructor(private readonly params: SubstrateChainParams) {
+		const url = this.getUrl()
+		if (!url) {
+			throw new Error("Either 'http' or 'ws' parameter must be provided")
+		}
+
+		const httpUrl = replaceWebsocketWithHttp(url)
+		this.rpcClient = new HttpRpcClient(httpUrl)
+	}
+
+	/**
+	 * Get the URL from params, preferring http over ws
+	 */
+	private getUrl(): string | undefined {
+		return this.params.http || this.params.ws
+	}
 
 	/*
-	 * connect: Connects to the Substrate chain using the provided WebSocket URL.
+	 * connect: Connects to the Substrate chain using the provided HTTP URL.
 	 */
 	public async connect() {
-		const wsProvider = new WsProvider(this.params.ws)
+		const url = this.getUrl()
+		if (!url) {
+			throw new Error("Either 'http' or 'ws' parameter must be provided")
+		}
+
+		const httpUrl = replaceWebsocketWithHttp(url)
+		const httpProvider = new HttpProvider(httpUrl)
 		const typesBundle =
 			this.params.hasher === "Keccak"
 				? {
@@ -57,7 +130,7 @@ export class SubstrateChain implements IChain {
 					}
 				: {}
 		this.api = await ApiPromise.create({
-			provider: wsProvider,
+			provider: httpProvider,
 			typesBundle,
 		})
 	}
@@ -111,9 +184,7 @@ export class SubstrateChain implements IChain {
 		const prefix = toHex(":child_storage:default:ISMP")
 		const key = this.requestCommitmentKey(commitment)
 
-		const rpc = new RpcWebSocketClient()
-		await rpc.connect(this.params.ws)
-		const item: any = await rpc.call("childstate_getStorage", [prefix, key])
+		const item: any = await this.rpcClient.call("childstate_getStorage", [prefix, key])
 
 		return item
 	}
@@ -127,9 +198,7 @@ export class SubstrateChain implements IChain {
 		const prefix = toHex(":child_storage:default:ISMP")
 		const key = this.requestReceiptKey(commitment)
 
-		const rpc = new RpcWebSocketClient()
-		await rpc.connect(this.params.ws)
-		const item: any = await rpc.call("childstate_getStorage", [prefix, key])
+		const item: any = await this.rpcClient.call("childstate_getStorage", [prefix, key])
 
 		return item
 	}
@@ -154,12 +223,9 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<HexString>} The proof.
 	 */
 	async queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
-		const rpc = new RpcWebSocketClient()
-		await rpc.connect(this.params.ws)
-
 		if (isEvmChain(counterparty)) {
 			// for evm chains, query the mmr proof
-			const proof: any = await rpc.call("mmr_queryProof", [Number(at), message])
+			const proof: any = await this.rpcClient.call("mmr_queryProof", [Number(at), message])
 			return toHex(proof.proof)
 		}
 
@@ -169,7 +235,7 @@ export class SubstrateChain implements IChain {
 				"Requests" in message
 					? message.Requests.map(requestCommitmentStorageKey)
 					: message.Responses.map(responseCommitmentStorageKey)
-			const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
+			const proof: any = await this.rpcClient.call("ismp_queryChildTrieProof", [Number(at), childTrieKeys])
 			const basicProof = BasicProof.dec(toHex(proof.proof))
 			const encoded = SubstrateStateProof.enc({
 				tag: "OverlayProof",
@@ -246,10 +312,8 @@ export class SubstrateChain implements IChain {
 	 * @returns The state proof as a hexadecimal string.
 	 */
 	async queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
-		const rpc = new RpcWebSocketClient()
-		await rpc.connect(this.params.ws)
 		const encodedKeys = keys.map((key) => Array.from(hexToBytes(key)))
-		const proof: any = await rpc.call("ismp_queryChildTrieProof", [Number(at), encodedKeys])
+		const proof: any = await this.rpcClient.call("ismp_queryChildTrieProof", [Number(at), encodedKeys])
 		const basicProof = BasicProof.dec(toHex(proof.proof))
 		const encoded = SubstrateStateProof.enc({
 			tag: "OverlayProof",
