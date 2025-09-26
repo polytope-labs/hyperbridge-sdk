@@ -841,7 +841,7 @@ export class IntentGateway {
 					}),
 				{
 					maxRetries: 5,
-					backoffMs: 5000,
+					backoffMs: 500,
 					logMessage: "Failed to fetch latest state machine height",
 				},
 			)
