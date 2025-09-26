@@ -1,4 +1,4 @@
-import { ApiPromise, HttpProvider } from "@polkadot/api"
+import { ApiPromise, WsProvider } from "@polkadot/api"
 import { capitalize } from "lodash-es"
 import { Vector, u8 } from "scale-ts"
 import { match } from "ts-pattern"
@@ -92,10 +92,8 @@ export class SubstrateChain implements IChain {
 	 * connect: Connects to the Substrate chain using the provided HTTP URL.
 	 */
 	public async connect() {
-		const url = this.params.ws
+		const wsProvider = new WsProvider(this.params.ws)
 
-		const httpUrl = replaceWebsocketWithHttp(url)
-		const httpProvider = new HttpProvider(httpUrl)
 		const typesBundle =
 			this.params.hasher === "Keccak"
 				? {
@@ -110,7 +108,7 @@ export class SubstrateChain implements IChain {
 					}
 				: {}
 		this.api = await ApiPromise.create({
-			provider: httpProvider,
+			provider: wsProvider,
 			typesBundle,
 		})
 	}
