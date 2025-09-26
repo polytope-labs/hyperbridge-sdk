@@ -89,7 +89,7 @@ export class SubstrateChain implements IChain {
 	}
 
 	/*
-	 * connect: Connects to the Substrate chain using the provided HTTP URL.
+	 * connect: Connects to the Substrate chain using the provided WebSocket URL.
 	 */
 	public async connect() {
 		const wsProvider = new WsProvider(this.params.ws)
