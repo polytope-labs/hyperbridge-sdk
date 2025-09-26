@@ -332,11 +332,45 @@ describe("Order Cancellation tests", () => {
 		const cancelGenerator = intentGateway.cancelOrder(order, hyperbridgeConfig, indexer)
 
 		let result = await cancelGenerator.next()
+
 		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			const status = result.value?.status
+			const data = result.value && "data" in result.value ? (result.value as any).data : undefined
+
+			switch (status) {
+				case "AWAITING_DESTINATION_FINALIZED":
+					if (data) {
+						console.log(
+							`Waiting for destination finalized. Current height: ${data.currentHeight}, Deadline: ${data.deadline}`,
+						)
+					}
+					break
+				case "PROOF_FETCH_FAILED":
+					if (data) {
+						console.log(`Proof fetch failed at height: ${data.failedHeight}`)
+					}
+					break
+				case "AWAITING_HIGHER_HEIGHT_AFTER_PROOF_FAILURE":
+					if (data) {
+						console.log(
+							`Waiting for higher height after proof failure. Current: ${data.currentHeight}, Last failed: ${data.lastFailedHeight}`,
+						)
+					}
+					break
+				default:
+					break
+			}
+
 			result = await cancelGenerator.next()
 		}
 
 		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+
+		if (result.value?.status === "DESTINATION_FINALIZED" && result.value && "data" in result.value) {
+			const data = (result.value as any).data as { proof: HexString; height: bigint }
+			expect(data.proof).toBeDefined()
+			expect(data.height).toBeDefined()
+		}
 		const finalizedHeight = (result.value as any).data.height as bigint
 
 		result = await cancelGenerator.next()

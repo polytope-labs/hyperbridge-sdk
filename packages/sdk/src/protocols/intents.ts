@@ -827,8 +827,10 @@ export class IntentGateway {
 		const destConsensusStateId = this.dest.config.getConsensusStateId(destStateMachine)
 
 		let latestHeight = 0n
+		let lastFailedHeight: bigint | null = null
+		let proof: any = null
 
-		while (latestHeight <= order.deadline) {
+		while (proof === null) {
 			const { stateId } = parseStateMachineId(destStateMachine)
 
 			latestHeight = await retryPromise(
@@ -838,60 +840,68 @@ export class IntentGateway {
 						consensusStateId: destConsensusStateId,
 					}),
 				{
-					maxRetries: Infinity,
+					maxRetries: 5,
 					backoffMs: 5000,
 					logMessage: "Failed to fetch latest state machine height",
 				},
 			)
 
-			const destStateMachineUpdateTime = await retryPromise(
-				() =>
-					hyperbridge.stateMachineUpdateTime({
-						id: {
-							consensusStateId: destConsensusStateId,
-							stateId,
-						},
-						height: latestHeight,
-					}),
-				{
-					maxRetries: Infinity,
-					backoffMs: 5000,
-					logMessage: "Failed to fetch state machine update time",
-				},
-			)
+			const shouldFetchProof =
+				lastFailedHeight === null
+					? latestHeight > order.deadline // Normal flow: wait for deadline
+					: latestHeight > lastFailedHeight // Retry flow: wait for higher height
 
-			const currentTime = Math.floor(Date.now() / 1000)
-			const timeDiff = currentTime - Number(destStateMachineUpdateTime)
-			const isTimeDiffGreaterThanFiveMinutes = timeDiff > 300
+			if (!shouldFetchProof) {
+				const status =
+					lastFailedHeight === null
+						? "AWAITING_DESTINATION_FINALIZED"
+						: "AWAITING_HIGHER_HEIGHT_AFTER_PROOF_FAILURE"
 
-			yield {
-				status: "AWAITING_DESTINATION_FINALIZED",
-				data: { currentHeight: latestHeight, deadline: order.deadline },
+				yield {
+					status,
+					data: {
+						currentHeight: latestHeight,
+						deadline: order.deadline,
+						...(lastFailedHeight !== null && { lastFailedHeight }),
+					},
+				}
+
+				await sleep(10000)
+				continue
 			}
 
-			if (latestHeight <= order.deadline && isTimeDiffGreaterThanFiveMinutes) {
+			const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
+			const orderId = orderCommitment(order)
+
+			const slotHash = await this.dest.client.readContract({
+				abi: IntentGatewayABI.ABI,
+				address: intentGatewayAddress,
+				functionName: "calculateCommitmentSlotHash",
+				args: [orderId],
+			})
+
+			try {
+				proof = await retryPromise(
+					() => this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress),
+					{
+						maxRetries: 5,
+						backoffMs: 5000,
+						logMessage: "Failed to query state proof",
+					},
+				)
+			} catch (error) {
+				lastFailedHeight = latestHeight
+				yield {
+					status: "PROOF_FETCH_FAILED",
+					data: {
+						failedHeight: latestHeight,
+						error: error instanceof Error ? error.message : String(error),
+						deadline: order.deadline,
+					},
+				}
 				await sleep(10000)
 			}
 		}
-
-		const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
-		const orderId = orderCommitment(order)
-
-		const slotHash = await this.dest.client.readContract({
-			abi: IntentGatewayABI.ABI,
-			address: intentGatewayAddress,
-			functionName: "calculateCommitmentSlotHash",
-			args: [orderId],
-		})
-
-		const proof = await retryPromise(
-			() => this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress),
-			{
-				maxRetries: Infinity,
-				backoffMs: 5000,
-				logMessage: "Failed to query state proof",
-			},
-		)
 
 		const destIProof: IProof = {
 			consensusStateId: destConsensusStateId,
@@ -984,7 +994,7 @@ export class IntentGateway {
 							return value
 						},
 						{
-							maxRetries: 10,
+							maxRetries: 5,
 							backoffMs: 5000,
 							logMessage: "Checking for receipt",
 						},
