@@ -880,7 +880,7 @@ export class IntentGateway {
 					() => this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress),
 					{
 						maxRetries: 5,
-						backoffMs: 5000,
+						backoffMs: 500,
 						logMessage: "Failed to query state proof",
 					},
 				)
