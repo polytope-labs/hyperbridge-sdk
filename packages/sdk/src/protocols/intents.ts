@@ -827,28 +827,54 @@ export class IntentGateway {
 		const destConsensusStateId = this.dest.config.getConsensusStateId(destStateMachine)
 
 		let latestHeight = 0n
+
 		while (latestHeight <= order.deadline) {
 			const { stateId } = parseStateMachineId(destStateMachine)
 
-			latestHeight = await hyperbridge.latestStateMachineHeight({
-				stateId,
-				consensusStateId: destConsensusStateId,
-			})
+			latestHeight = await retryPromise(
+				() =>
+					hyperbridge.latestStateMachineHeight({
+						stateId,
+						consensusStateId: destConsensusStateId,
+					}),
+				{
+					maxRetries: Infinity,
+					backoffMs: 5000,
+					logMessage: "Failed to fetch latest state machine height",
+				},
+			)
+
+			const destStateMachineUpdateTime = await retryPromise(
+				() =>
+					hyperbridge.stateMachineUpdateTime({
+						id: {
+							consensusStateId: destConsensusStateId,
+							stateId,
+						},
+						height: latestHeight,
+					}),
+				{
+					maxRetries: Infinity,
+					backoffMs: 5000,
+					logMessage: "Failed to fetch state machine update time",
+				},
+			)
+
+			const currentTime = Math.floor(Date.now() / 1000)
+			const timeDiff = currentTime - Number(destStateMachineUpdateTime)
+			const isTimeDiffGreaterThanFiveMinutes = timeDiff > 300
 
 			yield {
 				status: "AWAITING_DESTINATION_FINALIZED",
 				data: { currentHeight: latestHeight, deadline: order.deadline },
 			}
 
-			if (latestHeight <= order.deadline) {
+			if (latestHeight <= order.deadline && isTimeDiffGreaterThanFiveMinutes) {
 				await sleep(10000)
 			}
 		}
 
-		yield { status: "DESTINATION_FINALIZED", data: { height: latestHeight } }
-
 		const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
-
 		const orderId = orderCommitment(order)
 
 		const slotHash = await this.dest.client.readContract({
@@ -858,7 +884,14 @@ export class IntentGateway {
 			args: [orderId],
 		})
 
-		const proof = await this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress)
+		const proof = await retryPromise(
+			() => this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress),
+			{
+				maxRetries: Infinity,
+				backoffMs: 5000,
+				logMessage: "Failed to query state proof",
+			},
+		)
 
 		const destIProof: IProof = {
 			consensusStateId: destConsensusStateId,
@@ -869,7 +902,7 @@ export class IntentGateway {
 
 		this.destStateproofCache.set(order.id as HexString, destIProof)
 
-		yield { status: "STATE_PROOF_RECEIVED", data: { proof, height: latestHeight } }
+		yield { status: "DESTINATION_FINALIZED", data: { proof, height: latestHeight } }
 
 		const getRequest = (yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest | undefined
 

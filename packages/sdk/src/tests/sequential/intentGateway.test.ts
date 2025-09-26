@@ -318,14 +318,10 @@ describe("Order Cancellation tests", () => {
 		})
 
 		const orderPlaceEvent = parseEventLogs({ abi: IntentGatewayABI.ABI, logs: receipt.logs })[0]
-
 		if (orderPlaceEvent.eventName !== "OrderPlaced") {
 			throw new Error("Unexpected Event type")
 		}
-
 		const orderPlaced = orderPlaceEvent.args
-
-		console.log("Order placed on BSC:", orderPlaced)
 
 		const hyperbridgeConfig: IHyperbridgeConfig = {
 			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
@@ -337,25 +333,13 @@ describe("Order Cancellation tests", () => {
 
 		let result = await cancelGenerator.next()
 		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
-			console.log("Status:", result.value?.status)
 			result = await cancelGenerator.next()
 		}
 
 		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
-		expect((result.value as any).data).toBeDefined()
-
 		const finalizedHeight = (result.value as any).data.height as bigint
-		console.log("DESTINATION_FINALIZED height:", finalizedHeight)
 
 		result = await cancelGenerator.next()
-
-		expect(result.value?.status).toBe("STATE_PROOF_RECEIVED")
-		expect((result.value as any).data?.height).toBe(finalizedHeight)
-		expect((result.value as any).data?.proof).toBeDefined()
-
-		result = await cancelGenerator.next()
-
-		expect(result.done).toBe(false)
 		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
 
 		const cancelOptions = {
@@ -373,17 +357,13 @@ describe("Order Cancellation tests", () => {
 			confirmations: 1,
 		})
 
-		console.log("Order cancelled on BSC:", receipt.transactionHash)
-
 		// parse EvmHost GetRequestEvent emitted in the transaction logs
 		const event = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })[0]
-
 		if (event.eventName !== "GetRequestEvent") {
 			throw new Error("Unexpected Event type")
 		}
 
 		const { source, dest, from, nonce, height, keys, timeoutTimestamp, context } = event.args
-
 		const getRequest: IGetRequest = {
 			source,
 			dest,
@@ -395,19 +375,10 @@ describe("Order Cancellation tests", () => {
 			context,
 		}
 
-		console.log("Get Request:", getRequest)
-
-		// Resume generator with the GetRequest and continue until finalized
 		result = await cancelGenerator.next(getRequest)
-
-		console.log("Result after SOURCE FINALIZED:", result)
-
 		expect(result.value?.status).toBe("SOURCE_PROOF_RECIEVED")
-		expect((result.value as any).data).toBeDefined()
 
 		while (!result.done) {
-			console.log("Status:", result.value?.status)
-
 			if (result.value?.status === "HYPERBRIDGE_FINALIZED") {
 				if ("metadata" in result.value && result.value.metadata) {
 					console.log(
@@ -416,12 +387,11 @@ describe("Order Cancellation tests", () => {
 				}
 				break
 			}
-
 			result = await cancelGenerator.next()
 		}
 
-		console.log("Generator completed:", result)
-	}, 1_000_0000)
+		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
+	}, 1_000_000)
 })
 
 async function setUp() {
