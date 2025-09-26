@@ -350,13 +350,6 @@ describe("Order Cancellation tests", () => {
 						console.log(`Proof fetch failed at height: ${data.failedHeight}`)
 					}
 					break
-				case "AWAITING_HIGHER_HEIGHT_AFTER_PROOF_FAILURE":
-					if (data) {
-						console.log(
-							`Waiting for higher height after proof failure. Current: ${data.currentHeight}, Last failed: ${data.lastFailedHeight}`,
-						)
-					}
-					break
 				default:
 					break
 			}

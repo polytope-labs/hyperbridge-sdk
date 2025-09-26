@@ -21,17 +21,10 @@ import { keccakAsU8a } from "@polkadot/util-crypto"
 
 export interface SubstrateChainParams {
 	/*
-	 * http: The HTTP URL for the Substrate chain RPC endpoint.
-	 * Can also accept WebSocket URLs which will be automatically converted to HTTP.
+	 * ws: The WebSocket URL for the Substrate chain RPC endpoint.
+	 * Will be automatically converted to HTTP for JSON-RPC calls.
 	 */
-	http?: string
-
-	/*
-	 * ws: The WebSocket URL for the Substrate chain (legacy support).
-	 * Will be automatically converted to HTTP. Use 'http' parameter instead.
-	 * @deprecated Use 'http' parameter instead
-	 */
-	ws?: string
+	ws: string
 
 	/*
 	 * hasher: The hashing algorithm used by the Substrate chain.
@@ -89,30 +82,17 @@ export class SubstrateChain implements IChain {
 	private rpcClient: HttpRpcClient
 
 	constructor(private readonly params: SubstrateChainParams) {
-		const url = this.getUrl()
-		if (!url) {
-			throw new Error("Either 'http' or 'ws' parameter must be provided")
-		}
+		const url = this.params.ws
 
 		const httpUrl = replaceWebsocketWithHttp(url)
 		this.rpcClient = new HttpRpcClient(httpUrl)
-	}
-
-	/**
-	 * Get the URL from params, preferring http over ws
-	 */
-	private getUrl(): string | undefined {
-		return this.params.http || this.params.ws
 	}
 
 	/*
 	 * connect: Connects to the Substrate chain using the provided HTTP URL.
 	 */
 	public async connect() {
-		const url = this.getUrl()
-		if (!url) {
-			throw new Error("Either 'http' or 'ws' parameter must be provided")
-		}
+		const url = this.params.ws
 
 		const httpUrl = replaceWebsocketWithHttp(url)
 		const httpProvider = new HttpProvider(httpUrl)
@@ -334,9 +314,8 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The latest state machine height.
 	 */
 	async latestStateMachineHeight(stateMachineId: StateMachineIdParams): Promise<bigint> {
-		if (!this.api) throw new Error("API not initialized")
-		const latestHeight = await this.api.query.ismp.latestStateMachineHeight(stateMachineId)
-		return BigInt(latestHeight.toString())
+		const latestHeight: number = await this.rpcClient.call("ismp_queryStateMachineLatestHeight", [stateMachineId])
+		return BigInt(latestHeight)
 	}
 
 	/**
@@ -345,9 +324,12 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The statemachine update time in seconds.
 	 */
 	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
-		if (!this.api) throw new Error("API not initialized")
-		const updateTime = await this.api.query.ismp.stateMachineUpdateTime(stateMachineHeight)
-		return BigInt(updateTime.toString())
+		const payload = {
+			id: stateMachineHeight.id,
+			height: Number(stateMachineHeight.height),
+		}
+		const updateTime: number = await this.rpcClient.call("ismp_queryStateMachineUpdateTime", [payload])
+		return BigInt(updateTime)
 	}
 
 	/**
@@ -356,9 +338,8 @@ export class SubstrateChain implements IChain {
 	 * @returns {Promise<bigint>} The challenge period in seconds.
 	 */
 	async challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
-		if (!this.api) throw new Error("API not initialized")
-		const challengePeriod = await this.api.query.ismp.challengePeriod(stateMachineId)
-		return BigInt(challengePeriod.toString())
+		const challengePeriod: number = await this.rpcClient.call("ismp_queryChallengePeriod", [stateMachineId])
+		return BigInt(challengePeriod)
 	}
 
 	/**

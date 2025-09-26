@@ -828,7 +828,7 @@ export class IntentGateway {
 
 		let latestHeight = 0n
 		let lastFailedHeight: bigint | null = null
-		let proof: any = null
+		let proof = null
 
 		while (proof === null) {
 			const { stateId } = parseStateMachineId(destStateMachine)
@@ -852,13 +852,8 @@ export class IntentGateway {
 					: latestHeight > lastFailedHeight // Retry flow: wait for higher height
 
 			if (!shouldFetchProof) {
-				const status =
-					lastFailedHeight === null
-						? "AWAITING_DESTINATION_FINALIZED"
-						: "AWAITING_HIGHER_HEIGHT_AFTER_PROOF_FAILURE"
-
 				yield {
-					status,
+					status: "AWAITING_DESTINATION_FINALIZED",
 					data: {
 						currentHeight: latestHeight,
 						deadline: order.deadline,
