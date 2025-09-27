@@ -24,7 +24,7 @@ import {
 } from "@/types"
 import { orderCommitment, hexToString, bytes20ToBytes32, DEFAULT_GRAFFITI } from "@/utils"
 import EVM_HOST from "@/abis/evmHost"
-import { EvmChain, EvmChainParams, SubstrateChain } from "@/chain"
+import { EvmChain, EvmChainParams, IProof, SubstrateChain } from "@/chain"
 import { IntentGateway } from "@/protocols/intents"
 import { ChainConfigService } from "@/configs/ChainConfigService"
 import { privateKeyToAccount } from "viem/accounts"
@@ -360,7 +360,7 @@ describe("Order Cancellation tests", () => {
 		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
 
 		if (result.value?.status === "DESTINATION_FINALIZED" && result.value && "data" in result.value) {
-			const data = (result.value as any).data as { proof: HexString; height: bigint }
+			const data = (result.value as any).data as { proof: IProof; height: bigint }
 			expect(data.proof).toBeDefined()
 			expect(data.height).toBeDefined()
 		}
@@ -403,7 +403,7 @@ describe("Order Cancellation tests", () => {
 		}
 
 		result = await cancelGenerator.next(getRequest)
-		expect(result.value?.status).toBe("SOURCE_PROOF_RECIEVED")
+		expect(result.value?.status).toBe("SOURCE_PROOF_RECEIVED")
 
 		while (!result.done) {
 			if (result.value?.status === "HYPERBRIDGE_FINALIZED") {
