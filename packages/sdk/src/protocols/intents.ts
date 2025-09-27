@@ -916,7 +916,6 @@ export class IntentGateway {
 		}
 
 		const getRequest = storedData?.getRequest ?? ((yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest)
-		console.log("Fast tracking with cached GET REQUEST", storedData?.getRequest)
 		if (!getRequest) throw new Error("[Cancel Order]: Get Request not provided")
 
 		const commitment = getRequestCommitment({ ...getRequest, keys: [...getRequest.keys] })
