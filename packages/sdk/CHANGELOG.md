@@ -1,5 +1,11 @@
 # @hyperbridge/sdk
 
+## 1.3.13
+
+### Patch Changes
+
+- Minor patch
+
 ## 1.3.12
 
 ### Patch Changes
