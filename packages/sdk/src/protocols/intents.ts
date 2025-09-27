@@ -849,7 +849,7 @@ export class IntentGateway {
 
 		if (storedData?.destIProof) {
 			destIProof = storedData.destIProof
-			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof.proof, height: destIProof.height } }
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		} else {
 			let latestHeight = 0n
 			let lastFailedHeight: bigint | null = null
@@ -916,6 +916,7 @@ export class IntentGateway {
 		}
 
 		const getRequest = storedData?.getRequest ?? ((yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest)
+		console.log("Fast tracking with cached GET REQUEST", storedData?.getRequest)
 		if (!getRequest) throw new Error("[Cancel Order]: Get Request not provided")
 
 		const commitment = getRequestCommitment({ ...getRequest, keys: [...getRequest.keys] })
