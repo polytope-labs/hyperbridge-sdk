@@ -912,7 +912,7 @@ export class IntentGateway {
 				stateMachine: destStateMachine,
 			}
 
-			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof.proof, height: destIProof.height } }
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		}
 
 		const getRequest = storedData?.getRequest ?? ((yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest)
