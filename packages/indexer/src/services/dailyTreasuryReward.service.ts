@@ -7,6 +7,7 @@ import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
+import { AccountInfo } from "@/services/bridgeTokenSupply.service"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
 export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3";
@@ -21,21 +22,6 @@ const AssetAccount = Struct({
 	isFrozen: bool,
 	reason: _void,
 	extra: _void,
-})
-
-const AccountData = Struct( {
-	free: u128,
-	reserved: u32,
-	frozen: u32,
-	flags: u128
-})
-
-const AccountInfo = Struct( {
-	nonce: u32,
-	consumers: u32,
-	providers: u32,
-	sufficients: u32,
-	data: AccountData
 })
 
 export class DailyTreasuryRewardService {
