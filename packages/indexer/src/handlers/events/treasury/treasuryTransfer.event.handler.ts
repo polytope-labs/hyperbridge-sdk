@@ -5,10 +5,7 @@ import { Balance } from "@polkadot/types/interfaces"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
-import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
-
-
-const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
+import { DailyTreasuryRewardService, TREASURY_ADDRESS } from "@/services/dailyTreasuryReward.service"
 
 export const handleTreasuryTransferEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
 	const {

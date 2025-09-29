@@ -2,8 +2,6 @@ import { SubstrateEvent } from "@subql/types"
 import { HyperbridgeRelayerReward } from "@/configs/src/types"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 import { handleFeeRewardedEvent } from "../incentives/feeRewarded.event.handler"
-import { getBlockTimestamp } from "@/utils/rpc.helpers"
-import { getHostStateMachine } from "@/utils/substrate.helpers"
 
 jest.mock("@/configs/src/types", () => ({
 	HyperbridgeRelayerReward: {

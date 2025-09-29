@@ -9,7 +9,7 @@ import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
-const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3";
+export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3";
 interface SubstrateStorageResponse {
 	jsonrpc: "2.0"
 	id: number
