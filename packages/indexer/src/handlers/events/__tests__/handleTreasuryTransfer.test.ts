@@ -27,12 +27,10 @@ jest.mock("@/utils/substrate.helpers", () => ({
 jest.mock("@/utils/date.helpers", () => ({
 	timestampToDate: jest.fn(),
 }))
-
 ;(global as any).logger = {
 	info: jest.fn(),
 	error: jest.fn(),
 } as any
-
 ;(global as any).chainId = "hyperbridge-gargantua-1234"
 
 const TreasuryMock = Treasury as jest.Mocked<typeof Treasury>
@@ -108,7 +106,6 @@ describe("handleTreasuryTransfer (Unit Test)", () => {
 
 		TreasuryMock.get.mockResolvedValue(mockExistingEntity as any)
 		DailyTreasuryRewardServiceMock.getTreasuryBalance.mockResolvedValue(mockTreasuryBalance)
-
 
 		const mockEvent = {
 			block: {

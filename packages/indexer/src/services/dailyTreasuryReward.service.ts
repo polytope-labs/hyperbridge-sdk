@@ -10,7 +10,7 @@ import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
-export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3";
+export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
 interface SubstrateStorageResponse {
 	jsonrpc: "2.0"
 	id: number
@@ -97,13 +97,13 @@ export class DailyTreasuryRewardService {
 	 */
 	static async getTreasuryBalance(): Promise<bigint> {
 		try {
-			const hyperbridgeChain = getHostStateMachine(chainId);
-			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
+			const hyperbridgeChain = getHostStateMachine(chainId)
+			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "")
 			if (!rpcUrl) {
-				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
+				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
 			}
 
-			const storageKey = this.generateSystemAccountStorageKey(TREASURY_ADDRESS);
+			const storageKey = this.generateSystemAccountStorageKey(TREASURY_ADDRESS)
 
 			const response = await fetch(rpcUrl, {
 				method: "POST",
@@ -114,22 +114,21 @@ export class DailyTreasuryRewardService {
 					method: "state_getStorage",
 					params: [storageKey],
 				}),
-			});
+			})
 
-			const result: SubstrateStorageResponse = await response.json();
+			const result: SubstrateStorageResponse = await response.json()
 			if (!result.result) {
-				return BigInt(0);
+				return BigInt(0)
 			}
 
-			const bytes = hexToBytes(result.result as `0x${string}`);
-			const decoded = AccountInfo.dec(bytes);
+			const bytes = hexToBytes(result.result as `0x${string}`)
+			const decoded = AccountInfo.dec(bytes)
 
-			return decoded.data.free;
-
+			return decoded.data.free
 		} catch (e) {
-			const errorMessage = e instanceof Error ? e.message : String(e);
-			logger.error(`Failed to fetch treasury balance: ${errorMessage}`);
-			return BigInt(0);
+			const errorMessage = e instanceof Error ? e.message : String(e)
+			logger.error(`Failed to fetch treasury balance: ${errorMessage}`)
+			return BigInt(0)
 		}
 	}
 
@@ -163,18 +162,18 @@ export class DailyTreasuryRewardService {
 	 * Generates System Account storage Key
 	 */
 	private static generateSystemAccountStorageKey(accountId: string): string {
-		const palletHash = xxhashAsHex("System", 128);
-		const storageHash = xxhashAsHex("Account", 128);
-		const accountIdBytes = decodeAddress(accountId);
-		const accountIdHashed = blake2AsU8a(accountIdBytes, 128);
+		const palletHash = xxhashAsHex("System", 128)
+		const storageHash = xxhashAsHex("Account", 128)
+		const accountIdBytes = decodeAddress(accountId)
+		const accountIdHashed = blake2AsU8a(accountIdBytes, 128)
 
 		const finalKey = new Uint8Array([
 			...hexToBytes(palletHash),
 			...hexToBytes(storageHash),
 			...accountIdHashed,
 			...accountIdBytes,
-		]);
+		])
 
-		return `0x${Buffer.from(finalKey).toString("hex")}`;
+		return `0x${Buffer.from(finalKey).toString("hex")}`
 	}
 }

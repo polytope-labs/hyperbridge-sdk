@@ -24,12 +24,10 @@ jest.mock("@/utils/rpc.helpers", () => ({
 jest.mock("@/utils/substrate.helpers", () => ({
 	getHostStateMachine: jest.fn(),
 }))
-
 ;(global as any).logger = {
 	info: jest.fn(),
 	error: jest.fn(),
 } as any
-
 ;(global as any).chainId = "hyperbridge-gargantua-1234"
 
 const RelayerRewardMock = HyperbridgeRelayerReward as jest.Mocked<typeof HyperbridgeRelayerReward>
