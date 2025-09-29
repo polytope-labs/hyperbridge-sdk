@@ -8,9 +8,24 @@ import {
 	ERC20Method,
 	adjustFeeDecimals,
 	fetchPrice,
+	parseStateMachineId,
+	orderCommitment,
+	sleep,
+	getRequestCommitment,
+	waitForChallengePeriod,
+	retryPromise,
 } from "@/utils"
-import { formatUnits, maxUint256, parseUnits, toHex } from "viem"
-import type { DispatchPost, FillOptions, HexString, IPostRequest, Order } from "@/types"
+import { formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
+import {
+	DispatchPost,
+	IGetRequest,
+	IHyperbridgeConfig,
+	RequestStatus,
+	type FillOptions,
+	type HexString,
+	type IPostRequest,
+	type Order,
+} from "@/types"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapV2Factory from "@/abis/uniswapV2Factory"
 import UniswapRouterV2 from "@/abis/uniswapRouterV2"
@@ -20,6 +35,8 @@ import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
 import type { EvmChain } from "@/chains/evm"
 import { Decimal } from "decimal.js"
+import { getChain, IGetRequestMessage, IProof, SubstrateChain } from "@/chain"
+import { IndexerClient } from "@/client"
 
 /**
  * IntentGateway handles cross-chain intent operations between EVM chains.
@@ -788,6 +805,163 @@ export class IntentGateway {
 		return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
+	async submitAndConfirmReceipt(hyperbridge: SubstrateChain, commitment: HexString, message: IGetRequestMessage) {
+		let storageValue = await hyperbridge.queryRequestReceipt(commitment)
+
+		if (!storageValue) {
+			console.log("No receipt found. Attempting to submit...")
+			try {
+				await hyperbridge.submitUnsigned(message)
+			} catch {
+				console.warn("Submission failed. Awaiting network confirmation...")
+			}
+
+			console.log("Waiting for network state update...")
+			await sleep(30000)
+
+			storageValue = await retryPromise(
+				async () => {
+					const value = await hyperbridge.queryRequestReceipt(commitment)
+					if (!value) throw new Error("Receipt not found")
+					return value
+				},
+				{ maxRetries: 5, backoffMs: 5000, logMessage: "Checking for receipt" },
+			)
+		}
+
+		console.log("Hyperbridge Receipt confirmed.")
+	}
+
+	async *cancelOrder(
+		order: Order,
+		hyperbridgeConfig: IHyperbridgeConfig,
+		indexerClient: IndexerClient,
+		storedData?: StoredCancellationData,
+	) {
+		const hyperbridge = (await getChain({ ...hyperbridgeConfig, hasher: "Keccak" })) as SubstrateChain
+		const sourceStateMachine = hexToString(order.sourceChain as HexString)
+		const destStateMachine = hexToString(order.destChain as HexString)
+
+		const sourceConsensusStateId = this.source.config.getConsensusStateId(sourceStateMachine)
+		const destConsensusStateId = this.dest.config.getConsensusStateId(destStateMachine)
+
+		let destIProof: IProof
+
+		if (storedData?.destIProof) {
+			destIProof = storedData.destIProof
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof.proof, height: destIProof.height } }
+		} else {
+			let latestHeight = 0n
+			let lastFailedHeight: bigint | null = null
+			let proofHex: HexString | null = null
+
+			while (!proofHex) {
+				latestHeight = await retryPromise(
+					() =>
+						hyperbridge.latestStateMachineHeight({
+							stateId: parseStateMachineId(destStateMachine).stateId,
+							consensusStateId: destConsensusStateId,
+						}),
+					{ maxRetries: 5, backoffMs: 500, logMessage: "Failed to fetch latest state machine height" },
+				)
+
+				const shouldFetchProof =
+					lastFailedHeight === null ? latestHeight > order.deadline : latestHeight > lastFailedHeight
+
+				if (!shouldFetchProof) {
+					yield {
+						status: "AWAITING_DESTINATION_FINALIZED",
+						data: {
+							currentHeight: latestHeight,
+							deadline: order.deadline,
+							...(lastFailedHeight && { lastFailedHeight }),
+						},
+					}
+					await sleep(10000)
+					continue
+				}
+
+				try {
+					const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
+					const orderId = orderCommitment(order)
+					const slotHash = await this.dest.client.readContract({
+						abi: IntentGatewayABI.ABI,
+						address: intentGatewayAddress,
+						functionName: "calculateCommitmentSlotHash",
+						args: [orderId],
+					})
+					proofHex = await this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress)
+				} catch (error) {
+					lastFailedHeight = latestHeight
+					yield {
+						status: "PROOF_FETCH_FAILED",
+						data: {
+							failedHeight: latestHeight,
+							error: error instanceof Error ? error.message : String(error),
+							deadline: order.deadline,
+						},
+					}
+					await sleep(10000)
+				}
+			}
+
+			destIProof = {
+				consensusStateId: destConsensusStateId,
+				height: latestHeight,
+				proof: proofHex,
+				stateMachine: destStateMachine,
+			}
+
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof.proof, height: destIProof.height } }
+		}
+
+		const getRequest = storedData?.getRequest ?? ((yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest)
+		if (!getRequest) throw new Error("[Cancel Order]: Get Request not provided")
+
+		const commitment = getRequestCommitment({ ...getRequest, keys: [...getRequest.keys] })
+
+		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
+		for await (const statusUpdate of sourceStatusStream) {
+			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
+				const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+				const proof = await this.source.queryProof(
+					{ Requests: [commitment] },
+					hyperbridgeConfig.stateMachineId,
+					sourceHeight,
+				)
+
+				const sourceIProof: IProof = {
+					height: sourceHeight,
+					stateMachine: sourceStateMachine,
+					consensusStateId: sourceConsensusStateId,
+					proof,
+				}
+
+				yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
+
+				const getRequestMessage: IGetRequestMessage = {
+					kind: "GetRequest",
+					requests: [getRequest],
+					source: sourceIProof,
+					response: destIProof,
+					signer: pad("0x"),
+				}
+
+				await waitForChallengePeriod(hyperbridge, {
+					height: sourceHeight,
+					id: {
+						stateId: parseStateMachineId(sourceStateMachine).stateId,
+						consensusStateId: sourceConsensusStateId,
+					},
+				})
+
+				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+			}
+
+			yield statusUpdate
+		}
+	}
+
 	/**
 	 * Returns the tick spacing for a given fee tier in Uniswap V4
 	 * @param fee - The fee tier in basis points
@@ -847,4 +1021,10 @@ function transformOrderForContract(order: Order) {
 		})),
 		user: order.user,
 	}
+}
+
+interface StoredCancellationData {
+	destIProof?: IProof
+	getRequest?: IGetRequest
+	sourceIProof?: IProof
 }

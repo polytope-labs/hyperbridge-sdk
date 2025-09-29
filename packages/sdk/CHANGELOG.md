@@ -1,5 +1,17 @@
 # @hyperbridge/sdk
 
+## 1.3.11
+
+### Patch Changes
+
+- Yield source proof from cancel order method
+
+## 1.3.10
+
+### Patch Changes
+
+- Implemented cancel order method in Intent class
+
 ## 1.3.4
 
 ### Patch Changes

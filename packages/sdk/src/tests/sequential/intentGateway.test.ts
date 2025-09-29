@@ -1,13 +1,38 @@
 import "log-timestamp"
 
-import { createPublicClient, getContract, http } from "viem"
-import { bsc, mainnet } from "viem/chains"
-import { ChainConfig, type HexString, Order } from "@/types"
-import { orderCommitment, hexToString, bytes20ToBytes32 } from "@/utils"
+import {
+	createPublicClient,
+	createWalletClient,
+	getContract,
+	http,
+	maxUint256,
+	parseEventLogs,
+	PublicClient,
+	toHex,
+	WalletClient,
+} from "viem"
+import { bsc, bscTestnet, mainnet, sepolia } from "viem/chains"
+import {
+	ChainConfig,
+	FillerConfig,
+	type HexString,
+	IGetRequest,
+	IHyperbridgeConfig,
+	Order,
+	TokenInfo,
+	PaymentInfo,
+} from "@/types"
+import { orderCommitment, hexToString, bytes20ToBytes32, DEFAULT_GRAFFITI } from "@/utils"
 import EVM_HOST from "@/abis/evmHost"
-import { EvmChain } from "@/chain"
+import { EvmChain, EvmChainParams, IProof, SubstrateChain } from "@/chain"
 import { IntentGateway } from "@/protocols/intents"
 import { ChainConfigService } from "@/configs/ChainConfigService"
+import { privateKeyToAccount } from "viem/accounts"
+import IntentGatewayABI from "@/abis/IntentGateway"
+import erc6160 from "@/abis/erc6160"
+import handler from "@/abis/handler"
+import { IndexerClient } from "@/client"
+import { createQueryClient } from "@/query-client"
 
 describe.sequential("Intents protocol tests", () => {
 	it.skip("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
@@ -181,6 +206,221 @@ describe.sequential("Intents protocol tests", () => {
 	}, 1_000_000)
 })
 
+describe("Order Cancellation tests", () => {
+	let indexer: IndexerClient
+	let hyperbridgeInstance: SubstrateChain
+
+	beforeAll(async () => {
+		const { bscChapelIsmpHost, ethSepoliaIsmpHost, hyperbridge } = await setUpBscToSepoliaOrder()
+
+		const query_client = createQueryClient({
+			url: process.env.INDEXER_URL!,
+		})
+
+		indexer = new IndexerClient({
+			source: {
+				consensusStateId: "BSC0",
+				rpcUrl: process.env.BSC_CHAPEL!,
+				stateMachineId: "EVM-97",
+				host: bscChapelIsmpHost.address,
+			},
+			dest: {
+				consensusStateId: "ETH0",
+				rpcUrl: process.env.SEPOLIA!,
+				stateMachineId: "EVM-11155111",
+				host: ethSepoliaIsmpHost.address,
+			},
+
+			hyperbridge: {
+				consensusStateId: "PAS0",
+				stateMachineId: "KUSAMA-4009",
+				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			},
+			queryClient: query_client,
+			pollInterval: 1_000,
+		})
+
+		await hyperbridge.connect()
+		hyperbridgeInstance = hyperbridge
+	}, 1_000_000)
+
+	it("Should cancel order when deadline has reached and yield the necessary proofs", async () => {
+		const {
+			bscChapelId,
+			chainConfigService,
+			bscChapelIntentGateway,
+			feeTokenBscChapelAddress,
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			bscChapelIsmpHost,
+			ethSepoliaIsmpHost,
+		} = await setUpBscToSepoliaOrder()
+
+		let bscChapelEvmStructParams: EvmChainParams = {
+			chainId: 97,
+			host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+			url: process.env.BSC_CHAPEL!,
+		}
+
+		let ethSepoliaEvmStructParams: EvmChainParams = {
+			chainId: 11155111,
+			host: "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
+			url: process.env.SEPOLIA!,
+		}
+
+		let bscEvmChain = new EvmChain(bscChapelEvmStructParams) // Source Chain
+		let ethSepoliaEvmChain = new EvmChain(ethSepoliaEvmStructParams) // Dest Chain
+		let intentGateway = new IntentGateway(bscEvmChain, ethSepoliaEvmChain)
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
+
+		const inputs: TokenInfo[] = [
+			{
+				token: bytes20ToBytes32(daiAsset),
+				amount: 100n,
+			},
+		]
+		const outputs: PaymentInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await bscChapelIsmpHost.read.host(),
+			destChain: await ethSepoliaIsmpHost.read.host(),
+			deadline: 0n, // Expired deadline
+			nonce: 0n,
+			fees: 1000000n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		await approveTokens(
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			feeTokenBscChapelAddress,
+			bscChapelIntentGateway.address,
+		)
+
+		let hash = await bscChapelIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		let receipt = await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		const orderPlaceEvent = parseEventLogs({ abi: IntentGatewayABI.ABI, logs: receipt.logs })[0]
+		if (orderPlaceEvent.eventName !== "OrderPlaced") {
+			throw new Error("Unexpected Event type")
+		}
+		const orderPlaced = orderPlaceEvent.args
+
+		const hyperbridgeConfig: IHyperbridgeConfig = {
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+		}
+
+		const cancelGenerator = intentGateway.cancelOrder(order, hyperbridgeConfig, indexer)
+
+		let result = await cancelGenerator.next()
+
+		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			const status = result.value?.status
+			const data = result.value && "data" in result.value ? (result.value as any).data : undefined
+
+			switch (status) {
+				case "AWAITING_DESTINATION_FINALIZED":
+					if (data) {
+						console.log(
+							`Waiting for destination finalized. Current height: ${data.currentHeight}, Deadline: ${data.deadline}`,
+						)
+					}
+					break
+				case "PROOF_FETCH_FAILED":
+					if (data) {
+						console.log(`Proof fetch failed at height: ${data.failedHeight}`)
+					}
+					break
+				default:
+					break
+			}
+
+			result = await cancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+
+		if (result.value?.status === "DESTINATION_FINALIZED" && result.value && "data" in result.value) {
+			const data = (result.value as any).data as { proof: IProof; height: bigint }
+			expect(data.proof).toBeDefined()
+			expect(data.height).toBeDefined()
+		}
+		const finalizedHeight = (result.value as any).data.height as bigint
+
+		result = await cancelGenerator.next()
+		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
+
+		const cancelOptions = {
+			relayerFee: 10000000000n,
+			height: finalizedHeight,
+		}
+
+		hash = await bscChapelIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		receipt = await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		// parse EvmHost GetRequestEvent emitted in the transaction logs
+		const event = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })[0]
+		if (event.eventName !== "GetRequestEvent") {
+			throw new Error("Unexpected Event type")
+		}
+
+		const { source, dest, from, nonce, height, keys, timeoutTimestamp, context } = event.args
+		const getRequest: IGetRequest = {
+			source,
+			dest,
+			from,
+			nonce,
+			height,
+			keys: Array.from(keys),
+			timeoutTimestamp,
+			context,
+		}
+
+		result = await cancelGenerator.next(getRequest)
+		expect(result.value?.status).toBe("SOURCE_PROOF_RECEIVED")
+
+		while (!result.done) {
+			if (result.value?.status === "HYPERBRIDGE_FINALIZED") {
+				if ("metadata" in result.value && result.value.metadata) {
+					console.log(
+						`Status ${result.value.status}, Transaction: https://sepolia.etherscan.io/tx/${result.value.metadata.transactionHash}`,
+					)
+				}
+				break
+			}
+			result = await cancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
+	}, 1_000_000)
+})
+
 async function setUp() {
 	const bscMainnetId = "EVM-56"
 	const mainnetId = "EVM-1"
@@ -311,5 +551,121 @@ async function setUpBaseToBsc() {
 		chainConfigService,
 		baseMainnetIsmpHost,
 		bscMainnetIsmpHost,
+	}
+}
+
+async function setUpBscToSepoliaOrder() {
+	const bscChapelId = "EVM-97"
+	const ethSepoliaId = "EVM-11155111"
+
+	const chains = [bscChapelId, ethSepoliaId]
+
+	let chainConfigService = new ChainConfigService()
+	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
+
+	const account = privateKeyToAccount(process.env.PRIVATE_KEY as any)
+
+	const bscChapelWalletClient = createWalletClient({
+		chain: bscTestnet,
+		account,
+		transport: http(process.env.BSC_CHAPEL),
+	})
+
+	const bscChapelPublicClient = createPublicClient({
+		chain: bscTestnet,
+		transport: http(process.env.BSC_CHAPEL),
+	})
+
+	const ethSepoliaPublicClient = createPublicClient({
+		chain: sepolia,
+		transport: http(process.env.SEPOLIA!),
+	})
+
+	const bscChapelIntentGateway = getContract({
+		address: chainConfigService.getIntentGatewayAddress(bscChapelId),
+		abi: IntentGatewayABI.ABI,
+		client: { public: bscChapelPublicClient, wallet: bscChapelWalletClient },
+	})
+
+	const bscChapelIsmpHostAddress = "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7" as HexString
+	const ethSepoliaIsmpHostAddress = "0x2EdB74C269948b60ec1000040E104cef0eABaae8" as HexString
+
+	const bscChapelIsmpHost = getContract({
+		address: bscChapelIsmpHostAddress,
+		abi: EVM_HOST.ABI,
+		client: bscChapelPublicClient,
+	})
+
+	const ethSepoliaIsmpHost = getContract({
+		address: ethSepoliaIsmpHostAddress,
+		abi: EVM_HOST.ABI,
+		client: ethSepoliaPublicClient,
+	})
+
+	const bscChapelHostParams = await bscChapelIsmpHost.read.hostParams()
+
+	const bscChapelHandler = getContract({
+		address: bscChapelHostParams.handler,
+		abi: handler.ABI,
+		client: { public: bscChapelPublicClient, wallet: bscChapelWalletClient },
+	})
+
+	const bscChapelFeeToken = getContract({
+		address: bscChapelHostParams.feeToken,
+		abi: erc6160.ABI,
+		client: { public: bscChapelPublicClient, wallet: bscChapelWalletClient },
+	})
+
+	const hyperbridge = new SubstrateChain({
+		ws: process.env.HYPERBRIDGE_GARGANTUA!,
+		hasher: "Keccak",
+	})
+
+	const feeTokenBscChapelAddress = bscChapelHostParams.feeToken
+
+	return {
+		account,
+		hyperbridge,
+		chainConfigs,
+		chainConfigService,
+		bscChapelId,
+		ethSepoliaIsmpHost,
+		bscChapelIntentGateway,
+		bscChapelWalletClient,
+		bscChapelPublicClient,
+		feeTokenBscChapelAddress,
+		bscChapelIsmpHost,
+		bscChapelFeeToken,
+		bscChapelHandler,
+	}
+}
+
+export async function approveTokens(
+	walletClient: WalletClient,
+	publicClient: PublicClient,
+	tokenAddress: HexString,
+	spender: HexString,
+) {
+	const approval = await publicClient.readContract({
+		abi: erc6160.ABI,
+		address: tokenAddress,
+		functionName: "allowance",
+		args: [walletClient.account?.address as HexString, spender],
+		account: walletClient.account,
+	})
+
+	if (approval == 0n) {
+		console.log("Approving tokens for test")
+		const tx = await walletClient.writeContract({
+			abi: erc6160.ABI,
+			address: tokenAddress,
+			functionName: "approve",
+			args: [spender, maxUint256],
+			chain: walletClient.chain,
+			account: walletClient.account!,
+		})
+
+		const receipt = await publicClient.waitForTransactionReceipt({ hash: tx })
+		console.log("Approved tokens for test:", receipt)
 	}
 }
