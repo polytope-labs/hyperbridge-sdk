@@ -924,7 +924,10 @@ export class IntentGateway {
 		for await (const statusUpdate of sourceStatusStream) {
 			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
 				let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
-				let proof: HexString
+				let proof: HexString | undefined
+				// Check if request was delivered while waiting for proof
+				let deliveredWhileWaiting = false
+
 				while (true) {
 					try {
 						proof = await this.source.queryProof(
@@ -936,6 +939,15 @@ export class IntentGateway {
 					} catch {
 						const failedHeight = sourceHeight
 						while (sourceHeight <= failedHeight) {
+							const peekUpdate = await sourceStatusStream.next()
+							if (!peekUpdate.done) {
+								if (peekUpdate.value.status === RequestStatus.HYPERBRIDGE_DELIVERED) {
+									yield peekUpdate.value
+									deliveredWhileWaiting = true
+									break
+								}
+							}
+
 							const nextHeight = await retryPromise(
 								() =>
 									hyperbridge.latestStateMachineHeight({
@@ -955,35 +967,41 @@ export class IntentGateway {
 							}
 							sourceHeight = nextHeight
 						}
+
+						if (deliveredWhileWaiting) {
+							break
+						}
 					}
 				}
 
-				const sourceIProof: IProof = {
-					height: sourceHeight,
-					stateMachine: sourceStateMachine,
-					consensusStateId: sourceConsensusStateId,
-					proof,
-				}
-
-				yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
-
-				const getRequestMessage: IGetRequestMessage = {
-					kind: "GetRequest",
-					requests: [getRequest],
-					source: sourceIProof,
-					response: destIProof,
-					signer: pad("0x"),
-				}
-
-				await waitForChallengePeriod(hyperbridge, {
-					height: sourceHeight,
-					id: {
-						stateId: parseStateMachineId(sourceStateMachine).stateId,
+				if (proof) {
+					const sourceIProof: IProof = {
+						height: sourceHeight,
+						stateMachine: sourceStateMachine,
 						consensusStateId: sourceConsensusStateId,
-					},
-				})
+						proof,
+					}
 
-				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+					yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
+
+					const getRequestMessage: IGetRequestMessage = {
+						kind: "GetRequest",
+						requests: [getRequest],
+						source: sourceIProof,
+						response: destIProof,
+						signer: pad("0x"),
+					}
+
+					await waitForChallengePeriod(hyperbridge, {
+						height: sourceHeight,
+						id: {
+							stateId: parseStateMachineId(sourceStateMachine).stateId,
+							consensusStateId: sourceConsensusStateId,
+						},
+					})
+
+					await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+				}
 			}
 
 			yield statusUpdate
