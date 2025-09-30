@@ -1,11 +1,15 @@
 import { Relayer, RelayerActivity, Transfer } from "@/configs/src/types/models"
 import { RelayerChainStatsService } from "@/services/relayerChainStats.service"
 import {
- HandlePostRequestsTransaction,
- HandlePostResponsesTransaction,
-} from '@/types/abi-interfaces/HandlerV1Abi';
-import PriceHelper from '@/utils/price.helpers';
-import { GET_ETHEREUM_L2_STATE_MACHINES } from '@/addresses/state-machine.addresses';
+	HandlePostRequestsTransaction,
+	HandlePostResponsesTransaction,
+} from "@/configs/src/types/abi-interfaces/HandlerV1Abi"
+import PriceHelper from "@/utils/price.helpers"
+import { GET_ETHEREUM_L2_STATE_MACHINES } from "@/constants"
+import { PointsService } from "@/services/points.service"
+import { PointsActivityType, ProtocolParticipantType } from "@/configs/src/types"
+import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { getBlockTimestamp } from "@/utils/rpc.helpers"
 
 export class RelayerService {
 	/**
@@ -75,7 +79,7 @@ export class RelayerService {
 	  chain: string,
 	  transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction
 	 ): Promise<void> {
-	  const { from: relayer_id, hash: transaction_hash } = transaction;
+	  const { from: relayer_id, hash: transaction_hash, blockHash } = transaction;
 	  const receipt = await transaction.receipt();
 	  const { status, gasUsed, effectiveGasPrice } = receipt;
 
@@ -115,37 +119,28 @@ export class RelayerService {
 	  );
 
 	  try {
-	   let relayer = await RelayerService.findOrCreate(relayer_id, chain);
-	   let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(
+		  const timestamp = await getBlockTimestamp(blockHash, chain)
+
+		  let relayer = await RelayerService.findOrCreate(relayer_id, chain, timestamp);
+	  	 let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(
 	    relayer_id,
 	    chain
 	   );
+
+
 
 	   if (status === true) {
 	    relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1);
 	    relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed);
 	    relayer_chain_stats.gasFeeForSuccessfulMessages += BigInt(gasFee);
 	    relayer_chain_stats.usdGasFeeForSuccessfulMessages += usdFee;
-	    await RewardPointsService.assignRewardToRelayer({
-	     chain,
-	     is_success: true,
-	     earnerType: ProtocolParticipant.RELAYER,
-	     relayer_address: relayer_id,
-	     transaction_hash,
-	    });
 	   } else {
 	    relayer_chain_stats.numberOfFailedMessagesDelivered += BigInt(1);
 	    relayer_chain_stats.gasUsedForFailedMessages += BigInt(gasUsed);
 	    relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee);
 	    relayer_chain_stats.usdGasFeeForFailedMessages += usdFee;
-	    await RewardPointsService.assignRewardToRelayer({
-	     chain,
-	     is_success: false,
-	     earnerType: ProtocolParticipant.RELAYER,
-	     relayer_address: relayer_id,
-	     transaction_hash,
-	    });
 	   }
+	   await PointsService.awardPoints( relayer_id,chain, 10n, ProtocolParticipantType.RELAYER, PointsActivityType.REWARD_POINTS_EARNED, transaction_hash, "`Points awarded for successful message delivered`",timestamp);
 
 	   await relayer.save();
 	   await relayer_chain_stats.save();

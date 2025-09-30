@@ -8,10 +8,10 @@ import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { getDateFormatFromTimestamp, isWithin24Hours, timestampToDate } from "@/utils/date.helpers"
 import { RelayerService } from "./relayer.service"
-// import {
-//  HandlePostRequestsTransaction,
-//  HandlePostResponsesTransaction,
-// } from '@/types/abi-interfaces/HandlerV1Abi';
+import {
+ HandlePostRequestsTransaction,
+ HandlePostResponsesTransaction,
+} from '@/configs/src/types/abi-interfaces/HandlerV1Abi';
 
 export class HyperBridgeService {
 	/**
