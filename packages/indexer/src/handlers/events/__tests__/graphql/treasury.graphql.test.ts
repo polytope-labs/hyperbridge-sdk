@@ -1,8 +1,9 @@
-import { fetch } from "undici";
+import fetch from "node-fetch"
 
-const GRAPHQL_ENDPOINT = "http://localhost:3100/graphql"
 const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
-describe("Treasury GraphQL Test", () => {
+const GRAPHQL_ENDPOINT = "http://localhost:3100/graphql"
+
+describe("Incentives GraphQL Test", () => {
 	it("should fetch the single Treasury entity", async () => {
 		const query = `
            query {

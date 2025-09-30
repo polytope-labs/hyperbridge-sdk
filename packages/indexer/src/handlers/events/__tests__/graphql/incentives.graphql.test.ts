@@ -1,4 +1,4 @@
-import { fetch } from "undici";
+import fetch from "node-fetch"
 
 const GRAPHQL_ENDPOINT = "http://localhost:3100/graphql"
 
