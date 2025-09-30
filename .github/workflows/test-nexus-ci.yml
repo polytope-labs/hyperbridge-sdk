@@ -41,6 +41,7 @@ jobs:
           # Set up environment variables from secrets
           cat > .env.nexus-ci << EOF
           HYPERBRIDGE_NEXUS=${{ secrets.HYPERBRIDGE_NEXUS }}
+          GNOSIS_CHIADO=${{ secrets.GNOSIS_CHIADO }}
           INDEXER_URL=${{ secrets.INDEXER_URL }}
           PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
           SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
