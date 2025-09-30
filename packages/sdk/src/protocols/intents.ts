@@ -923,12 +923,40 @@ export class IntentGateway {
 		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
 		for await (const statusUpdate of sourceStatusStream) {
 			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
-				const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
-				const proof = await this.source.queryProof(
-					{ Requests: [commitment] },
-					hyperbridgeConfig.stateMachineId,
-					sourceHeight,
-				)
+				let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+				let proof: HexString
+				while (true) {
+					try {
+						proof = await this.source.queryProof(
+							{ Requests: [commitment] },
+							hyperbridgeConfig.stateMachineId,
+							sourceHeight,
+						)
+						break
+					} catch {
+						const failedHeight = sourceHeight
+						while (sourceHeight <= failedHeight) {
+							const nextHeight = await retryPromise(
+								() =>
+									hyperbridge.latestStateMachineHeight({
+										stateId: parseStateMachineId(sourceStateMachine).stateId,
+										consensusStateId: sourceConsensusStateId,
+									}),
+								{
+									maxRetries: 5,
+									backoffMs: 5000,
+									logMessage:
+										"Failed to fetch latest state machine height (post-source-proof failure)",
+								},
+							)
+							if (nextHeight <= failedHeight) {
+								await sleep(10000)
+								continue
+							}
+							sourceHeight = nextHeight
+						}
+					}
+				}
 
 				const sourceIProof: IProof = {
 					height: sourceHeight,
