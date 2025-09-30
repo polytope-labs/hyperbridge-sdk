@@ -57,24 +57,24 @@ export class HyperBridgeService {
 		await RelayerService.updateMessageDelivered(relayer_id, chain, timestamp)
 	}
 
-	//  /**
-	//   * Handle PostRequest or PostResponse transactions
-	//   */
-	//  static async handlePostRequestOrResponseTransaction(
-	//   chain: string,
-	//   transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction,
-	//  ): Promise<void> {
-	//   logger.info(
-	//    `Creating PostRequest or PostResponse transaction update: ${JSON.stringify({
-	//     transaction,
-	//    })}`
-	//   );
-	//   const { status } = await transaction.receipt();
+	 /**
+	  * Handle PostRequest or PostResponse transactions
+	  */
+	 static async handlePostRequestOrResponseTransaction(
+	  chain: string,
+	  transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction,
+	 ): Promise<void> {
+	  logger.info(
+	   `Creating PostRequest or PostResponse transaction update: ${JSON.stringify({
+	    transaction,
+	   })}`
+	  );
+	  const { status } = await transaction.receipt();
 
-	//   if (status === false) {
-	//    await this.incrementNumberOfFailedDeliveries(chain);
-	//   }
-	//  }
+	  if (status === false) {
+	   await this.incrementNumberOfFailedDeliveries(chain);
+	  }
+	 }
 
 	/**
 	 * Increment the total number of messages sent on hyperbridge
