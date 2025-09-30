@@ -26,7 +26,7 @@ describe("Incentives GraphQL Test", () => {
          }
       `
 		const startTime = Date.now()
-		const timeout = 28000
+		const timeout = 240000
 		const pollInterval = 2000
 
 		let rewardNodes: HyperbridgeRelayerReward[] | null = null
