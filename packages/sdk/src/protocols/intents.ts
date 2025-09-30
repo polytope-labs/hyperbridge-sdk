@@ -926,7 +926,14 @@ export class IntentGateway {
 				let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
 				let proof: HexString | undefined
 				// Check if request was delivered while waiting for proof
-				let deliveredWhileWaiting = false
+				const checkIfAlreadyDelivered = async () => {
+					const currentStatus = await indexerClient.queryGetRequestWithStatus(commitment)
+					return (
+						currentStatus?.statuses.some(
+							(status) => status.status === RequestStatus.HYPERBRIDGE_DELIVERED,
+						) ?? false
+					)
+				}
 
 				while (true) {
 					try {
@@ -939,13 +946,8 @@ export class IntentGateway {
 					} catch {
 						const failedHeight = sourceHeight
 						while (sourceHeight <= failedHeight) {
-							const peekUpdate = await sourceStatusStream.next()
-							if (!peekUpdate.done) {
-								if (peekUpdate.value.status === RequestStatus.HYPERBRIDGE_DELIVERED) {
-									yield peekUpdate.value
-									deliveredWhileWaiting = true
-									break
-								}
+							if (await checkIfAlreadyDelivered()) {
+								break
 							}
 
 							const nextHeight = await retryPromise(
@@ -968,7 +970,7 @@ export class IntentGateway {
 							sourceHeight = nextHeight
 						}
 
-						if (deliveredWhileWaiting) {
+						if (await checkIfAlreadyDelivered()) {
 							break
 						}
 					}
