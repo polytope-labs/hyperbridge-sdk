@@ -842,7 +842,7 @@ export class IntentGateway {
 					if (!value) throw new Error("Receipt not found")
 					return value
 				},
-				{ maxRetries: 5, backoffMs: 5000, logMessage: "Checking for receipt" },
+				{ maxRetries: 10, backoffMs: 5000, logMessage: "Checking for receipt" },
 			)
 		}
 
