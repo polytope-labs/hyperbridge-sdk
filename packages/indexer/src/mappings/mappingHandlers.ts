@@ -49,3 +49,4 @@ export { handleRelayerRewardedEvent } from "@/handlers/events/incentives/relayer
 export { handleFeeRewardedEvent } from "@/handlers/events/incentives/feeRewarded.event.handler"
 
 export { handleTreasuryTransferEvent } from "@/handlers/events/treasury/treasuryTransfer.event.handler"
+export { handleAccumulateFeesEvent } from "@/handlers/events/fees/accumulatedFees.event.handler"

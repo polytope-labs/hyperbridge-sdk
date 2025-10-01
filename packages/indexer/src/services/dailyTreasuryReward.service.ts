@@ -2,12 +2,13 @@ import { DailyTreasuryRelayerReward } from "@/configs/src/types"
 import { replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
-import { Struct, u32, u128, bool, _void } from "scale-ts"
+import { Struct, u32, u128, bool, _void, Enum, u8, Vector } from "scale-ts"
 import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
+
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
 export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
@@ -23,6 +24,20 @@ const AssetAccount = Struct({
 	reason: _void,
 	extra: _void,
 })
+
+const ConsensusStateId = Vector(u8, 4);
+
+const StateMachine = Enum({
+	Evm: u32,
+	Polkadot: u32,
+	Kusama: u32,
+	Substrate: ConsensusStateId,
+	Tendermint: ConsensusStateId,
+	Relay: Struct({
+		relay: ConsensusStateId,
+		para_id: u32,
+	}),
+});
 
 export class DailyTreasuryRewardService {
 	/**
@@ -130,6 +145,67 @@ export class DailyTreasuryRewardService {
 			logger.error(`Failed to fetch treasury balance: ${errorMessage}`)
 			return BigInt(0)
 		}
+	}
+
+	/**
+	 * Get Fee Token Decimal stored on chain
+	 */
+	static async getFeeTokenDecimals(stateMachine: any): Promise<number> {
+		try {
+			const hyperbridgeChain = getHostStateMachine(chainId);
+			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
+			if (!rpcUrl) {
+				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
+			}
+
+			const storageKey = this.generateFeeTokenDecimalsStorageKey(stateMachine);
+
+			const response = await fetch(rpcUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					method: "state_getStorage",
+					params: [storageKey],
+				}),
+			});
+
+			const result: SubstrateStorageResponse = await response.json();
+			if (!result.result) {
+				logger.warn(`No fee token decimals found for state machine: ${JSON.stringify(stateMachine)}`);
+				return 18;
+			}
+
+			const bytes = hexToBytes(result.result as `0x${string}`);
+			return u8.dec(bytes);
+
+		} catch (e) {
+			const errorMessage = e instanceof Error ? e.message : String(e);
+			logger.error(`Failed to fetch fee token decimals: ${errorMessage}`);
+			return 18;
+		}
+	}
+
+	/**
+	 * Sorage Key for fee token decimal
+	 */
+	private static generateFeeTokenDecimalsStorageKey(stateMachine: any): string {
+		const palletHash = xxhashAsHex('HostExecutive', 128);
+		const storageHash = xxhashAsHex('FeeTokenDecimals', 128);
+
+		const encodedKey = StateMachine.enc(stateMachine);
+
+		const keyHash = blake2AsU8a(encodedKey, 128);
+
+		const finalKey = new Uint8Array([
+			...hexToBytes(palletHash),
+			...hexToBytes(storageHash),
+			...keyHash,
+			...encodedKey,
+		]);
+
+		return `0x${Buffer.from(finalKey).toString('hex')}`;
 	}
 
 	/**
