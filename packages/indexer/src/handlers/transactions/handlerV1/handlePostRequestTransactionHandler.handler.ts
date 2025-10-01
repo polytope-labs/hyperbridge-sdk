@@ -55,7 +55,7 @@ export async function handlePostRequestTransactionHandler(
   );
  } catch (error) {
   logger.error(
-   `Error while handling PostRequest transaction: ${JSON.stringify(error)}`
+   `Error while handling PostRequest transaction: ${error}`
   );
  }
 }

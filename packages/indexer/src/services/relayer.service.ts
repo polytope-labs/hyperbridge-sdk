@@ -79,13 +79,65 @@ export class RelayerService {
 	  chain: string,
 	  transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction
 	 ): Promise<void> {
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					transaction
+				 }
+			 )}`
+		 );
 	  const { from: relayer_id, hash: transaction_hash, blockHash } = transaction;
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					 relayer_id,
+					 transaction_hash,
+					 blockHash
+				 }
+			 )}`
+		 );
 	  const receipt = await transaction.receipt();
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					receipt
+				 }
+			 )}`
+		 );
 	  const { status, gasUsed, effectiveGasPrice } = receipt;
+
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					 relayer_id,
+					 chain,
+					 transaction_hash,
+					 status,
+					 gasUsed: gasUsed.toString(),
+					 effectiveGasPrice: effectiveGasPrice.toString()
+				 }
+			 )}`
+		 );
 
 	  const nativeCurrencyPrice = await PriceHelper.getNativeCurrencyPrice(chain);
 
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					 nativeCurrencyPrice: nativeCurrencyPrice.toString()
+				 }
+			 )}`
+		 );
+
 	  let gasFee = BigInt(effectiveGasPrice) * BigInt(gasUsed);
+
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					 gasFee: gasFee.toString()
+				 }
+			 )}`
+		 );
 
 	  // Add the L1 Gas Used for L2 chains
 	  if (GET_ETHEREUM_L2_STATE_MACHINES().includes(chain)) {
@@ -104,6 +156,14 @@ export class RelayerService {
 	  const _gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18));
 	  const usdFee = (gasFee * nativeCurrencyPrice) / BigInt(10 ** 18);
 
+		 logger.info(
+			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				 {
+					usdFee: usdFee.toString()
+				 }
+			 )}`
+		 );
+
 	  logger.info(
 	   `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
 	    {
@@ -111,14 +171,15 @@ export class RelayerService {
 	     chain,
 	     transaction_hash,
 	     status,
-	     gasUsed,
-	     gasFee: _gasFeeInEth,
-	     usdFee,
+	     gasUsed: gasUsed.toString(),
+	     gasFee: _gasFeeInEth.toString(),
+	     usdFee: usdFee.toString(),
 	    }
 	   )}`
 	  );
 
 	  try {
+
 		  const timestamp = await getBlockTimestamp(blockHash, chain)
 
 		  let relayer = await RelayerService.findOrCreate(relayer_id, chain, timestamp);
@@ -126,6 +187,16 @@ export class RelayerService {
 	    relayer_id,
 	    chain
 	   );
+
+		  logger.info(
+			  `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				  {
+					  timestamp: timestamp.toString()
+				  }
+			  )}`
+		  );
+
+
 
 
 
