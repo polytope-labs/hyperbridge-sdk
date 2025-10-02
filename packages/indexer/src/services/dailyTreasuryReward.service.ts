@@ -4,10 +4,11 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
 import { Struct, u32, u128, bool, _void, Enum, u8, Vector } from "scale-ts"
 import { hexToBytes } from "viem"
-import { xxhashAsHex, blake2AsU8a, decodeAddress } from "@polkadot/util-crypto"
+import { xxhashAsHex, blake2AsU8a, decodeAddress, xxhashAsU8a } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
+import { getStateId, StateMachine } from "@/utils/state-machine.helper"
 
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
@@ -24,20 +25,6 @@ const AssetAccount = Struct({
 	reason: _void,
 	extra: _void,
 })
-
-const ConsensusStateId = Vector(u8, 4);
-
-const StateMachine = Enum({
-	Evm: u32,
-	Polkadot: u32,
-	Kusama: u32,
-	Substrate: ConsensusStateId,
-	Tendermint: ConsensusStateId,
-	Relay: Struct({
-		relay: ConsensusStateId,
-		para_id: u32,
-	}),
-});
 
 export class DailyTreasuryRewardService {
 	/**
@@ -160,6 +147,8 @@ export class DailyTreasuryRewardService {
 
 			const storageKey = this.generateFeeTokenDecimalsStorageKey(stateMachine);
 
+			logger.info(`storage key is ${storageKey}`)
+
 			const response = await fetch(rpcUrl, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -176,6 +165,7 @@ export class DailyTreasuryRewardService {
 				logger.warn(`No fee token decimals found for state machine: ${JSON.stringify(stateMachine)}`);
 				return 18;
 			}
+			logger.info(`fee token decimal result  is ${result}`)
 
 			const bytes = hexToBytes(result.result as `0x${string}`);
 			return u8.dec(bytes);
@@ -194,9 +184,14 @@ export class DailyTreasuryRewardService {
 		const palletHash = xxhashAsHex('HostExecutive', 128);
 		const storageHash = xxhashAsHex('FeeTokenDecimals', 128);
 
-		const encodedKey = StateMachine.enc(stateMachine);
+		logger.info(`trying to encode stateMachine:  ${JSON.stringify(stateMachine)}`);
+		let stateId = getStateId(stateMachine);
+		const encodedKey =  StateMachine.enc(stateId);
+		logger.info(`encoded stateMachine: ${encodedKey}`);
 
 		const keyHash = blake2AsU8a(encodedKey, 128);
+
+		logger.info(`encoded stateMachine keyHash: ${keyHash}`);
 
 		const finalKey = new Uint8Array([
 			...hexToBytes(palletHash),
@@ -204,6 +199,8 @@ export class DailyTreasuryRewardService {
 			...keyHash,
 			...encodedKey,
 		]);
+
+		logger.info(`encoded stateMachine finalKey: ${finalKey}`);
 
 		return `0x${Buffer.from(finalKey).toString('hex')}`;
 	}

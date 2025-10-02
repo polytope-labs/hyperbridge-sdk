@@ -42,6 +42,20 @@ export class RelayerService {
 	}
 
 	/**
+	 * Update the total fees earned by a relayer via accumulation
+	 */
+	static async updateFeesEarnedViaAccumulation(relayer_id: string, fee: bigint, chain:any, timestamp: bigint): Promise<void> {
+		const relayer = await this.findOrCreate(relayer_id, chain, timestamp)
+		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
+
+		relayer_chain_stats.feesEarned += fee
+		await this.updateRelayerActivity(relayer.id, timestamp)
+
+		relayer.save()
+		relayer_chain_stats.save()
+	}
+
+	/**
 	 * Update message delivered by the relayer
 	 * @param relayer_id The relayer address
 	 * @param chain The chain identifier
@@ -195,9 +209,6 @@ export class RelayerService {
 				  }
 			  )}`
 		  );
-
-
-
 
 
 	   if (status === true) {

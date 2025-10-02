@@ -2,12 +2,13 @@ import { CHAINS_BY_ISMP_HOST } from '@/constants';
 import { HyperBridgeService } from '@/services/hyperbridge.service';
 import { RelayerService } from '@/services/relayer.service';
 import { getHostStateMachine } from '@/utils/substrate.helpers';
+import { HandlePostResponsesTransaction } from '@/configs/src/types/abi-interfaces/HandlerV1Abi';
 
 /**
  * Handles the handlePostResponse transaction from handlerV1 contract
  */
 export async function handlePostResponseTransactionHandler(
- transaction: any
+ transaction: HandlePostResponsesTransaction
 ): Promise<void> {
  logger.info(
   `Checking Incoming PostResponse Transaction Args: ${JSON.stringify(
