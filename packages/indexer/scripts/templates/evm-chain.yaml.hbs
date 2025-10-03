@@ -93,10 +93,10 @@ dataSources:
               - 'AssetRefunded(uint256,bytes32,address,bytes32)'
   {{/if}}
   - kind: ethereum/Runtime
-    startBlock: 63032272
+    startBlock: {{blockNumber}}
     options:
       abi: handlerV1
-      address: '0x4638945E120846366cB7Abc08DB9c0766E3a663F'
+      address: '0x6C84eDd2A018b1fe2Fc93a56066B5C60dA4E6D64'
     assets:
       handlerV1:
         file: ./abis/HandlerV1.abi.json
@@ -107,9 +107,9 @@ dataSources:
           kind: ethereum/TransactionHandler
           function: >-
             handlePostRequests(address,(((uint256,uint256),bytes32[],uint256),((bytes,bytes,uint64,bytes,bytes,uint64,bytes),uint256,uint256)[]))
-{{!--         - handler: handlePostResponseTransactionHandler --}}
-{{!--           kind: ethereum/TransactionHandler --}}
-{{!--           function: >- --}}
-{{!--             handlePostResponses(address,(((uint256,uint256),bytes32[],uint256),(((bytes,bytes,uint64,bytes,bytes,uint64,bytes),bytes,uint64),uint256,uint256)[])) --}}
+        - handler: handlePostResponseTransactionHandler
+          kind: ethereum/TransactionHandler
+          function: >-
+            handlePostResponses(address,(((uint256,uint256),bytes32[],uint256),(((bytes,bytes,uint64,bytes,bytes,uint64,bytes),bytes,uint64),uint256,uint256)[]))
 
 repository: 'https://github.com/polytope-labs/hyperbridge'

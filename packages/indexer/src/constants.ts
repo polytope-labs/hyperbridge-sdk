@@ -56,7 +56,6 @@ export const SONEMIUM = {
 
 export const GET_ETHEREUM_L2_STATE_MACHINES = (): string[] => {
 	return [
-		ARBITRUM.mainnet,
 		OPTIMISM.mainnet,
 		BASE.mainnet,
 	];

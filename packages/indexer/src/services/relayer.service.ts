@@ -165,9 +165,16 @@ export class RelayerService {
 	   }
 	   const l1Fee = BigInt((receipt as any).l1Fee ?? 0);
 	   gasFee += l1Fee;
+		  logger.info(
+			  `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
+				  {
+					  l1Fee: l1Fee.toString()
+				  }
+			  )}`
+		  );
 	  }
 
-	  const _gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18));
+	  const gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18));
 	  const usdFee = (gasFee * nativeCurrencyPrice) / BigInt(10 ** 18);
 
 		 logger.info(
@@ -186,7 +193,7 @@ export class RelayerService {
 	     transaction_hash,
 	     status,
 	     gasUsed: gasUsed.toString(),
-	     gasFee: _gasFeeInEth.toString(),
+	     gasFee: gasFeeInEth.toString(),
 	     usdFee: usdFee.toString(),
 	    }
 	   )}`
@@ -222,7 +229,12 @@ export class RelayerService {
 	    relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee);
 	    relayer_chain_stats.usdGasFeeForFailedMessages += usdFee;
 	   }
-	   await PointsService.awardPoints( relayer_id,chain, 10n, ProtocolParticipantType.RELAYER, PointsActivityType.REWARD_POINTS_EARNED, transaction_hash, "`Points awarded for successful message delivered`",timestamp);
+	   const divisor = BigInt(10 ** 18);
+	   const actualUsdValue = usdFee / divisor;
+
+	   if (actualUsdValue > 0n) {
+		   await PointsService.awardPoints( relayer_id,chain, actualUsdValue, ProtocolParticipantType.RELAYER, PointsActivityType.REWARD_POINTS_EARNED, transaction_hash, "`Points awarded for successful message delivered`",timestamp);
+	   }
 
 	   await relayer.save();
 	   await relayer_chain_stats.save();
