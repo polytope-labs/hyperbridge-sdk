@@ -44,7 +44,12 @@ export class RelayerService {
 	/**
 	 * Update the total fees earned by a relayer via accumulation
 	 */
-	static async updateFeesEarnedViaAccumulation(relayer_id: string, fee: bigint, chain:any, timestamp: bigint): Promise<void> {
+	static async updateFeesEarnedViaAccumulation(
+		relayer_id: string,
+		fee: bigint,
+		chain: any,
+		timestamp: bigint,
+	): Promise<void> {
 		const relayer = await this.findOrCreate(relayer_id, chain, timestamp)
 		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
 
@@ -86,168 +91,148 @@ export class RelayerService {
 		await activity.save()
 	}
 
-	 /**
-	  * Computes relayer specific stats from the handlePostRequest/handlePostResponse transactions on the handlerV1 contract
-	  */
-	 static async handlePostRequestOrResponseTransaction(
-	  chain: string,
-	  transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction
-	 ): Promise<void> {
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					transaction
-				 }
-			 )}`
-		 );
-	  const { from: relayer_id, hash: transaction_hash, blockHash } = transaction;
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					 relayer_id,
-					 transaction_hash,
-					 blockHash
-				 }
-			 )}`
-		 );
-	  const receipt = await transaction.receipt();
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					receipt
-				 }
-			 )}`
-		 );
-	  const { status, gasUsed, effectiveGasPrice } = receipt;
+	/**
+	 * Computes relayer specific stats from the handlePostRequest/handlePostResponse transactions on the handlerV1 contract
+	 */
+	static async handlePostRequestOrResponseTransaction(
+		chain: string,
+		transaction: HandlePostRequestsTransaction | HandlePostResponsesTransaction,
+	): Promise<void> {
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				transaction,
+			})}`,
+		)
+		const { from: relayer_id, hash: transaction_hash, blockHash } = transaction
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				relayer_id,
+				transaction_hash,
+				blockHash,
+			})}`,
+		)
+		const receipt = await transaction.receipt()
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				receipt,
+			})}`,
+		)
+		const { status, gasUsed, effectiveGasPrice } = receipt
 
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					 relayer_id,
-					 chain,
-					 transaction_hash,
-					 status,
-					 gasUsed: gasUsed.toString(),
-					 effectiveGasPrice: effectiveGasPrice.toString()
-				 }
-			 )}`
-		 );
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				relayer_id,
+				chain,
+				transaction_hash,
+				status,
+				gasUsed: gasUsed.toString(),
+				effectiveGasPrice: effectiveGasPrice.toString(),
+			})}`,
+		)
 
-	  const nativeCurrencyPrice = await PriceHelper.getNativeCurrencyPrice(chain);
+		const nativeCurrencyPrice = await PriceHelper.getNativeCurrencyPrice(chain)
 
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					 nativeCurrencyPrice: nativeCurrencyPrice.toString()
-				 }
-			 )}`
-		 );
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				nativeCurrencyPrice: nativeCurrencyPrice.toString(),
+			})}`,
+		)
 
-	  let gasFee = BigInt(effectiveGasPrice) * BigInt(gasUsed);
+		let gasFee = BigInt(effectiveGasPrice) * BigInt(gasUsed)
 
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					 gasFee: gasFee.toString()
-				 }
-			 )}`
-		 );
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				gasFee: gasFee.toString(),
+			})}`,
+		)
 
-	  // Add the L1 Gas Used for L2 chains
-	  if (GET_ETHEREUM_L2_STATE_MACHINES().includes(chain)) {
-	   if (!(receipt as any).l1Fee) {
-	    logger.error(
-	     `Could not find l1Fee in transaction receipt: ${JSON.stringify({
-	      chain,
-	      transactionHash: transaction.hash,
-	     })}`
-	    );
-	   }
-	   const l1Fee = BigInt((receipt as any).l1Fee ?? 0);
-	   gasFee += l1Fee;
-		  logger.info(
-			  `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				  {
-					  l1Fee: l1Fee.toString()
-				  }
-			  )}`
-		  );
-	  }
+		// Add the L1 Gas Used for L2 chains
+		if (GET_ETHEREUM_L2_STATE_MACHINES().includes(chain)) {
+			if (!(receipt as any).l1Fee) {
+				logger.error(
+					`Could not find l1Fee in transaction receipt: ${JSON.stringify({
+						chain,
+						transactionHash: transaction.hash,
+					})}`,
+				)
+			}
+			const l1Fee = BigInt((receipt as any).l1Fee ?? 0)
+			gasFee += l1Fee
+			logger.info(
+				`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+					l1Fee: l1Fee.toString(),
+				})}`,
+			)
+		}
 
-	  const gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18));
-	  const usdFee = (gasFee * nativeCurrencyPrice) / BigInt(10 ** 18);
+		const gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18))
+		const usdFee = (gasFee * nativeCurrencyPrice) / BigInt(10 ** 18)
 
-		 logger.info(
-			 `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				 {
-					usdFee: usdFee.toString()
-				 }
-			 )}`
-		 );
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				usdFee: usdFee.toString(),
+			})}`,
+		)
 
-	  logger.info(
-	   `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-	    {
-	     relayer_id,
-	     chain,
-	     transaction_hash,
-	     status,
-	     gasUsed: gasUsed.toString(),
-	     gasFee: gasFeeInEth.toString(),
-	     usdFee: usdFee.toString(),
-	    }
-	   )}`
-	  );
+		logger.info(
+			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+				relayer_id,
+				chain,
+				transaction_hash,
+				status,
+				gasUsed: gasUsed.toString(),
+				gasFee: gasFeeInEth.toString(),
+				usdFee: usdFee.toString(),
+			})}`,
+		)
 
-	  try {
+		try {
+			const timestamp = await getBlockTimestamp(blockHash, chain)
 
-		  const timestamp = await getBlockTimestamp(blockHash, chain)
+			let relayer = await RelayerService.findOrCreate(relayer_id, chain, timestamp)
+			let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer_id, chain)
 
-		  let relayer = await RelayerService.findOrCreate(relayer_id, chain, timestamp);
-	  	 let relayer_chain_stats = await RelayerChainStatsService.findOrCreate(
-	    relayer_id,
-	    chain
-	   );
+			logger.info(
+				`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+					timestamp: timestamp.toString(),
+				})}`,
+			)
 
-		  logger.info(
-			  `Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify(
-				  {
-					  timestamp: timestamp.toString()
-				  }
-			  )}`
-		  );
+			if (status === true) {
+				relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
+				relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed)
+				relayer_chain_stats.gasFeeForSuccessfulMessages += BigInt(gasFee)
+				relayer_chain_stats.usdGasFeeForSuccessfulMessages += usdFee
+			} else {
+				relayer_chain_stats.numberOfFailedMessagesDelivered += BigInt(1)
+				relayer_chain_stats.gasUsedForFailedMessages += BigInt(gasUsed)
+				relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee)
+				relayer_chain_stats.usdGasFeeForFailedMessages += usdFee
+			}
+			const divisor = BigInt(10 ** 18)
+			const actualUsdValue = usdFee / divisor
 
+			if (actualUsdValue > 0n) {
+				await PointsService.awardPoints(
+					relayer_id,
+					chain,
+					actualUsdValue,
+					ProtocolParticipantType.RELAYER,
+					PointsActivityType.REWARD_POINTS_EARNED,
+					transaction_hash,
+					"`Points awarded for successful message delivered`",
+					timestamp,
+				)
+			}
 
-	   if (status === true) {
-	    relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1);
-	    relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed);
-	    relayer_chain_stats.gasFeeForSuccessfulMessages += BigInt(gasFee);
-	    relayer_chain_stats.usdGasFeeForSuccessfulMessages += usdFee;
-	   } else {
-	    relayer_chain_stats.numberOfFailedMessagesDelivered += BigInt(1);
-	    relayer_chain_stats.gasUsedForFailedMessages += BigInt(gasUsed);
-	    relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee);
-	    relayer_chain_stats.usdGasFeeForFailedMessages += usdFee;
-	   }
-	   const divisor = BigInt(10 ** 18);
-	   const actualUsdValue = usdFee / divisor;
+			await relayer.save()
+			await relayer_chain_stats.save()
 
-	   if (actualUsdValue > 0n) {
-		   await PointsService.awardPoints( relayer_id,chain, actualUsdValue, ProtocolParticipantType.RELAYER, PointsActivityType.REWARD_POINTS_EARNED, transaction_hash, "`Points awarded for successful message delivered`",timestamp);
-	   }
-
-	   await relayer.save();
-	   await relayer_chain_stats.save();
-
-	   logger.info(
-	    `Relayer: ${relayer_id} updated successfully for chain: ${chain}`
-	   );
-	  } catch (error) {
-	   logger.error(
-	    `Error while handling PostRequest/PostResponse transaction relayer updates: ${JSON.stringify(
-	     error
-	    )}`
-	   );
-	  }
-	 }
+			logger.info(`Relayer: ${relayer_id} updated successfully for chain: ${chain}`)
+		} catch (error) {
+			logger.error(
+				`Error while handling PostRequest/PostResponse transaction relayer updates: ${JSON.stringify(error)}`,
+			)
+		}
+	}
 }
