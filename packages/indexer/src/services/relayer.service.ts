@@ -5,11 +5,11 @@ import {
 	HandlePostResponsesTransaction,
 } from "@/configs/src/types/abi-interfaces/HandlerV1Abi"
 import PriceHelper from "@/utils/price.helpers"
-import { GET_ETHEREUM_L2_STATE_MACHINES } from "@/constants"
 import { PointsService } from "@/services/points.service"
 import { PointsActivityType, ProtocolParticipantType } from "@/configs/src/types"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { GET_ETHEREUM_L2_STATE_MACHINES } from "@/utils/l2-state-machine.helper"
 
 export class RelayerService {
 	/**
@@ -155,18 +155,19 @@ export class RelayerService {
 						transactionHash: transaction.hash,
 					})}`,
 				)
+
+				const l1Fee = BigInt((receipt as any).l1Fee ?? 0)
+				gasFee += l1Fee
+				logger.info(
+					`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
+						l1Fee: l1Fee.toString(),
+					})}`,
+				)
 			}
-			const l1Fee = BigInt((receipt as any).l1Fee ?? 0)
-			gasFee += l1Fee
-			logger.info(
-				`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
-					l1Fee: l1Fee.toString(),
-				})}`,
-			)
 		}
 
 		const gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18))
-		const usdFee = (gasFee * nativeCurrencyPrice) / BigInt(10 ** 18)
+		const usdFee = (BigInt(gasFeeInEth) * nativeCurrencyPrice) / BigInt(10 ** 18)
 
 		logger.info(
 			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
@@ -209,14 +210,12 @@ export class RelayerService {
 				relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee)
 				relayer_chain_stats.usdGasFeeForFailedMessages += usdFee
 			}
-			const divisor = BigInt(10 ** 18)
-			const actualUsdValue = usdFee / divisor
 
-			if (actualUsdValue > 0n) {
+			if (usdFee > 0n) {
 				await PointsService.awardPoints(
 					relayer_id,
 					chain,
-					actualUsdValue,
+					usdFee,
 					ProtocolParticipantType.RELAYER,
 					PointsActivityType.REWARD_POINTS_EARNED,
 					transaction_hash,

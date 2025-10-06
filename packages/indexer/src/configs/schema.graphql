@@ -1421,7 +1421,12 @@ type AccumulatedFee @entity {
     """
     The aggregated raw amount of fees, in the token's smallest unit.
     """
-    totalFees: BigInt!
+    lifetimeFees: BigInt!
+
+    """
+    Current relayer's fee balance.
+    """
+    currentBalance: BigInt!
 
     """
     The timestamp of the last update.

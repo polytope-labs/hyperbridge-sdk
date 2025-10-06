@@ -2,7 +2,7 @@ import { SubstrateEvent } from "@subql/types"
 import { AccumulatedFee } from "@/configs/src/types"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 import { RelayerService } from "@/services/relayer.service"
-import { encodeAddress } from "@polkadot/util-crypto"
+import { decodeAddress, encodeAddress } from "@polkadot/util-crypto"
 import { wrap } from "@/utils/event.utils"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { getHostStateMachine } from "@/utils/substrate.helpers"
@@ -20,7 +20,7 @@ function formatStateMachine(stateMachineObj: any): string {
 
 export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
 	try {
-		logger.info(`in accumulated fee event`)
+		logger.info(`iN ACCumulated fee event`)
 
 		const {
 			event: { data },
@@ -30,7 +30,7 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 		const [relayerBytes, stateMachine, rawAmountCodec] = data
 
 		logger.info(
-			`accumulated fees event gotten for relayer ${relayerBytes} on chain ${stateMachine} with amount ${rawAmountCodec}`,
+			`accumulated fees event ${data}  ${block.block.header.number} gotten for relayer ${relayerBytes} on chain ${stateMachine} with amount ${rawAmountCodec}`,
 		)
 
 		const relayerAddress = encodeAddress(relayerBytes.toHex())
@@ -54,7 +54,8 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 				id: recordId,
 				relayer: relayerAddress,
 				chainId: stateMachineId,
-				totalFees: BigInt(0),
+				lifetimeFees: BigInt(0),
+				currentBalance: BigInt(0),
 				lastUpdatedAt: date,
 			})
 		}
@@ -62,10 +63,11 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 		const decimals = await DailyTreasuryRewardService.getFeeTokenDecimals(stateMachineId)
 		logger.info(`accumulated fees event gotten for relayer ${relayerBytes}, with token fee decimals ${decimals}`)
 
-		const normalizedAmount = rawAmount * 10n ** (18n - BigInt(decimals))
+		const normalizedAmount = rawAmount / 10n ** (18n - BigInt(decimals))
 
-		record.totalFees += normalizedAmount
+		record.lifetimeFees += normalizedAmount
 		record.lastUpdatedAt = date
+		record.currentBalance = await DailyTreasuryRewardService.getRelayerFeeBalance(stateMachineId, decodeAddress(relayerBytes.toString()))
 
 		await RelayerService.updateFeesEarnedViaAccumulation(
 			relayerAddress,

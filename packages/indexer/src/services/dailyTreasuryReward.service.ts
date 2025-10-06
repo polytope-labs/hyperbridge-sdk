@@ -9,7 +9,8 @@ import fetch from "node-fetch"
 import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
 import { getStateId, StateMachine } from "@/utils/state-machine.helper"
-
+import { retryPromise } from "@/utils/retry.utils"
+import { compactAddLength } from "@polkadot/util"
 
 const REPUTATION_ASSET_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
 export const TREASURY_ADDRESS = "13UVJyLkyUpEiXBx5p776dHQoBuuk3Y5PYp5Aa89rYWePWA3"
@@ -17,6 +18,7 @@ interface SubstrateStorageResponse {
 	jsonrpc: "2.0"
 	id: number
 	result?: string
+	error?: { message: string }
 }
 
 const AssetAccount = Struct({
@@ -50,20 +52,13 @@ export class DailyTreasuryRewardService {
 		await record.save()
 	}
 
-	/**
-	 * Fetches reputation asset balance for a given relayer account
-	 */
-	static async getReputationAssetBalance(accountId: string): Promise<bigint> {
-		try {
-			const hyperbridgeChain = getHostStateMachine(chainId)
-			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "")
+	private static async getStorage(storageKey: string, logMessage: string): Promise<string | null> {
+		const operation = async (): Promise<string | null> => {
+			const hyperbridgeChain = getHostStateMachine(chainId);
+			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
 			if (!rpcUrl) {
-				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
+				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
 			}
-
-			const storageKey = this.generateAssetsAccountStorageKey(REPUTATION_ASSET_ID, accountId)
-
-			logger.info(`storage key is ${storageKey}`)
 
 			const response = await fetch(rpcUrl, {
 				method: "POST",
@@ -74,16 +69,48 @@ export class DailyTreasuryRewardService {
 					method: "state_getStorage",
 					params: [storageKey],
 				}),
-			})
+			});
 
-			const result: SubstrateStorageResponse = await response.json()
-			logger.info(`asset balance result  is ${result}`)
+			if (!response.ok) {
+				throw new Error(`RPC request failed with status ${response.status}`);
+			}
 
-			if (!result.result) {
+			const result: SubstrateStorageResponse = await response.json();
+
+			if (result.error) {
+				throw new Error(result.error.message);
+			}
+
+			return result.result || null;
+		};
+
+		try {
+			return await retryPromise(operation, {
+				maxRetries: 3,
+				backoffMs: 1000,
+				logMessage: `Fetch ${logMessage}`,
+			});
+		} catch (e) {
+			const errorMessage = e instanceof Error ? e.message : String(e);
+			logger.error(`All retries failed for ${logMessage}: ${errorMessage}`);
+			return null;
+		}
+	}
+
+	/**
+	 * Fetches reputation asset balance for a given relayer account
+	 */
+	static async getReputationAssetBalance(accountId: string): Promise<bigint> {
+		try {
+			const storageKey = this.generateAssetsAccountStorageKey(REPUTATION_ASSET_ID, accountId)
+			logger.info(`storage key is ${storageKey}`)
+			const result = await this.getStorage(storageKey, "reputation asset balance")
+
+			if (!result) {
 				return BigInt(0)
 			}
 
-			const bytes = hexToBytes(result.result as `0x${string}`)
+			const bytes = hexToBytes(result as `0x${string}`)
 			const decoded = AssetAccount.dec(bytes)
 
 			return decoded.balance
@@ -99,31 +126,14 @@ export class DailyTreasuryRewardService {
 	 */
 	static async getTreasuryBalance(): Promise<bigint> {
 		try {
-			const hyperbridgeChain = getHostStateMachine(chainId)
-			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "")
-			if (!rpcUrl) {
-				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
-			}
-
 			const storageKey = this.generateSystemAccountStorageKey(TREASURY_ADDRESS)
+			const result = await this.getStorage(storageKey, "treasury balance")
 
-			const response = await fetch(rpcUrl, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					jsonrpc: "2.0",
-					id: 1,
-					method: "state_getStorage",
-					params: [storageKey],
-				}),
-			})
-
-			const result: SubstrateStorageResponse = await response.json()
-			if (!result.result) {
+			if (!result) {
 				return BigInt(0)
 			}
 
-			const bytes = hexToBytes(result.result as `0x${string}`)
+			const bytes = hexToBytes(result as `0x${string}`)
 			const decoded = AccountInfo.dec(bytes)
 
 			return decoded.data.free
@@ -139,70 +149,101 @@ export class DailyTreasuryRewardService {
 	 */
 	static async getFeeTokenDecimals(stateMachine: any): Promise<number> {
 		try {
-			const hyperbridgeChain = getHostStateMachine(chainId);
-			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
-			if (!rpcUrl) {
-				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
-			}
 
-			const storageKey = this.generateFeeTokenDecimalsStorageKey(stateMachine);
-
+			const storageKey = this.generateFeeTokenDecimalsStorageKey(stateMachine)
 			logger.info(`storage key is ${storageKey}`)
-
-			const response = await fetch(rpcUrl, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					jsonrpc: "2.0",
-					id: 1,
-					method: "state_getStorage",
-					params: [storageKey],
-				}),
-			});
-
-			const result: SubstrateStorageResponse = await response.json();
-			if (!result.result) {
-				logger.warn(`No fee token decimals found for state machine: ${JSON.stringify(stateMachine)}`);
-				return 18;
+			const result = await this.getStorage(storageKey, "fee token decimals")
+			if (!result) {
+				logger.warn(`No fee token decimals found for state machine: ${JSON.stringify(stateMachine)}`)
+				return 18
 			}
 			logger.info(`fee token decimal result  is ${result}`)
 
-			const bytes = hexToBytes(result.result as `0x${string}`);
-			return u8.dec(bytes);
+			const bytes = hexToBytes(result as `0x${string}`)
+			return u8.dec(bytes)
+		} catch (e) {
+			const errorMessage = e instanceof Error ? e.message : String(e)
+			logger.error(`Failed to fetch fee token decimals: ${errorMessage}`)
+			return 18
+		}
+	}
+
+	static async getRelayerFeeBalance(stateMachine: any, relayerBytes: Uint8Array): Promise<bigint> {
+		try {
+
+			const storageKey = this.generateRelayerFeesStorageKey(stateMachine, relayerBytes);
+			logger.info(`storage key for get relayer fee balance is ${storageKey} ${stateMachine} ${relayerBytes} `)
+			const result = await this.getStorage(storageKey, "relayer fee balance");
+
+			logger.info(`storage key result for get relayer fee balance is ${result} `)
+
+
+			if (!result) {
+				return BigInt(0);
+			}
+
+			const bytes = hexToBytes(result as `0x${string}`);
+
+			const reversedBytes = bytes.slice().reverse();
+			const hex = `0x${Buffer.from(reversedBytes).toString('hex')}`;
+			return BigInt(hex);
 
 		} catch (e) {
 			const errorMessage = e instanceof Error ? e.message : String(e);
-			logger.error(`Failed to fetch fee token decimals: ${errorMessage}`);
-			return 18;
+			logger.error(`Failed to fetch relayer fee balance: ${errorMessage}`);
+			return BigInt(0);
 		}
+	}
+
+	private static generateRelayerFeesStorageKey(stateMachine: any, relayerBytes: Uint8Array): string {
+		const palletHash = xxhashAsHex('Relayer', 128);
+		const storageHash = xxhashAsHex('Fees', 128);
+
+		let stateId = getStateId(stateMachine)
+		const encodedKey1 = StateMachine.enc(stateId);
+		const key1Hash = blake2AsU8a(encodedKey1, 128);
+
+		const key2Encoded = compactAddLength(relayerBytes);
+		const key2Hash = blake2AsU8a(key2Encoded, 128);
+
+		const finalKey = new Uint8Array([
+			...hexToBytes(palletHash),
+			...hexToBytes(storageHash),
+			...key1Hash,
+			...encodedKey1,
+			...key2Hash,
+			...key2Encoded,
+		]);
+
+		return `0x${Buffer.from(finalKey).toString('hex')}`;
 	}
 
 	/**
 	 * Sorage Key for fee token decimal
 	 */
 	private static generateFeeTokenDecimalsStorageKey(stateMachine: any): string {
-		const palletHash = xxhashAsHex('HostExecutive', 128);
-		const storageHash = xxhashAsHex('FeeTokenDecimals', 128);
+		const palletHash = xxhashAsHex("HostExecutive", 128)
+		const storageHash = xxhashAsHex("FeeTokenDecimals", 128)
 
-		logger.info(`trying to encode stateMachine:  ${JSON.stringify(stateMachine)}`);
-		let stateId = getStateId(stateMachine);
-		const encodedKey =  StateMachine.enc(stateId);
-		logger.info(`encoded stateMachine: ${encodedKey}`);
+		logger.info(`trying to encode stateMachine:  ${JSON.stringify(stateMachine)}`)
+		let stateId = getStateId(stateMachine)
+		const encodedKey = StateMachine.enc(stateId)
+		logger.info(`encoded stateMachine: ${encodedKey}`)
 
-		const keyHash = blake2AsU8a(encodedKey, 128);
+		const keyHash = blake2AsU8a(encodedKey, 128)
 
-		logger.info(`encoded stateMachine keyHash: ${keyHash}`);
+		logger.info(`encoded stateMachine keyHash: ${keyHash}`)
 
 		const finalKey = new Uint8Array([
 			...hexToBytes(palletHash),
 			...hexToBytes(storageHash),
 			...keyHash,
 			...encodedKey,
-		]);
+		])
 
-		logger.info(`encoded stateMachine finalKey: ${finalKey}`);
+		logger.info(`encoded stateMachine finalKey: ${finalKey}`)
 
-		return `0x${Buffer.from(finalKey).toString('hex')}`;
+		return `0x${Buffer.from(finalKey).toString("hex")}`
 	}
 
 	/**
