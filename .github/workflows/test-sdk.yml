@@ -63,9 +63,6 @@ jobs:
                   TOKEN_GATEWAY_ADDRESS: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
                   EOF
 
-            - name: Generate L2 Chains
-              run: pnpm codegen:l2-chains
-
             - name: Build packages
               run: pnpm build
               env:

@@ -47,9 +47,6 @@ jobs:
           SECRET_PHRASE=${{ secrets.SECRET_PHRASE }}
           EOF
 
-      - name: Generate L2 Chains
-        run: pnpm codegen:l2-chains
-
       - name: Build packages
         run: pnpm build
         env:
