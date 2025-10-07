@@ -635,25 +635,18 @@ export class IntentGateway {
 
 		// V2 Protocol Check
 		try {
-			const v2PairExists = (await client.readContract({
-				address: v2Factory,
-				abi: UniswapV2Factory.ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
+			const v2AmountOut = await client.simulateContract({
+				address: v2Router,
+				abi: UniswapRouterV2.ABI,
+				// @ts-ignore
+				functionName: "getAmountsOut",
+				// @ts-ignore
+				args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
+			})
 
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountOut = (await client.readContract({
-					address: v2Router,
-					abi: UniswapRouterV2.ABI,
-					functionName: "getAmountsOut",
-					args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
-
-				amountOutV2 = v2AmountOut[1]
-				if (selectedProtocol === "v2") {
-					return { protocol: "v2", amountOut: amountOutV2 }
-				}
+			amountOutV2 = v2AmountOut.result[1]
+			if (selectedProtocol === "v2") {
+				return { protocol: "v2", amountOut: amountOutV2 }
 			}
 		} catch (error) {
 			console.warn("V2 quote failed:", error)
