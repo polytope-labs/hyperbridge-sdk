@@ -109,6 +109,7 @@ export class RelayerService {
 				relayer_id,
 				transaction_hash,
 				blockHash,
+				chain
 			})}`,
 		)
 		const receipt = await transaction.receipt()
@@ -148,14 +149,12 @@ export class RelayerService {
 
 		// Add the L1 Gas Used for L2 chains
 		if (GET_ETHEREUM_L2_STATE_MACHINES().includes(chain)) {
-			if (!(receipt as any).l1Fee) {
-				logger.error(
-					`Could not find l1Fee in transaction receipt: ${JSON.stringify({
-						chain,
-						transactionHash: transaction.hash,
-					})}`,
-				)
-
+			logger.info(
+				`Handling PostRequest/PostResponse Transaction Relayer Update, checking l1 fee for chain: ${JSON.stringify({
+					chain: chain,
+				})}`,
+			)
+			if ((receipt as any).l1Fee) {
 				const l1Fee = BigInt((receipt as any).l1Fee ?? 0)
 				gasFee += l1Fee
 				logger.info(
@@ -163,11 +162,18 @@ export class RelayerService {
 						l1Fee: l1Fee.toString(),
 					})}`,
 				)
+			} else {
+				logger.error(
+					`Could not find l1Fee in transaction receipt: ${JSON.stringify({
+						chain,
+						transactionHash: transaction.hash,
+					})}`,
+				)
 			}
 		}
 
-		const gasFeeInEth = Number(gasFee) / Number(BigInt(10 ** 18))
-		const usdFee = (BigInt(gasFeeInEth) * nativeCurrencyPrice) / BigInt(10 ** 18)
+		const usdFee = (gasFee * nativeCurrencyPrice) / (10n ** 18n);
+		const gasFeeInEth = Number(gasFee) / 1e18;
 
 		logger.info(
 			`Handling PostRequest/PostResponse Transaction Relayer Update: ${JSON.stringify({
@@ -199,6 +205,8 @@ export class RelayerService {
 				})}`,
 			)
 
+			let pointsToAWard = 50;
+			let description = "`Points awarded for successful message delivered`";
 			if (status === true) {
 				relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
 				relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed)
@@ -209,28 +217,31 @@ export class RelayerService {
 				relayer_chain_stats.gasUsedForFailedMessages += BigInt(gasUsed)
 				relayer_chain_stats.gasFeeForFailedMessages += BigInt(gasFee)
 				relayer_chain_stats.usdGasFeeForFailedMessages += usdFee
+
+				pointsToAWard = pointsToAWard / 2;
+				description = "`Points awarded for failed message delivery`"
 			}
 
-			if (usdFee > 0n) {
-				await PointsService.awardPoints(
-					relayer_id,
-					chain,
-					usdFee,
-					ProtocolParticipantType.RELAYER,
-					PointsActivityType.REWARD_POINTS_EARNED,
-					transaction_hash,
-					"`Points awarded for successful message delivered`",
-					timestamp,
-				)
-			}
+			await PointsService.awardPoints(
+				relayer_id,
+				chain,
+				BigInt(pointsToAWard),
+				ProtocolParticipantType.RELAYER,
+				PointsActivityType.REWARD_POINTS_EARNED,
+				transaction_hash,
+				description,
+				timestamp,
+			)
+
 
 			await relayer.save()
 			await relayer_chain_stats.save()
 
 			logger.info(`Relayer: ${relayer_id} updated successfully for chain: ${chain}`)
-		} catch (error) {
+		} catch (e) {
+			const errorMessage = e instanceof Error ? e.message : String(e)
 			logger.error(
-				`Error while handling PostRequest/PostResponse transaction relayer updates: ${JSON.stringify(error)}`,
+				`Error while handling PostRequest/PostResponse transaction relayer updates: ${errorMessage}`,
 			)
 		}
 	}
