@@ -160,18 +160,10 @@ export class IntentGateway {
 
 		let destChainFillGas = 0n
 		try {
-			let quoteInFeeToken = await this.dest.quote(postRequest)
-			let quoteWithAmountOut = await this.findBestProtocolWithAmountOut(
-				"dest",
-				ADDRESS_ZERO,
-				destChainFeeTokenAddress,
-				quoteInFeeToken,
-				order.destChain,
-				"v2",
+			let protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken).catch(() =>
+				this.dest.quoteNative(postRequest, relayerFeeInDestFeeToken).catch(() => 0n),
 			)
-
-			let protocolFeeInNativeToken = quoteWithAmountOut.amountIn
-			protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 100n) / 10000n
+			protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
 
 			destChainFillGas = await this.dest.client.estimateContractGas({
 				abi: IntentGatewayABI.ABI,
@@ -182,9 +174,9 @@ export class IntentGateway {
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
 			})
-		} catch (e) {
+		} catch {
 			console.warn(
-				`${e}, Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
+				`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
 			)
 
 			const destFeeTokenBalanceData = ERC20Method.BALANCE_OF + bytes20ToBytes32(MOCK_ADDRESS).slice(2)
