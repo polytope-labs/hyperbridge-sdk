@@ -1,10 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
 import { OPTIMISM, BASE } from '../src/constants';
-
-const SUPERCHAIN_REGISTRY_URL = 'https://raw.githubusercontent.com/ethereum-optimism/superchain-registry/main/chainList.json';
 
 interface OpStackChain {
 	name: string;
@@ -13,21 +10,18 @@ interface OpStackChain {
 	superchainLevel: number;
 }
 
-async function generateL2ChainsFile() {
-	console.log(`Fetching OP Stack L2 chains from ${SUPERCHAIN_REGISTRY_URL}...`);
+function generateL2ChainsFile() {
+	console.log('Generating OP Stack L2 chains from local file...');
 
 	try {
 		const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+		const jsonPath = path.resolve(__dirname, '../src/configs/opstack-chains.json');
+		const outputPath = path.resolve(__dirname, '../src/utils/state-machine.helpers.ts');
+
+		const chainList: OpStackChain[] = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+
 		const hardcodedL2s = [OPTIMISM.mainnet, BASE.mainnet];
-
-		const response = await fetch(SUPERCHAIN_REGISTRY_URL);
-		if (!response.ok) {
-			throw new Error(`Failed to fetch chain list: ${response.statusText}`);
-		}
-		const chainList: OpStackChain[] = await response.json() as OpStackChain[];
-
-		const outputPath = path.resolve(__dirname, '../src/utils/l2-state-machine.helper.ts');
 
 		const fetchedL2s = chainList
 			.filter(chain => chain.identifier.startsWith('mainnet/'))

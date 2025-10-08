@@ -168,56 +168,6 @@ export class DailyTreasuryRewardService {
 		}
 	}
 
-	static async getRelayerFeeBalance(stateMachine: any, relayerBytes: Uint8Array): Promise<bigint> {
-		try {
-
-			const storageKey = this.generateRelayerFeesStorageKey(stateMachine, relayerBytes);
-			logger.info(`storage key for get relayer fee balance is ${storageKey} ${stateMachine} ${relayerBytes} `)
-			const result = await this.getStorage(storageKey, "relayer fee balance");
-
-			logger.info(`storage key result for get relayer fee balance is ${result} `)
-
-
-			if (!result) {
-				return BigInt(0);
-			}
-
-			const bytes = hexToBytes(result as `0x${string}`);
-
-			const reversedBytes = bytes.slice().reverse();
-			const hex = `0x${Buffer.from(reversedBytes).toString('hex')}`;
-			return BigInt(hex);
-
-		} catch (e) {
-			const errorMessage = e instanceof Error ? e.message : String(e);
-			logger.error(`Failed to fetch relayer fee balance: ${errorMessage}`);
-			return BigInt(0);
-		}
-	}
-
-	private static generateRelayerFeesStorageKey(stateMachine: any, relayerBytes: Uint8Array): string {
-		const palletHash = xxhashAsHex('Relayer', 128);
-		const storageHash = xxhashAsHex('Fees', 128);
-
-		let stateId = getStateId(stateMachine)
-		const encodedKey1 = StateMachine.enc(stateId);
-		const key1Hash = blake2AsU8a(encodedKey1, 128);
-
-		const key2Encoded = compactAddLength(relayerBytes);
-		const key2Hash = blake2AsU8a(key2Encoded, 128);
-
-		const finalKey = new Uint8Array([
-			...hexToBytes(palletHash),
-			...hexToBytes(storageHash),
-			...key1Hash,
-			...encodedKey1,
-			...key2Hash,
-			...key2Encoded,
-		]);
-
-		return `0x${Buffer.from(finalKey).toString('hex')}`;
-	}
-
 	/**
 	 * Sorage Key for fee token decimal
 	 */

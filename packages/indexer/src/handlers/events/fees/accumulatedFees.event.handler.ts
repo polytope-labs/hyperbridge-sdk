@@ -2,21 +2,12 @@ import { SubstrateEvent } from "@subql/types"
 import { AccumulatedFee } from "@/configs/src/types"
 import { DailyTreasuryRewardService } from "@/services/dailyTreasuryReward.service"
 import { RelayerService } from "@/services/relayer.service"
-import { decodeAddress, encodeAddress } from "@polkadot/util-crypto"
+import { encodeAddress } from "@polkadot/util-crypto"
 import { wrap } from "@/utils/event.utils"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
-import { getHostStateMachine } from "@/utils/substrate.helpers"
+import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
 
-function formatStateMachine(stateMachineObj: any): string {
-	if (!stateMachineObj) {
-		return "UNKNOWN"
-	}
-	const key = Object.keys(stateMachineObj)[0]
-	const value = stateMachineObj[key]
-
-	return `${key.toUpperCase()}-${value}`
-}
 
 export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
 	try {
@@ -36,7 +27,7 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 		const relayerAddress = encodeAddress(relayerBytes.toHex())
 		const rawAmount = (rawAmountCodec as any).toBigInt()
 
-		const stateMachineId = formatStateMachine(stateMachine.toJSON())
+		const stateMachineId = formatChain(stateMachine.toString())
 
 		logger.info(
 			`accumulated fees event gotten for relayer ${relayerBytes} on chain ${stateMachineId} with amount ${rawAmountCodec}`,
@@ -55,7 +46,6 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 				relayer: relayerAddress,
 				chainId: stateMachineId,
 				lifetimeFees: BigInt(0),
-				currentBalance: BigInt(0),
 				lastUpdatedAt: date,
 			})
 		}
@@ -67,7 +57,6 @@ export const handleAccumulateFeesEvent = wrap(async (event: SubstrateEvent): Pro
 
 		record.lifetimeFees += normalizedAmount
 		record.lastUpdatedAt = date
-		record.currentBalance = await DailyTreasuryRewardService.getRelayerFeeBalance(stateMachineId, decodeAddress(relayerBytes.toString()))
 
 		await RelayerService.updateFeesEarnedViaAccumulation(
 			relayerAddress,

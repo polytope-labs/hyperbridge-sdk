@@ -1424,11 +1424,6 @@ type AccumulatedFee @entity {
     lifetimeFees: BigInt!
 
     """
-    Current relayer's fee balance.
-    """
-    currentBalance: BigInt!
-
-    """
     The timestamp of the last update.
     """
     lastUpdatedAt: Date!
