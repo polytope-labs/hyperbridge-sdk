@@ -34,8 +34,8 @@ import handler from "@/abis/handler"
 import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
 
-describe.sequential("Intents protocol tests", () => {
-	it.skip("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
+describe.only("Intents protocol tests", () => {
+	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 		const bscMainnetId = "EVM-56"
 		const mainnetId = "EVM-1"
@@ -91,7 +91,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it.skip("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
+	it("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, arbitrumMainnetIsmpHost } = await setUpBscToArbitrum()
 		const bscMainnetId = "EVM-56"
 		const arbitrumMainnetId = "EVM-42161"
@@ -148,7 +148,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it.skip("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
+	it("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
 		const { chainConfigService, baseMainnetIsmpHost, bscMainnetIsmpHost } = await setUpBaseToBsc()
 		const baseMainnetId = "EVM-8453"
 		const bscMainnetId = "EVM-56"
@@ -205,7 +205,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it.skip("Should generate the estimatedFee while doing bsc mainnet to polygon mainnet", async () => {
+	it("Should generate the estimatedFee while doing bsc mainnet to polygon mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, polygonMainnetIsmpHost } = await setUpBscToPolygon()
 		const bscMainnetId = "EVM-56"
 		const polygonMainnetId = "EVM-137"
