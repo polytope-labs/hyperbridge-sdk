@@ -34,7 +34,7 @@ import handler from "@/abis/handler"
 import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
 
-describe.only("Intents protocol tests", () => {
+describe.sequential("Intents protocol tests", () => {
 	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 		const bscMainnetId = "EVM-56"
