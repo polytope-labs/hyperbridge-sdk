@@ -17,7 +17,7 @@ function generateL2ChainsFile() {
 		const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 		const jsonPath = path.resolve(__dirname, '../src/configs/opstack-chains.json');
-		const outputPath = path.resolve(__dirname, '../src/utils/l2-state-machine.helpers.ts');
+		const outputPath = path.resolve(__dirname, '../src/utils/l2-state-machine.helper.ts');
 
 		const chainList: OpStackChain[] = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
 
