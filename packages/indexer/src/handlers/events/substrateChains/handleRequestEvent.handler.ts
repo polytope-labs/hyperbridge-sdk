@@ -23,6 +23,15 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 	const destId = formatChain(dest_chain.toString())
 	const hostId = getHostStateMachine(chainId)
 
+	logger.info(
+		`Handling ISMP Request Event: ${stringify({
+			sourceId,
+			destId,
+			request_nonce,
+			commitment,
+		})}`,
+	)
+
 	if (!isSubstrateChain(sourceId) || (!isHyperbridge(sourceId) && isHyperbridge(hostId))) {
 		logger.error(`Skipping hyperbridge aggregated request`)
 		return

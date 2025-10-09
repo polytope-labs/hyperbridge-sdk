@@ -8,8 +8,6 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
  * Handles the handlePostRequest transaction from handlerV1 contract
  */
 export async function handlePostRequestTransactionHandler(transaction: HandlePostRequestsTransaction): Promise<void> {
-	logger.info(`Checking Incoming PostRequest Transaction Args: ${JSON.stringify(transaction.args)}`)
-
 	if (!transaction.args) {
 		logger.info("Not handling post request transaction - args is empty")
 		return

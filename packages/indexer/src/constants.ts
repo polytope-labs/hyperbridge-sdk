@@ -54,10 +54,6 @@ export const SONEMIUM = {
 	mainnet: "EVM-1868",
 } as const
 
-export const GET_ETHEREUM_L2_STATE_MACHINES = (): string[] => {
-	return [OPTIMISM.mainnet, BASE.mainnet]
-}
-
 import ENV_CONFIG from "./env-config.json"
 import { CHAIN_IDS_BY_GENESIS } from "./chain-ids-by-genesis"
 import { CHAINS_BY_ISMP_HOST } from "./chains-by-ismp-host"

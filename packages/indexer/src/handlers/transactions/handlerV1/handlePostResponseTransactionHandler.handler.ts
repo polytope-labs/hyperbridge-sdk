@@ -8,18 +8,12 @@ import { HandlePostResponsesTransaction } from "@/configs/src/types/abi-interfac
  * Handles the handlePostResponse transaction from handlerV1 contract
  */
 export async function handlePostResponseTransactionHandler(transaction: HandlePostResponsesTransaction): Promise<void> {
-	logger.info(`Checking Incoming PostResponse Transaction Args: ${JSON.stringify(transaction)}`)
-
-	const receipt = await transaction.receipt()
-	logger.info(`Transaction receipt: ${JSON.stringify(receipt)}`)
-
 	if (!transaction.args) {
 		logger.info("Not handling transaction - args is empty")
 		return
 	}
 
 	const chain: string = getHostStateMachine(chainId)
-	logger.info(`Chain: ${chain}`)
 
 	const expectedHostAddress = CHAINS_BY_ISMP_HOST[chain]
 	const incomimgHostAddress = transaction.args![0]
