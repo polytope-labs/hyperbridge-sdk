@@ -459,6 +459,15 @@ describe("Order Cancellation tests", () => {
 		}
 
 		result = await cancelGenerator.next(getRequest)
+
+		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
+			result = await cancelGenerator.next()
+		}
+		expect(result.value?.status).toBe("SOURCE_FINALIZED")
+
+		while (!result.done && result.value?.status !== "SOURCE_PROOF_RECEIVED") {
+			result = await cancelGenerator.next()
+		}
 		expect(result.value?.status).toBe("SOURCE_PROOF_RECEIVED")
 
 		while (!result.done) {
