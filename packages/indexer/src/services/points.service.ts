@@ -19,6 +19,7 @@ export class PointsService {
 				chain,
 				points: BigInt(0),
 				earnerType,
+				transactionCount: BigInt(0),
 			})
 		}
 
@@ -44,6 +45,7 @@ export class PointsService {
 		logger.info(`Awarding ${points} points to ${address} on ${chain} with earner type ${earnerType}`)
 
 		rewardPoints.points = rewardPoints.points + points
+		rewardPoints.transactionCount = rewardPoints.transactionCount + BigInt(1)
 		await rewardPoints.save()
 
 		const activityLog = await RewardPointsActivityLog.create({
@@ -75,6 +77,7 @@ export class PointsService {
 		logger.info(`Deducting ${points} points from ${address} on ${chain} with earner type ${earnerType}`)
 
 		rewardPoints.points = rewardPoints.points - points
+		rewardPoints.transactionCount = rewardPoints.transactionCount + BigInt(1)
 		await rewardPoints.save()
 
 		const activityLog = await RewardPointsActivityLog.create({
