@@ -317,7 +317,7 @@ export class ContractInteractionService {
 
 			// Add 25 cents on top of execution fees
 
-			postGasEstimateInDestFeeToken += 25n * 10n ** BigInt(destFeeTokenDecimals - 2)
+			postGasEstimateInDestFeeToken += 5n * 10n ** BigInt(destFeeTokenDecimals - 2)
 
 			this.logger.debug(
 				{
