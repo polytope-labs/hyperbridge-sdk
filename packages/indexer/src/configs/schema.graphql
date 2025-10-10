@@ -1340,24 +1340,24 @@ type HyperbridgeRelayerReward @entity {
 	id: ID!
 
 	"""
-	The total amount of rewards this relayer has ever received.
-	"""
-	totalRewardAmount: BigInt
+    The total amount of rewards this relayer has ever received.
+    """
+    totalRewardAmount: BigInt
 
-	"""
-	The total amount of messaging rewards this relayer has ever received.
-	"""
-	totalMessagingRewardAmount: BigInt
+    """
+    The total amount of messaging rewards this relayer has ever received.
+    """
+    totalMessagingRewardAmount: BigInt
 
-	"""
-	The total amount of consensus rewards this relayer has ever received.
-	"""
-	totalConsensusRewardAmount: BigInt
+    """
+    The total amount of consensus rewards this relayer has ever received.
+    """
+    totalConsensusRewardAmount: BigInt
 
-	"""
-	The balance of reputation assets accrued.
-	"""
-	reputationAssetBalance: BigInt
+    """
+    The balance of reputation assets accrued.
+    """
+    reputationAssetBalance: BigInt
 }
 
 """
@@ -1365,34 +1365,37 @@ Record of daily relayer rewards paid out by the treasury
 """
 type DailyTreasuryRelayerReward @entity {
 	id: ID! # ID is: {YYYY-MM-DD}
-	date: Date!
-	dailyRewardAmount: BigInt!
+    date: Date!
+    dailyRewardAmount: BigInt!
 }
+
+
 
 """
 A single entity that tracks the aggregate balance and transfers for the treasury.
 The ID is the treasury's account address.
 """
 type Treasury @entity {
-	id: ID!
+    id: ID!
 
-	"""
-	The total amount of tokens ever transferred INTO the treasury.
-	"""
-	totalAmountTransferredIn: BigInt!
+    """
+    The total amount of tokens ever transferred INTO the treasury.
+    """
+    totalAmountTransferredIn: BigInt!
 
-	"""
-	The total amount of tokens ever transferred OUT of the treasury.
-	"""
-	totalAmountTransferredOut: BigInt!
+    """
+    The total amount of tokens ever transferred OUT of the treasury.
+    """
+    totalAmountTransferredOut: BigInt!
 
-	"""
-	The current calculated balance of the treasury (In - Out).
-	"""
-	totalBalance: BigInt!
+    """
+    The current calculated balance of the treasury (In - Out).
+    """
+    totalBalance: BigInt!
 
-	"""
-	The timestamp of the last update.
-	"""
-	lastUpdatedAt: Date!
+    """
+    The timestamp of the last update.
+    """
+    lastUpdatedAt: Date!
 }
+
