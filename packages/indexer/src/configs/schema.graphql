@@ -1399,3 +1399,37 @@ type Treasury @entity {
     lastUpdatedAt: Date!
 }
 
+<<<<<<< HEAD
+=======
+"""
+Stores the total accumulated fees for a specific relayer on a specific chain.
+"""
+type AccumulatedFee @entity {
+    """
+    The unique ID, format: {relayerAddress}-{chainId}
+    """
+    id: ID!
+
+    """
+    The relayer's address.
+    """
+    relayer: String! @index
+
+    """
+    A string identifier for the source chain of the fee.
+    """
+    chainId: String! @index
+
+    """
+    The aggregated raw amount of fees, in the token's smallest unit.
+    """
+    lifetimeFees: BigInt!
+
+    """
+    The timestamp of the last update.
+    """
+    lastUpdatedAt: Date!
+}
+
+
+>>>>>>> ce67dabe955f729dcd7bc6961db4e8edd6fb3b41
