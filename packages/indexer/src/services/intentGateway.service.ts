@@ -231,7 +231,7 @@ export class IntentGatewayService {
 		let orderPlaced = await OrderPlaced.get(commitment)
 
 		// For race condtions, we create a placeholder order that will be updated when the PLACED event arrives
-		if (!orderPlaced && status === OrderStatus.FILLED) {
+		if (!orderPlaced && status != OrderStatus.PLACED) {
 			logger.warn(`Order ${commitment} does not exist yet but FILLED event received. Creating placeholder order.`)
 
 			orderPlaced = await OrderPlaced.create({
