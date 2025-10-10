@@ -315,9 +315,9 @@ export class ContractInteractionService {
 				destFeeTokenDecimals,
 			)
 
-			// Add 25 cents on top of execution fees
-
-			postGasEstimateInDestFeeToken += 5n * 10n ** BigInt(destFeeTokenDecimals - 2)
+			const minRelayerFee = 5n * 10n ** BigInt(destFeeTokenDecimals - 2)
+			const postGasWithIncentive = postGasEstimateInDestFeeToken + (postGasEstimateInDestFeeToken * 1n) / 100n
+			postGasEstimateInDestFeeToken = postGasWithIncentive > minRelayerFee ? postGasWithIncentive : minRelayerFee
 
 			this.logger.debug(
 				{
