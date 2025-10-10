@@ -25,6 +25,7 @@ import {
 	toHex,
 	encodePacked,
 	encodeAbiParameters,
+	parseAbiParameters,
 } from "viem"
 import {
 	DispatchPost,
@@ -750,13 +751,9 @@ export class IntentGateway {
 		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_IN])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountIn" },
-					{ type: "uint256", name: "amountOutMinimum" },
-					{ type: "address[]", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountIn, uint256 amountOutMinimum, address[] path, bool isPermit2",
+				),
 				[recipient, amountIn, amountOutMinimum, path, isPermit2],
 			),
 		]
@@ -803,13 +800,9 @@ export class IntentGateway {
 		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountOut" },
-					{ type: "uint256", name: "amountInMax" },
-					{ type: "address[]", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountOut, uint256 amountInMax, address[] path, bool isPermit2",
+				),
 				[recipient, amountOut, amountInMax, path, isPermit2],
 			),
 		]
@@ -857,13 +850,9 @@ export class IntentGateway {
 		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_IN])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountIn" },
-					{ type: "uint256", name: "amountOutMinimum" },
-					{ type: "bytes", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountIn, uint256 amountOutMinimum, bytes path, bool isPermit2",
+				),
 				[recipient, amountIn, amountOutMinimum, pathV3, isPermit2],
 			),
 		]
@@ -911,13 +900,9 @@ export class IntentGateway {
 		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountOut" },
-					{ type: "uint256", name: "amountInMax" },
-					{ type: "bytes", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountOut, uint256 amountInMax, bytes path, bool isPermit2",
+				),
 				[recipient, amountOut, amountInMax, pathV3, isPermit2],
 			),
 		]
@@ -979,68 +964,34 @@ export class IntentGateway {
 		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL])
 
 		const swapParams = encodeAbiParameters(
-			[
-				{
-					type: "tuple",
-					name: "ExactInputSingleParams",
-					components: [
-						{
-							type: "tuple",
-							name: "poolKey",
-							components: [
-								{ type: "address", name: "currency0" },
-								{ type: "address", name: "currency1" },
-								{ type: "uint24", name: "fee" },
-								{ type: "int24", name: "tickSpacing" },
-								{ type: "address", name: "hooks" },
-							],
-						},
-						{ type: "bool", name: "zeroForOne" },
-						{ type: "uint128", name: "amountIn" },
-						{ type: "uint128", name: "amountOutMinimum" },
-						{ type: "bytes", name: "hookData" },
-					],
-				},
-			],
+			parseAbiParameters(
+				"((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bool zeroForOne, uint128 amountIn, uint128 amountOutMinimum, bytes hookData)",
+			),
 			[
 				{
 					poolKey,
-					zeroForOne: zeroForOne,
-					amountIn: amountIn,
-					amountOutMinimum: amountOutMinimum,
+					zeroForOne,
+					amountIn,
+					amountOutMinimum,
 					hookData: "0x",
 				},
 			],
 		)
 
-		const settleParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[sourceTokenAddress, amountIn],
-		)
+		const settleParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			sourceTokenAddress,
+			amountIn,
+		])
 
-		const takeParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[targetTokenAddress, amountOutMinimum],
-		)
+		const takeParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			targetTokenAddress,
+			amountOutMinimum,
+		])
 
 		const params = [swapParams, settleParams, takeParams]
 
 		const commands = encodePacked(["uint8"], [V4_SWAP])
-		const inputs = [
-			encodeAbiParameters(
-				[
-					{ type: "bytes", name: "actions" },
-					{ type: "bytes[]", name: "params" },
-				],
-				[actions, params],
-			),
-		]
+		const inputs = [encodeAbiParameters(parseAbiParameters("bytes actions, bytes[] params"), [actions, params])]
 
 		return encodeFunctionData({
 			abi: [
@@ -1099,68 +1050,34 @@ export class IntentGateway {
 		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_OUT_SINGLE, SETTLE_ALL, TAKE_ALL])
 
 		const swapParams = encodeAbiParameters(
-			[
-				{
-					type: "tuple",
-					name: "ExactOutputSingleParams",
-					components: [
-						{
-							type: "tuple",
-							name: "poolKey",
-							components: [
-								{ type: "address", name: "currency0" },
-								{ type: "address", name: "currency1" },
-								{ type: "uint24", name: "fee" },
-								{ type: "int24", name: "tickSpacing" },
-								{ type: "address", name: "hooks" },
-							],
-						},
-						{ type: "bool", name: "zeroForOne" },
-						{ type: "uint128", name: "amountOut" },
-						{ type: "uint128", name: "amountInMaximum" },
-						{ type: "bytes", name: "hookData" },
-					],
-				},
-			],
+			parseAbiParameters(
+				"((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bool zeroForOne, uint128 amountOut, uint128 amountInMaximum, bytes hookData)",
+			),
 			[
 				{
 					poolKey,
-					zeroForOne: zeroForOne,
-					amountOut: amountOut,
+					zeroForOne,
+					amountOut,
 					amountInMaximum: amountInMax,
 					hookData: "0x",
 				},
 			],
 		)
 
-		const settleParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[sourceTokenAddress, amountInMax],
-		)
+		const settleParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			sourceTokenAddress,
+			amountInMax,
+		])
 
-		const takeParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[targetTokenAddress, amountOut],
-		)
+		const takeParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			targetTokenAddress,
+			amountOut,
+		])
 
 		const params = [swapParams, settleParams, takeParams]
 
 		const commands = encodePacked(["uint8"], [V4_SWAP])
-		const inputs = [
-			encodeAbiParameters(
-				[
-					{ type: "bytes", name: "actions" },
-					{ type: "bytes[]", name: "params" },
-				],
-				[actions, params],
-			),
-		]
+		const inputs = [encodeAbiParameters(parseAbiParameters("bytes actions, bytes[] params"), [actions, params])]
 
 		return encodeFunctionData({
 			abi: [

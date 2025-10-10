@@ -140,7 +140,7 @@ describe.sequential("ContractInteractionService", () => {
 			console.log("Testnet DAI price", testnetDaiPrice)
 		})
 
-		it.skip("should get V2 quote and swap using the quote", async () => {
+		it("should get V2 quote and swap using the quote", async () => {
 			const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 			const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 			const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -240,7 +240,7 @@ describe.sequential("ContractInteractionService", () => {
 			assert(balance === amoutOutBigInt)
 		})
 
-		it.skip("should get v3 quote and swap using the quote", async () => {
+		it("should get v3 quote and swap using the quote", async () => {
 			const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 			const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 			const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -339,7 +339,7 @@ describe.sequential("ContractInteractionService", () => {
 			assert(balance === amoutOutBigInt)
 		})
 
-		it.skip("should get v4 quote and swap using the quote", async () => {
+		it("should get v4 quote and swap using the quote", async () => {
 			const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 			// ETH / USDC
 			let tokenIn = ADDRESS_ZERO
@@ -503,6 +503,17 @@ describe.sequential("ContractInteractionService", () => {
 					},
 				],
 			})
+
+			balanceResult = result.results[3]
+			assert(balanceResult.status === "success")
+
+			balance = decodeFunctionResult({
+				abi: ERC20_ABI,
+				functionName: "balanceOf",
+				data: balanceResult.data,
+			})
+
+			assert(balance === amoutOutBigInt)
 		})
 	})
 })
