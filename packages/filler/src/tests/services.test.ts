@@ -237,8 +237,6 @@ describe.sequential("ContractInteractionService", () => {
 				data: balanceResult.data,
 			})
 
-			console.log("balance", balance)
-
 			assert(balance === amoutOutBigInt)
 		})
 
