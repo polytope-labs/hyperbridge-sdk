@@ -562,7 +562,6 @@ type Rewards @entity @compositeIndexes(fields: [["address", "chain"], ["earnerTy
 	chain: String! @index
 	points: BigInt! @index
 	earnerType: ProtocolParticipantType
-	transactionCount: BigInt! @index
 }
 
 type RewardsActivityLog

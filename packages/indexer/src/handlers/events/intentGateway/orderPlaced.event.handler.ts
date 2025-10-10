@@ -107,18 +107,9 @@ export const handleOrderPlacedEvent = wrap(async (event: OrderPlacedLog): Promis
 		timestamp,
 	})
 
-	// Only update status to PLACED if the order didn't already exist with a different status
-	// This handles the race condition where the order might have been filled before being placed
-	const existingOrder = await IntentGatewayService.getByCommitment(commitment)
-	if (!existingOrder) {
-		await IntentGatewayService.updateOrderStatus(commitment, OrderStatus.PLACED, {
-			transactionHash,
-			blockNumber,
-			timestamp,
-		})
-	} else {
-		logger.info(
-			`Order ${commitment} already existed with status ${existingOrder.status}. Skipping status update to PLACED to preserve existing status.`,
-		)
-	}
+	await IntentGatewayService.updateOrderStatus(commitment, OrderStatus.PLACED, {
+		transactionHash,
+		blockNumber,
+		timestamp,
+	})
 })

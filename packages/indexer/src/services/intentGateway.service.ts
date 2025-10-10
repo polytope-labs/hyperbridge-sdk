@@ -264,7 +264,7 @@ export class IntentGatewayService {
 		}
 
 		if (orderPlaced) {
-			orderPlaced.status = status
+			orderPlaced.status = status === OrderStatus.PLACED ? orderPlaced.status : status
 			await orderPlaced.save()
 
 			// Award points for order filling - using USD value directly
