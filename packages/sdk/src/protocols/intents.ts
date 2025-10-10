@@ -15,7 +15,17 @@ import {
 	waitForChallengePeriod,
 	retryPromise,
 } from "@/utils"
-import { encodeFunctionData, formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
+import {
+	encodeFunctionData,
+	formatUnits,
+	hexToString,
+	maxUint256,
+	pad,
+	parseUnits,
+	toHex,
+	encodePacked,
+	encodeAbiParameters,
+} from "viem"
 import {
 	DispatchPost,
 	IGetRequest,
@@ -279,7 +289,7 @@ export class IntentGateway {
 				wethAsset,
 				feeTokenAmount,
 				evmChainID,
-				"v2",
+				{ selectedProtocol: "v2" },
 			)
 
 			if (amountOut === 0n) {
@@ -325,7 +335,7 @@ export class IntentGateway {
 				feeToken.address,
 				gasCostInWei,
 				evmChainID,
-				"v2",
+				{ selectedProtocol: "v2" },
 			)
 			if (amountOut === 0n) {
 				console.log("Amount out not found")
@@ -373,74 +383,98 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given a desired output amount.
-	 * Compares liquidity and pricing across different protocols and fee tiers.
-	 *
-	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the swap
-	 * @param tokenIn - The address of the input token
-	 * @param tokenOut - The address of the output token
-	 * @param amountOut - The desired output amount
-	 * @returns Object containing the best protocol, required input amount, and fee tier (for V3/V4)
+	 * Gets V2 quote for exact output swap.
+	 * @private
 	 */
-	async findBestProtocolWithAmountOut(
+	private async getV2QuoteWithAmountOut(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
 		evmChainID: string,
-		selectedProtocol?: "v2" | "v3" | "v4",
-	): Promise<{ protocol: "v2" | "v3" | "v4" | null; amountIn: bigint; fee?: number }> {
+	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		let amountInV2 = maxUint256
-		let amountInV3 = maxUint256
-		let amountInV4 = maxUint256
-		let bestV3Fee = 0
-		let bestV4Fee = 0
-		const commonFees = [100, 500, 3000, 10000]
-
 		const v2Router = this[getQuoteIn].config.getUniswapRouterV2Address(evmChainID)
 		const v2Factory = this[getQuoteIn].config.getUniswapV2FactoryAddress(evmChainID)
-		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
-		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
-		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
 
-		// For V2/V3, convert native addresses to WETH for quotes
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
-		// V2 Protocol Check
 		try {
-			const v2PairExists = (await client.readContract({
-				address: v2Factory,
-				abi: UniswapV2Factory.ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
+			const v2AmountIn = await client.simulateContract({
+				address: v2Router,
+				abi: UniswapRouterV2.ABI,
+				// @ts-ignore
+				functionName: "getAmountsIn",
+				// @ts-ignore
+				args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
+			})
 
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountIn = await client.simulateContract({
-					address: v2Router,
-					abi: UniswapRouterV2.ABI,
-					// @ts-ignore
-					functionName: "getAmountsIn",
-					// @ts-ignore
-					args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
-				})
-
-				console.log("V2 amount in", v2AmountIn)
-
-				amountInV2 = v2AmountIn.result[0]
-				if (selectedProtocol === "v2") {
-					return { protocol: "v2", amountIn: amountInV2 }
-				}
-			}
+			return v2AmountIn.result[0]
 		} catch (error) {
 			console.warn("V2 quote failed:", error)
+			return maxUint256
 		}
+	}
 
-		// V3 Protocol Check - Find the best pool with best quote
-		let bestV3AmountIn = maxUint256
+	/**
+	 * Gets V2 quote for exact input swap.
+	 * @private
+	 */
+	private async getV2QuoteWithAmountIn(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		evmChainID: string,
+	): Promise<bigint> {
+		const client = this[getQuoteIn].client
+		const v2Router = this[getQuoteIn].config.getUniswapRouterV2Address(evmChainID)
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
+		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
+
+		try {
+			const v2AmountOut = await client.simulateContract({
+				address: v2Router,
+				abi: UniswapRouterV2.ABI,
+				// @ts-ignore
+				functionName: "getAmountsOut",
+				// @ts-ignore
+				args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
+			})
+
+			return v2AmountOut.result[1]
+		} catch (error) {
+			console.warn("V2 quote failed:", error)
+			return BigInt(0)
+		}
+	}
+
+	/**
+	 * Gets V3 quote for exact output swap.
+	 * @private
+	 */
+	private async getV3QuoteWithAmountOut(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		evmChainID: string,
+	): Promise<{ amountIn: bigint; fee: number }> {
+		const client = this[getQuoteIn].client
+		const commonFees = [100, 500, 3000, 10000]
+		let bestAmountIn = maxUint256
+		let bestFee = 0
+
+		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
+		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
+		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
 		for (const fee of commonFees) {
 			try {
@@ -459,7 +493,6 @@ export class IntentGateway {
 					})
 
 					if (liquidity > BigInt(0)) {
-						// Use simulateContract for V3 quoter (handles revert-based returns)
 						const quoteResult = (
 							await client.simulateContract({
 								address: v3Quoter,
@@ -479,9 +512,9 @@ export class IntentGateway {
 
 						const amountIn = quoteResult[0]
 
-						if (amountIn < bestV3AmountIn) {
-							bestV3AmountIn = amountIn
-							bestV3Fee = fee
+						if (amountIn < bestAmountIn) {
+							bestAmountIn = amountIn
+							bestFee = fee
 						}
 					}
 				}
@@ -490,14 +523,99 @@ export class IntentGateway {
 			}
 		}
 
-		amountInV3 = bestV3AmountIn
+		return { amountIn: bestAmountIn, fee: bestFee }
+	}
 
-		if (selectedProtocol === "v3") {
-			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee }
+	/**
+	 * Gets V3 quote for exact input swap.
+	 * @private
+	 */
+	private async getV3QuoteWithAmountIn(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		evmChainID: string,
+	): Promise<{ amountOut: bigint; fee: number }> {
+		const client = this[getQuoteIn].client
+		const commonFees = [100, 500, 3000, 10000]
+		let bestAmountOut = BigInt(0)
+		let bestFee = 0
+
+		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
+		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
+		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
+
+		for (const fee of commonFees) {
+			try {
+				const pool = await client.readContract({
+					address: v3Factory,
+					abi: UniswapV3Factory.ABI,
+					functionName: "getPool",
+					args: [tokenInForQuote, tokenOutForQuote, fee],
+				})
+
+				if (pool !== ADDRESS_ZERO) {
+					const liquidity = await client.readContract({
+						address: pool,
+						abi: UniswapV3Pool.ABI,
+						functionName: "liquidity",
+					})
+
+					if (liquidity > BigInt(0)) {
+						const quoteResult = (
+							await client.simulateContract({
+								address: v3Quoter,
+								abi: UniswapV3Quoter.ABI,
+								functionName: "quoteExactInputSingle",
+								args: [
+									{
+										tokenIn: tokenInForQuote,
+										tokenOut: tokenOutForQuote,
+										fee: fee,
+										amountIn: amountIn,
+										sqrtPriceLimitX96: BigInt(0),
+									},
+								],
+							})
+						).result as [bigint, bigint, number, bigint]
+
+						const amountOut = quoteResult[0]
+
+						if (amountOut > bestAmountOut) {
+							bestAmountOut = amountOut
+							bestFee = fee
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
+			}
 		}
 
-		// V4 Protocol Check - Find the best pool with best quote (uses native addresses directly)
-		let bestV4AmountIn = maxUint256
+		return { amountOut: bestAmountOut, fee: bestFee }
+	}
+
+	/**
+	 * Gets V4 quote for exact output swap.
+	 * @private
+	 */
+	private async getV4QuoteWithAmountOut(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		evmChainID: string,
+	): Promise<{ amountIn: bigint; fee: number }> {
+		const client = this[getQuoteIn].client
+		const commonFees = [100, 500, 3000, 10000]
+		let bestAmountIn = maxUint256
+		let bestFee = 0
+
+		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
 
 		for (const fee of commonFees) {
 			try {
@@ -515,7 +633,6 @@ export class IntentGateway {
 					hooks: ADDRESS_ZERO, // No hooks
 				}
 
-				// Get quote from V4 quoter
 				const quoteResult = (
 					await client.simulateContract({
 						address: v4Quoter,
@@ -534,23 +651,625 @@ export class IntentGateway {
 
 				const amountIn = quoteResult[0]
 
-				if (amountIn < bestV4AmountIn) {
-					bestV4AmountIn = amountIn
-					bestV4Fee = fee
+				if (amountIn < bestAmountIn) {
+					bestAmountIn = amountIn
+					bestFee = fee
 				}
 			} catch (error) {
 				console.warn(`V4 quote failed for fee ${fee}, continuing to next fee tier`)
 			}
 		}
 
-		amountInV4 = bestV4AmountIn
+		return { amountIn: bestAmountIn, fee: bestFee }
+	}
 
-		if (selectedProtocol === "v4") {
-			return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
+	/**
+	 * Gets V4 quote for exact input swap.
+	 * @private
+	 */
+	private async getV4QuoteWithAmountIn(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		evmChainID: string,
+	): Promise<{ amountOut: bigint; fee: number }> {
+		const client = this[getQuoteIn].client
+		const commonFees = [100, 500, 3000, 10000]
+		let bestAmountOut = BigInt(0)
+		let bestFee = 0
+
+		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
+
+		for (const fee of commonFees) {
+			try {
+				const currency0 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenIn : tokenOut
+				const currency1 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenOut : tokenIn
+
+				const zeroForOne = tokenIn.toLowerCase() === currency0.toLowerCase()
+
+				const poolKey = {
+					currency0: currency0,
+					currency1: currency1,
+					fee: fee,
+					tickSpacing: this.getTickSpacing(fee),
+					hooks: ADDRESS_ZERO, // No hooks
+				}
+
+				const quoteResult = (
+					await client.simulateContract({
+						address: v4Quoter,
+						abi: UNISWAP_V4_QUOTER_ABI,
+						functionName: "quoteExactInputSingle",
+						args: [
+							{
+								poolKey: poolKey,
+								zeroForOne: zeroForOne,
+								exactAmount: amountIn,
+								hookData: "0x", // Empty hook data
+							},
+						],
+					})
+				).result as [bigint, bigint] // [amountOut, gasEstimate]
+
+				const amountOut = quoteResult[0]
+
+				if (amountOut > bestAmountOut) {
+					bestAmountOut = amountOut
+					bestFee = fee
+				}
+			} catch (error) {
+				console.warn(`V4 quote failed for fee ${fee}, continuing to next fee tier`)
+			}
 		}
 
+		return { amountOut: bestAmountOut, fee: bestFee }
+	}
+
+	/**
+	 * Creates calldata for V2 exact input swap.
+	 * @private
+	 */
+	private createV2SwapCalldataExactIn(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountIn: bigint,
+		amountOutMinimum: bigint,
+		recipient: HexString,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+	): HexString {
+		const V2_SWAP_EXACT_IN = 0x08
+		const isPermit2 = false
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
+		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
+
+		const path = [swapSourceAddress, swapTargetAddress]
+		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_IN])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "address", name: "recipient" },
+					{ type: "uint256", name: "amountIn" },
+					{ type: "uint256", name: "amountOutMinimum" },
+					{ type: "address[]", name: "path" },
+					{ type: "bool", name: "isPermit2" },
+				],
+				[recipient, amountIn, amountOutMinimum, path, isPermit2],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Creates calldata for V2 exact output swap.
+	 * @private
+	 */
+	private createV2SwapCalldataExactOut(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountOut: bigint,
+		amountInMax: bigint,
+		recipient: HexString,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+	): HexString {
+		const V2_SWAP_EXACT_OUT = 0x09
+		const isPermit2 = false
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
+		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
+
+		const path = [swapSourceAddress, swapTargetAddress]
+		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "address", name: "recipient" },
+					{ type: "uint256", name: "amountOut" },
+					{ type: "uint256", name: "amountInMax" },
+					{ type: "address[]", name: "path" },
+					{ type: "bool", name: "isPermit2" },
+				],
+				[recipient, amountOut, amountInMax, path, isPermit2],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Creates calldata for V3 exact input swap.
+	 * @private
+	 */
+	private createV3SwapCalldataExactIn(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountIn: bigint,
+		amountOutMinimum: bigint,
+		fee: number,
+		recipient: HexString,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+	): HexString {
+		const V3_SWAP_EXACT_IN = 0x00
+		const isPermit2 = false
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
+		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
+
+		const pathV3 = encodePacked(["address", "uint24", "address"], [swapSourceAddress, fee, swapTargetAddress])
+		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_IN])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "address", name: "recipient" },
+					{ type: "uint256", name: "amountIn" },
+					{ type: "uint256", name: "amountOutMinimum" },
+					{ type: "bytes", name: "path" },
+					{ type: "bool", name: "isPermit2" },
+				],
+				[recipient, amountIn, amountOutMinimum, pathV3, isPermit2],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Creates calldata for V3 exact output swap.
+	 * @private
+	 */
+	private createV3SwapCalldataExactOut(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountOut: bigint,
+		amountInMax: bigint,
+		fee: number,
+		recipient: HexString,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+	): HexString {
+		const V3_SWAP_EXACT_OUT = 0x01
+		const isPermit2 = false
+
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
+		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
+
+		const pathV3 = encodePacked(["address", "uint24", "address"], [swapTargetAddress, fee, swapSourceAddress])
+		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "address", name: "recipient" },
+					{ type: "uint256", name: "amountOut" },
+					{ type: "uint256", name: "amountInMax" },
+					{ type: "bytes", name: "path" },
+					{ type: "bool", name: "isPermit2" },
+				],
+				[recipient, amountOut, amountInMax, pathV3, isPermit2],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Creates calldata for V4 exact input swap.
+	 * @private
+	 */
+	private createV4SwapCalldataExactIn(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountIn: bigint,
+		amountOutMinimum: bigint,
+		fee: number,
+	): HexString {
+		const V4_SWAP = 0x10
+
+		const currency0 =
+			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
+				? sourceTokenAddress
+				: targetTokenAddress
+		const currency1 =
+			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
+				? targetTokenAddress
+				: sourceTokenAddress
+
+		const zeroForOne = sourceTokenAddress.toLowerCase() === currency0.toLowerCase()
+
+		const poolKey = {
+			currency0: currency0,
+			currency1: currency1,
+			fee: fee,
+			tickSpacing: this.getTickSpacing(fee),
+			hooks: ADDRESS_ZERO,
+		}
+
+		const SWAP_EXACT_IN_SINGLE = 0x06
+		const SETTLE_ALL = 0x0c
+		const TAKE_ALL = 0x0f
+
+		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL])
+
+		const swapParams = encodeAbiParameters(
+			[
+				{
+					type: "tuple",
+					name: "ExactInputSingleParams",
+					components: [
+						{
+							type: "tuple",
+							name: "poolKey",
+							components: [
+								{ type: "address", name: "currency0" },
+								{ type: "address", name: "currency1" },
+								{ type: "uint24", name: "fee" },
+								{ type: "int24", name: "tickSpacing" },
+								{ type: "address", name: "hooks" },
+							],
+						},
+						{ type: "bool", name: "zeroForOne" },
+						{ type: "uint128", name: "amountIn" },
+						{ type: "uint128", name: "amountOutMinimum" },
+						{ type: "bytes", name: "hookData" },
+					],
+				},
+			],
+			[
+				{
+					poolKey,
+					zeroForOne: zeroForOne,
+					amountIn: amountIn,
+					amountOutMinimum: amountOutMinimum,
+					hookData: "0x",
+				},
+			],
+		)
+
+		const settleParams = encodeAbiParameters(
+			[
+				{ type: "address", name: "currency" },
+				{ type: "uint128", name: "amount" },
+			],
+			[sourceTokenAddress, amountIn],
+		)
+
+		const takeParams = encodeAbiParameters(
+			[
+				{ type: "address", name: "currency" },
+				{ type: "uint128", name: "amount" },
+			],
+			[targetTokenAddress, amountOutMinimum],
+		)
+
+		const params = [swapParams, settleParams, takeParams]
+
+		const commands = encodePacked(["uint8"], [V4_SWAP])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "bytes", name: "actions" },
+					{ type: "bytes[]", name: "params" },
+				],
+				[actions, params],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Creates calldata for V4 exact output swap.
+	 * @private
+	 */
+	private createV4SwapCalldataExactOut(
+		sourceTokenAddress: HexString,
+		targetTokenAddress: HexString,
+		amountOut: bigint,
+		amountInMax: bigint,
+		fee: number,
+	): HexString {
+		const V4_SWAP = 0x10
+
+		const currency0 =
+			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
+				? sourceTokenAddress
+				: targetTokenAddress
+		const currency1 =
+			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
+				? targetTokenAddress
+				: sourceTokenAddress
+
+		const zeroForOne = sourceTokenAddress.toLowerCase() === currency0.toLowerCase()
+
+		const poolKey = {
+			currency0: currency0,
+			currency1: currency1,
+			fee: fee,
+			tickSpacing: this.getTickSpacing(fee),
+			hooks: ADDRESS_ZERO,
+		}
+
+		const SWAP_EXACT_OUT_SINGLE = 0x08
+		const SETTLE_ALL = 0x0c
+		const TAKE_ALL = 0x0f
+
+		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_OUT_SINGLE, SETTLE_ALL, TAKE_ALL])
+
+		const swapParams = encodeAbiParameters(
+			[
+				{
+					type: "tuple",
+					name: "ExactOutputSingleParams",
+					components: [
+						{
+							type: "tuple",
+							name: "poolKey",
+							components: [
+								{ type: "address", name: "currency0" },
+								{ type: "address", name: "currency1" },
+								{ type: "uint24", name: "fee" },
+								{ type: "int24", name: "tickSpacing" },
+								{ type: "address", name: "hooks" },
+							],
+						},
+						{ type: "bool", name: "zeroForOne" },
+						{ type: "uint128", name: "amountOut" },
+						{ type: "uint128", name: "amountInMaximum" },
+						{ type: "bytes", name: "hookData" },
+					],
+				},
+			],
+			[
+				{
+					poolKey,
+					zeroForOne: zeroForOne,
+					amountOut: amountOut,
+					amountInMaximum: amountInMax,
+					hookData: "0x",
+				},
+			],
+		)
+
+		const settleParams = encodeAbiParameters(
+			[
+				{ type: "address", name: "currency" },
+				{ type: "uint128", name: "amount" },
+			],
+			[sourceTokenAddress, amountInMax],
+		)
+
+		const takeParams = encodeAbiParameters(
+			[
+				{ type: "address", name: "currency" },
+				{ type: "uint128", name: "amount" },
+			],
+			[targetTokenAddress, amountOut],
+		)
+
+		const params = [swapParams, settleParams, takeParams]
+
+		const commands = encodePacked(["uint8"], [V4_SWAP])
+		const inputs = [
+			encodeAbiParameters(
+				[
+					{ type: "bytes", name: "actions" },
+					{ type: "bytes[]", name: "params" },
+				],
+				[actions, params],
+			),
+		]
+
+		return encodeFunctionData({
+			abi: [
+				{
+					name: "execute",
+					type: "function",
+					stateMutability: "payable",
+					inputs: [
+						{ name: "commands", type: "bytes" },
+						{ name: "inputs", type: "bytes[]" },
+					],
+					outputs: [],
+				},
+			],
+			functionName: "execute",
+			args: [commands, inputs],
+		})
+	}
+
+	/**
+	 * Finds the best Uniswap protocol (V2, V3, or V4) for swapping tokens given a desired output amount.
+	 * Compares liquidity and pricing across different protocols and fee tiers.
+	 *
+	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the swap
+	 * @param tokenIn - The address of the input token
+	 * @param tokenOut - The address of the output token
+	 * @param amountOut - The desired output amount
+	 * @returns Object containing the best protocol, required input amount, and fee tier (for V3/V4)
+	 */
+	async findBestProtocolWithAmountOut(
+		getQuoteIn: "source" | "dest",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountOut: bigint,
+		evmChainID: string,
+		options?: {
+			selectedProtocol?: "v2" | "v3" | "v4"
+			generateCalldata?: boolean
+			recipient?: HexString
+		},
+	): Promise<{
+		protocol: "v2" | "v3" | "v4" | null
+		amountIn: bigint
+		fee?: number
+		calldata?: HexString
+	}> {
+		const amountInV2 = await this.getV2QuoteWithAmountOut(getQuoteIn, tokenIn, tokenOut, amountOut, evmChainID)
+
+		if (options?.selectedProtocol === "v2" && amountInV2 !== maxUint256) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				const recipient = options?.recipient || ADDRESS_ZERO
+				calldata = this.createV2SwapCalldataExactOut(
+					tokenIn,
+					tokenOut,
+					amountOut,
+					amountInV2,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			}
+			return { protocol: "v2", amountIn: amountInV2, calldata }
+		}
+
+		const { amountIn: amountInV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountOut(
+			getQuoteIn,
+			tokenIn,
+			tokenOut,
+			amountOut,
+			evmChainID,
+		)
+
+		if (options?.selectedProtocol === "v3" && amountInV3 !== maxUint256) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				const recipient = options?.recipient || ADDRESS_ZERO
+				calldata = this.createV3SwapCalldataExactOut(
+					tokenIn,
+					tokenOut,
+					amountOut,
+					amountInV3,
+					bestV3Fee,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			}
+			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee, calldata }
+		}
+
+		const { amountIn: amountInV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountOut(
+			getQuoteIn,
+			tokenIn,
+			tokenOut,
+			amountOut,
+			evmChainID,
+		)
+
+		if (options?.selectedProtocol === "v4" && amountInV4 !== maxUint256) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				calldata = this.createV4SwapCalldataExactOut(tokenIn, tokenOut, amountOut, amountInV4, bestV4Fee)
+			}
+			return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee, calldata }
+		}
+
+		// If no liquidity found in any protocol
 		if (amountInV2 === maxUint256 && amountInV3 === maxUint256 && amountInV4 === maxUint256) {
-			// No liquidity in any protocol
 			return {
 				protocol: null,
 				amountIn: maxUint256,
@@ -561,10 +1280,18 @@ export class IntentGateway {
 		if (amountInV4 !== maxUint256) {
 			const thresholdBps = 100n // 1%
 			if (amountInV3 !== maxUint256 && this.isWithinThreshold(amountInV4, amountInV3, thresholdBps)) {
-				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
+				let calldata: HexString | undefined
+				if (options?.generateCalldata) {
+					calldata = this.createV4SwapCalldataExactOut(tokenIn, tokenOut, amountOut, amountInV4, bestV4Fee)
+				}
+				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee, calldata }
 			}
 			if (amountInV2 !== maxUint256 && this.isWithinThreshold(amountInV4, amountInV2, thresholdBps)) {
-				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
+				let calldata: HexString | undefined
+				if (options?.generateCalldata) {
+					calldata = this.createV4SwapCalldataExactOut(tokenIn, tokenOut, amountOut, amountInV4, bestV4Fee)
+				}
+				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee, calldata }
 			}
 		}
 
@@ -574,22 +1301,54 @@ export class IntentGateway {
 			{ protocol: "v4" as const, amountIn: amountInV4, fee: bestV4Fee },
 		].reduce((best, current) => (current.amountIn < best.amountIn ? current : best))
 
+		let calldata: HexString | undefined
+		if (options?.generateCalldata) {
+			const recipient = options?.recipient || ADDRESS_ZERO
+			if (minAmount.protocol === "v2") {
+				calldata = this.createV2SwapCalldataExactOut(
+					tokenIn,
+					tokenOut,
+					amountOut,
+					amountInV2,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			} else if (minAmount.protocol === "v3") {
+				calldata = this.createV3SwapCalldataExactOut(
+					tokenIn,
+					tokenOut,
+					amountOut,
+					amountInV3,
+					bestV3Fee,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			} else {
+				calldata = this.createV4SwapCalldataExactOut(tokenIn, tokenOut, amountOut, amountInV4, bestV4Fee)
+			}
+		}
+
 		if (minAmount.protocol === "v2") {
 			return {
 				protocol: "v2",
 				amountIn: amountInV2,
+				calldata,
 			}
 		} else if (minAmount.protocol === "v3") {
 			return {
 				protocol: "v3",
 				amountIn: amountInV3,
 				fee: bestV3Fee,
+				calldata,
 			}
 		} else {
 			return {
 				protocol: "v4",
 				amountIn: amountInV4,
 				fee: bestV4Fee,
+				calldata,
 			}
 		}
 	}
@@ -612,158 +1371,82 @@ export class IntentGateway {
 		tokenOut: HexString,
 		amountIn: bigint,
 		evmChainID: string,
-		selectedProtocol?: "v2" | "v3" | "v4",
-	): Promise<{ protocol: "v2" | "v3" | "v4" | null; amountOut: bigint; fee?: number }> {
-		const client = this[getQuoteIn].client
-		let amountOutV2 = BigInt(0)
-		let amountOutV3 = BigInt(0)
-		let amountOutV4 = BigInt(0)
-		let bestV3Fee = 0
-		let bestV4Fee = 0
-		const commonFees = [100, 500, 3000, 10000]
+		options?: {
+			selectedProtocol?: "v2" | "v3" | "v4"
+			generateCalldata?: boolean
+			recipient?: HexString
+		},
+	): Promise<{
+		protocol: "v2" | "v3" | "v4" | null
+		amountOut: bigint
+		fee?: number
+		calldata?: HexString
+	}> {
+		// Get quotes from all protocols
+		const amountOutV2 = await this.getV2QuoteWithAmountIn(getQuoteIn, tokenIn, tokenOut, amountIn, evmChainID)
 
-		const v2Router = this.source.config.getUniswapRouterV2Address(evmChainID)
-		const v2Factory = this.source.config.getUniswapV2FactoryAddress(evmChainID)
-		const v3Factory = this.source.config.getUniswapV3FactoryAddress(evmChainID)
-		const v3Quoter = this.source.config.getUniswapV3QuoterAddress(evmChainID)
-		const v4Quoter = this.source.config.getUniswapV4QuoterAddress(evmChainID)
-
-		// For V2/V3, convert native addresses to WETH for quotes
-		const wethAsset = this.source.config.getWrappedNativeAssetWithDecimals(evmChainID).asset
-		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
-		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
-
-		// V2 Protocol Check
-		try {
-			const v2AmountOut = await client.simulateContract({
-				address: v2Router,
-				abi: UniswapRouterV2.ABI,
-				// @ts-ignore
-				functionName: "getAmountsOut",
-				// @ts-ignore
-				args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
-			})
-
-			amountOutV2 = v2AmountOut.result[1]
-			if (selectedProtocol === "v2") {
-				return { protocol: "v2", amountOut: amountOutV2 }
+		// If a specific protocol is requested, return that
+		if (options?.selectedProtocol === "v2" && amountOutV2 !== BigInt(0)) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				const recipient = options?.recipient || ADDRESS_ZERO
+				calldata = this.createV2SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					amountOutV2,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
 			}
-		} catch (error) {
-			console.warn("V2 quote failed:", error)
+			return { protocol: "v2", amountOut: amountOutV2, calldata }
 		}
 
-		// V3 Protocol Check - Find the best pool with best quote
-		let bestV3AmountOut = BigInt(0)
+		const { amountOut: amountOutV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountIn(
+			getQuoteIn,
+			tokenIn,
+			tokenOut,
+			amountIn,
+			evmChainID,
+		)
 
-		for (const fee of commonFees) {
-			try {
-				const pool = await client.readContract({
-					address: v3Factory,
-					abi: UniswapV3Factory.ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await client.readContract({
-						address: pool,
-						abi: UniswapV3Pool.ABI,
-						functionName: "liquidity",
-					})
-
-					if (liquidity > BigInt(0)) {
-						// Use simulateContract for V3 quoter (handles revert-based returns)
-						const quoteResult = (
-							await client.simulateContract({
-								address: v3Quoter,
-								abi: UniswapV3Quoter.ABI,
-								functionName: "quoteExactInputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amountIn: amountIn,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint]
-
-						const amountOut = quoteResult[0]
-
-						if (amountOut > bestV3AmountOut) {
-							bestV3AmountOut = amountOut
-							bestV3Fee = fee
-						}
-					}
-				}
-			} catch (error) {
-				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
+		if (options?.selectedProtocol === "v3" && amountOutV3 !== BigInt(0)) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				const recipient = options?.recipient || ADDRESS_ZERO
+				calldata = this.createV3SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					amountOutV3,
+					bestV3Fee,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
 			}
+			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee, calldata }
 		}
 
-		amountOutV3 = bestV3AmountOut
+		const { amountOut: amountOutV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountIn(
+			getQuoteIn,
+			tokenIn,
+			tokenOut,
+			amountIn,
+			evmChainID,
+		)
 
-		if (selectedProtocol === "v3") {
-			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee }
-		}
-
-		// V4 Protocol Check - Find the best pool with best quote (uses native addresses directly)
-		let bestV4AmountOut = BigInt(0)
-
-		for (const fee of commonFees) {
-			try {
-				// Create pool key for V4 - can use native addresses directly
-				const currency0 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenIn : tokenOut
-				const currency1 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenOut : tokenIn
-
-				const zeroForOne = tokenIn.toLowerCase() === currency0.toLowerCase()
-
-				const poolKey = {
-					currency0: currency0,
-					currency1: currency1,
-					fee: fee,
-					tickSpacing: this.getTickSpacing(fee),
-					hooks: ADDRESS_ZERO, // No hooks
-				}
-
-				// Get quote from V4 quoter
-				const quoteResult = (
-					await client.simulateContract({
-						address: v4Quoter,
-						abi: UNISWAP_V4_QUOTER_ABI,
-						functionName: "quoteExactInputSingle",
-						args: [
-							{
-								poolKey: poolKey,
-								zeroForOne: zeroForOne,
-								exactAmount: amountIn,
-								hookData: "0x", // Empty hook data
-							},
-						],
-					})
-				).result as [bigint, bigint] // [amountOut, gasEstimate]
-
-				const amountOut = quoteResult[0]
-
-				if (amountOut > bestV4AmountOut) {
-					bestV4AmountOut = amountOut
-					bestV4Fee = fee
-				}
-			} catch (error) {
-				console.warn(`V4 quote failed for fee ${fee}, continuing to next fee tier`)
+		if (options?.selectedProtocol === "v4" && amountOutV4 !== BigInt(0)) {
+			let calldata: HexString | undefined
+			if (options?.generateCalldata) {
+				calldata = this.createV4SwapCalldataExactIn(tokenIn, tokenOut, amountIn, amountOutV4, bestV4Fee)
 			}
+			return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee, calldata }
 		}
 
-		amountOutV4 = bestV4AmountOut
-
-		if (selectedProtocol === "v4") {
-			return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee }
-		}
-
+		// If no liquidity found in any protocol
 		if (amountOutV2 === BigInt(0) && amountOutV3 === BigInt(0) && amountOutV4 === BigInt(0)) {
-			// No liquidity in any protocol
 			return {
 				protocol: null,
 				amountOut: BigInt(0),
@@ -774,35 +1457,76 @@ export class IntentGateway {
 		if (amountOutV4 !== BigInt(0)) {
 			const thresholdBps = 100n // 1%
 			if (amountOutV3 !== BigInt(0) && this.isWithinThreshold(amountOutV4, amountOutV3, thresholdBps)) {
-				return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee }
+				let calldata: HexString | undefined
+				if (options?.generateCalldata) {
+					calldata = this.createV4SwapCalldataExactIn(tokenIn, tokenOut, amountIn, amountOutV4, bestV4Fee)
+				}
+				return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee, calldata }
 			}
 			if (amountOutV2 !== BigInt(0) && this.isWithinThreshold(amountOutV4, amountOutV2, thresholdBps)) {
-				return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee }
+				let calldata: HexString | undefined
+				if (options?.generateCalldata) {
+					calldata = this.createV4SwapCalldataExactIn(tokenIn, tokenOut, amountIn, amountOutV4, bestV4Fee)
+				}
+				return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee, calldata }
 			}
 		}
 
+		// Find the best protocol by maximum amount out
 		const maxAmount = [
 			{ protocol: "v2" as const, amountOut: amountOutV2 },
 			{ protocol: "v3" as const, amountOut: amountOutV3, fee: bestV3Fee },
 			{ protocol: "v4" as const, amountOut: amountOutV4, fee: bestV4Fee },
 		].reduce((best, current) => (current.amountOut > best.amountOut ? current : best))
 
+		let calldata: HexString | undefined
+		if (options?.generateCalldata) {
+			const recipient = options?.recipient || ADDRESS_ZERO
+			if (maxAmount.protocol === "v2") {
+				calldata = this.createV2SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					amountOutV2,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			} else if (maxAmount.protocol === "v3") {
+				calldata = this.createV3SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					amountOutV3,
+					bestV3Fee,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				)
+			} else {
+				calldata = this.createV4SwapCalldataExactIn(tokenIn, tokenOut, amountIn, amountOutV4, bestV4Fee)
+			}
+		}
+
 		if (maxAmount.protocol === "v2") {
 			return {
 				protocol: "v2",
 				amountOut: amountOutV2,
+				calldata,
 			}
 		} else if (maxAmount.protocol === "v3") {
 			return {
 				protocol: "v3",
 				amountOut: amountOutV3,
 				fee: bestV3Fee,
+				calldata,
 			}
 		} else {
 			return {
 				protocol: "v4",
 				amountOut: amountOutV4,
 				fee: bestV4Fee,
+				calldata,
 			}
 		}
 	}

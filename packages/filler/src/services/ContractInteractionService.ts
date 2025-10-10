@@ -885,25 +885,14 @@ export class ContractInteractionService {
 			const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 			const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
-			const v2PairExists = (await destClient.readContract({
-				address: v2Factory,
-				abi: UNISWAP_V2_FACTORY_ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
+			const v2AmountIn = (await destClient.readContract({
+				address: v2Router,
+				abi: UNISWAP_ROUTER_V2_ABI,
+				functionName: "getAmountsIn",
+				args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
+			})) as bigint[]
 
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountIn = (await destClient.readContract({
-					address: v2Router,
-					abi: UNISWAP_ROUTER_V2_ABI,
-					functionName: "getAmountsIn",
-					args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
-
-				return v2AmountIn[0]
-			}
-
-			return maxUint256
+			return v2AmountIn[0]
 		} catch (error) {
 			this.logger.warn({ err: error }, "V2 quote failed")
 			return maxUint256
@@ -973,7 +962,7 @@ export class ContractInteractionService {
 					}
 				}
 			} catch (error) {
-				this.logger.warn({ fee, err: error }, "V3 quote failed; continuing")
+				this.logger.warn({ fee }, "V3 quote failed; continuing")
 			}
 		}
 
@@ -1032,7 +1021,7 @@ export class ContractInteractionService {
 					bestFee = fee
 				}
 			} catch (error) {
-				this.logger.warn({ fee, err: error }, "V4 quote failed; continuing")
+				this.logger.warn({ fee }, "V4 quote failed; continuing")
 			}
 		}
 
