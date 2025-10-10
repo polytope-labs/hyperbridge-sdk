@@ -11,6 +11,7 @@ import {
 	pad,
 	toBytes,
 	toHex,
+	maxUint256,
 } from "viem"
 import {
 	arbitrum,
@@ -40,6 +41,7 @@ import type { IChain, IIsmpMessage } from "@/chain"
 import { ChainConfigService } from "@/configs/ChainConfigService"
 import type { HexString, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
 import {
+	ADDRESS_ZERO,
 	EvmStateProof,
 	MmrProof,
 	SubstrateStateProof,
@@ -47,6 +49,9 @@ import {
 	generateRootWithProof,
 	mmrPositionToKIndex,
 } from "@/utils"
+
+import UniswapV2Factory from "@/abis/uniswapV2Factory"
+import UniswapRouterV2 from "@/abis/uniswapRouterV2"
 
 const chains = {
 	[mainnet.id]: mainnet,
@@ -156,7 +161,7 @@ export class EvmChain implements IChain {
 		// for each request derive the commitment key collect into a new array
 		const commitmentKeys =
 			"Requests" in message
-				? message.Requests.map((key) => requestCommitmentKey(key))
+				? message.Requests.map((key) => requestCommitmentKey(key).slot1)
 				: message.Responses.map((key) => responseCommitmentKey(key))
 		const config: GetProofParameters = {
 			address: this.params.host,
@@ -203,7 +208,7 @@ export class EvmChain implements IChain {
 		const encoded = EvmStateProof.enc({
 			contractProof: proof.accountProof.map((item) => Array.from(hexToBytes(item))),
 			storageProof: [
-				[Array.from(hexToBytes(this.params.host)), flattenedProof.map((item) => Array.from(hexToBytes(item)))],
+				[Array.from(hexToBytes(config.address)), flattenedProof.map((item) => Array.from(hexToBytes(item)))],
 			],
 		})
 
@@ -449,6 +454,26 @@ export class EvmChain implements IChain {
 		return perByteFee * BigInt(length)
 	}
 
+	async quoteNative(request: IPostRequest, fee: bigint): Promise<bigint> {
+		const totalFee = (await this.quote(request)) + fee
+		const feeToken = await this.getFeeTokenWithDecimals()
+		return this.getAmountsIn(totalFee, feeToken.address, request.source)
+	}
+
+	private async getAmountsIn(amountOut: bigint, tokenOutForQuote: HexString, chain: string): Promise<bigint> {
+		const v2Router = this.config.getUniswapRouterV2Address(chain)
+		const WETH = this.config.getWrappedNativeAssetWithDecimals(chain).asset
+		const v2AmountIn = await this.publicClient.simulateContract({
+			address: v2Router,
+			abi: UniswapRouterV2.ABI,
+			// @ts-ignore
+			functionName: "getAmountsIn",
+			// @ts-ignore
+			args: [amountOut, [WETH, tokenOutForQuote]],
+		})
+
+		return v2AmountIn.result[0]
+	}
 	/**
 	 * Estimates the gas required for a post request execution on this chain.
 	 * This function generates mock proofs for the post request, creates a state override
@@ -593,7 +618,7 @@ export const RESPONSE_RECEIPTS_SLOT = 3n
  */
 export const STATE_COMMITMENTS_SLOT = 5n
 
-function requestCommitmentKey(key: Hex): Hex {
+export function requestCommitmentKey(key: Hex): { slot1: Hex; slot2: Hex } {
 	// First derive the map key
 	const keyBytes = hexToBytes(key)
 	const slot = REQUEST_COMMITMENTS_SLOT
@@ -603,7 +628,10 @@ function requestCommitmentKey(key: Hex): Hex {
 	const number = bytesToBigInt(hexToBytes(mappedKey)) + 1n
 
 	// Convert back to 32-byte hex
-	return pad(`0x${number.toString(16)}`, { size: 32 })
+	return {
+		slot1: pad(`0x${number.toString(16)}`, { size: 32 }),
+		slot2: mappedKey,
+	}
 }
 
 function responseCommitmentKey(key: Hex): Hex {

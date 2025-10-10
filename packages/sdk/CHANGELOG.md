@@ -1,5 +1,29 @@
 # @hyperbridge/sdk
 
+## 1.3.21
+
+### Patch Changes
+
+- Updated relayer fee in estimate fill order
+
+## 1.3.20
+
+### Patch Changes
+
+- Fix Indexer stream in cancel order not yielding SOURCE FINALIZED
+
+## 1.3.19
+
+### Patch Changes
+
+- Fix message submit in cancel order method
+
+## 1.3.17
+
+### Patch Changes
+
+- Update polygon config
+
 ## 1.3.15
 
 ### Patch Changes

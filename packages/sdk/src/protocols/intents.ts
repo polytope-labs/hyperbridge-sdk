@@ -14,8 +14,9 @@ import {
 	getRequestCommitment,
 	waitForChallengePeriod,
 	retryPromise,
+	maxBigInt,
 } from "@/utils"
-import { formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
+import { encodeFunctionData, formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
 import {
 	DispatchPost,
 	IGetRequest,
@@ -35,7 +36,7 @@ import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
 import type { EvmChain } from "@/chains/evm"
 import { Decimal } from "decimal.js"
-import { getChain, IGetRequestMessage, IProof, SubstrateChain } from "@/chain"
+import { getChain, IGetRequestMessage, IProof, requestCommitmentKey, SubstrateChain } from "@/chain"
 import { IndexerClient } from "@/client"
 
 /**
@@ -81,10 +82,15 @@ export class IntentGateway {
 
 		const { gas: postGasEstimate, postRequestCalldata } = await this.source.estimateGas(postRequest)
 
-		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(postGasEstimate, "source")
+		const postGasEstimateInSourceFeeToken = await this.convertGasToFeeToken(
+			postGasEstimate,
+			"source",
+			order.sourceChain,
+		)
 
-		const relayerFeeInSourceFeeToken =
-			postGasEstimateInSourceFeeToken + 25n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
+		const minRelayerFee = 5n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
+		const postGasWithIncentive = postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * 1n) / 100n
+		const relayerFeeInSourceFeeToken = maxBigInt(postGasWithIncentive, minRelayerFee)
 
 		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,
@@ -155,12 +161,10 @@ export class IntentGateway {
 		]
 
 		let destChainFillGas = 0n
-		let filledWithNativeToken = false
-
 		try {
-			let protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken)
-
-			// Add 0.5% markup
+			let protocolFeeInNativeToken = await this.quoteNative(postRequest, relayerFeeInDestFeeToken).catch(() =>
+				this.dest.quoteNative(postRequest, relayerFeeInDestFeeToken).catch(() => 0n),
+			)
 			protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
 
 			destChainFillGas = await this.dest.client.estimateContractGas({
@@ -172,7 +176,6 @@ export class IntentGateway {
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
 			})
-			filledWithNativeToken = true
 		} catch {
 			console.warn(
 				`Could not estimate gas for fill order with native token as fees for chain ${order.destChain}, now trying with fee token as fees`,
@@ -214,7 +217,7 @@ export class IntentGateway {
 			})
 		}
 
-		const fillGasInDestFeeToken = await this.convertGasToFeeToken(destChainFillGas, "dest")
+		const fillGasInDestFeeToken = await this.convertGasToFeeToken(destChainFillGas, "dest", order.destChain)
 		const fillGasInSourceFeeToken = adjustFeeDecimals(
 			fillGasInDestFeeToken,
 			destChainFeeTokenDecimals,
@@ -230,7 +233,11 @@ export class IntentGateway {
 		let totalEstimateInSourceFeeToken =
 			fillGasInSourceFeeToken + protocolFeeInSourceFeeToken + relayerFeeInSourceFeeToken
 
-		let totalNativeTokenAmount = await this.convertFeeTokenToNative(totalEstimateInSourceFeeToken, "source")
+		let totalNativeTokenAmount = await this.convertFeeTokenToNative(
+			totalEstimateInSourceFeeToken,
+			"source",
+			order.sourceChain,
+		)
 
 		if ([order.destChain, order.sourceChain].includes("EVM-1")) {
 			totalEstimateInSourceFeeToken =
@@ -254,12 +261,16 @@ export class IntentGateway {
 	 *
 	 * @param feeTokenAmount - The amount in fee token (DAI)
 	 * @param getQuoteIn - Whether to use "source" or "dest" chain for the conversion
+	 * @param evmChainID - The EVM chain ID in format "EVM-{id}"
 	 * @returns The fee token amount converted to native token amount
 	 * @private
 	 */
-	private async convertFeeTokenToNative(feeTokenAmount: bigint, getQuoteIn: "source" | "dest"): Promise<bigint> {
+	private async convertFeeTokenToNative(
+		feeTokenAmount: bigint,
+		getQuoteIn: "source" | "dest",
+		evmChainID: string,
+	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		const evmChainID = `EVM-${client.chain?.id}`
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[getQuoteIn].getFeeTokenWithDecimals()
 
@@ -269,6 +280,7 @@ export class IntentGateway {
 				feeToken.address,
 				wethAsset,
 				feeTokenAmount,
+				evmChainID,
 				"v2",
 			)
 
@@ -279,7 +291,7 @@ export class IntentGateway {
 		} catch {
 			// Testnet block
 			const nativeCurrency = client.chain?.nativeCurrency
-			const chainId = client.chain?.id
+			const chainId = Number.parseInt(evmChainID.split("-")[1])
 			const feeTokenAmountDecimal = new Decimal(formatUnits(feeTokenAmount, feeToken.decimals))
 			const nativeTokenPriceUsd = new Decimal(await fetchPrice(nativeCurrency?.symbol!, chainId))
 			const totalCostInNativeToken = feeTokenAmountDecimal.dividedBy(nativeTokenPriceUsd)
@@ -293,14 +305,18 @@ export class IntentGateway {
 	 *
 	 * @param gasEstimate - The estimated gas units
 	 * @param gasEstimateIn - Whether to use "source" or "dest" chain for the conversion
+	 * @param evmChainID - The EVM chain ID in format "EVM-{id}"
 	 * @returns The gas cost converted to fee token amount
 	 * @private
 	 */
-	private async convertGasToFeeToken(gasEstimate: bigint, gasEstimateIn: "source" | "dest"): Promise<bigint> {
+	private async convertGasToFeeToken(
+		gasEstimate: bigint,
+		gasEstimateIn: "source" | "dest",
+		evmChainID: string,
+	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
 		const gasPrice = await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
-		const evmChainID = `EVM-${client.chain?.id}`
 		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
 
@@ -310,16 +326,18 @@ export class IntentGateway {
 				wethAddr,
 				feeToken.address,
 				gasCostInWei,
+				evmChainID,
 				"v2",
 			)
 			if (amountOut === 0n) {
+				console.log("Amount out not found")
 				throw new Error()
 			}
 			return amountOut
 		} catch {
 			// Testnet block
 			const nativeCurrency = client.chain?.nativeCurrency
-			const chainId = client.chain?.id
+			const chainId = Number.parseInt(evmChainID.split("-")[1])
 			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
 			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
 			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
@@ -371,9 +389,10 @@ export class IntentGateway {
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountOut: bigint,
+		evmChainID: string,
+		selectedProtocol?: "v2" | "v3" | "v4",
 	): Promise<{ protocol: "v2" | "v3" | "v4" | null; amountIn: bigint; fee?: number }> {
 		const client = this[getQuoteIn].client
-		const evmChainID = `EVM-${client.chain?.id}`
 		let amountInV2 = maxUint256
 		let amountInV3 = maxUint256
 		let amountInV4 = maxUint256
@@ -381,14 +400,14 @@ export class IntentGateway {
 		let bestV4Fee = 0
 		const commonFees = [100, 500, 3000, 10000]
 
-		const v2Router = this.source.config.getUniswapRouterV2Address(evmChainID)
-		const v2Factory = this.source.config.getUniswapV2FactoryAddress(evmChainID)
-		const v3Factory = this.source.config.getUniswapV3FactoryAddress(evmChainID)
-		const v3Quoter = this.source.config.getUniswapV3QuoterAddress(evmChainID)
-		const v4Quoter = this.source.config.getUniswapV4QuoterAddress(evmChainID)
+		const v2Router = this[getQuoteIn].config.getUniswapRouterV2Address(evmChainID)
+		const v2Factory = this[getQuoteIn].config.getUniswapV2FactoryAddress(evmChainID)
+		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
+		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
+		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
 
 		// For V2/V3, convert native addresses to WETH for quotes
-		const wethAsset = this.source.config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
@@ -402,14 +421,21 @@ export class IntentGateway {
 			})) as HexString
 
 			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountIn = (await client.readContract({
+				const v2AmountIn = await client.simulateContract({
 					address: v2Router,
 					abi: UniswapRouterV2.ABI,
+					// @ts-ignore
 					functionName: "getAmountsIn",
+					// @ts-ignore
 					args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
+				})
 
-				amountInV2 = v2AmountIn[0]
+				console.log("V2 amount in", v2AmountIn)
+
+				amountInV2 = v2AmountIn.result[0]
+				if (selectedProtocol === "v2") {
+					return { protocol: "v2", amountIn: amountInV2 }
+				}
 			}
 		} catch (error) {
 			console.warn("V2 quote failed:", error)
@@ -468,6 +494,10 @@ export class IntentGateway {
 
 		amountInV3 = bestV3AmountIn
 
+		if (selectedProtocol === "v3") {
+			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee }
+		}
+
 		// V4 Protocol Check - Find the best pool with best quote (uses native addresses directly)
 		let bestV4AmountIn = maxUint256
 
@@ -516,6 +546,10 @@ export class IntentGateway {
 		}
 
 		amountInV4 = bestV4AmountIn
+
+		if (selectedProtocol === "v4") {
+			return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee }
+		}
 
 		if (amountInV2 === maxUint256 && amountInV3 === maxUint256 && amountInV4 === maxUint256) {
 			// No liquidity in any protocol
@@ -570,6 +604,7 @@ export class IntentGateway {
 	 * @param tokenIn - The address of the input token
 	 * @param tokenOut - The address of the output token
 	 * @param amountIn - The input amount to swap
+	 * @param evmChainID - The EVM chain ID in format "EVM-{id}"
 	 * @param selectedProtocol - Optional specific protocol to use ("v2", "v3", or "v4")
 	 * @returns Object containing the best protocol, expected output amount, and fee tier (for V3/V4)
 	 */
@@ -578,10 +613,10 @@ export class IntentGateway {
 		tokenIn: HexString,
 		tokenOut: HexString,
 		amountIn: bigint,
+		evmChainID: string,
 		selectedProtocol?: "v2" | "v3" | "v4",
 	): Promise<{ protocol: "v2" | "v3" | "v4" | null; amountOut: bigint; fee?: number }> {
 		const client = this[getQuoteIn].client
-		const evmChainID = `EVM-${client.chain?.id}`
 		let amountOutV2 = BigInt(0)
 		let amountOutV3 = BigInt(0)
 		let amountOutV4 = BigInt(0)
@@ -602,25 +637,18 @@ export class IntentGateway {
 
 		// V2 Protocol Check
 		try {
-			const v2PairExists = (await client.readContract({
-				address: v2Factory,
-				abi: UniswapV2Factory.ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
+			const v2AmountOut = await client.simulateContract({
+				address: v2Router,
+				abi: UniswapRouterV2.ABI,
+				// @ts-ignore
+				functionName: "getAmountsOut",
+				// @ts-ignore
+				args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
+			})
 
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountOut = (await client.readContract({
-					address: v2Router,
-					abi: UniswapRouterV2.ABI,
-					functionName: "getAmountsOut",
-					args: [amountIn, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
-
-				amountOutV2 = v2AmountOut[1]
-				if (selectedProtocol === "v2") {
-					return { protocol: "v2", amountOut: amountOutV2 }
-				}
+			amountOutV2 = v2AmountOut.result[1]
+			if (selectedProtocol === "v2") {
+				return { protocol: "v2", amountOut: amountOutV2 }
 			}
 		} catch (error) {
 			console.warn("V2 quote failed:", error)
@@ -825,7 +853,7 @@ export class IntentGateway {
 					if (!value) throw new Error("Receipt not found")
 					return value
 				},
-				{ maxRetries: 5, backoffMs: 5000, logMessage: "Checking for receipt" },
+				{ maxRetries: 10, backoffMs: 5000, logMessage: "Checking for receipt" },
 			)
 		}
 
@@ -922,91 +950,91 @@ export class IntentGateway {
 
 		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
 		for await (const statusUpdate of sourceStatusStream) {
-			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
-				let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
-				let proof: HexString | undefined
-				// Check if request was delivered while waiting for proof
-				const checkIfAlreadyDelivered = async () => {
-					const currentStatus = await indexerClient.queryGetRequestWithStatus(commitment)
-					return (
-						currentStatus?.statuses.some(
-							(status) => status.status === RequestStatus.HYPERBRIDGE_DELIVERED,
-						) ?? false
-					)
-				}
+			yield statusUpdate
 
-				while (true) {
-					try {
-						proof = await this.source.queryProof(
-							{ Requests: [commitment] },
-							hyperbridgeConfig.stateMachineId,
-							sourceHeight,
-						)
-						break
-					} catch {
-						const failedHeight = sourceHeight
-						while (sourceHeight <= failedHeight) {
-							if (await checkIfAlreadyDelivered()) {
-								break
-							}
+			if (statusUpdate.status !== RequestStatus.SOURCE_FINALIZED) {
+				continue
+			}
 
-							const nextHeight = await retryPromise(
-								() =>
-									hyperbridge.latestStateMachineHeight({
-										stateId: parseStateMachineId(sourceStateMachine).stateId,
-										consensusStateId: sourceConsensusStateId,
-									}),
-								{
-									maxRetries: 5,
-									backoffMs: 5000,
-									logMessage:
-										"Failed to fetch latest state machine height (post-source-proof failure)",
-								},
-							)
-							if (nextHeight <= failedHeight) {
-								await sleep(10000)
-								continue
-							}
-							sourceHeight = nextHeight
-						}
+			let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+			let proof: HexString | undefined
+			// Check if request was delivered while waiting for proof
+			const checkIfAlreadyDelivered = async () => {
+				const currentStatus = await indexerClient.queryGetRequestWithStatus(commitment)
+				return (
+					currentStatus?.statuses.some((status) => status.status === RequestStatus.HYPERBRIDGE_DELIVERED) ??
+					false
+				)
+			}
 
+			const { slot1, slot2 } = requestCommitmentKey(commitment)
+
+			while (true) {
+				try {
+					proof = await this.source.queryStateProof(sourceHeight, [slot1, slot2])
+					break
+				} catch {
+					const failedHeight = sourceHeight
+					while (sourceHeight <= failedHeight) {
 						if (await checkIfAlreadyDelivered()) {
 							break
 						}
+
+						const nextHeight = await retryPromise(
+							() =>
+								hyperbridge.latestStateMachineHeight({
+									stateId: parseStateMachineId(sourceStateMachine).stateId,
+									consensusStateId: sourceConsensusStateId,
+								}),
+							{
+								maxRetries: 5,
+								backoffMs: 5000,
+								logMessage: "Failed to fetch latest state machine height (post-source-proof failure)",
+							},
+						)
+
+						if (nextHeight <= failedHeight) {
+							await sleep(10000)
+							continue
+						}
+
+						sourceHeight = nextHeight
 					}
-				}
 
-				if (proof) {
-					const sourceIProof: IProof = {
-						height: sourceHeight,
-						stateMachine: sourceStateMachine,
-						consensusStateId: sourceConsensusStateId,
-						proof,
+					if (await checkIfAlreadyDelivered()) {
+						break
 					}
-
-					yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
-
-					const getRequestMessage: IGetRequestMessage = {
-						kind: "GetRequest",
-						requests: [getRequest],
-						source: sourceIProof,
-						response: destIProof,
-						signer: pad("0x"),
-					}
-
-					await waitForChallengePeriod(hyperbridge, {
-						height: sourceHeight,
-						id: {
-							stateId: parseStateMachineId(sourceStateMachine).stateId,
-							consensusStateId: sourceConsensusStateId,
-						},
-					})
-
-					await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
 				}
 			}
 
-			yield statusUpdate
+			if (proof) {
+				const sourceIProof: IProof = {
+					height: sourceHeight,
+					stateMachine: sourceStateMachine,
+					consensusStateId: sourceConsensusStateId,
+					proof,
+				}
+
+				yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
+
+				const getRequestMessage: IGetRequestMessage = {
+					kind: "GetRequest",
+					requests: [getRequest],
+					source: sourceIProof,
+					response: destIProof,
+					signer: pad("0x"),
+				}
+
+				await waitForChallengePeriod(hyperbridge, {
+					height: sourceHeight,
+					id: {
+						stateId: parseStateMachineId(sourceStateMachine).stateId,
+						consensusStateId: sourceConsensusStateId,
+					},
+				})
+
+				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+			}
 		}
 	}
 
