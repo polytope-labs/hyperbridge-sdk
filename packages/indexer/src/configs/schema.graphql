@@ -1399,8 +1399,6 @@ type Treasury @entity {
     lastUpdatedAt: Date!
 }
 
-<<<<<<< HEAD
-=======
 """
 Stores the total accumulated fees for a specific relayer on a specific chain.
 """
@@ -1432,4 +1430,3 @@ type AccumulatedFee @entity {
 }
 
 
->>>>>>> ce67dabe955f729dcd7bc6961db4e8edd6fb3b41
