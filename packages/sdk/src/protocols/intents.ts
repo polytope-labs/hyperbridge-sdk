@@ -14,6 +14,7 @@ import {
 	getRequestCommitment,
 	waitForChallengePeriod,
 	retryPromise,
+	maxBigInt,
 } from "@/utils"
 import { encodeFunctionData, formatUnits, hexToString, maxUint256, pad, parseUnits, toHex } from "viem"
 import {
@@ -89,7 +90,7 @@ export class IntentGateway {
 
 		const minRelayerFee = 5n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
 		const postGasWithIncentive = postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * 1n) / 100n
-		const relayerFeeInSourceFeeToken = postGasWithIncentive > minRelayerFee ? postGasWithIncentive : minRelayerFee
+		const relayerFeeInSourceFeeToken = maxBigInt(postGasWithIncentive, minRelayerFee)
 
 		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,
