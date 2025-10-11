@@ -145,6 +145,10 @@ export class FillerConfigService {
 		return this.chainConfigService.getUniswapV4QuoterAddress(chain)
 	}
 
+	getPermit2Address(chain: string): HexString {
+		return this.chainConfigService.getPermit2Address(chain)
+	}
+
 	getCoingeckoId(chain: string): string | undefined {
 		return this.chainConfigService.getCoingeckoId(chain)
 	}

@@ -105,6 +105,10 @@ export class ChainConfigService {
 		return addresses.UniswapV4Quoter[chain as keyof typeof addresses.UniswapV4Quoter]! as HexString
 	}
 
+	getPermit2Address(chain: string): HexString {
+		return addresses.Permit2[chain as keyof typeof addresses.Permit2]! as HexString
+	}
+
 	getCoingeckoId(chain: string): string | undefined {
 		return coingeckoIds[chain as keyof typeof coingeckoIds]
 	}
