@@ -15,7 +15,6 @@ import { privateKeyToAddress } from "viem/accounts"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { encodeFunctionData, formatUnits, maxUint256 } from "viem"
 import { BATCH_EXECUTOR_ABI } from "@/config/abis/BatchExecutor"
-
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { UNIVERSAL_ROUTER_ABI } from "@/config/abis/UniversalRouter"
 import { isWithinThreshold } from "@/utils"
@@ -160,7 +159,7 @@ export class StableSwapFiller implements FillerStrategy {
 			})
 
 			const authorization = await walletClient.signAuthorization({
-				contractAddress: this.configService.getBatchExecutorAddress(order.destChain),
+				contractAddress: ADDRESS_ZERO, // Should be updated to the batch executor OR multicall3
 				account: walletClient.account!,
 			})
 

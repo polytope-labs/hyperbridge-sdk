@@ -36,10 +36,7 @@ import { orderCommitment } from "@hyperbridge/sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { CacheService } from "./CacheService"
-import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
-import { UNISWAP_V3_FACTORY_ABI } from "@/config/abis/UniswapV3Factory"
-import { UNISWAP_V3_POOL_ABI } from "@/config/abis/UniswapV3Pool"
 import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
 import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
 import { getLogger } from "@/services/Logger"
@@ -910,57 +907,37 @@ export class ContractInteractionService {
 		let bestAmountIn = maxUint256
 		let bestFee = 0
 
-		const v3Factory = this.configService.getUniswapV3FactoryAddress(destChain)
 		const v3Quoter = this.configService.getUniswapV3QuoterAddress(destChain)
 		const destClient = this.clientManager.getPublicClient(destChain)
 
-		// For V2/V3, convert native addresses to WETH for quotes
 		const wethAsset = this.configService.getWrappedNativeAssetWithDecimals(destChain).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
 		for (const fee of commonFees) {
 			try {
-				const pool = await destClient.readContract({
-					address: v3Factory,
-					abi: UNISWAP_V3_FACTORY_ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await destClient.readContract({
-						address: pool,
-						abi: UNISWAP_V3_POOL_ABI,
-						functionName: "liquidity",
+				const quoteResult = (
+					await destClient.simulateContract({
+						address: v3Quoter,
+						abi: UNISWAP_V3_QUOTER_V2_ABI,
+						functionName: "quoteExactOutputSingle",
+						args: [
+							{
+								tokenIn: tokenInForQuote,
+								tokenOut: tokenOutForQuote,
+								fee: fee,
+								amount: amountOut,
+								sqrtPriceLimitX96: BigInt(0),
+							},
+						],
 					})
+				).result as [bigint, bigint, number, bigint]
 
-					if (liquidity > BigInt(0)) {
-						// Use simulateContract for V3 quoter (handles revert-based returns)
-						const quoteResult = (
-							await destClient.simulateContract({
-								address: v3Quoter,
-								abi: UNISWAP_V3_QUOTER_V2_ABI,
-								functionName: "quoteExactOutputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amount: amountOut,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+				const amountIn = quoteResult[0]
 
-						const amountIn = quoteResult[0]
-
-						if (amountIn < bestAmountIn) {
-							bestAmountIn = amountIn
-							bestFee = fee
-						}
-					}
+				if (amountIn < bestAmountIn) {
+					bestAmountIn = amountIn
+					bestFee = fee
 				}
 			} catch (error) {
 				this.logger.warn({ fee }, "V3 quote failed; continuing")

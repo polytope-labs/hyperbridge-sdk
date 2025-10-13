@@ -40,8 +40,6 @@ import {
 import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapV2Factory from "@/abis/uniswapV2Factory"
 import UniswapRouterV2 from "@/abis/uniswapRouterV2"
-import UniswapV3Factory from "@/abis/uniswapV3Factory"
-import UniswapV3Pool from "@/abis/uniswapV3Pool"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
 import type { EvmChain } from "@/chains/evm"
@@ -470,7 +468,6 @@ export class IntentGateway {
 		let bestAmountIn = maxUint256
 		let bestFee = 0
 
-		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
 		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
@@ -479,45 +476,28 @@ export class IntentGateway {
 
 		for (const fee of commonFees) {
 			try {
-				const pool = await client.readContract({
-					address: v3Factory,
-					abi: UniswapV3Factory.ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await client.readContract({
-						address: pool,
-						abi: UniswapV3Pool.ABI,
-						functionName: "liquidity",
+				const quoteResult = (
+					await client.simulateContract({
+						address: v3Quoter,
+						abi: UniswapV3Quoter.ABI,
+						functionName: "quoteExactOutputSingle",
+						args: [
+							{
+								tokenIn: tokenInForQuote,
+								tokenOut: tokenOutForQuote,
+								fee: fee,
+								amount: amountOut,
+								sqrtPriceLimitX96: BigInt(0),
+							},
+						],
 					})
+				).result as [bigint, bigint, number, bigint]
 
-					if (liquidity > BigInt(0)) {
-						const quoteResult = (
-							await client.simulateContract({
-								address: v3Quoter,
-								abi: UniswapV3Quoter.ABI,
-								functionName: "quoteExactOutputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amount: amountOut,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint]
+				const amountIn = quoteResult[0]
 
-						const amountIn = quoteResult[0]
-
-						if (amountIn < bestAmountIn) {
-							bestAmountIn = amountIn
-							bestFee = fee
-						}
-					}
+				if (amountIn < bestAmountIn) {
+					bestAmountIn = amountIn
+					bestFee = fee
 				}
 			} catch (error) {
 				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
@@ -543,7 +523,6 @@ export class IntentGateway {
 		let bestAmountOut = BigInt(0)
 		let bestFee = 0
 
-		const v3Factory = this[getQuoteIn].config.getUniswapV3FactoryAddress(evmChainID)
 		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
@@ -552,45 +531,28 @@ export class IntentGateway {
 
 		for (const fee of commonFees) {
 			try {
-				const pool = await client.readContract({
-					address: v3Factory,
-					abi: UniswapV3Factory.ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await client.readContract({
-						address: pool,
-						abi: UniswapV3Pool.ABI,
-						functionName: "liquidity",
+				const quoteResult = (
+					await client.simulateContract({
+						address: v3Quoter,
+						abi: UniswapV3Quoter.ABI,
+						functionName: "quoteExactInputSingle",
+						args: [
+							{
+								tokenIn: tokenInForQuote,
+								tokenOut: tokenOutForQuote,
+								fee: fee,
+								amountIn: amountIn,
+								sqrtPriceLimitX96: BigInt(0),
+							},
+						],
 					})
+				).result as [bigint, bigint, number, bigint]
 
-					if (liquidity > BigInt(0)) {
-						const quoteResult = (
-							await client.simulateContract({
-								address: v3Quoter,
-								abi: UniswapV3Quoter.ABI,
-								functionName: "quoteExactInputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amountIn: amountIn,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint]
+				const amountOut = quoteResult[0]
 
-						const amountOut = quoteResult[0]
-
-						if (amountOut > bestAmountOut) {
-							bestAmountOut = amountOut
-							bestFee = fee
-						}
-					}
+				if (amountOut > bestAmountOut) {
+					bestAmountOut = amountOut
+					bestFee = fee
 				}
 			} catch (error) {
 				console.warn(`V3 quote failed for fee ${fee}, continuing to next fee tier`)
@@ -620,7 +582,6 @@ export class IntentGateway {
 
 		for (const fee of commonFees) {
 			try {
-				// Create pool key for V4 - can use native addresses directly
 				const currency0 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenIn : tokenOut
 				const currency1 = tokenIn.toLowerCase() < tokenOut.toLowerCase() ? tokenOut : tokenIn
 
@@ -631,7 +592,7 @@ export class IntentGateway {
 					currency1: currency1,
 					fee: fee,
 					tickSpacing: this.getTickSpacing(fee),
-					hooks: ADDRESS_ZERO, // No hooks
+					hooks: ADDRESS_ZERO,
 				}
 
 				const quoteResult = (
@@ -644,11 +605,11 @@ export class IntentGateway {
 								poolKey: poolKey,
 								zeroForOne: zeroForOne,
 								exactAmount: amountOut,
-								hookData: "0x", // Empty hook data
+								hookData: "0x",
 							},
 						],
 					})
-				).result as [bigint, bigint] // [amountIn, gasEstimate]
+				).result as [bigint, bigint]
 
 				const amountIn = quoteResult[0]
 
@@ -694,7 +655,7 @@ export class IntentGateway {
 					currency1: currency1,
 					fee: fee,
 					tickSpacing: this.getTickSpacing(fee),
-					hooks: ADDRESS_ZERO, // No hooks
+					hooks: ADDRESS_ZERO,
 				}
 
 				const quoteResult = (
@@ -707,11 +668,11 @@ export class IntentGateway {
 								poolKey: poolKey,
 								zeroForOne: zeroForOne,
 								exactAmount: amountIn,
-								hookData: "0x", // Empty hook data
+								hookData: "0x",
 							},
 						],
 					})
-				).result as [bigint, bigint] // [amountOut, gasEstimate]
+				).result as [bigint, bigint]
 
 				const amountOut = quoteResult[0]
 
