@@ -93,10 +93,10 @@ dataSources:
               - 'AssetRefunded(uint256,bytes32,address,bytes32)'
   {{/if}}
   # - kind: ethereum/Runtime
-  #   startBlock: 21535312
+  #   startBlock: {{blockNumber}}
   #   options:
   #     abi: handlerV1
-  #     address: '0xA801da100bF16D07F668F4A49E1f71fc54D05177'
+  #     address: '{{config.contracts.handlerV1}}'
   #   assets:
   #     handlerV1:
   #       file: ./abis/HandlerV1.abi.json
