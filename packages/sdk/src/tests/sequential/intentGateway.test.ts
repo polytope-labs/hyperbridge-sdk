@@ -278,7 +278,7 @@ describe.sequential("Intents protocol tests", () => {
 	}, 1_000_000)
 })
 
-describe.only("Swap Tests", () => {
+describe.sequential("Swap Tests", () => {
 	const mainnetId = "EVM-1"
 
 	let intentGateway: IntentGateway
@@ -513,7 +513,7 @@ describe.only("Swap Tests", () => {
 			stateOverrides: [
 				{
 					address: fillerWalletAddress,
-					balance: result.amountIn * 2n, // Ensure sufficient ETH balance
+					balance: result.amountIn * 2n,
 				},
 			],
 		})
