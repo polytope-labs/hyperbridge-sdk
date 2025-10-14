@@ -15,6 +15,7 @@ import {
 	waitForChallengePeriod,
 	retryPromise,
 	UniversalRouterCommands,
+	maxBigInt,
 } from "@/utils"
 import {
 	encodeFunctionData,
@@ -100,8 +101,9 @@ export class IntentGateway {
 			order.sourceChain,
 		)
 
-		const relayerFeeInSourceFeeToken =
-			postGasEstimateInSourceFeeToken + 25n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
+		const minRelayerFee = 5n * 10n ** BigInt(sourceChainFeeTokenDecimals - 2)
+		const postGasWithIncentive = postGasEstimateInSourceFeeToken + (postGasEstimateInSourceFeeToken * 1n) / 100n
+		const relayerFeeInSourceFeeToken = maxBigInt(postGasWithIncentive, minRelayerFee)
 
 		const relayerFeeInDestFeeToken = adjustFeeDecimals(
 			relayerFeeInSourceFeeToken,
