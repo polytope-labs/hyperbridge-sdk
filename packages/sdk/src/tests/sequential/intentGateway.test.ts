@@ -278,7 +278,7 @@ describe.sequential("Intents protocol tests", () => {
 	}, 1_000_000)
 })
 
-describe.sequential("Swap Tests", () => {
+describe.only("Swap Tests", () => {
 	const mainnetId = "EVM-1" // Change to "EVM-56" (BSC), "EVM-42161" (Arbitrum), etc.
 
 	let intentGateway: IntentGateway
@@ -292,7 +292,7 @@ describe.sequential("Swap Tests", () => {
 		const mainnetEvmChain = new EvmChain({
 			chainId: chainId,
 			host: chainConfigService.getHostAddress(mainnetId),
-			url: process.env.BSC_MAINNET!,
+			url: process.env.ETH_MAINNET!,
 		})
 
 		intentGateway = new IntentGateway(mainnetEvmChain, mainnetEvmChain)
@@ -323,7 +323,12 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v2", "Should select V2 protocol")
 		assert(result.amountIn !== maxUint256, "Should return valid amount in")
 		assert(result.amountIn > parseUnits("1000", 18), "Amount in should be greater than 1000 DAI")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
+		assert(
+			result.transaction.to === chainConfigService.getUniversalRouterAddress(mainnetId),
+			"Transaction to should be Universal Router",
+		)
+		assert(result.transaction.data, "Transaction should have calldata")
 
 		console.log("V2 Exact Output - Amount In:", result.amountIn)
 		console.log("V2 Exact Output - Protocol:", result.protocol)
@@ -341,9 +346,9 @@ describe.sequential("Swap Tests", () => {
 			value: 0n,
 		})
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata,
-			value: 0n,
+			to: result.transaction.to,
+			data: result.transaction.data,
+			value: result.transaction.value,
 		})
 		calls.push({
 			to: tokenOut,
@@ -415,7 +420,7 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v3", "Should select V3 protocol")
 		assert(result.amountIn !== maxUint256, "Should return valid amount in")
 		assert(result.fee !== undefined, "Should return fee tier")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
 
 		const amountIn = result.amountIn
 
@@ -430,9 +435,9 @@ describe.sequential("Swap Tests", () => {
 			value: 0n,
 		})
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata,
-			value: 0n,
+			to: result.transaction.to,
+			data: result.transaction.data,
+			value: result.transaction.value,
 		})
 		calls.push({
 			to: tokenOut,
@@ -503,14 +508,14 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v4", "Should select V4 protocol")
 		assert(result.amountIn !== maxUint256, "Should return valid amount in")
 		assert(result.fee !== undefined, "Should return fee tier")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
 
 		const amountIn = result.amountIn
 
 		const calls = []
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata,
+			to: result.transaction.to,
+			data: result.transaction.data,
 			value: 0n,
 		})
 		calls.push({
@@ -572,6 +577,7 @@ describe.sequential("Swap Tests", () => {
 
 		assert(result.protocol === "v4", "Should select V4 protocol")
 		assert(result.amountIn !== maxUint256, "Should return valid amount in")
+		assert(result.transaction, "Should generate transaction")
 
 		// Add buffer to amount in
 		let amountIn = result.amountIn + (result.amountIn * 200n) / 10000n
@@ -596,8 +602,8 @@ describe.sequential("Swap Tests", () => {
 			value: 0n,
 		})
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata!,
+			to: result.transaction.to,
+			data: result.transaction.data,
 			value: 0n,
 		})
 		calls.push({
@@ -666,7 +672,12 @@ describe.sequential("Swap Tests", () => {
 
 		assert(result.protocol === "v2", "Should select V2 protocol")
 		assert(result.amountOut !== BigInt(0), "Should return valid amount out")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
+		assert(
+			result.transaction.to === chainConfigService.getUniversalRouterAddress(mainnetId),
+			"Transaction to should be Universal Router",
+		)
+		assert(result.transaction.data, "Transaction should have calldata")
 
 		console.log("V2 Exact Input - Amount Out:", result.amountOut)
 		console.log("V2 Exact Input - Protocol:", result.protocol)
@@ -693,7 +704,12 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v3", "Should select V3 protocol")
 		assert(result.amountOut !== BigInt(0), "Should return valid amount out")
 		assert(result.fee !== undefined, "Should return fee tier")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
+		assert(
+			result.transaction.to === chainConfigService.getUniversalRouterAddress(mainnetId),
+			"Transaction to should be Universal Router",
+		)
+		assert(result.transaction.data, "Transaction should have calldata")
 
 		console.log("V3 Exact Input - Amount Out:", result.amountOut)
 		console.log("V3 Exact Input - Fee tier:", result.fee)
@@ -720,15 +736,15 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v4", "Should select V4 protocol")
 		assert(result.amountOut !== BigInt(0), "Should return valid amount out")
 		assert(result.fee !== undefined, "Should return fee tier")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
 
 		console.log("V4 Exact Input ETH/USDC - Amount Out:", result.amountOut)
 		console.log("V4 Exact Input ETH/USDC - Fee tier:", result.fee)
 
 		const calls = []
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata,
+			to: result.transaction.to,
+			data: result.transaction.data,
 			value: 0n,
 		})
 		calls.push({
@@ -790,7 +806,7 @@ describe.sequential("Swap Tests", () => {
 		assert(result.protocol === "v4", "Should select V4 protocol")
 		assert(result.amountOut !== BigInt(0), "Should return valid amount out")
 		assert(result.fee !== undefined, "Should return fee tier")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
 
 		console.log("V4 Exact Input USDT/USDC - Amount Out:", result.amountOut)
 		console.log("V4 Exact Input USDT/USDC - Fee tier:", result.fee)
@@ -815,9 +831,9 @@ describe.sequential("Swap Tests", () => {
 			value: 0n,
 		})
 		calls.push({
-			to: chainConfigService.getUniversalRouterAddress(mainnetId),
-			data: result.calldata!,
-			value: 0n,
+			to: result.transaction.to,
+			data: result.transaction.data,
+			value: result.transaction.value,
 		})
 		calls.push({
 			to: tokenOut,
@@ -885,7 +901,12 @@ describe.sequential("Swap Tests", () => {
 
 		assert(result.protocol !== null, "Should select a protocol")
 		assert(result.amountIn !== maxUint256, "Should return valid amount in")
-		assert(result.calldata, "Should generate calldata")
+		assert(result.transaction, "Should generate transaction")
+		assert(
+			result.transaction.to === chainConfigService.getUniversalRouterAddress(mainnetId),
+			"Transaction to should be Universal Router",
+		)
+		assert(result.transaction.data, "Transaction should have calldata")
 
 		console.log("Best Protocol Auto-Selected:", result.protocol)
 		console.log("Amount In:", result.amountIn)
