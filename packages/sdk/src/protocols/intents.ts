@@ -387,9 +387,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V2 quote for exact output swap.
-	 * @private
 	 */
-	private async getV2QuoteWithAmountOut(
+	async getV2QuoteWithAmountOut(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -422,9 +421,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V2 quote for exact input swap.
-	 * @private
 	 */
-	private async getV2QuoteWithAmountIn(
+	async getV2QuoteWithAmountIn(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -457,9 +455,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V3 quote for exact output swap.
-	 * @private
 	 */
-	private async getV3QuoteWithAmountOut(
+	async getV3QuoteWithAmountOut(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -512,9 +509,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V3 quote for exact input swap.
-	 * @private
 	 */
-	private async getV3QuoteWithAmountIn(
+	async getV3QuoteWithAmountIn(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -567,9 +563,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V4 quote for exact output swap.
-	 * @private
 	 */
-	private async getV4QuoteWithAmountOut(
+	async getV4QuoteWithAmountOut(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -630,9 +625,8 @@ export class IntentGateway {
 
 	/**
 	 * Gets V4 quote for exact input swap.
-	 * @private
 	 */
-	private async getV4QuoteWithAmountIn(
+	async getV4QuoteWithAmountIn(
 		getQuoteIn: "source" | "dest",
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -693,9 +687,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V2 exact input swap, including ERC20 transfer if needed.
-	 * @private
 	 */
-	private createV2SwapCalldataExactIn(
+	createV2SwapCalldataExactIn(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountIn: bigint,
@@ -708,8 +701,7 @@ export class IntentGateway {
 			throw new Error("Source and target tokens cannot be the same")
 		}
 
-		const isPermit2 = false
-		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001" // Router constant for self
+		const isPermit2 = false // Router constant for self
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
@@ -724,7 +716,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					ADDRESS_THIS,
+					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
 					amountIn,
 				]),
 			)
@@ -737,7 +729,9 @@ export class IntentGateway {
 					"address recipient, uint256 amountIn, uint256 amountOutMinimum, address[] path, bool isPermit2",
 				),
 				[
-					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					targetTokenAddress === ADDRESS_ZERO
+						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						: recipient,
 					amountIn,
 					amountOutMinimum,
 					path,
@@ -790,9 +784,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V2 exact output swap, including ERC20 transfer if needed.
-	 * @private
 	 */
-	private createV2SwapCalldataExactOut(
+	createV2SwapCalldataExactOut(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountOut: bigint,
@@ -805,7 +798,6 @@ export class IntentGateway {
 			throw new Error("Source and target tokens cannot be the same")
 		}
 		const isPermit2 = false
-		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
@@ -815,12 +807,13 @@ export class IntentGateway {
 
 		const commands: number[] = []
 		const inputs: HexString[] = []
+		const transactions: Transaction[] = []
 
 		if (sourceTokenAddress === ADDRESS_ZERO) {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					ADDRESS_THIS,
+					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
 					amountInMax,
 				]),
 			)
@@ -833,7 +826,9 @@ export class IntentGateway {
 					"address recipient, uint256 amountOut, uint256 amountInMax, address[] path, bool isPermit2",
 				),
 				[
-					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					targetTokenAddress === ADDRESS_ZERO
+						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						: recipient,
 					amountOut,
 					amountInMax,
 					path,
@@ -855,8 +850,6 @@ export class IntentGateway {
 			functionName: "execute",
 			args: [commandsEncoded, inputs],
 		})
-
-		const transactions: Transaction[] = []
 
 		if (sourceTokenAddress !== ADDRESS_ZERO) {
 			const transferData = encodeFunctionData({
@@ -883,9 +876,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V3 exact input swap, including ERC20 transfer if needed.
-	 * @private
 	 */
-	private createV3SwapCalldataExactIn(
+	createV3SwapCalldataExactIn(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountIn: bigint,
@@ -899,7 +891,6 @@ export class IntentGateway {
 			throw new Error("Source and target tokens cannot be the same")
 		}
 		const isPermit2 = false
-		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
@@ -914,7 +905,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					ADDRESS_THIS,
+					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
 					amountIn,
 				]),
 			)
@@ -927,7 +918,9 @@ export class IntentGateway {
 					"address recipient, uint256 amountIn, uint256 amountOutMinimum, bytes path, bool isPermit2",
 				),
 				[
-					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					targetTokenAddress === ADDRESS_ZERO
+						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						: recipient,
 					amountIn,
 					amountOutMinimum,
 					pathV3,
@@ -980,9 +973,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V3 exact output swap, including ERC20 transfer if needed.
-	 * @private
 	 */
-	private createV3SwapCalldataExactOut(
+	createV3SwapCalldataExactOut(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountOut: bigint,
@@ -996,7 +988,6 @@ export class IntentGateway {
 			throw new Error("Source and target tokens cannot be the same")
 		}
 		const isPermit2 = false
-		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
@@ -1011,7 +1002,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					ADDRESS_THIS,
+					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
 					amountInMax,
 				]),
 			)
@@ -1024,7 +1015,9 @@ export class IntentGateway {
 					"address recipient, uint256 amountOut, uint256 amountInMax, bytes path, bool isPermit2",
 				),
 				[
-					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					targetTokenAddress === ADDRESS_ZERO
+						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						: recipient,
 					amountOut,
 					amountInMax,
 					pathV3,
@@ -1074,9 +1067,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V4 exact input swap, including Permit2 approvals for ERC20 tokens.
-	 * @private
 	 */
-	private createV4SwapCalldataExactIn(
+	createV4SwapCalldataExactIn(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountIn: bigint,
@@ -1196,9 +1188,8 @@ export class IntentGateway {
 
 	/**
 	 * Creates transaction structure for V4 exact output swap, including Permit2 approvals for ERC20 tokens.
-	 * @private
 	 */
-	private createV4SwapCalldataExactOut(
+	createV4SwapCalldataExactOut(
 		sourceTokenAddress: HexString,
 		targetTokenAddress: HexString,
 		amountOut: bigint,
@@ -1343,24 +1334,93 @@ export class IntentGateway {
 		fee?: number
 		transactions?: Transaction[]
 	}> {
-		const amountInV2 = await this.getV2QuoteWithAmountOut(getQuoteIn, tokenIn, tokenOut, amountOut, evmChainID)
+		if (options?.generateCalldata && !options?.recipient) {
+			throw new Error("Recipient address is required when generating calldata")
+		}
 
-		if (options?.selectedProtocol === "v2" && amountInV2 !== maxUint256) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				const recipient = options?.recipient || ADDRESS_ZERO
-				transactions = this.createV2SwapCalldataExactOut(
+		if (options?.selectedProtocol) {
+			if (options.selectedProtocol === "v2") {
+				const amountInV2 = await this.getV2QuoteWithAmountOut(
+					getQuoteIn,
 					tokenIn,
 					tokenOut,
 					amountOut,
-					amountInV2,
-					recipient,
 					evmChainID,
-					getQuoteIn,
 				)
+				if (amountInV2 === maxUint256) {
+					return { protocol: null, amountIn: maxUint256 }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV2SwapCalldataExactOut(
+						tokenIn,
+						tokenOut,
+						amountOut,
+						amountInV2,
+						options.recipient!,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v2", amountIn: amountInV2, transactions }
 			}
-			return { protocol: "v2", amountIn: amountInV2, transactions }
+
+			if (options.selectedProtocol === "v3") {
+				const { amountIn: amountInV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountOut(
+					getQuoteIn,
+					tokenIn,
+					tokenOut,
+					amountOut,
+					evmChainID,
+				)
+				if (amountInV3 === maxUint256) {
+					return { protocol: null, amountIn: maxUint256 }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV3SwapCalldataExactOut(
+						tokenIn,
+						tokenOut,
+						amountOut,
+						amountInV3,
+						bestV3Fee,
+						options.recipient!,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee, transactions }
+			}
+
+			if (options.selectedProtocol === "v4") {
+				const { amountIn: amountInV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountOut(
+					getQuoteIn,
+					tokenIn,
+					tokenOut,
+					amountOut,
+					evmChainID,
+				)
+				if (amountInV4 === maxUint256) {
+					return { protocol: null, amountIn: maxUint256 }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV4SwapCalldataExactOut(
+						tokenIn,
+						tokenOut,
+						amountOut,
+						amountInV4,
+						bestV4Fee,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee, transactions }
+			}
 		}
+
+		// If no protocol is selected, query all protocols to find the best one
+		const amountInV2 = await this.getV2QuoteWithAmountOut(getQuoteIn, tokenIn, tokenOut, amountOut, evmChainID)
 
 		const { amountIn: amountInV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountOut(
 			getQuoteIn,
@@ -1370,24 +1430,6 @@ export class IntentGateway {
 			evmChainID,
 		)
 
-		if (options?.selectedProtocol === "v3" && amountInV3 !== maxUint256) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				const recipient = options?.recipient || ADDRESS_ZERO
-				transactions = this.createV3SwapCalldataExactOut(
-					tokenIn,
-					tokenOut,
-					amountOut,
-					amountInV3,
-					bestV3Fee,
-					recipient,
-					evmChainID,
-					getQuoteIn,
-				)
-			}
-			return { protocol: "v3", amountIn: amountInV3, fee: bestV3Fee, transactions }
-		}
-
 		const { amountIn: amountInV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountOut(
 			getQuoteIn,
 			tokenIn,
@@ -1396,23 +1438,6 @@ export class IntentGateway {
 			evmChainID,
 		)
 
-		if (options?.selectedProtocol === "v4" && amountInV4 !== maxUint256) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				transactions = this.createV4SwapCalldataExactOut(
-					tokenIn,
-					tokenOut,
-					amountOut,
-					amountInV4,
-					bestV4Fee,
-					evmChainID,
-					getQuoteIn,
-				)
-			}
-			return { protocol: "v4", amountIn: amountInV4, fee: bestV4Fee, transactions }
-		}
-
-		// If no liquidity found in any protocol
 		if (amountInV2 === maxUint256 && amountInV3 === maxUint256 && amountInV4 === maxUint256) {
 			return {
 				protocol: null,
@@ -1463,14 +1488,13 @@ export class IntentGateway {
 
 		let transactions: Transaction[] | undefined
 		if (options?.generateCalldata) {
-			const recipient = options?.recipient || ADDRESS_ZERO
 			if (minAmount.protocol === "v2") {
 				transactions = this.createV2SwapCalldataExactOut(
 					tokenIn,
 					tokenOut,
 					amountOut,
 					amountInV2,
-					recipient,
+					options.recipient!,
 					evmChainID,
 					getQuoteIn,
 				)
@@ -1481,7 +1505,7 @@ export class IntentGateway {
 					amountOut,
 					amountInV3,
 					bestV3Fee,
-					recipient,
+					options.recipient!,
 					evmChainID,
 					getQuoteIn,
 				)
@@ -1550,26 +1574,93 @@ export class IntentGateway {
 		fee?: number
 		transactions?: Transaction[]
 	}> {
-		// Get quotes from all protocols
-		const amountOutV2 = await this.getV2QuoteWithAmountIn(getQuoteIn, tokenIn, tokenOut, amountIn, evmChainID)
+		if (options?.generateCalldata && !options?.recipient) {
+			throw new Error("Recipient address is required when generating calldata")
+		}
 
-		// If a specific protocol is requested, return that
-		if (options?.selectedProtocol === "v2" && amountOutV2 !== BigInt(0)) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				const recipient = options?.recipient || ADDRESS_ZERO
-				transactions = this.createV2SwapCalldataExactIn(
+		if (options?.selectedProtocol) {
+			if (options.selectedProtocol === "v2") {
+				const amountOutV2 = await this.getV2QuoteWithAmountIn(
+					getQuoteIn,
 					tokenIn,
 					tokenOut,
 					amountIn,
-					amountOutV2,
-					recipient,
 					evmChainID,
-					getQuoteIn,
 				)
+				if (amountOutV2 === BigInt(0)) {
+					return { protocol: null, amountOut: BigInt(0) }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV2SwapCalldataExactIn(
+						tokenIn,
+						tokenOut,
+						amountIn,
+						amountOutV2,
+						options.recipient!,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v2", amountOut: amountOutV2, transactions }
 			}
-			return { protocol: "v2", amountOut: amountOutV2, transactions }
+
+			if (options.selectedProtocol === "v3") {
+				const { amountOut: amountOutV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountIn(
+					getQuoteIn,
+					tokenIn,
+					tokenOut,
+					amountIn,
+					evmChainID,
+				)
+				if (amountOutV3 === BigInt(0)) {
+					return { protocol: null, amountOut: BigInt(0) }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV3SwapCalldataExactIn(
+						tokenIn,
+						tokenOut,
+						amountIn,
+						amountOutV3,
+						bestV3Fee,
+						options.recipient!,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee, transactions }
+			}
+
+			if (options.selectedProtocol === "v4") {
+				const { amountOut: amountOutV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountIn(
+					getQuoteIn,
+					tokenIn,
+					tokenOut,
+					amountIn,
+					evmChainID,
+				)
+				if (amountOutV4 === BigInt(0)) {
+					return { protocol: null, amountOut: BigInt(0) }
+				}
+				let transactions: Transaction[] | undefined
+				if (options?.generateCalldata) {
+					transactions = this.createV4SwapCalldataExactIn(
+						tokenIn,
+						tokenOut,
+						amountIn,
+						amountOutV4,
+						bestV4Fee,
+						evmChainID,
+						getQuoteIn,
+					)
+				}
+				return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee, transactions }
+			}
 		}
+
+		// If no protocol is selected, query all protocols to find the best one
+		const amountOutV2 = await this.getV2QuoteWithAmountIn(getQuoteIn, tokenIn, tokenOut, amountIn, evmChainID)
 
 		const { amountOut: amountOutV3, fee: bestV3Fee } = await this.getV3QuoteWithAmountIn(
 			getQuoteIn,
@@ -1579,24 +1670,6 @@ export class IntentGateway {
 			evmChainID,
 		)
 
-		if (options?.selectedProtocol === "v3" && amountOutV3 !== BigInt(0)) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				const recipient = options?.recipient || ADDRESS_ZERO
-				transactions = this.createV3SwapCalldataExactIn(
-					tokenIn,
-					tokenOut,
-					amountIn,
-					amountOutV3,
-					bestV3Fee,
-					recipient,
-					evmChainID,
-					getQuoteIn,
-				)
-			}
-			return { protocol: "v3", amountOut: amountOutV3, fee: bestV3Fee, transactions }
-		}
-
 		const { amountOut: amountOutV4, fee: bestV4Fee } = await this.getV4QuoteWithAmountIn(
 			getQuoteIn,
 			tokenIn,
@@ -1604,22 +1677,6 @@ export class IntentGateway {
 			amountIn,
 			evmChainID,
 		)
-
-		if (options?.selectedProtocol === "v4" && amountOutV4 !== BigInt(0)) {
-			let transactions: Transaction[] | undefined
-			if (options?.generateCalldata) {
-				transactions = this.createV4SwapCalldataExactIn(
-					tokenIn,
-					tokenOut,
-					amountIn,
-					amountOutV4,
-					bestV4Fee,
-					evmChainID,
-					getQuoteIn,
-				)
-			}
-			return { protocol: "v4", amountOut: amountOutV4, fee: bestV4Fee, transactions }
-		}
 
 		// If no liquidity found in any protocol
 		if (amountOutV2 === BigInt(0) && amountOutV3 === BigInt(0) && amountOutV4 === BigInt(0)) {
@@ -1664,7 +1721,6 @@ export class IntentGateway {
 			}
 		}
 
-		// Find the best protocol by maximum amount out
 		const maxAmount = [
 			{ protocol: "v2" as const, amountOut: amountOutV2 },
 			{ protocol: "v3" as const, amountOut: amountOutV3, fee: bestV3Fee },
@@ -1673,14 +1729,13 @@ export class IntentGateway {
 
 		let transactions: Transaction[] | undefined
 		if (options?.generateCalldata) {
-			const recipient = options?.recipient || ADDRESS_ZERO
 			if (maxAmount.protocol === "v2") {
 				transactions = this.createV2SwapCalldataExactIn(
 					tokenIn,
 					tokenOut,
 					amountIn,
 					amountOutV2,
-					recipient,
+					options.recipient!,
 					evmChainID,
 					getQuoteIn,
 				)
@@ -1691,7 +1746,7 @@ export class IntentGateway {
 					amountIn,
 					amountOutV3,
 					bestV3Fee,
-					recipient,
+					options.recipient!,
 					evmChainID,
 					getQuoteIn,
 				)
