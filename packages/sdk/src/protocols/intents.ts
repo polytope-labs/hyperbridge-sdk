@@ -14,6 +14,7 @@ import {
 	getRequestCommitment,
 	waitForChallengePeriod,
 	retryPromise,
+	UniversalRouterCommands,
 } from "@/utils"
 import {
 	encodeFunctionData,
@@ -703,28 +704,63 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V2_SWAP_EXACT_IN = 0x08
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
+
 		const isPermit2 = false
+		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001" // Router constant for self
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
 		const path = [swapSourceAddress, swapTargetAddress]
-		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_IN])
-		const inputs = [
+
+		const commands: number[] = []
+		const inputs: HexString[] = []
+
+		if (sourceTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.WRAP_ETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					ADDRESS_THIS,
+					amountIn,
+				]),
+			)
+		}
+
+		commands.push(UniversalRouterCommands.V2_SWAP_EXACT_IN)
+		inputs.push(
 			encodeAbiParameters(
 				parseAbiParameters(
 					"address recipient, uint256 amountIn, uint256 amountOutMinimum, address[] path, bool isPermit2",
 				),
-				[recipient, amountIn, amountOutMinimum, path, isPermit2],
+				[
+					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					amountIn,
+					amountOutMinimum,
+					path,
+					isPermit2,
+				],
 			),
-		]
+		)
 
+		if (targetTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.UNWRAP_WETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					recipient,
+					amountOutMinimum,
+				]),
+			)
+		}
+
+		const commandsEncoded = this.encodeCommands(commands)
 		const executeData = encodeFunctionData({
 			abi: universalRouter.ABI,
 			functionName: "execute",
-			args: [commands, inputs],
+			args: [commandsEncoded, inputs],
 		})
 
 		const transactions: Transaction[] = []
@@ -765,28 +801,59 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V2_SWAP_EXACT_OUT = 0x09
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
 		const isPermit2 = false
+		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
 		const path = [swapSourceAddress, swapTargetAddress]
-		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
-		const inputs = [
+
+		const commands: number[] = []
+		const inputs: HexString[] = []
+
+		if (sourceTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.WRAP_ETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					ADDRESS_THIS,
+					amountInMax,
+				]),
+			)
+		}
+
+		commands.push(UniversalRouterCommands.V2_SWAP_EXACT_OUT)
+		inputs.push(
 			encodeAbiParameters(
 				parseAbiParameters(
 					"address recipient, uint256 amountOut, uint256 amountInMax, address[] path, bool isPermit2",
 				),
-				[recipient, amountOut, amountInMax, path, isPermit2],
+				[
+					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					amountOut,
+					amountInMax,
+					path,
+					isPermit2,
+				],
 			),
-		]
+		)
 
+		if (targetTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.UNWRAP_WETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [recipient, amountOut]),
+			)
+		}
+
+		const commandsEncoded = this.encodeCommands(commands)
 		const executeData = encodeFunctionData({
 			abi: universalRouter.ABI,
 			functionName: "execute",
-			args: [commands, inputs],
+			args: [commandsEncoded, inputs],
 		})
 
 		const transactions: Transaction[] = []
@@ -828,28 +895,62 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V3_SWAP_EXACT_IN = 0x00
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
 		const isPermit2 = false
+		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
 		const pathV3 = encodePacked(["address", "uint24", "address"], [swapSourceAddress, fee, swapTargetAddress])
-		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_IN])
-		const inputs = [
+
+		const commands: number[] = []
+		const inputs: HexString[] = []
+
+		if (sourceTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.WRAP_ETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					ADDRESS_THIS,
+					amountIn,
+				]),
+			)
+		}
+
+		commands.push(UniversalRouterCommands.V3_SWAP_EXACT_IN)
+		inputs.push(
 			encodeAbiParameters(
 				parseAbiParameters(
 					"address recipient, uint256 amountIn, uint256 amountOutMinimum, bytes path, bool isPermit2",
 				),
-				[recipient, amountIn, amountOutMinimum, pathV3, isPermit2],
+				[
+					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					amountIn,
+					amountOutMinimum,
+					pathV3,
+					isPermit2,
+				],
 			),
-		]
+		)
 
+		if (targetTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.UNWRAP_WETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					recipient,
+					amountOutMinimum,
+				]),
+			)
+		}
+
+		const commandsEncoded = this.encodeCommands(commands)
 		const executeData = encodeFunctionData({
 			abi: universalRouter.ABI,
 			functionName: "execute",
-			args: [commands, inputs],
+			args: [commandsEncoded, inputs],
 		})
 
 		const transactions: Transaction[] = []
@@ -891,28 +992,59 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V3_SWAP_EXACT_OUT = 0x01
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
 		const isPermit2 = false
+		const ADDRESS_THIS = "0x0000000000000000000000000000000000000001"
 
 		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
 		const pathV3 = encodePacked(["address", "uint24", "address"], [swapTargetAddress, fee, swapSourceAddress])
-		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
-		const inputs = [
+
+		const commands: number[] = []
+		const inputs: HexString[] = []
+
+		if (sourceTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.WRAP_ETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
+					ADDRESS_THIS,
+					amountInMax,
+				]),
+			)
+		}
+
+		commands.push(UniversalRouterCommands.V3_SWAP_EXACT_OUT)
+		inputs.push(
 			encodeAbiParameters(
 				parseAbiParameters(
 					"address recipient, uint256 amountOut, uint256 amountInMax, bytes path, bool isPermit2",
 				),
-				[recipient, amountOut, amountInMax, pathV3, isPermit2],
+				[
+					targetTokenAddress === ADDRESS_ZERO ? ADDRESS_THIS : recipient,
+					amountOut,
+					amountInMax,
+					pathV3,
+					isPermit2,
+				],
 			),
-		]
+		)
 
+		if (targetTokenAddress === ADDRESS_ZERO) {
+			commands.push(UniversalRouterCommands.UNWRAP_WETH)
+			inputs.push(
+				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [recipient, amountOut]),
+			)
+		}
+
+		const commandsEncoded = this.encodeCommands(commands)
 		const executeData = encodeFunctionData({
 			abi: universalRouter.ABI,
 			functionName: "execute",
-			args: [commands, inputs],
+			args: [commandsEncoded, inputs],
 		})
 
 		const transactions: Transaction[] = []
@@ -953,8 +1085,9 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V4_SWAP = 0x10
-
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
 		const currency0 =
 			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
 				? sourceTokenAddress
@@ -974,11 +1107,14 @@ export class IntentGateway {
 			hooks: ADDRESS_ZERO,
 		}
 
-		const SWAP_EXACT_IN_SINGLE = 0x06
-		const SETTLE_ALL = 0x0c
-		const TAKE_ALL = 0x0f
-
-		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL])
+		const actions = encodePacked(
+			["uint8", "uint8", "uint8"],
+			[
+				UniversalRouterCommands.V4_SWAP_EXACT_IN_SINGLE,
+				UniversalRouterCommands.SETTLE_ALL,
+				UniversalRouterCommands.TAKE_ALL,
+			],
+		)
 
 		const swapParams = encodeAbiParameters(
 			parseAbiParameters(
@@ -1007,7 +1143,7 @@ export class IntentGateway {
 
 		const params = [swapParams, settleParams, takeParams]
 
-		const commands = encodePacked(["uint8"], [V4_SWAP])
+		const commands = encodePacked(["uint8"], [UniversalRouterCommands.V4_SWAP])
 		const inputs = [encodeAbiParameters(parseAbiParameters("bytes actions, bytes[] params"), [actions, params])]
 
 		const executeData = encodeFunctionData({
@@ -1071,8 +1207,9 @@ export class IntentGateway {
 		evmChainID: string,
 		getQuoteIn: "source" | "dest",
 	): Transaction[] {
-		const V4_SWAP = 0x10
-
+		if (sourceTokenAddress.toLowerCase() === targetTokenAddress.toLowerCase()) {
+			throw new Error("Source and target tokens cannot be the same")
+		}
 		const currency0 =
 			sourceTokenAddress.toLowerCase() < targetTokenAddress.toLowerCase()
 				? sourceTokenAddress
@@ -1092,11 +1229,14 @@ export class IntentGateway {
 			hooks: ADDRESS_ZERO,
 		}
 
-		const SWAP_EXACT_OUT_SINGLE = 0x08
-		const SETTLE_ALL = 0x0c
-		const TAKE_ALL = 0x0f
-
-		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_OUT_SINGLE, SETTLE_ALL, TAKE_ALL])
+		const actions = encodePacked(
+			["uint8", "uint8", "uint8"],
+			[
+				UniversalRouterCommands.V4_SWAP_EXACT_OUT_SINGLE,
+				UniversalRouterCommands.SETTLE_ALL,
+				UniversalRouterCommands.TAKE_ALL,
+			],
+		)
 
 		const swapParams = encodeAbiParameters(
 			parseAbiParameters(
@@ -1125,7 +1265,7 @@ export class IntentGateway {
 
 		const params = [swapParams, settleParams, takeParams]
 
-		const commands = encodePacked(["uint8"], [V4_SWAP])
+		const commands = encodePacked(["uint8"], [UniversalRouterCommands.V4_SWAP])
 		const inputs = [encodeAbiParameters(parseAbiParameters("bytes actions, bytes[] params"), [actions, params])]
 
 		const executeData = encodeFunctionData({
@@ -1850,6 +1990,22 @@ export class IntentGateway {
 	private isWithinThreshold(candidate: bigint, reference: bigint, thresholdBps: bigint): boolean {
 		const basisPoints = 10000n
 		return candidate * basisPoints <= reference * (basisPoints + thresholdBps)
+	}
+
+	/**
+	 * Encodes multiple command bytes into packed format
+	 * @private
+	 */
+	private encodeCommands(commands: number[]): HexString {
+		if (commands.length === 0) {
+			throw new Error("Commands array cannot be empty")
+		}
+
+		// Build the type array and ensure proper typing
+		const types = Array(commands.length).fill("uint8")
+
+		// Use type assertion for viem's strict typing
+		return encodePacked(types as any, commands as any)
 	}
 }
 

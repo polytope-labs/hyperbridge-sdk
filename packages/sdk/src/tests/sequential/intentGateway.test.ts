@@ -334,7 +334,6 @@ describe.sequential("Swap Tests", () => {
 			value: tx.value,
 		}))
 
-		// Add balance check
 		calls.push({
 			to: tokenOut,
 			data: encodeFunctionData({
@@ -416,7 +415,6 @@ describe.sequential("Swap Tests", () => {
 			value: tx.value,
 		}))
 
-		// Add balance check
 		calls.push({
 			to: tokenOut,
 			data: encodeFunctionData({
