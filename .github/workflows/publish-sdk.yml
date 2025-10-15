@@ -112,10 +112,10 @@ jobs:
                   draft: false
                   prerelease: false
 
-            # - name: Commit and push changelog
-            #   run: |
-            #       git config --local user.email "action@github.com"
-            #       git config --local user.name "GitHub Action"
-            #       git add CHANGELOG.md
-            #       git commit -m "docs: update changelog for ${{ steps.previous-tag.outputs.current_tag }}" || exit 0
-            #       git push origin HEAD:main || true
+            - name: Commit and push changelog
+              run: |
+                  git config --local user.email "action@github.com"
+                  git config --local user.name "GitHub Action"
+                  git add CHANGELOG.md
+                  git commit -m "docs: update changelog for ${{ steps.previous-tag.outputs.current_tag }}" || exit 0
+                  git push origin HEAD:main || true
