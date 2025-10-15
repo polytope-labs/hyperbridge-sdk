@@ -60,16 +60,20 @@ jobs:
               run: |
                   CURRENT_TAG=${GITHUB_REF#refs/tags/}
                   PREVIOUS_TAG=$(git tag -l "sdk-v*" --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n1)
+                  # Remove 'sdk-' prefix for clean tag name
+                  CLEAN_TAG=${CURRENT_TAG#sdk-}
                   echo "previous_tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
                   echo "current_tag=${CURRENT_TAG}" >> $GITHUB_OUTPUT
+                  echo "clean_tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
 
             - name: Generate changelog
               id: changelog
               run: |
                   CURRENT_TAG=${{ steps.previous-tag.outputs.current_tag }}
                   PREVIOUS_TAG=${{ steps.previous-tag.outputs.previous_tag }}
+                  CLEAN_TAG=${{ steps.previous-tag.outputs.clean_tag }}
 
-                  echo "Generating changelog for ${CURRENT_TAG}"
+                  echo "Generating changelog for ${CLEAN_TAG}"
                   echo "Previous tag: ${PREVIOUS_TAG}"
 
                   # If no previous tag exists, get all commits
@@ -83,7 +87,7 @@ jobs:
                   CHANGELOG=$(git log --pretty=format:"* %s (%h)" $COMMIT_RANGE --reverse)
 
                   # Create a more structured changelog
-                  echo "# Changelog for ${CURRENT_TAG}" > CHANGELOG.md
+                  echo "# Changelog for ${CLEAN_TAG}" > CHANGELOG.md
                   echo "" >> CHANGELOG.md
                   echo "## Changes" >> CHANGELOG.md
                   echo "" >> CHANGELOG.md
@@ -102,8 +106,8 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.POLYTOPE_GITHUB_TOKEN }}
               with:
-                  tag_name: ${{ steps.previous-tag.outputs.current_tag }}
-                  release_name: SDK Release ${{ steps.previous-tag.outputs.current_tag }}
+                  tag_name: ${{ steps.previous-tag.outputs.clean_tag }}
+                  release_name: SDK Release ${{ steps.previous-tag.outputs.clean_tag }}
                   body: ${{ steps.changelog.outputs.changelog }}
                   draft: false
                   prerelease: false
