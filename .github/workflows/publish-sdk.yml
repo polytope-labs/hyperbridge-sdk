@@ -6,43 +6,43 @@ on:
             - "sdk-v*"
 
 jobs:
-    build-and-publish:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-            packages: write
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+    # build-and-publish:
+    #     runs-on: ubuntu-latest
+    #     permissions:
+    #         contents: write
+    #         packages: write
+    #     steps:
+    #         - name: Checkout repository
+    #           uses: actions/checkout@v4
+    #           with:
+    #               fetch-depth: 0
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-                  registry-url: "https://registry.npmjs.org"
+    #         - name: Setup Node.js
+    #           uses: actions/setup-node@v4
+    #           with:
+    #               node-version: "22"
+    #               registry-url: "https://registry.npmjs.org"
 
-            - name: Setup pnpm
-              uses: pnpm/action-setup@v2
-              with:
-                  version: "7"
+    #         - name: Setup pnpm
+    #           uses: pnpm/action-setup@v2
+    #           with:
+    #               version: "7"
 
-            - name: Install dependencies
-              run: pnpm install
+    #         - name: Install dependencies
+    #           run: pnpm install
 
-            - name: Build dependencies
-              run: pnpm --filter="@hyperbridge/sdk^..." build
+    #         - name: Build dependencies
+    #           run: pnpm --filter="@hyperbridge/sdk^..." build
 
-            - name: Build SDK
-              run: pnpm --filter="@hyperbridge/sdk" build
+    #         - name: Build SDK
+    #           run: pnpm --filter="@hyperbridge/sdk" build
 
-            - name: Publish to npm
-              run: |
-                  echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-                  pnpm --filter="@hyperbridge/sdk" publish --no-git-checks
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    #         - name: Publish to npm
+    #           run: |
+    #               echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+    #               pnpm --filter="@hyperbridge/sdk" publish --no-git-checks
+    #           env:
+    #               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     generate-changelog:
         runs-on: ubuntu-latest
