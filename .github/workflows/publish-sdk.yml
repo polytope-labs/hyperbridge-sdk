@@ -3,7 +3,7 @@ name: Publish SDK to npm and Create Release
 on:
     push:
         tags:
-            - "v*"
+            - "sdk-v*"
 
 jobs:
     build-and-publish:
