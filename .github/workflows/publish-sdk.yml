@@ -69,7 +69,7 @@ jobs:
                     {
                       echo "CHANGELOG<<EOF"
                       echo "## Changes since ${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}"
-                      git log --pretty=format:"* %s (%h)" ${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}..${{ steps.get_version.outputs.VERSION }} >> $GITHUB_OUTPUT
+                      git log --pretty=format:"* %s (%h)" ${{ steps.get_previous_tag.outputs.PREVIOUS_TAG }}..${{ steps.get_version.outputs.VERSION }}
                       echo "EOF"
                     } >> $GITHUB_OUTPUT
                   else
