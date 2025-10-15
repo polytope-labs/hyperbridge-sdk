@@ -29,7 +29,10 @@ jobs:
                   version: "7"
 
             - name: Install dependencies
-              run: pnpm install
+              run: pnpm install --frozen-lockfile
+
+            - name: Build dependencies
+              run: pnpm --filter="@hyperbridge/sdk^..." build
 
             - name: Build SDK
               run: pnpm --filter="@hyperbridge/sdk" build
@@ -46,6 +49,7 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+        if: startsWith(github.ref, 'refs/tags/sdk-')
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -59,7 +63,7 @@ jobs:
             - name: Get previous tag
               id: get_previous_tag
               run: |
-                  PREVIOUS_TAG=$(git describe --tags --abbrev=0 ${{ steps.get_version.outputs.VERSION }}^ 2>/dev/null || echo "")
+                  PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="sdk-*" ${{ steps.get_version.outputs.VERSION }}^ 2>/dev/null || echo "")
                   echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
 
             - name: Generate changelog
@@ -84,7 +88,7 @@ jobs:
             - name: Create GitHub Release
               uses: softprops/action-gh-release@v1
               with:
-                  tag_name: hyperbridge-sdk-${{ steps.get_version.outputs.VERSION }}
+                  tag_name: ${{ steps.get_version.outputs.VERSION }}
                   name: Hyperbridge SDK ${{ steps.get_version.outputs.VERSION }}
                   body: ${{ steps.changelog.outputs.CHANGELOG }}
                   draft: true
