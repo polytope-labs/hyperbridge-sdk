@@ -46,7 +46,7 @@ jobs:
 
     generate-changelog:
         runs-on: ubuntu-latest
-        # needs: build-and-publish
+        needs: build-and-publish
         permissions:
             contents: write
         steps:
