@@ -189,7 +189,10 @@ export class ContractInteractionService {
 
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
-				const gasPrice = await getGasPriceFromEtherscan(order.destChain).catch(() => destClient.getGasPrice())
+				const etherscanApiKey = this.configService.getEtherscanApiKey()
+				const gasPrice = etherscanApiKey
+					? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey)
+					: await destClient.getGasPrice()
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
 					address: token.address as HexString,
@@ -577,7 +580,10 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
-		const gasPrice = await getGasPriceFromEtherscan(chain).catch(() => client.getGasPrice())
+		const etherscanApiKey = this.configService.getEtherscanApiKey()
+		const gasPrice = etherscanApiKey
+			? await getGasPriceFromEtherscan(chain, etherscanApiKey)
+			: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = client.chain?.nativeCurrency
 		const chainId = client.chain?.id

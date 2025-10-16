@@ -595,9 +595,11 @@ export async function fetchPrice(identifier: string, chainId = 1, apiKey?: strin
  * Fetches the current network gas price from an Etherscan-family explorer API.
  * Returns the ProposeGasPrice (in gwei) converted to wei as bigint.
  */
-export async function getGasPriceFromEtherscan(chainId: string): Promise<bigint> {
-	let parsedChainId = chainId.split("-")[1]
-	const url = `https://api.etherscan.io/v2/api?chainid=${Number(parsedChainId)}&module=gastracker&action=gasoracle`
+export async function getGasPriceFromEtherscan(chainId: string, apiKey?: string): Promise<bigint> {
+	let parsedChainId = Number(chainId.split("-")[1])
+	const url = apiKey
+		? `https://api.etherscan.io/v2/api?chainid=${parsedChainId}&module=gastracker&action=gasoracle&apikey=${apiKey}`
+		: `https://api.etherscan.io/v2/api?chainid=${parsedChainId}&module=gastracker&action=gasoracle`
 	const response = await fetch(url)
 	const data = await response.json()
 	return gweiToWei(data.result.ProposeGasPrice)

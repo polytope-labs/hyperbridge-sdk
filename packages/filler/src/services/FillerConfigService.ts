@@ -140,4 +140,8 @@ export class FillerConfigService {
 	getCoinGeckoApiKey(): string | undefined {
 		return this.fillerConfig?.coingecko?.apiKey
 	}
+
+	getEtherscanApiKey(): string | undefined {
+		return this.chainConfigService.getEtherscanApiKey()
+	}
 }
