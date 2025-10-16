@@ -52,9 +52,9 @@ export class IntentGatewayService {
 		const { transactionHash, blockNumber, timestamp } = logsData
 
 		let orderPlaced = await OrderPlaced.get(order.id!)
-		const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 
 		if (!orderPlaced) {
+			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 			orderPlaced = await OrderPlaced.create({
 				id: order.id!,
 				user: order.user,
@@ -105,6 +105,15 @@ export class IntentGatewayService {
 			)
 
 			await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
+
+			let user = await getOrCreateUser(order.user, referrer, timestamp)
+			user.referrer = user.referrer === DEFAULT_REFERRER ? referrer : user.referrer
+			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
+			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
+				.plus(new Decimal(inputUSD))
+				.toString()
+
+			await user.save()
 		} else {
 			// Handle race condition: Order already exists (e.g., was filled first)
 			// Update all fields except status and status-related metadata
@@ -113,6 +122,8 @@ export class IntentGatewayService {
 			)
 
 			const existingStatus = orderPlaced.status
+			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
+
 			orderPlaced.user = order.user
 			orderPlaced.sourceChain = order.sourceChain
 			orderPlaced.destChain = order.destChain
@@ -156,15 +167,6 @@ export class IntentGatewayService {
 				await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
 			}
 		}
-
-		let user = await getOrCreateUser(order.user, referrer, timestamp)
-		user.referrer = user.referrer === DEFAULT_REFERRER ? referrer : user.referrer
-		user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
-		user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
-			.plus(new Decimal(inputUSD))
-			.toString()
-
-		await user.save()
 
 		return orderPlaced
 	}
