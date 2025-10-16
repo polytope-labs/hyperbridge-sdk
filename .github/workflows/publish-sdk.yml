@@ -109,7 +109,7 @@ jobs:
                   tag_name: ${{ steps.previous-tag.outputs.clean_tag }}
                   release_name: SDK Release ${{ steps.previous-tag.outputs.clean_tag }}
                   body: ${{ steps.changelog.outputs.changelog }}
-                  draft: false
+                  draft: true
                   prerelease: false
 
             - name: Commit and push changelog
