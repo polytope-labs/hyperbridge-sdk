@@ -13,6 +13,7 @@ import { VolumeService } from "./volume.service"
 import PriceHelper from "@/utils/price.helpers"
 import { TokenPriceService } from "./token-price.service"
 import stringify from "safe-stable-stringify"
+import { getOrCreateUser } from "./userActivity.services"
 
 export interface TokenInfo {
 	token: Hex
@@ -51,9 +52,9 @@ export class IntentGatewayService {
 		const { transactionHash, blockNumber, timestamp } = logsData
 
 		let orderPlaced = await OrderPlaced.get(order.id!)
+		const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 
 		if (!orderPlaced) {
-			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 			orderPlaced = await OrderPlaced.create({
 				id: order.id!,
 				user: order.user,
@@ -112,8 +113,6 @@ export class IntentGatewayService {
 			)
 
 			const existingStatus = orderPlaced.status
-			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
-
 			orderPlaced.user = order.user
 			orderPlaced.sourceChain = order.sourceChain
 			orderPlaced.destChain = order.destChain
@@ -157,6 +156,15 @@ export class IntentGatewayService {
 				await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
 			}
 		}
+
+		let user = await getOrCreateUser(order.user, referrer, timestamp)
+		user.referrer = user.referrer === DEFAULT_REFERRER ? referrer : user.referrer
+		user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
+		user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
+			.plus(new Decimal(inputUSD))
+			.toString()
+
+		await user.save()
 
 		return orderPlaced
 	}
@@ -309,6 +317,14 @@ export class IntentGatewayService {
 						timestamp,
 					)
 				}
+
+				// User
+				let user = await getOrCreateUser(orderPlaced.user)
+				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
+					.plus(new Decimal(orderPlaced.inputUSD))
+					.toString()
+				user.totalFilledOrders = user.totalFilledOrders + BigInt(1)
+				await user.save()
 			}
 
 			// Deduct points when order is cancelled
