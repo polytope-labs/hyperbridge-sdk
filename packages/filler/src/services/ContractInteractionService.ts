@@ -190,11 +190,18 @@ export class ContractInteractionService {
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
 				const etherscanApiKey = this.configService.getEtherscanApiKey()
-				const gasPrice = etherscanApiKey
-					? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(() =>
-							destClient.getGasPrice(),
-						)
-					: await destClient.getGasPrice()
+				const useEtherscan =
+					order.destChain.includes("137") || order.destChain.includes("56") || order.destChain.includes("1")
+				const gasPrice =
+					useEtherscan && etherscanApiKey
+						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async (err) => {
+								this.logger.warn(
+									{ chain: order.destChain, err: err },
+									"Error getting gas price from etherscan, using client's gas price",
+								)
+								return await destClient.getGasPrice()
+							})
+						: await destClient.getGasPrice()
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
 					address: token.address as HexString,
@@ -582,10 +589,18 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
+		const useEtherscan = chain.includes("137") || chain.includes("56") || chain.includes("1")
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
-		const gasPrice = etherscanApiKey
-			? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(() => client.getGasPrice())
-			: await client.getGasPrice()
+		const gasPrice =
+			useEtherscan && etherscanApiKey
+				? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(async (err) => {
+						this.logger.warn(
+							{ chain, err: err },
+							"Error getting gas price from etherscan, using client's gas price",
+						)
+						return await client.getGasPrice()
+					})
+				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = client.chain?.nativeCurrency
 		const chainId = client.chain?.id

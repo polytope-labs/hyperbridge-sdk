@@ -609,7 +609,6 @@ export async function getGasPriceFromEtherscan(chainId: string, apiKey?: string)
  * Converts a decimal gwei string to wei bigint without floating point errors.
  */
 function gweiToWei(gwei: string): bigint {
-	console.log(gwei)
 	const [intPart, fracPartRaw] = gwei.split(".")
 	const fracPart = (fracPartRaw || "").slice(0, 9) // up to 9 decimal places for gwei->wei
 	const fracPadded = fracPart.padEnd(9, "0")
