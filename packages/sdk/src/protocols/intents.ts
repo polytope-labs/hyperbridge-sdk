@@ -329,10 +329,18 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
-		const etherscanApiKey = this[gasEstimateIn].config.getEtherscanApiKey()
-		const gasPrice = etherscanApiKey
-			? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey).catch(() => client.getGasPrice())
-			: await client.getGasPrice()
+		const useEtherscan = evmChainID.includes("137") || evmChainID.includes("56") || evmChainID.includes("1")
+		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
+		const gasPrice =
+			useEtherscan && etherscanApiKey
+				? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey).catch(async (err) => {
+						console.warn(
+							{ evmChainID, err: err },
+							"Error getting gas price from etherscan, using client's gas price",
+						)
+						return await client.getGasPrice()
+					})
+				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
