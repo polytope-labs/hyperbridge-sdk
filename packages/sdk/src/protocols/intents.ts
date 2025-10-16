@@ -331,7 +331,7 @@ export class IntentGateway {
 		const client = this[gasEstimateIn].client
 		const etherscanApiKey = this[gasEstimateIn].config.getEtherscanApiKey()
 		const gasPrice = etherscanApiKey
-			? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey)
+			? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey).catch(() => client.getGasPrice())
 			: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset

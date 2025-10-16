@@ -191,7 +191,9 @@ export class ContractInteractionService {
 				this.logger.info({ token: token.address }, "Approving token")
 				const etherscanApiKey = this.configService.getEtherscanApiKey()
 				const gasPrice = etherscanApiKey
-					? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey)
+					? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(() =>
+							destClient.getGasPrice(),
+						)
 					: await destClient.getGasPrice()
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
@@ -582,7 +584,7 @@ export class ContractInteractionService {
 		const client = this.clientManager.getPublicClient(chain)
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
 		const gasPrice = etherscanApiKey
-			? await getGasPriceFromEtherscan(chain, etherscanApiKey)
+			? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(() => client.getGasPrice())
 			: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = client.chain?.nativeCurrency
