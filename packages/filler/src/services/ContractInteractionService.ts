@@ -27,6 +27,7 @@ import {
 	ERC20Method,
 	fetchPrice,
 	maxBigInt,
+	getGasPriceFromEtherscan,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -188,8 +189,7 @@ export class ContractInteractionService {
 
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
-				const gasPrice = await destClient.getGasPrice()
-
+				const gasPrice = await getGasPriceFromEtherscan(order.destChain).catch(() => destClient.getGasPrice())
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
 					address: token.address as HexString,
@@ -577,7 +577,7 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
-		const gasPrice = await client.getGasPrice()
+		const gasPrice = await getGasPriceFromEtherscan(chain).catch(() => client.getGasPrice())
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = client.chain?.nativeCurrency
 		const chainId = client.chain?.id
