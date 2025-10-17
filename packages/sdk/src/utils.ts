@@ -819,6 +819,16 @@ export function adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, t
 }
 
 /**
+ * Chains that should prefer the Etherscan API for gas price lookup
+ */
+export const USE_ETHERSCAN_CHAINS = new Set(["EVM-137", "EVM-56", "EVM-1"])
+
+/**
+ * Testnet chains
+ */
+export const TESTNET_CHAINS = new Set(["EVM-10200", "EVM-97"])
+
+/**
  * Replace Websocket with HTTP is a function that replaces a websocket URL with an HTTP URL.
  * @param url The URL to replace
  */

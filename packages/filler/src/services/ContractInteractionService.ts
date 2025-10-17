@@ -28,6 +28,7 @@ import {
 	fetchPrice,
 	maxBigInt,
 	getGasPriceFromEtherscan,
+	USE_ETHERSCAN_CHAINS,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -191,7 +192,7 @@ export class ContractInteractionService {
 				this.logger.info({ token: token.address }, "Approving token")
 				const etherscanApiKey = this.configService.getEtherscanApiKey()
 				const chain = order.destChain
-				const useEtherscan = chain === "EVM-137" || chain === "EVM-56" || chain === "EVM-1"
+				const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
 				const gasPrice =
 					useEtherscan && etherscanApiKey
 						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async () => {
@@ -589,7 +590,7 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
-		const useEtherscan = chain === "EVM-137" || chain === "EVM-56" || chain === "EVM-1"
+		const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
 		const gasPrice =
 			useEtherscan && etherscanApiKey

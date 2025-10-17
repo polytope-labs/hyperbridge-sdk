@@ -17,6 +17,7 @@ import {
 	UniversalRouterCommands,
 	maxBigInt,
 	getGasPriceFromEtherscan,
+	USE_ETHERSCAN_CHAINS,
 } from "@/utils"
 import {
 	encodeFunctionData,
@@ -329,7 +330,7 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
-		const useEtherscan = evmChainID === "EVM-137" || evmChainID === "EVM-56" || evmChainID === "EVM-1"
+		const useEtherscan = USE_ETHERSCAN_CHAINS.has(evmChainID)
 		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
 		const gasPrice =
 			useEtherscan && etherscanApiKey
