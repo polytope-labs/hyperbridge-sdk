@@ -329,7 +329,7 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
-		const useEtherscan = evmChainID.includes("137") || evmChainID.includes("56") || evmChainID.includes("1")
+		const useEtherscan = evmChainID === "EVM-137" || evmChainID === "EVM-56" || evmChainID === "EVM-1"
 		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
 		const gasPrice =
 			useEtherscan && etherscanApiKey

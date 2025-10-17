@@ -190,8 +190,8 @@ export class ContractInteractionService {
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
 				const etherscanApiKey = this.configService.getEtherscanApiKey()
-				const useEtherscan =
-					order.destChain.includes("137") || order.destChain.includes("56") || order.destChain.includes("1")
+				const chain = order.destChain
+				const useEtherscan = chain === "EVM-137" || chain === "EVM-56" || chain === "EVM-1"
 				const gasPrice =
 					useEtherscan && etherscanApiKey
 						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async () => {
@@ -589,7 +589,7 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
-		const useEtherscan = chain.includes("137") || chain.includes("56") || chain.includes("1")
+		const useEtherscan = chain === "EVM-137" || chain === "EVM-56" || chain === "EVM-1"
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
 		const gasPrice =
 			useEtherscan && etherscanApiKey
