@@ -1873,14 +1873,20 @@ export class IntentGateway {
 			let proofHex: HexString | null = null
 
 			while (!proofHex) {
-				latestHeight = await retryPromise(
+				const height = await retryPromise(
 					() =>
-						hyperbridge.latestStateMachineHeight({
-							stateId: parseStateMachineId(destStateMachine).stateId,
-							consensusStateId: destConsensusStateId,
+						indexerClient.queryLatestStateMachineHeight({
+							statemachineId: destStateMachine,
+							chain: hyperbridgeConfig.stateMachineId,
 						}),
 					{ maxRetries: 5, backoffMs: 500, logMessage: "Failed to fetch latest state machine height" },
 				)
+
+				if (!height) {
+					throw new Error("No state machine updates found for destination chain")
+				}
+
+				latestHeight = height
 
 				const shouldFetchProof =
 					lastFailedHeight === null ? latestHeight > order.deadline : latestHeight > lastFailedHeight
@@ -1929,6 +1935,7 @@ export class IntentGateway {
 				stateMachine: destStateMachine,
 			}
 
+			console.log("DESTINATION_FINALIZED", destIProof)
 			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		}
 
@@ -1971,9 +1978,9 @@ export class IntentGateway {
 
 						const nextHeight = await retryPromise(
 							() =>
-								hyperbridge.latestStateMachineHeight({
-									stateId: parseStateMachineId(sourceStateMachine).stateId,
-									consensusStateId: sourceConsensusStateId,
+								indexerClient.queryLatestStateMachineHeight({
+									statemachineId: sourceStateMachine,
+									chain: hyperbridgeConfig.stateMachineId,
 								}),
 							{
 								maxRetries: 5,
@@ -1981,6 +1988,12 @@ export class IntentGateway {
 								logMessage: "Failed to fetch latest state machine height (post-source-proof failure)",
 							},
 						)
+
+						if (!nextHeight) {
+							console.log("No state machine updates found, retrying...")
+							await sleep(10000)
+							continue
+						}
 
 						if (nextHeight <= failedHeight) {
 							await sleep(10000)
