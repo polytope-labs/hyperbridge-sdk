@@ -333,11 +333,8 @@ export class IntentGateway {
 		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
 		const gasPrice =
 			useEtherscan && etherscanApiKey
-				? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey).catch(async (err) => {
-						console.warn(
-							{ evmChainID, err: err },
-							"Error getting gas price from etherscan, using client's gas price",
-						)
+				? await getGasPriceFromEtherscan(evmChainID, etherscanApiKey).catch(async () => {
+						console.warn({ evmChainID }, "Error getting gas price from etherscan, using client's gas price")
 						return await client.getGasPrice()
 					})
 				: await client.getGasPrice()

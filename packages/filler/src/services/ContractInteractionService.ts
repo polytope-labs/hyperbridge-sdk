@@ -194,9 +194,9 @@ export class ContractInteractionService {
 					order.destChain.includes("137") || order.destChain.includes("56") || order.destChain.includes("1")
 				const gasPrice =
 					useEtherscan && etherscanApiKey
-						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async (err) => {
+						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async () => {
 								this.logger.warn(
-									{ chain: order.destChain, err: err },
+									{ chain: order.destChain },
 									"Error getting gas price from etherscan, using client's gas price",
 								)
 								return await destClient.getGasPrice()
@@ -593,11 +593,8 @@ export class ContractInteractionService {
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
 		const gasPrice =
 			useEtherscan && etherscanApiKey
-				? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(async (err) => {
-						this.logger.warn(
-							{ chain, err: err },
-							"Error getting gas price from etherscan, using client's gas price",
-						)
+				? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(async () => {
+						this.logger.warn({ chain }, "Error getting gas price from etherscan, using client's gas price")
 						return await client.getGasPrice()
 					})
 				: await client.getGasPrice()
