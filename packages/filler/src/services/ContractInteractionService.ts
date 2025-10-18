@@ -198,7 +198,7 @@ export class ContractInteractionService {
 					useEtherscan && etherscanApiKey
 						? await retryPromise(() => getGasPriceFromEtherscan(order.destChain, etherscanApiKey), {
 								maxRetries: 3,
-								backoffMs: 1000,
+								backoffMs: 250,
 							}).catch(async () => {
 								this.logger.warn(
 									{ chain: order.destChain },
@@ -574,10 +574,12 @@ export class ContractInteractionService {
 			throw new Error("Chain native currency information not available")
 		}
 
-		const nativeTokenPriceUsd = await fetchPrice(
-			nativeToken.symbol,
-			chainId,
-			this.configService.getCoinGeckoApiKey(),
+		const nativeTokenPriceUsd = await retryPromise(
+			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			{
+				maxRetries: 3,
+				backoffMs: 250,
+			},
 		)
 
 		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
@@ -600,7 +602,7 @@ export class ContractInteractionService {
 			useEtherscan && etherscanApiKey
 				? await retryPromise(() => getGasPriceFromEtherscan(chain, etherscanApiKey), {
 						maxRetries: 3,
-						backoffMs: 1000,
+						backoffMs: 250,
 					}).catch(async () => {
 						this.logger.warn({ chain }, "Error getting gas price from etherscan, using client's gas price")
 						return await client.getGasPrice()
@@ -616,7 +618,10 @@ export class ContractInteractionService {
 
 		const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeToken.decimals))
 		const tokenPriceUsd = new Decimal(
-			await fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			await retryPromise(() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()), {
+				maxRetries: 3,
+				backoffMs: 250,
+			}),
 		)
 		const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 
@@ -769,10 +774,12 @@ export class ContractInteractionService {
 				priceIdentifier = tokenAddress
 			}
 
-			const pricePerToken = await fetchPrice(
-				priceIdentifier,
-				destClient.chain?.id!,
-				this.configService.getCoinGeckoApiKey(),
+			const pricePerToken = await retryPromise(
+				() => fetchPrice(priceIdentifier, destClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
+				{
+					maxRetries: 3,
+					backoffMs: 250,
+				},
 			)
 
 			// Use Decimal for precise calculations
@@ -796,10 +803,12 @@ export class ContractInteractionService {
 				priceIdentifier = tokenAddress
 			}
 
-			const pricePerToken = await fetchPrice(
-				priceIdentifier,
-				sourceClient.chain?.id!,
-				this.configService.getCoinGeckoApiKey(),
+			const pricePerToken = await retryPromise(
+				() => fetchPrice(priceIdentifier, sourceClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
+				{
+					maxRetries: 3,
+					backoffMs: 250,
+				},
 			)
 
 			const tokenAmount = new Decimal(formatUnits(amount, decimals))
@@ -838,10 +847,12 @@ export class ContractInteractionService {
 			throw new Error("Chain native currency information not available")
 		}
 
-		const nativeTokenPriceUsd = await fetchPrice(
-			nativeToken.symbol,
-			chainId,
-			this.configService.getCoinGeckoApiKey(),
+		const nativeTokenPriceUsd = await retryPromise(
+			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			{
+				maxRetries: 3,
+				backoffMs: 250,
+			},
 		)
 
 		// Use Decimal for precise calculations
