@@ -29,6 +29,7 @@ import {
 	maxBigInt,
 	getGasPriceFromEtherscan,
 	USE_ETHERSCAN_CHAINS,
+	retryPromise,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -195,7 +196,10 @@ export class ContractInteractionService {
 				const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
 				const gasPrice =
 					useEtherscan && etherscanApiKey
-						? await getGasPriceFromEtherscan(order.destChain, etherscanApiKey).catch(async () => {
+						? await retryPromise(() => getGasPriceFromEtherscan(order.destChain, etherscanApiKey), {
+								maxRetries: 3,
+								backoffMs: 1000,
+							}).catch(async () => {
 								this.logger.warn(
 									{ chain: order.destChain },
 									"Error getting gas price from etherscan, using client's gas price",
@@ -594,7 +598,10 @@ export class ContractInteractionService {
 		const etherscanApiKey = this.configService.getEtherscanApiKey()
 		const gasPrice =
 			useEtherscan && etherscanApiKey
-				? await getGasPriceFromEtherscan(chain, etherscanApiKey).catch(async () => {
+				? await retryPromise(() => getGasPriceFromEtherscan(chain, etherscanApiKey), {
+						maxRetries: 3,
+						backoffMs: 1000,
+					}).catch(async () => {
 						this.logger.warn({ chain }, "Error getting gas price from etherscan, using client's gas price")
 						return await client.getGasPrice()
 					})
