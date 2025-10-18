@@ -107,7 +107,6 @@ export class IntentGatewayService {
 			await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
 
 			let user = await getOrCreateUser(order.user, referrer, timestamp)
-			user.referrer = user.referrer === DEFAULT_REFERRER ? referrer : user.referrer
 			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
 			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
 				.plus(new Decimal(inputUSD))
@@ -305,28 +304,26 @@ export class IntentGatewayService {
 					timestamp,
 				)
 
-				if (orderPlaced.referrer != DEFAULT_REFERRER) {
-					const referrerPointsToAward = Math.floor(pointsToAward / 2)
-
-					await PointsService.awardPoints(
-						orderPlaced.referrer ?? DEFAULT_REFERRER,
-						ethers.utils.toUtf8String(orderPlaced.sourceChain),
-						BigInt(referrerPointsToAward),
-						ProtocolParticipantType.REFERRER,
-						PointsActivityType.ORDER_REFERRED_POINTS,
-						transactionHash,
-						`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
-						timestamp,
-					)
-				}
-
 				// User
-				let user = await getOrCreateUser(orderPlaced.user)
+				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
 				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
 					.plus(new Decimal(orderPlaced.inputUSD))
 					.toString()
 				user.totalFilledOrders = user.totalFilledOrders + BigInt(1)
 				await user.save()
+
+				// Referrer
+				const referrerPointsToAward = Math.floor(pointsToAward / 2)
+				await PointsService.awardPoints(
+					user.referrer,
+					ethers.utils.toUtf8String(orderPlaced.sourceChain),
+					BigInt(referrerPointsToAward),
+					ProtocolParticipantType.REFERRER,
+					PointsActivityType.ORDER_REFERRED_POINTS,
+					transactionHash,
+					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+					timestamp,
+				)
 			}
 
 			// Deduct points when order is cancelled
