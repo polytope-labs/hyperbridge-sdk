@@ -1438,7 +1438,7 @@ type UserActivity @entity {
 	"""
 	Referrer address
 	"""
-	referrer: String!
+	referrer: String
 	"""
 	Total orders placed by the user
 	"""

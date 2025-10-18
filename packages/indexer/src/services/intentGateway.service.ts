@@ -313,17 +313,19 @@ export class IntentGatewayService {
 				await user.save()
 
 				// Referrer
-				const referrerPointsToAward = Math.floor(pointsToAward / 2)
-				await PointsService.awardPoints(
-					user.referrer,
-					ethers.utils.toUtf8String(orderPlaced.sourceChain),
-					BigInt(referrerPointsToAward),
-					ProtocolParticipantType.REFERRER,
-					PointsActivityType.ORDER_REFERRED_POINTS,
-					transactionHash,
-					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
-					timestamp,
-				)
+				if (user.referrer) {
+					const referrerPointsToAward = Math.floor(pointsToAward / 2)
+					await PointsService.awardPoints(
+						user.referrer,
+						ethers.utils.toUtf8String(orderPlaced.sourceChain),
+						BigInt(referrerPointsToAward),
+						ProtocolParticipantType.REFERRER,
+						PointsActivityType.ORDER_REFERRED_POINTS,
+						transactionHash,
+						`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+						timestamp,
+					)
+				}
 			}
 
 			// Deduct points when order is cancelled
@@ -337,18 +339,6 @@ export class IntentGatewayService {
 					BigInt(pointsToDeduct),
 					ProtocolParticipantType.USER,
 					PointsActivityType.ORDER_PLACED_POINTS,
-					transactionHash,
-					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
-					timestamp,
-				)
-
-				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
-				await PointsService.deductPoints(
-					user.referrer,
-					orderPlaced.sourceChain,
-					BigInt(pointsToDeduct),
-					ProtocolParticipantType.REFERRER,
-					PointsActivityType.ORDER_REFERRED_POINTS,
 					transactionHash,
 					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 					timestamp,

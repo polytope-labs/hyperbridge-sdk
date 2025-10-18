@@ -5,11 +5,15 @@ import { DEFAULT_REFERRER } from "./intentGateway.service"
 export async function getOrCreateUser(address: string, referrer?: string, timestamp?: bigint): Promise<UserActivity> {
 	const user = await UserActivity.get(address)
 	if (user) {
+		if (!user.referrer && referrer) {
+			user.referrer = referrer
+			await user.save()
+		}
 		return user
 	}
 	const newUser = UserActivity.create({
 		id: address,
-		referrer: referrer || DEFAULT_REFERRER,
+		referrer,
 		totalOrdersPlaced: BigInt(0),
 		totalFilledOrders: BigInt(0),
 		totalTeleports: BigInt(0),
