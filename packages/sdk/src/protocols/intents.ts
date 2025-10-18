@@ -336,7 +336,7 @@ export class IntentGateway {
 			useEtherscan && etherscanApiKey
 				? await retryPromise(() => getGasPriceFromEtherscan(evmChainID, etherscanApiKey), {
 						maxRetries: 3,
-						backoffMs: 1000,
+						backoffMs: 250,
 					}).catch(async () => {
 						console.warn({ evmChainID }, "Error getting gas price from etherscan, using client's gas price")
 						return await client.getGasPrice()
