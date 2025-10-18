@@ -1935,7 +1935,6 @@ export class IntentGateway {
 				stateMachine: destStateMachine,
 			}
 
-			console.log("DESTINATION_FINALIZED", destIProof)
 			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		}
 
