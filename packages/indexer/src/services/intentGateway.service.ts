@@ -341,6 +341,18 @@ export class IntentGatewayService {
 					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 					timestamp,
 				)
+
+				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
+				await PointsService.deductPoints(
+					user.referrer,
+					orderPlaced.sourceChain,
+					BigInt(pointsToDeduct),
+					ProtocolParticipantType.REFERRER,
+					PointsActivityType.ORDER_REFERRED_POINTS,
+					transactionHash,
+					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+					timestamp,
+				)
 			}
 		}
 
