@@ -1989,9 +1989,9 @@ export class IntentGateway {
 						)
 
 						if (!nextHeight) {
-							console.log("No state machine updates found, retrying...")
-							await sleep(10000)
-							continue
+							throw new Error(
+								`No state machine updates found for ${sourceStateMachine} on chain ${hyperbridgeConfig.stateMachineId}`,
+							)
 						}
 
 						if (nextHeight <= failedHeight) {
