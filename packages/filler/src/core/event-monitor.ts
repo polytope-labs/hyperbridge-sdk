@@ -1,12 +1,5 @@
 import { EventEmitter } from "events"
-import {
-	ChainConfig,
-	Order,
-	orderCommitment,
-	DUMMY_PRIVATE_KEY,
-	hexToString,
-	DecodedOrderPlacedLog,
-} from "@hyperbridge/sdk"
+import { ChainConfig, Order, orderCommitment, hexToString, DecodedOrderPlacedLog } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { PublicClient } from "viem"
 import { ChainClientManager } from "@/services"
@@ -16,15 +9,11 @@ import { getLogger } from "@/services/Logger"
 export class EventMonitor extends EventEmitter {
 	private clients: Map<number, PublicClient> = new Map()
 	private listening: boolean = false
-	private unwatchFunctions: Map<number, () => void> = new Map()
 	private clientManager: ChainClientManager
 	private configService: FillerConfigService
 	private logger = getLogger("event-monitor")
-	private processedOrders: Map<string, { timestamp: number; blockNumber: bigint }> = new Map()
 	private lastScannedBlock: Map<number, bigint> = new Map()
 	private blockScanIntervals: Map<number, NodeJS.Timeout> = new Map()
-	private readonly MAX_ORDER_HISTORY = 1000
-	private readonly CLEANUP_INTERVAL = 3600000
 
 	constructor(chainConfigs: ChainConfig[], configService: FillerConfigService, clientManager: ChainClientManager) {
 		super()
@@ -36,36 +25,6 @@ export class EventMonitor extends EventEmitter {
 			const client = this.clientManager.getPublicClient(chainName)
 			this.clients.set(config.chainId, client)
 		})
-
-		setInterval(() => this.cleanupOldOrders(), this.CLEANUP_INTERVAL)
-	}
-
-	private cleanupOldOrders(): void {
-		const now = Date.now()
-		const oneDayAgo = now - 86400000
-
-		let cleaned = 0
-		for (const [orderId, metadata] of this.processedOrders.entries()) {
-			if (metadata.timestamp < oneDayAgo) {
-				this.processedOrders.delete(orderId)
-				cleaned++
-			}
-		}
-
-		if (cleaned > 0) {
-			this.logger.info({ cleaned, remaining: this.processedOrders.size }, "Cleaned up old orders")
-		}
-
-		if (this.processedOrders.size > this.MAX_ORDER_HISTORY) {
-			const toDelete = this.processedOrders.size - this.MAX_ORDER_HISTORY
-			const entries = Array.from(this.processedOrders.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp)
-
-			for (let i = 0; i < toDelete; i++) {
-				this.processedOrders.delete(entries[i][0])
-			}
-
-			this.logger.warn({ deleted: toDelete }, "Enforced max order history limit")
-		}
 	}
 
 	public async startListening(): Promise<void> {
@@ -82,51 +41,26 @@ export class EventMonitor extends EventEmitter {
 				const startBlock = await client.getBlockNumber()
 				this.lastScannedBlock.set(chainId, startBlock - 1n)
 
-				this.logger.info({ chainId, startBlock }, "Starting event monitoring")
+				this.logger.info({ chainId, startBlock }, "Initializing block scanner")
 
-				// Dual approach: watchEvent + block scanner
-				const unwatch = client.watchEvent({
-					address: intentGatewayAddress,
-					event: orderPlacedEvent,
-					onLogs: (logs) => this.processLogs(logs),
-					poll: true,
-					pollingInterval: 500,
-				})
-
-				this.unwatchFunctions.set(chainId, unwatch)
-
-				// Backup scanner with retry logic
 				const scanInterval = setInterval(async () => {
-					let retries = 3
-					while (retries > 0) {
-						try {
-							await this.scanForMissedBlocks(chainId, client, intentGatewayAddress, orderPlacedEvent)
-							break
-						} catch (error) {
-							retries--
-							this.logger.warn(
-								{ chainId, err: error, retriesLeft: retries },
-								"Error in block scanner, retrying",
-							)
-							if (retries === 0) {
-								this.logger.error({ chainId, err: error }, "Block scanner failed after retries")
-							} else {
-								await new Promise((resolve) => setTimeout(resolve, 1000))
-							}
-						}
+					try {
+						await this.scanBlocks(chainId, client, intentGatewayAddress, orderPlacedEvent)
+					} catch (error) {
+						this.logger.error({ chainId, err: error }, "Error in block scanner")
 					}
-				}, 2000)
+				}, 1000)
 
 				this.blockScanIntervals.set(chainId, scanInterval)
 
-				this.logger.info({ chainId }, "Started watching OrderPlaced events")
+				this.logger.info({ chainId }, "Started monitoring for new orders")
 			} catch (error) {
-				this.logger.error({ chainId, err: error }, "Failed to create event filter")
+				this.logger.error({ chainId, err: error }, "Failed to start block scanner")
 			}
 		}
 	}
 
-	private async scanForMissedBlocks(
+	private async scanBlocks(
 		chainId: number,
 		client: PublicClient,
 		intentGatewayAddress: `0x${string}`,
@@ -146,7 +80,7 @@ export class EventMonitor extends EventEmitter {
 
 			this.logger.debug(
 				{ chainId, fromBlock, toBlock: actualToBlock, gap: Number(actualToBlock - fromBlock) },
-				"Scanning for missed blocks",
+				"Scanning blocks",
 			)
 
 			const logs = await client.getLogs({
@@ -172,8 +106,27 @@ export class EventMonitor extends EventEmitter {
 		for (const log of logs) {
 			try {
 				const decodedLog = log as unknown as DecodedOrderPlacedLog
-				const tempOrder: Order = {
-					id: "",
+				const order: Order = {
+					id: orderCommitment({
+						id: "",
+						user: decodedLog.args.user,
+						sourceChain: hexToString(decodedLog.args.sourceChain),
+						destChain: hexToString(decodedLog.args.destChain),
+						deadline: decodedLog.args.deadline,
+						nonce: decodedLog.args.nonce,
+						fees: decodedLog.args.fees,
+						outputs: decodedLog.args.outputs.map((output) => ({
+							token: output.token,
+							amount: output.amount,
+							beneficiary: output.beneficiary,
+						})),
+						inputs: decodedLog.args.inputs.map((input) => ({
+							token: input.token,
+							amount: input.amount,
+						})),
+						callData: decodedLog.args.callData,
+						transactionHash: decodedLog.transactionHash,
+					}),
 					user: decodedLog.args.user,
 					sourceChain: hexToString(decodedLog.args.sourceChain),
 					destChain: hexToString(decodedLog.args.destChain),
@@ -192,20 +145,8 @@ export class EventMonitor extends EventEmitter {
 					callData: decodedLog.args.callData,
 					transactionHash: decodedLog.transactionHash,
 				}
-				const orderId = orderCommitment(tempOrder)
 
-				// Duplicates
-				if (this.processedOrders.has(orderId)) {
-					this.logger.debug({ orderId }, "Skipping duplicate order")
-					continue
-				}
-
-				this.processedOrders.set(orderId, {
-					timestamp: Date.now(),
-					blockNumber: decodedLog.blockNumber!,
-				})
-
-				const order: Order = { ...tempOrder, id: orderId }
+				this.logger.info({ orderId: order.id, txHash: order.transactionHash }, "New order detected")
 				this.emit("newOrder", { order })
 			} catch (error) {
 				this.logger.error({ err: error, log }, "Error parsing event log")
@@ -220,18 +161,7 @@ export class EventMonitor extends EventEmitter {
 		}
 		this.blockScanIntervals.clear()
 
-		for (const [chainId, unwatch] of this.unwatchFunctions.entries()) {
-			try {
-				unwatch()
-				this.logger.info({ chainId }, "Stopped watching for events")
-			} catch (error) {
-				this.logger.error({ chainId, err: error }, "Error stopping event watcher")
-			}
-		}
-
-		this.unwatchFunctions.clear()
 		this.listening = false
-		this.processedOrders.clear()
 		this.lastScannedBlock.clear()
 	}
 }
