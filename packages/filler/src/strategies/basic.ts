@@ -148,16 +148,29 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const tx = await walletClient.writeContract({
-				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
-				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
-				chain: walletClient.chain,
-				gas: fillGas + (fillGas * 2500n) / 10000n,
-			})
+			const tx = await walletClient
+				.writeContract({
+					abi: INTENT_GATEWAY_ABI,
+					address: this.configService.getIntentGatewayAddress(order.destChain),
+					functionName: "fillOrder",
+					args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+					account: privateKeyToAccount(this.privateKey),
+					value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
+					chain: walletClient.chain,
+					gas: fillGas + (fillGas * 2500n) / 10000n,
+				})
+				.catch(async () => {
+					return await walletClient.writeContract({
+						abi: INTENT_GATEWAY_ABI,
+						address: this.configService.getIntentGatewayAddress(order.destChain),
+						functionName: "fillOrder",
+						args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+						account: privateKeyToAccount(this.privateKey),
+						value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
+						chain: walletClient.chain,
+						gas: fillGas,
+					})
+				})
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
