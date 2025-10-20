@@ -79,7 +79,6 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@hyperbridge/filler": "workspace:*",
 		"@iarna/toml": "^2.2.5",
 		"@polkadot/keyring": "latest",
 		"@polytope-labs/hyperclient": "1.2.0",
