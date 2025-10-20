@@ -39,7 +39,7 @@ import evmHost from "@/abis/evmHost"
 import HandlerV1 from "@/abis/handler"
 import type { IChain, IIsmpMessage } from "@/chain"
 import { ChainConfigService } from "@/configs/ChainConfigService"
-import type { HexString, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
+import type { HexString, IEvmConfig, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
 import {
 	ADDRESS_ZERO,
 	EvmStateProof,
@@ -81,17 +81,21 @@ export const DEFAULT_ADDRESS = "0x0000000000000000000000000000000000000000"
  */
 export interface EvmChainParams {
 	/**
-	 * The chain ID of the EVM chain.
+	 * The chain ID of the EVM chain
 	 */
 	chainId: number
 	/**
-	 * The host address of the EVM chain.
+	 * The RPC URL of the EVM chain
+	 */
+	rpcUrl: string
+	/**
+	 * The host address of the EVM chain (IsmpHost contract address)
 	 */
 	host: HexString
 	/**
-	 * The URL of the EVM chain.
+	 * Consensus state identifier of this chain on hyperbridge
 	 */
-	url: string
+	consensusStateId: string
 }
 
 /**
@@ -106,7 +110,7 @@ export class EvmChain implements IChain {
 		this.publicClient = createPublicClient({
 			// @ts-ignore
 			chain: chains[params.chainId],
-			transport: http(params.url),
+			transport: http(params.rpcUrl),
 		})
 		this.chainConfigService = new ChainConfigService()
 	}
@@ -120,7 +124,16 @@ export class EvmChain implements IChain {
 		return this.params.host
 	}
 
-	get config(): ChainConfigService {
+	get config(): IEvmConfig {
+		return {
+			rpcUrl: this.params.rpcUrl,
+			stateMachineId: `EVM-${this.params.chainId}`,
+			host: this.params.host,
+			consensusStateId: this.params.consensusStateId,
+		}
+	}
+
+	get configService(): ChainConfigService {
 		return this.chainConfigService
 	}
 
@@ -461,8 +474,8 @@ export class EvmChain implements IChain {
 	}
 
 	private async getAmountsIn(amountOut: bigint, tokenOutForQuote: HexString, chain: string): Promise<bigint> {
-		const v2Router = this.config.getUniswapRouterV2Address(chain)
-		const WETH = this.config.getWrappedNativeAssetWithDecimals(chain).asset
+		const v2Router = this.configService.getUniswapRouterV2Address(chain)
+		const WETH = this.configService.getWrappedNativeAssetWithDecimals(chain).asset
 		const v2AmountIn = await this.publicClient.simulateContract({
 			address: v2Router,
 			abi: UniswapRouterV2.ABI,
@@ -591,6 +604,61 @@ export class EvmChain implements IChain {
 
 		return nonce
 	}
+}
+
+/**
+ * Factory function for creating EVM chain instances with common defaults
+ *
+ * @param chainId - The EVM chain ID
+ * @param host - The IsmpHost contract address
+ * @param options - Optional configuration overrides
+ * @returns A new EvmChain instance
+ *
+ * @example
+ * ```typescript
+ * // Create with minimal config
+ * const ethChain = createEvmChain(1, "0x87ea45..", {
+ *   rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY"
+ * })
+ *
+ * // Create with custom consensus state ID
+ * const arbChain = createEvmChain(42161, "0x87ea42345..", {
+ *   rpcUrl: "https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY",
+ *   consensusStateId: "ARB_CUSTOM"
+ * })
+ * ```
+ */
+export function createEvmChain(
+	chainId: number,
+	host: HexString,
+	options: {
+		rpcUrl: string
+		consensusStateId?: string
+	},
+): EvmChain {
+	// Default consensus state IDs for known chains
+	const defaultConsensusStateIds: Record<number, string> = {
+		1: "ETH0", // Ethereum Mainnet
+		11155111: "SEP0", // Sepolia
+		42161: "ARB0", // Arbitrum One
+		421614: "ARBS0", // Arbitrum Sepolia
+		10: "OP0", // Optimism
+		11155420: "OPS0", // Optimism Sepolia
+		8453: "BASE0", // Base
+		84532: "BASES0", // Base Sepolia
+		137: "POLY0", // Polygon
+		56: "BSC0", // BSC
+		97: "BSCT0", // BSC Testnet
+		100: "GNO0", // Gnosis
+		10200: "GNOC0", // Gnosis Chiado
+	}
+
+	return new EvmChain({
+		chainId,
+		host,
+		rpcUrl: options.rpcUrl,
+		consensusStateId: options.consensusStateId ?? defaultConsensusStateIds[chainId] ?? `EVM${chainId}`,
+	})
 }
 
 /**
