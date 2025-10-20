@@ -25,7 +25,7 @@ interface CacheData {
 	gasEstimates: Record<string, GasEstimateCache>
 	swapOperations: Record<string, SwapOperationsCache>
 	feeTokens: Record<string, { address: HexString; decimals: number }>
-	perByteFees: Record<string, bigint>
+	perByteFees: Record<string, Record<string, bigint>>
 	tokenDecimals: Record<string, Record<HexString, number>>
 }
 
@@ -168,11 +168,11 @@ export class CacheService {
 		}
 	}
 
-	getPerByteFee(chain: string): bigint | null {
+	getPerByteFee(sourceChain: string, destChain: string): bigint | null {
 		try {
-			const cache = this.cacheData.perByteFees[chain]
-			if (cache) {
-				return cache
+			const sourceMap = this.cacheData.perByteFees[sourceChain]
+			if (sourceMap && sourceMap[destChain]) {
+				return sourceMap[destChain]
 			}
 			return null
 		} catch (error) {
@@ -181,17 +181,19 @@ export class CacheService {
 		}
 	}
 
-	setPerByteFee(chain: string, perByteFee: bigint): void {
+	setPerByteFee(sourceChain: string, destChain: string, perByteFee: bigint): void {
 		try {
 			this.cleanupStaleData()
 
-			if (!this.cacheData.perByteFees[chain]) {
-				this.cacheData.perByteFees[chain] = perByteFee
-			} else {
-				this.cacheData.perByteFees[chain] = perByteFee
+			if (!this.cacheData.perByteFees[sourceChain]) {
+				this.cacheData.perByteFees[sourceChain] = {}
 			}
+			this.cacheData.perByteFees[sourceChain][destChain] = perByteFee
 		} catch (error) {
-			this.logger.error({ chain: chain, err: error }, "Error setting per byte fee")
+			this.logger.error(
+				{ sourceChain: sourceChain, destChain: destChain, err: error },
+				"Error setting per byte fee",
+			)
 			throw error
 		}
 	}

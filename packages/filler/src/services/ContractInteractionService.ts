@@ -69,8 +69,27 @@ export class ContractInteractionService {
 
 	async initCache(): Promise<void> {
 		const chainIds = this.configService.getConfiguredChainIds()
-		for (const chainId of chainIds) {
-			await this.getFeeTokenWithDecimals(`EVM-${chainId}`)
+		const chainNames = chainIds.map((id) => `EVM-${id}`)
+		for (const chainName of chainNames) {
+			await this.getFeeTokenWithDecimals(chainName)
+		}
+
+		for (const destChain of chainNames) {
+			const destClient = this.clientManager.getPublicClient(destChain)
+			const usdc = this.configService.getUsdcAsset(destChain)
+			const usdt = this.configService.getUsdtAsset(destChain)
+			await this.getTokenDecimals(usdc, destChain)
+			await this.getTokenDecimals(usdt, destChain)
+			for (const sourceChain of chainNames) {
+				if (sourceChain === destChain) continue
+				const perByteFee = await destClient.readContract({
+					address: this.configService.getHostAddress(destChain),
+					abi: EVM_HOST,
+					functionName: "perByteFee",
+					args: [toHex(sourceChain)],
+				})
+				this.cacheService.setPerByteFee(destChain, sourceChain, perByteFee)
+			}
 		}
 	}
 
@@ -678,7 +697,7 @@ export class ContractInteractionService {
 	 * @returns The total fee in fee token required to send the post request
 	 */
 	async quote(order: Order): Promise<bigint> {
-		const cachedPerByteFee = this.cacheService.getPerByteFee(order.destChain)
+		const cachedPerByteFee = this.cacheService.getPerByteFee(order.destChain, order.sourceChain)
 		if (cachedPerByteFee) {
 			return cachedPerByteFee
 		}
@@ -698,7 +717,7 @@ export class ContractInteractionService {
 			functionName: "perByteFee",
 			args: [toHex(order.sourceChain)],
 		})
-		this.cacheService.setPerByteFee(order.destChain, perByteFee)
+		this.cacheService.setPerByteFee(order.destChain, order.sourceChain, perByteFee)
 		// Exclude 0x prefix from the body length, and get the byte length
 		const bodyByteLength = Math.floor((postRequest.body.length - 2) / 2)
 		const length = bodyByteLength < 32 ? 32 : bodyByteLength
