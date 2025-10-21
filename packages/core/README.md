@@ -3,7 +3,7 @@
 ![Unit Tests](https://github.com/polytope-labs/hyperbridge-sdk/actions/workflows/test-core.yml/badge.svg)
 [![NPM](https://img.shields.io/npm/v/@hyperbridge/core?label=%40hyperbridge%2Fcore)](https://www.npmjs.com/package/@hyperbridge/core)
 
-[ISMP](https://docs.hyperbridge.network/protocol/ismp) protocol specification for EVM environments.
+Hyperbridge SDK for EVM environments. This contains libraries & interfaces for working with hyperbridge contracts. These contracts can be used for sending data (Post requests), pulling data (Get requests), and working with token transfers (TokenGateway & IntentGateway)
 
 ### Interfaces
 
