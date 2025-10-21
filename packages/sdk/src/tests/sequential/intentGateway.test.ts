@@ -13,6 +13,8 @@ import {
 	encodeFunctionData,
 	decodeFunctionResult,
 	parseUnits,
+	erc20Abi,
+	encodeAbiParameters,
 } from "viem"
 import { bsc, bscTestnet, mainnet, polygon, sepolia } from "viem/chains"
 import {
@@ -281,6 +283,7 @@ describe.sequential("Intents protocol tests", () => {
 
 describe.sequential("Swap Tests", () => {
 	const mainnetId = "EVM-1"
+	const bscMainnetId = "EVM-56"
 
 	let intentGateway: IntentGateway
 	let chainConfigService: ChainConfigService
@@ -296,7 +299,13 @@ describe.sequential("Swap Tests", () => {
 			url: process.env.ETH_MAINNET!,
 		})
 
-		intentGateway = new IntentGateway(mainnetEvmChain, mainnetEvmChain)
+		const bscEvmChain = new EvmChain({
+			chainId: 56,
+			host: chainConfigService.getHostAddress(bscMainnetId),
+			url: process.env.BSC_MAINNET!,
+		})
+
+		intentGateway = new IntentGateway(mainnetEvmChain, bscEvmChain)
 	})
 
 	it("should get V2 quote and simulate swap with exact output", async () => {
@@ -1111,6 +1120,109 @@ describe.sequential("Swap Tests", () => {
 			console.log("Fee tier:", result.fee)
 		}
 	}, 1_000_000)
+
+	it.skip("Should keep the input and output as usdc, but include the final calldat as usdc to a token", async () => {
+		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
+		const tokenOut = chainConfigService.getUsdcAsset(bscMainnetId)
+		const wethAssetDest = chainConfigService.getWrappedNativeAssetWithDecimals(bscMainnetId).asset
+		const tokenInDecimals = await getTokenDecimals(intentGateway.source.client, tokenIn)
+		const tokenOutDecimals = await getTokenDecimals(intentGateway.dest.client, tokenOut)
+		const amountIn = parseUnits("100", tokenInDecimals)
+		const amountOut = parseUnits("100", tokenOutDecimals)
+		const bscCalldispatcher = "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333"
+		const memeToken = "0x84f3814c5f7edf9c405288cce1a62865b10a4444"
+
+		// USDC -> WETH
+		// tokenOut becomes the tokenIn
+		// wethAssetDest becomes the tokenOut
+		const usdcToWethQuote = await intentGateway.getV2QuoteWithAmountIn(
+			"dest",
+			tokenOut,
+			wethAssetDest,
+			amountOut, // 100 USDC
+			bscMainnetId,
+		)
+
+		// Deduct 0.5% fee from the amount out using precision math
+		const wethToMemeTokenAmountIn = (usdcToWethQuote * BigInt(995)) / BigInt(1000)
+
+		const usdcToWethCalldata = intentGateway.createV2SwapCalldataExactIn(
+			tokenOut,
+			wethAssetDest,
+			amountOut,
+			wethToMemeTokenAmountIn,
+			bscCalldispatcher,
+			bscMainnetId,
+			"dest",
+		)
+
+		// WETH -> MEME
+		const wethToMemeQuote = await intentGateway.getV2QuoteWithAmountIn(
+			"dest",
+			wethAssetDest,
+			memeToken,
+			wethToMemeTokenAmountIn,
+			bscMainnetId,
+		)
+
+		const wethToMemeTokenIn = (wethToMemeQuote * BigInt(995)) / BigInt(1000)
+
+		const wethToMemeCalldata = intentGateway.createV2SwapCalldataExactIn(
+			wethAssetDest,
+			memeToken,
+			wethToMemeTokenAmountIn,
+			wethToMemeTokenIn,
+			bscCalldispatcher,
+			bscMainnetId,
+			"dest",
+		)
+
+		const encodedCalls = encodeAbiParameters(
+			[
+				{
+					type: "tuple[]",
+					components: [
+						{ name: "to", type: "address" },
+						{ name: "value", type: "uint256" },
+						{ name: "data", type: "bytes" },
+					],
+				},
+			],
+			[[usdcToWethCalldata, wethToMemeCalldata].flat()],
+		)
+
+		const { ethMainnetIsmpHost, bscMainnetIsmpHost } = await setUpEthToBsc()
+
+		const order: Order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await ethMainnetIsmpHost.read.host(),
+			destChain: await bscMainnetIsmpHost.read.host(),
+			deadline: 65337297000n,
+			nonce: 0n,
+			fees: 0n,
+			outputs: [
+				{
+					token: bytes20ToBytes32(tokenOut),
+					amount: amountOut,
+					beneficiary: bytes20ToBytes32(bscCalldispatcher),
+				},
+			],
+			inputs: [{ token: bytes20ToBytes32(tokenIn), amount: amountIn }],
+			callData: encodedCalls,
+		}
+
+		const { feeTokenAmount: estimatedFee, nativeTokenAmount } = await intentGateway.estimateFillOrder({
+			...order,
+			id: orderCommitment(order),
+			destChain: hexToString(order.destChain as HexString),
+			sourceChain: hexToString(order.sourceChain as HexString),
+		})
+		console.log("ETH => BSC")
+		console.log("Estimated fee:", estimatedFee)
+		console.log("Native token amount:", nativeTokenAmount)
+
+		assert(estimatedFee > 0n)
+	}, 1_000_000)
 })
 
 describe("Order Cancellation tests", () => {
@@ -1473,6 +1585,47 @@ async function setUpBaseToBsc() {
 	}
 }
 
+async function setUpEthToBsc() {
+	const ethMainnetId = "EVM-1"
+	const bscMainnetId = "EVM-56"
+	const chains = [ethMainnetId, bscMainnetId]
+
+	let chainConfigService = new ChainConfigService()
+	let chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
+
+	const ethMainnetPublicClient = createPublicClient({
+		chain: mainnet,
+		transport: http(process.env.ETH_MAINNET!),
+	})
+
+	const bscMainnetPublicClient = createPublicClient({
+		chain: bsc,
+		transport: http(process.env.BSC_MAINNET!),
+	})
+
+	const ethMainnetIsmpHostAddress = "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20" as HexString
+	const bscMainnetIsmpHostAddress = "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7" as HexString
+
+	const ethMainnetIsmpHost = getContract({
+		address: ethMainnetIsmpHostAddress,
+		abi: EVM_HOST.ABI,
+		client: ethMainnetPublicClient,
+	})
+
+	const bscMainnetIsmpHost = getContract({
+		address: bscMainnetIsmpHostAddress,
+		abi: EVM_HOST.ABI,
+		client: bscMainnetPublicClient,
+	})
+
+	return {
+		chainConfigs,
+		chainConfigService,
+		ethMainnetIsmpHost,
+		bscMainnetIsmpHost,
+	}
+}
+
 async function setUpBscToSepoliaOrder() {
 	const bscChapelId = "EVM-97"
 	const ethSepoliaId = "EVM-11155111"
@@ -1633,4 +1786,12 @@ export async function approveTokens(
 		const receipt = await publicClient.waitForTransactionReceipt({ hash: tx })
 		console.log("Approved tokens for test:", receipt)
 	}
+}
+
+export async function getTokenDecimals(client: PublicClient, tokenAddress: HexString) {
+	return await client.readContract({
+		abi: erc20Abi,
+		address: tokenAddress,
+		functionName: "decimals",
+	})
 }
