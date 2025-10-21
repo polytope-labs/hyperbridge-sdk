@@ -15,7 +15,7 @@
 		"./contracts/**/*.sol"
 	],
 	"scripts": {
-		"compile": "forge build --contracts contracts/ --skip test --skip script",
+		"build": "forge build --contracts contracts/ --skip test --skip script",
 		"format": "forge fmt contracts/",
 		"format:check": "forge fmt --check contracts/"
 	},

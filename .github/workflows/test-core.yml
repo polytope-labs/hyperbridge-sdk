@@ -1,4 +1,4 @@
-name: Compile Core Interfaces
+name: "@hyperbridge/core"
 
 on:
     push:
@@ -23,7 +23,7 @@ env:
 
 jobs:
     compile:
-        name: Compile Interfaces
+        name: Compile
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3

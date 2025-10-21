@@ -1,4 +1,4 @@
-name: Publish Core to npm and Create Release
+name: "Publish @hyperbridge/core"
 
 on:
     push:
