@@ -283,7 +283,6 @@ describe.sequential("Intents protocol tests", () => {
 
 describe.sequential("Swap Tests", () => {
 	const mainnetId = "EVM-1"
-	const bscMainnetId = "EVM-56"
 
 	let intentGateway: IntentGateway
 	let chainConfigService: ChainConfigService
@@ -299,13 +298,7 @@ describe.sequential("Swap Tests", () => {
 			url: process.env.ETH_MAINNET!,
 		})
 
-		const bscEvmChain = new EvmChain({
-			chainId: 56,
-			host: chainConfigService.getHostAddress(bscMainnetId),
-			url: process.env.BSC_MAINNET!,
-		})
-
-		intentGateway = new IntentGateway(mainnetEvmChain, bscEvmChain)
+		intentGateway = new IntentGateway(mainnetEvmChain, mainnetEvmChain)
 	})
 
 	it("should get V2 quote and simulate swap with exact output", async () => {
@@ -1122,28 +1115,39 @@ describe.sequential("Swap Tests", () => {
 	}, 1_000_000)
 
 	it.skip("Should keep the input and output as usdc, but include the final calldat as usdc to a token", async () => {
+		const bscMainnetId = "EVM-56"
+		const bscEvmChain = new EvmChain({
+			chainId: 56,
+			host: chainConfigService.getHostAddress(bscMainnetId),
+			url: process.env.BSC_MAINNET!,
+		})
+
+		const mainnetEvmChain = new EvmChain({
+			chainId: 1,
+			host: chainConfigService.getHostAddress(mainnetId),
+			url: process.env.ETH_MAINNET!,
+		})
+		const intentGateway = new IntentGateway(mainnetEvmChain, bscEvmChain)
 		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(bscMainnetId)
 		const wethAssetDest = chainConfigService.getWrappedNativeAssetWithDecimals(bscMainnetId).asset
-		const tokenInDecimals = await getTokenDecimals(intentGateway.source.client, tokenIn)
-		const tokenOutDecimals = await getTokenDecimals(intentGateway.dest.client, tokenOut)
-		const amountIn = parseUnits("100", tokenInDecimals)
-		const amountOut = parseUnits("100", tokenOutDecimals)
+		const amountIn = parseUnits("5", 6)
+		const amountOut = parseUnits("5", 18)
 		const bscCalldispatcher = "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333"
 		const memeToken = "0x84f3814c5f7edf9c405288cce1a62865b10a4444"
 
-		// USDC -> WETH
+		// USDC(bsc) -> WETH(bsc)
 		// tokenOut becomes the tokenIn
 		// wethAssetDest becomes the tokenOut
 		const usdcToWethQuote = await intentGateway.getV2QuoteWithAmountIn(
 			"dest",
 			tokenOut,
 			wethAssetDest,
-			amountOut, // 100 USDC
+			amountOut,
 			bscMainnetId,
 		)
 
-		// Deduct 0.5% fee from the amount out using precision math
+		// Deduct 0.5% from the amount out
 		const wethToMemeTokenAmountIn = (usdcToWethQuote * BigInt(995)) / BigInt(1000)
 
 		const usdcToWethCalldata = intentGateway.createV2SwapCalldataExactIn(
@@ -1172,7 +1176,7 @@ describe.sequential("Swap Tests", () => {
 			memeToken,
 			wethToMemeTokenAmountIn,
 			wethToMemeTokenIn,
-			bscCalldispatcher,
+			bscCalldispatcher, // Change to user
 			bscMainnetId,
 			"dest",
 		)
@@ -1786,12 +1790,4 @@ export async function approveTokens(
 		const receipt = await publicClient.waitForTransactionReceipt({ hash: tx })
 		console.log("Approved tokens for test:", receipt)
 	}
-}
-
-export async function getTokenDecimals(client: PublicClient, tokenAddress: HexString) {
-	return await client.readContract({
-		abi: erc20Abi,
-		address: tokenAddress,
-		functionName: "decimals",
-	})
 }
