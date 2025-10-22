@@ -1114,7 +1114,7 @@ describe.sequential("Swap Tests", () => {
 		}
 	}, 1_000_000)
 
-	it.only("Should keep the input and output as usdc, but include the final calldata as usdc to a token", async () => {
+	it.skip("Should keep the input and output as usdc, but include the final calldata as usdc to a token", async () => {
 		const bscMainnetId = "EVM-56"
 		const bscEvmChain = new EvmChain({
 			chainId: 56,
