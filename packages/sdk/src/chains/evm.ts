@@ -639,25 +639,26 @@ export function createEvmChain(
 	// Default consensus state IDs for known chains
 	const defaultConsensusStateIds: Record<number, string> = {
 		1: "ETH0", // Ethereum Mainnet
-		11155111: "SEP0", // Sepolia
-		42161: "ARB0", // Arbitrum One
-		421614: "ARBS0", // Arbitrum Sepolia
-		10: "OP0", // Optimism
-		11155420: "OPS0", // Optimism Sepolia
-		8453: "BASE0", // Base
-		84532: "BASES0", // Base Sepolia
-		137: "POLY0", // Polygon
+		11155111: "ETH0", // Sepolia
+		42161: "ETH0", // Arbitrum One
+		421614: "ETH0", // Arbitrum Sepolia
+		10: "ETH0", // Optimism
+		11155420: "ETH0", // Optimism Sepolia
+		8453: "ETH0", // Base
+		84532: "ETH0", // Base Sepolia
+		137: "POLY", // Polygon Mainnet
+		80002: "POLY", // Polygon Amoy
 		56: "BSC0", // BSC
-		97: "BSCT0", // BSC Testnet
+		97: "BSC0", // BSC Testnet
 		100: "GNO0", // Gnosis
-		10200: "GNOC0", // Gnosis Chiado
+		10200: "GNO0", // Gnosis Chiado
 	}
 
 	return new EvmChain({
 		chainId,
 		host,
 		rpcUrl: options.rpcUrl,
-		consensusStateId: options.consensusStateId ?? defaultConsensusStateIds[chainId] ?? `EVM${chainId}`,
+		consensusStateId: options.consensusStateId ?? defaultConsensusStateIds[chainId],
 	})
 }
 
