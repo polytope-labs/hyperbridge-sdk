@@ -1813,8 +1813,8 @@ export class IntentGateway {
 		protocol: "v2" | "v3" = "v2",
 	): Promise<{ finalAmountOut: bigint; calldata: Transaction[] }> {
 		const client = this[getQuoteIn].client
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
-		const calldispatcher = this[getQuoteIn].config.getCalldispatcherAddress(evmChainID)
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const calldispatcher = this[getQuoteIn].configService.getCalldispatcherAddress(evmChainID)
 
 		const [token0, token1] = await Promise.all([
 			client.readContract({
