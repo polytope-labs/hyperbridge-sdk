@@ -13,6 +13,7 @@ import { VolumeService } from "./volume.service"
 import PriceHelper from "@/utils/price.helpers"
 import { TokenPriceService } from "./token-price.service"
 import stringify from "safe-stable-stringify"
+import { getOrCreateUser } from "./userActivity.services"
 
 export interface TokenInfo {
 	token: Hex
@@ -104,11 +105,19 @@ export class IntentGatewayService {
 			)
 
 			await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
+
+			let user = await getOrCreateUser(order.user, referrer, timestamp)
+			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
+			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
+				.plus(new Decimal(inputUSD))
+				.toString()
+
+			await user.save()
 		} else {
 			// Handle race condition: Order already exists (e.g., was filled first)
 			// Update all fields except status and status-related metadata
 			logger.info(
-				`Order ${order.id} already exists with status ${orderPlaced.status}. Updating order details while preserving status.`,
+				`Order ${stringify({ order: order.id })} already exists with status ${stringify({ status: orderPlaced.status })}. Updating order details while preserving status.`,
 			)
 
 			const existingStatus = orderPlaced.status
@@ -133,7 +142,9 @@ export class IntentGatewayService {
 
 			await orderPlaced.save()
 
-			logger.info(`Order ${order.id} updated with actual data. Status remains: ${existingStatus}`)
+			logger.info(
+				`Order ${stringify({ order })} updated with actual data. Status remains: ${stringify({ existingStatus })}`,
+			)
 
 			// Award points for order placement - using USD value directly
 			// Only award if status is not already FILLED (to avoid double awarding)
@@ -232,7 +243,9 @@ export class IntentGatewayService {
 
 		// For race condtions, we create a placeholder order that will be updated when the PLACED event arrives
 		if (!orderPlaced && status != OrderStatus.PLACED) {
-			logger.warn(`Order ${commitment} does not exist yet but FILLED event received. Creating placeholder order.`)
+			logger.warn(
+				`Order ${stringify({ commitment })} does not exist yet but FILLED event received. Creating placeholder order.`,
+			)
 
 			orderPlaced = await OrderPlaced.create({
 				id: commitment,
@@ -260,7 +273,7 @@ export class IntentGatewayService {
 			})
 			await orderPlaced.save()
 
-			logger.info(`Placeholder order with status FILLED created for commitment ${commitment}`)
+			logger.info(`Placeholder order with status FILLED created for commitment ${stringify({ commitment })}`)
 		}
 
 		if (orderPlaced) {
@@ -295,11 +308,19 @@ export class IntentGatewayService {
 					timestamp,
 				)
 
-				if (orderPlaced.referrer != DEFAULT_REFERRER) {
-					const referrerPointsToAward = Math.floor(pointsToAward / 2)
+				// User
+				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
+				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
+					.plus(new Decimal(orderPlaced.inputUSD))
+					.toString()
+				user.totalFilledOrders = user.totalFilledOrders + BigInt(1)
+				await user.save()
 
+				// Referrer
+				if (user.referrer) {
+					const referrerPointsToAward = Math.floor(pointsToAward / 2)
 					await PointsService.awardPoints(
-						orderPlaced.referrer ?? DEFAULT_REFERRER,
+						user.referrer,
 						ethers.utils.toUtf8String(orderPlaced.sourceChain),
 						BigInt(referrerPointsToAward),
 						ProtocolParticipantType.REFERRER,

@@ -6,7 +6,6 @@ import { fileURLToPath } from "url"
 import { parse } from "toml"
 import { IntentFiller } from "../core/filler.js"
 import { BasicFiller } from "../strategies/basic.js"
-import { StableSwapFiller } from "../strategies/swap.js"
 import { ConfirmationPolicy } from "../config/confirmation-policy.js"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
 import {
@@ -14,6 +13,7 @@ import {
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
 	CoinGeckoConfig,
+	EtherscanConfig,
 } from "../services/FillerConfigService.js"
 import { getLogger } from "../services/Logger.js"
 import { Decimal } from "decimal.js"
@@ -59,6 +59,7 @@ interface FillerTomlConfig {
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
 		coingecko?: CoinGeckoConfig
+		etherscan?: EtherscanConfig
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
@@ -100,6 +101,7 @@ program
 						privateKey: config.filler.privateKey,
 						maxConcurrentOrders: config.filler.maxConcurrentOrders,
 						coingecko: config.filler.coingecko,
+						etherscan: config.filler.etherscan,
 					}
 				: undefined
 
@@ -130,8 +132,6 @@ program
 				switch (strategyConfig.type) {
 					case "basic":
 						return new BasicFiller(strategyConfig.privateKey as HexString, configService)
-					case "stable-swap":
-						return new StableSwapFiller(strategyConfig.privateKey as HexString, configService)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}

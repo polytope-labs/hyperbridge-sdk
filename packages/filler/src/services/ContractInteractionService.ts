@@ -6,6 +6,7 @@ import {
 	maxUint256,
 	PublicClient,
 	encodeAbiParameters,
+	parseAbiParameters,
 	formatUnits,
 	parseUnits,
 } from "viem"
@@ -26,6 +27,9 @@ import {
 	ERC20Method,
 	fetchPrice,
 	maxBigInt,
+	getGasPriceFromEtherscan,
+	USE_ETHERSCAN_CHAINS,
+	retryPromise,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -36,10 +40,7 @@ import { orderCommitment } from "@hyperbridge/sdk"
 import { ApiPromise, WsProvider } from "@polkadot/api"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { CacheService } from "./CacheService"
-import { UNISWAP_V2_FACTORY_ABI } from "@/config/abis/UniswapV2Factory"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
-import { UNISWAP_V3_FACTORY_ABI } from "@/config/abis/UniswapV3Factory"
-import { UNISWAP_V3_POOL_ABI } from "@/config/abis/UniswapV3Pool"
 import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
 import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
 import { getLogger } from "@/services/Logger"
@@ -63,6 +64,33 @@ export class ContractInteractionService {
 	) {
 		this.configService = configService
 		this.cacheService = new CacheService()
+		this.initCache()
+	}
+
+	async initCache(): Promise<void> {
+		const chainIds = this.configService.getConfiguredChainIds()
+		const chainNames = chainIds.map((id) => `EVM-${id}`)
+		for (const chainName of chainNames) {
+			await this.getFeeTokenWithDecimals(chainName)
+		}
+
+		for (const destChain of chainNames) {
+			const destClient = this.clientManager.getPublicClient(destChain)
+			const usdc = this.configService.getUsdcAsset(destChain)
+			const usdt = this.configService.getUsdtAsset(destChain)
+			await this.getTokenDecimals(usdc, destChain)
+			await this.getTokenDecimals(usdt, destChain)
+			for (const sourceChain of chainNames) {
+				if (sourceChain === destChain) continue
+				const perByteFee = await destClient.readContract({
+					address: this.configService.getHostAddress(destChain),
+					abi: EVM_HOST,
+					functionName: "perByteFee",
+					args: [toHex(sourceChain)],
+				})
+				this.cacheService.setPerByteFee(destChain, sourceChain, perByteFee)
+			}
+		}
 	}
 
 	/**
@@ -96,6 +124,11 @@ export class ContractInteractionService {
 			return 18 // Native token (ETH, MATIC, etc.)
 		}
 
+		const cachedTokenDecimals = this.cacheService.getTokenDecimals(chain, bytes20Address as HexString)
+		if (cachedTokenDecimals) {
+			return cachedTokenDecimals
+		}
+
 		const client = this.clientManager.getPublicClient(chain)
 
 		try {
@@ -105,6 +138,7 @@ export class ContractInteractionService {
 				functionName: "decimals",
 			})
 
+			this.cacheService.setTokenDecimals(chain, bytes20Address as HexString, decimals)
 			return decimals
 		} catch (error) {
 			this.logger.warn({ err: error }, "Error getting token decimals, defaulting to 18")
@@ -190,8 +224,22 @@ export class ContractInteractionService {
 
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
-				const gasPrice = await destClient.getGasPrice()
-
+				const etherscanApiKey = this.configService.getEtherscanApiKey()
+				const chain = order.destChain
+				const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
+				const gasPrice =
+					useEtherscan && etherscanApiKey
+						? await retryPromise(() => getGasPriceFromEtherscan(order.destChain, etherscanApiKey), {
+								maxRetries: 3,
+								backoffMs: 250,
+							}).catch(async () => {
+								this.logger.warn(
+									{ chain: order.destChain },
+									"Error getting gas price from etherscan, using client's gas price",
+								)
+								return await destClient.getGasPrice()
+							})
+						: await destClient.getGasPrice()
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
 					address: token.address as HexString,
@@ -306,9 +354,7 @@ export class ContractInteractionService {
 				hostAddress: this.configService.getHostAddress(order.sourceChain),
 			})
 
-			const { decimals: destFeeTokenDecimals, address: destFeeTokenAddress } = await this.getFeeTokenWithDecimals(
-				order.destChain,
-			)
+			const { decimals: destFeeTokenDecimals } = await this.getFeeTokenWithDecimals(order.destChain)
 
 			let postGasEstimateInDestFeeToken = await this.convertGasToFeeToken(
 				postGasEstimate,
@@ -559,10 +605,12 @@ export class ContractInteractionService {
 			throw new Error("Chain native currency information not available")
 		}
 
-		const nativeTokenPriceUsd = await fetchPrice(
-			nativeToken.symbol,
-			chainId,
-			this.configService.getCoinGeckoApiKey(),
+		const nativeTokenPriceUsd = await retryPromise(
+			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			{
+				maxRetries: 3,
+				backoffMs: 250,
+			},
 		)
 
 		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
@@ -579,7 +627,18 @@ export class ContractInteractionService {
 	 */
 	async convertGasToFeeToken(gasEstimate: bigint, chain: string, targetDecimals: number): Promise<bigint> {
 		const client = this.clientManager.getPublicClient(chain)
-		const gasPrice = await client.getGasPrice()
+		const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
+		const etherscanApiKey = this.configService.getEtherscanApiKey()
+		const gasPrice =
+			useEtherscan && etherscanApiKey
+				? await retryPromise(() => getGasPriceFromEtherscan(chain, etherscanApiKey), {
+						maxRetries: 3,
+						backoffMs: 250,
+					}).catch(async () => {
+						this.logger.warn({ chain }, "Error getting gas price from etherscan, using client's gas price")
+						return await client.getGasPrice()
+					})
+				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
 		const nativeToken = client.chain?.nativeCurrency
 		const chainId = client.chain?.id
@@ -590,7 +649,10 @@ export class ContractInteractionService {
 
 		const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeToken.decimals))
 		const tokenPriceUsd = new Decimal(
-			await fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			await retryPromise(() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()), {
+				maxRetries: 3,
+				backoffMs: 250,
+			}),
 		)
 		const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 
@@ -607,6 +669,10 @@ export class ContractInteractionService {
 	 * @returns An object containing the fee token address and its decimal places
 	 */
 	async getFeeTokenWithDecimals(chain: string): Promise<{ address: HexString; decimals: number }> {
+		const cachedFeeToken = this.cacheService.getFeeTokenWithDecimals(chain)
+		if (cachedFeeToken) {
+			return cachedFeeToken
+		}
 		const client = this.clientManager.getPublicClient(chain)
 		const feeTokenAddress = await client.readContract({
 			abi: EVM_HOST,
@@ -618,6 +684,7 @@ export class ContractInteractionService {
 			abi: ERC20_ABI,
 			functionName: "decimals",
 		})
+		this.cacheService.setFeeTokenWithDecimals(chain, feeTokenAddress, feeTokenDecimals)
 		return { address: feeTokenAddress, decimals: feeTokenDecimals }
 	}
 
@@ -630,6 +697,10 @@ export class ContractInteractionService {
 	 * @returns The total fee in fee token required to send the post request
 	 */
 	async quote(order: Order): Promise<bigint> {
+		const cachedPerByteFee = this.cacheService.getPerByteFee(order.destChain, order.sourceChain)
+		if (cachedPerByteFee) {
+			return cachedPerByteFee
+		}
 		const { destClient } = this.clientManager.getClientsForOrder(order)
 		const postRequest: IPostRequest = {
 			source: order.destChain,
@@ -646,7 +717,7 @@ export class ContractInteractionService {
 			functionName: "perByteFee",
 			args: [toHex(order.sourceChain)],
 		})
-
+		this.cacheService.setPerByteFee(order.destChain, order.sourceChain, perByteFee)
 		// Exclude 0x prefix from the body length, and get the byte length
 		const bodyByteLength = Math.floor((postRequest.body.length - 2) / 2)
 		const length = bodyByteLength < 32 ? 32 : bodyByteLength
@@ -743,10 +814,12 @@ export class ContractInteractionService {
 				priceIdentifier = tokenAddress
 			}
 
-			const pricePerToken = await fetchPrice(
-				priceIdentifier,
-				destClient.chain?.id!,
-				this.configService.getCoinGeckoApiKey(),
+			const pricePerToken = await retryPromise(
+				() => fetchPrice(priceIdentifier, destClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
+				{
+					maxRetries: 3,
+					backoffMs: 250,
+				},
 			)
 
 			// Use Decimal for precise calculations
@@ -770,10 +843,12 @@ export class ContractInteractionService {
 				priceIdentifier = tokenAddress
 			}
 
-			const pricePerToken = await fetchPrice(
-				priceIdentifier,
-				sourceClient.chain?.id!,
-				this.configService.getCoinGeckoApiKey(),
+			const pricePerToken = await retryPromise(
+				() => fetchPrice(priceIdentifier, sourceClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
+				{
+					maxRetries: 3,
+					backoffMs: 250,
+				},
 			)
 
 			const tokenAmount = new Decimal(formatUnits(amount, decimals))
@@ -812,10 +887,12 @@ export class ContractInteractionService {
 			throw new Error("Chain native currency information not available")
 		}
 
-		const nativeTokenPriceUsd = await fetchPrice(
-			nativeToken.symbol,
-			chainId,
-			this.configService.getCoinGeckoApiKey(),
+		const nativeTokenPriceUsd = await retryPromise(
+			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
+			{
+				maxRetries: 3,
+				backoffMs: 250,
+			},
 		)
 
 		// Use Decimal for precise calculations
@@ -886,27 +963,16 @@ export class ContractInteractionService {
 			const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 			const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
-			const v2PairExists = (await destClient.readContract({
-				address: v2Factory,
-				abi: UNISWAP_V2_FACTORY_ABI,
-				functionName: "getPair",
-				args: [tokenInForQuote, tokenOutForQuote],
-			})) as HexString
+			const v2AmountIn = (await destClient.readContract({
+				address: v2Router,
+				abi: UNISWAP_ROUTER_V2_ABI,
+				functionName: "getAmountsIn",
+				args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
+			})) as bigint[]
 
-			if (v2PairExists !== ADDRESS_ZERO) {
-				const v2AmountIn = (await destClient.readContract({
-					address: v2Router,
-					abi: UNISWAP_ROUTER_V2_ABI,
-					functionName: "getAmountsIn",
-					args: [amountOut, [tokenInForQuote, tokenOutForQuote]],
-				})) as bigint[]
-
-				return v2AmountIn[0]
-			}
-
-			return maxUint256
-		} catch (error) {
-			this.logger.warn({ err: error }, "V2 quote failed")
+			return v2AmountIn[0]
+		} catch {
+			this.logger.warn("V2 quote failed")
 			return maxUint256
 		}
 	}
@@ -921,60 +987,40 @@ export class ContractInteractionService {
 		let bestAmountIn = maxUint256
 		let bestFee = 0
 
-		const v3Factory = this.configService.getUniswapV3FactoryAddress(destChain)
 		const v3Quoter = this.configService.getUniswapV3QuoterAddress(destChain)
 		const destClient = this.clientManager.getPublicClient(destChain)
 
-		// For V2/V3, convert native addresses to WETH for quotes
 		const wethAsset = this.configService.getWrappedNativeAssetWithDecimals(destChain).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
 		for (const fee of commonFees) {
 			try {
-				const pool = await destClient.readContract({
-					address: v3Factory,
-					abi: UNISWAP_V3_FACTORY_ABI,
-					functionName: "getPool",
-					args: [tokenInForQuote, tokenOutForQuote, fee],
-				})
-
-				if (pool !== ADDRESS_ZERO) {
-					const liquidity = await destClient.readContract({
-						address: pool,
-						abi: UNISWAP_V3_POOL_ABI,
-						functionName: "liquidity",
+				const quoteResult = (
+					await destClient.simulateContract({
+						address: v3Quoter,
+						abi: UNISWAP_V3_QUOTER_V2_ABI,
+						functionName: "quoteExactOutputSingle",
+						args: [
+							{
+								tokenIn: tokenInForQuote,
+								tokenOut: tokenOutForQuote,
+								fee: fee,
+								amount: amountOut,
+								sqrtPriceLimitX96: BigInt(0),
+							},
+						],
 					})
+				).result as [bigint, bigint, number, bigint]
 
-					if (liquidity > BigInt(0)) {
-						// Use simulateContract for V3 quoter (handles revert-based returns)
-						const quoteResult = (
-							await destClient.simulateContract({
-								address: v3Quoter,
-								abi: UNISWAP_V3_QUOTER_V2_ABI,
-								functionName: "quoteExactOutputSingle",
-								args: [
-									{
-										tokenIn: tokenInForQuote,
-										tokenOut: tokenOutForQuote,
-										fee: fee,
-										amount: amountOut,
-										sqrtPriceLimitX96: BigInt(0),
-									},
-								],
-							})
-						).result as [bigint, bigint, number, bigint] // [amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
+				const amountIn = quoteResult[0]
 
-						const amountIn = quoteResult[0]
-
-						if (amountIn < bestAmountIn) {
-							bestAmountIn = amountIn
-							bestFee = fee
-						}
-					}
+				if (amountIn < bestAmountIn) {
+					bestAmountIn = amountIn
+					bestFee = fee
 				}
 			} catch (error) {
-				this.logger.warn({ fee, err: error }, "V3 quote failed; continuing")
+				this.logger.warn({ fee }, "V3 quote failed; continuing")
 			}
 		}
 
@@ -1033,7 +1079,7 @@ export class ContractInteractionService {
 					bestFee = fee
 				}
 			} catch (error) {
-				this.logger.warn({ fee, err: error }, "V4 quote failed; continuing")
+				this.logger.warn({ fee }, "V4 quote failed; continuing")
 			}
 		}
 
@@ -1058,13 +1104,9 @@ export class ContractInteractionService {
 		const commands = encodePacked(["uint8"], [V2_SWAP_EXACT_OUT])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountOut" },
-					{ type: "uint256", name: "amountInMax" },
-					{ type: "address[]", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountOut, uint256 amountInMax, address[] path, bool isPermit2",
+				),
 				[recipient, amountOut, amountInMax, path, isPermit2],
 			),
 		]
@@ -1091,13 +1133,9 @@ export class ContractInteractionService {
 		const commands = encodePacked(["uint8"], [V3_SWAP_EXACT_OUT])
 		const inputs = [
 			encodeAbiParameters(
-				[
-					{ type: "address", name: "recipient" },
-					{ type: "uint256", name: "amountOut" },
-					{ type: "uint256", name: "amountInMax" },
-					{ type: "bytes", name: "path" },
-					{ type: "bool", name: "isPermit2" },
-				],
+				parseAbiParameters(
+					"address recipient, uint256 amountOut, uint256 amountInMax, bytes path, bool isPermit2",
+				),
 				[recipient, amountOut, amountInMax, pathV3, isPermit2],
 			),
 		]
@@ -1140,68 +1178,34 @@ export class ContractInteractionService {
 		const actions = encodePacked(["uint8", "uint8", "uint8"], [SWAP_EXACT_OUT_SINGLE, SETTLE_ALL, TAKE_ALL])
 
 		const swapParams = encodeAbiParameters(
-			[
-				{
-					type: "tuple",
-					name: "ExactOutputSingleParams",
-					components: [
-						{
-							type: "tuple",
-							name: "poolKey",
-							components: [
-								{ type: "address", name: "currency0" },
-								{ type: "address", name: "currency1" },
-								{ type: "uint24", name: "fee" },
-								{ type: "int24", name: "tickSpacing" },
-								{ type: "address", name: "hooks" },
-							],
-						},
-						{ type: "bool", name: "zeroForOne" },
-						{ type: "uint128", name: "amountOut" },
-						{ type: "uint128", name: "amountInMaximum" },
-						{ type: "bytes", name: "hookData" },
-					],
-				},
-			],
+			parseAbiParameters(
+				"((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bool zeroForOne, uint128 amountOut, uint128 amountInMaximum, bytes hookData)",
+			),
 			[
 				{
 					poolKey,
-					zeroForOne: zeroForOne,
-					amountOut: amountOut,
+					zeroForOne,
+					amountOut,
 					amountInMaximum: amountInMax,
 					hookData: "0x",
 				},
 			],
 		)
 
-		const settleParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[sourceTokenAddress, amountInMax],
-		)
+		const settleParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			sourceTokenAddress,
+			amountInMax,
+		])
 
-		const takeParams = encodeAbiParameters(
-			[
-				{ type: "address", name: "currency" },
-				{ type: "uint128", name: "amount" },
-			],
-			[targetTokenAddress, amountOut],
-		)
+		const takeParams = encodeAbiParameters(parseAbiParameters("address currency, uint128 amount"), [
+			targetTokenAddress,
+			amountOut,
+		])
 
 		const params = [swapParams, settleParams, takeParams]
 
 		const commands = encodePacked(["uint8"], [V4_SWAP])
-		const inputs = [
-			encodeAbiParameters(
-				[
-					{ type: "bytes", name: "actions" },
-					{ type: "bytes[]", name: "params" },
-				],
-				[actions, params],
-			),
-		]
+		const inputs = [encodeAbiParameters(parseAbiParameters("bytes actions, bytes[] params"), [actions, params])]
 
 		return { commands, inputs }
 	}

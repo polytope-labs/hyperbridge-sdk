@@ -592,6 +592,35 @@ export async function fetchPrice(identifier: string, chainId = 1, apiKey?: strin
 }
 
 /**
+ * Fetches the current network gas price from an Etherscan-family explorer API.
+ * Returns the ProposeGasPrice (in gwei) converted to wei as bigint.
+ */
+export async function getGasPriceFromEtherscan(chainId: string, apiKey?: string): Promise<bigint> {
+	let parsedChainId = Number(chainId.split("-")[1])
+	const url = apiKey
+		? `https://api.etherscan.io/v2/api?chainid=${parsedChainId}&module=gastracker&action=gasoracle&apikey=${apiKey}`
+		: `https://api.etherscan.io/v2/api?chainid=${parsedChainId}&module=gastracker&action=gasoracle`
+	const response = await fetch(url)
+	const data = await response.json()
+	return gweiToWei(data.result.ProposeGasPrice)
+}
+
+/**
+ * Converts a decimal gwei string to wei bigint without floating point errors.
+ */
+function gweiToWei(gwei: string): bigint {
+	if (!gwei || typeof gwei !== "string") {
+		throw new Error(`Invalid gwei value: ${gwei}`)
+	}
+	const [intPart, fracPartRaw] = gwei.split(".")
+	const fracPart = (fracPartRaw || "").slice(0, 9) // up to 9 decimal places for gwei->wei
+	const fracPadded = fracPart.padEnd(9, "0")
+	const whole = BigInt(intPart || "0") * 1_000_000_000n
+	const fractional = BigInt(fracPadded || "0")
+	return whole + fractional
+}
+
+/**
  * ERC20 method signatures used for storage slot detection
  */
 export enum ERC20Method {
@@ -599,6 +628,20 @@ export enum ERC20Method {
 	BALANCE_OF = "0x70a08231",
 	/** ERC20 allowance(address,address) method signature */
 	ALLOWANCE = "0xdd62ed3e",
+}
+
+export enum UniversalRouterCommands {
+	WRAP_ETH = 0x0b,
+	UNWRAP_WETH = 0x0c,
+	V2_SWAP_EXACT_IN = 0x08,
+	V2_SWAP_EXACT_OUT = 0x09,
+	V3_SWAP_EXACT_IN = 0x00,
+	V3_SWAP_EXACT_OUT = 0x01,
+	V4_SWAP = 0x10,
+	V4_SWAP_EXACT_IN_SINGLE = 0x06,
+	V4_SWAP_EXACT_OUT_SINGLE = 0x08,
+	SETTLE_ALL = 0x0c,
+	TAKE_ALL = 0x0f,
 }
 
 /**
@@ -774,6 +817,16 @@ export function adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, t
 		return (feeInFeeToken + scaleFactor - 1n) / scaleFactor
 	}
 }
+
+/**
+ * Chains that should prefer the Etherscan API for gas price lookup
+ */
+export const USE_ETHERSCAN_CHAINS = new Set(["EVM-137", "EVM-56", "EVM-1"])
+
+/**
+ * Testnet chains
+ */
+export const TESTNET_CHAINS = new Set(["EVM-10200", "EVM-97"])
 
 /**
  * Replace Websocket with HTTP is a function that replaces a websocket URL with an HTTP URL.

@@ -1,10 +1,18 @@
 import { FillerStrategy } from "@/strategies/base"
-import { Order, ExecutionResult, HexString, FillOptions, adjustFeeDecimals, bytes32ToBytes20 } from "@hyperbridge/sdk"
+import {
+	Order,
+	ExecutionResult,
+	HexString,
+	FillOptions,
+	adjustFeeDecimals,
+	bytes32ToBytes20,
+	TESTNET_CHAINS,
+} from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
-import { compareDecimalValues, TESTNET_CHAINS } from "@/utils"
+import { compareDecimalValues } from "@/utils"
 import { formatUnits, parseUnits } from "viem"
 import { getLogger } from "@/services/Logger"
 
@@ -31,35 +39,7 @@ export class BasicFiller implements FillerStrategy {
 	 */
 	async canFill(order: Order): Promise<boolean> {
 		try {
-			const destClient = this.clientManager.getPublicClient(order.destChain)
-			const currentBlock = await destClient.getBlockNumber()
-			const deadline = BigInt(order.deadline)
-
-			if (deadline < currentBlock) {
-				this.logger.debug({ deadline: Number(deadline), currentBlock: Number(currentBlock) }, "Order expired")
-				return false
-			}
-
-			const isAlreadyFilled = await this.contractService.checkIfOrderFilled(order)
-			if (isAlreadyFilled) {
-				this.logger.debug("Order is already filled")
-				return false
-			}
-
-			// Validate order inputs and outputs
-			const isValidOrder = await this.validateOrderInputsOutputs(order)
-			if (!isValidOrder) {
-				this.logger.debug("Order inputs and outputs validation failed")
-				return false
-			}
-
-			const hasEnoughTokens = await this.contractService.checkTokenBalances(order.outputs, order.destChain)
-			if (!hasEnoughTokens) {
-				this.logger.debug("Insufficient token balances for order")
-				return false
-			}
-
-			return true
+			return await this.validateOrderInputsOutputs(order)
 		} catch (error) {
 			this.logger.error({ err: error }, "Error in canFill")
 			return false
@@ -140,21 +120,33 @@ export class BasicFiller implements FillerStrategy {
 
 			await this.contractService.approveTokensIfNeeded(order)
 
-			const tx = await walletClient.writeContract({
-				abi: INTENT_GATEWAY_ABI,
-				address: this.configService.getIntentGatewayAddress(order.destChain),
-				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
-				chain: walletClient.chain,
-				gas: fillGas + (fillGas * 2500n) / 10000n,
-			})
+			const tx = await walletClient
+				.writeContract({
+					abi: INTENT_GATEWAY_ABI,
+					address: this.configService.getIntentGatewayAddress(order.destChain),
+					functionName: "fillOrder",
+					args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+					account: privateKeyToAccount(this.privateKey),
+					value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
+					chain: walletClient.chain,
+					gas: fillGas + (fillGas * 2500n) / 10000n,
+				})
+				.catch(async () => {
+					return await walletClient.writeContract({
+						abi: INTENT_GATEWAY_ABI,
+						address: this.configService.getIntentGatewayAddress(order.destChain),
+						functionName: "fillOrder",
+						args: [this.contractService.transformOrderForContract(order), fillOptions as any],
+						account: privateKeyToAccount(this.privateKey),
+						value: relayerFeeInFeeToken !== 0n ? ethValue + relayerFeeInNativeToken : ethValue,
+						chain: walletClient.chain,
+					})
+				})
 
 			const endTime = Date.now()
 			const processingTimeMs = endTime - startTime
 
-			const receipt = await destClient.waitForTransactionReceipt({ hash: tx })
+			const receipt = await destClient.waitForTransactionReceipt({ hash: tx, confirmations: 1 })
 
 			if (receipt.status !== "success") {
 				this.logger.error({ txHash: receipt.transactionHash, status: receipt.status }, "Could not fill order")
