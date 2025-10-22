@@ -1114,7 +1114,7 @@ describe.sequential("Swap Tests", () => {
 		}
 	}, 1_000_000)
 
-	it.skip("Should keep the input and output as usdc, but include the final calldat as usdc to a token", async () => {
+	it.only("Should keep the input and output as usdc, but include the final calldata as usdc to a token", async () => {
 		const bscMainnetId = "EVM-56"
 		const bscEvmChain = new EvmChain({
 			chainId: 56,
@@ -1130,55 +1130,21 @@ describe.sequential("Swap Tests", () => {
 		const intentGateway = new IntentGateway(mainnetEvmChain, bscEvmChain)
 		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(bscMainnetId)
-		const wethAssetDest = chainConfigService.getWrappedNativeAssetWithDecimals(bscMainnetId).asset
 		const amountIn = parseUnits("5", 6)
 		const amountOut = parseUnits("5", 18)
 		const bscCalldispatcher = "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333"
-		const memeToken = "0x84f3814c5f7edf9c405288cce1a62865b10a4444"
+		const memeToken = "0xEa7C32c66413C7F6DDD94c532594BcDF608Fe2c2"
+		const pair = "0x96aB87Ce56d2f38ba79d300De9bD6f8207cF6bd9"
 
-		// USDC(bsc) -> WETH(bsc)
-		// tokenOut becomes the tokenIn
-		// wethAssetDest becomes the tokenOut
-		const usdcToWethQuote = await intentGateway.getV2QuoteWithAmountIn(
-			"dest",
+		const { calldata } = await intentGateway.createMultiHopSwapThroughPair(
+			pair,
 			tokenOut,
-			wethAssetDest,
+			memeToken,
 			amountOut,
 			bscMainnetId,
-		)
-
-		// Deduct 0.5% from the amount out
-		const wethToMemeTokenAmountIn = (usdcToWethQuote * BigInt(995)) / BigInt(1000)
-
-		const usdcToWethCalldata = intentGateway.createV2SwapCalldataExactIn(
-			tokenOut,
-			wethAssetDest,
-			amountOut,
-			wethToMemeTokenAmountIn,
-			bscCalldispatcher,
-			bscMainnetId,
 			"dest",
-		)
-
-		// WETH -> MEME
-		const wethToMemeQuote = await intentGateway.getV2QuoteWithAmountIn(
-			"dest",
-			wethAssetDest,
-			memeToken,
-			wethToMemeTokenAmountIn,
-			bscMainnetId,
-		)
-
-		const wethToMemeTokenIn = (wethToMemeQuote * BigInt(995)) / BigInt(1000)
-
-		const wethToMemeCalldata = intentGateway.createV2SwapCalldataExactIn(
-			wethAssetDest,
-			memeToken,
-			wethToMemeTokenAmountIn,
-			wethToMemeTokenIn,
-			bscCalldispatcher, // Change to user
-			bscMainnetId,
-			"dest",
+			"0x21426d68a9e5df153fe75ce0fed20173ebcb80ef", // User
+			"v3",
 		)
 
 		const encodedCalls = encodeAbiParameters(
@@ -1192,7 +1158,7 @@ describe.sequential("Swap Tests", () => {
 					],
 				},
 			],
-			[[usdcToWethCalldata, wethToMemeCalldata].flat()],
+			[calldata],
 		)
 
 		const { ethMainnetIsmpHost, bscMainnetIsmpHost } = await setUpEthToBsc()
