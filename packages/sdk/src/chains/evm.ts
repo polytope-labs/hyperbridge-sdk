@@ -95,7 +95,7 @@ export interface EvmChainParams {
 	/**
 	 * Consensus state identifier of this chain on hyperbridge
 	 */
-	consensusStateId: string
+	consensusStateId?: string
 }
 
 /**
@@ -106,6 +106,29 @@ export class EvmChain implements IChain {
 	private chainConfigService: ChainConfigService
 
 	constructor(private readonly params: EvmChainParams) {
+		// Default consensus state IDs for known chains
+		const defaultConsensusStateIds: Record<number, string> = {
+			1: "ETH0", // Ethereum Mainnet
+			11155111: "ETH0", // Sepolia
+			42161: "ETH0", // Arbitrum One
+			421614: "ETH0", // Arbitrum Sepolia
+			10: "ETH0", // Optimism
+			11155420: "ETH0", // Optimism Sepolia
+			8453: "ETH0", // Base
+			84532: "ETH0", // Base Sepolia
+			137: "POLY", // Polygon Mainnet
+			80002: "POLY", // Polygon Amoy
+			56: "BSC0", // BSC
+			97: "BSC0", // BSC Testnet
+			100: "GNO0", // Gnosis
+			10200: "GNO0", // Gnosis Chiado
+		}
+
+		// Set default consensusStateId if not provided
+		if (!params.consensusStateId) {
+			params.consensusStateId = defaultConsensusStateIds[params.chainId]
+		}
+
 		// @ts-ignore
 		this.publicClient = createPublicClient({
 			// @ts-ignore
@@ -129,7 +152,7 @@ export class EvmChain implements IChain {
 			rpcUrl: this.params.rpcUrl,
 			stateMachineId: `EVM-${this.params.chainId}`,
 			host: this.params.host,
-			consensusStateId: this.params.consensusStateId,
+			consensusStateId: this.params.consensusStateId!,
 		}
 	}
 
@@ -636,29 +659,11 @@ export function createEvmChain(
 		consensusStateId?: string
 	},
 ): EvmChain {
-	// Default consensus state IDs for known chains
-	const defaultConsensusStateIds: Record<number, string> = {
-		1: "ETH0", // Ethereum Mainnet
-		11155111: "ETH0", // Sepolia
-		42161: "ETH0", // Arbitrum One
-		421614: "ETH0", // Arbitrum Sepolia
-		10: "ETH0", // Optimism
-		11155420: "ETH0", // Optimism Sepolia
-		8453: "ETH0", // Base
-		84532: "ETH0", // Base Sepolia
-		137: "POLY", // Polygon Mainnet
-		80002: "POLY", // Polygon Amoy
-		56: "BSC0", // BSC
-		97: "BSC0", // BSC Testnet
-		100: "GNO0", // Gnosis
-		10200: "GNO0", // Gnosis Chiado
-	}
-
 	return new EvmChain({
 		chainId,
 		host,
 		rpcUrl: options.rpcUrl,
-		consensusStateId: options.consensusStateId ?? defaultConsensusStateIds[chainId],
+		consensusStateId: options.consensusStateId,
 	})
 }
 
