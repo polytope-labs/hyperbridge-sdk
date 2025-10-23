@@ -47,6 +47,7 @@ import IntentGatewayABI from "@/abis/IntentGateway"
 import UniswapRouterV2 from "@/abis/uniswapRouterV2"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
+import UniswapV2Pair from "@/abis/uniswapV2Pair"
 import type { EvmChain } from "@/chains/evm"
 import { Decimal } from "decimal.js"
 import { getChain, IGetRequestMessage, IProof, requestCommitmentKey, SubstrateChain } from "@/chain"
@@ -86,8 +87,8 @@ export class IntentGateway {
 			body: constructRedeemEscrowRequestBody(order, MOCK_ADDRESS),
 			timeoutTimestamp: 0n,
 			nonce: await this.source.getHostNonce(),
-			from: this.source.config.getIntentGatewayAddress(order.destChain),
-			to: this.source.config.getIntentGatewayAddress(order.sourceChain),
+			from: this.source.configService.getIntentGatewayAddress(order.destChain),
+			to: this.source.configService.getIntentGatewayAddress(order.sourceChain),
 		}
 
 		const { decimals: sourceChainFeeTokenDecimals } = await this.source.getFeeTokenWithDecimals()
@@ -121,7 +122,7 @@ export class IntentGateway {
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
 			.reduce((sum, output) => sum + output.amount, 0n)
 
-		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.destChain)
 		const testValue = toHex(maxUint256 / 2n)
 
 		const orderOverrides = await Promise.all(
@@ -286,7 +287,7 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[getQuoteIn].getFeeTokenWithDecimals()
 
 		try {
@@ -331,7 +332,7 @@ export class IntentGateway {
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
 		const useEtherscan = USE_ETHERSCAN_CHAINS.has(evmChainID)
-		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
+		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].configService.getEtherscanApiKey() : undefined
 		const gasPrice =
 			useEtherscan && etherscanApiKey
 				? await retryPromise(() => getGasPriceFromEtherscan(evmChainID, etherscanApiKey), {
@@ -343,7 +344,7 @@ export class IntentGateway {
 					})
 				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
-		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
 
 		try {
@@ -391,7 +392,7 @@ export class IntentGateway {
 		}
 
 		const quoteNative = await this.dest.client.readContract({
-			address: this.dest.config.getIntentGatewayAddress(postRequest.dest),
+			address: this.dest.configService.getIntentGatewayAddress(postRequest.dest),
 			abi: IntentGatewayABI.ABI,
 			functionName: "quoteNative",
 			args: [dispatchPost] as any,
@@ -411,9 +412,9 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		const v2Router = this[getQuoteIn].config.getUniswapRouterV2Address(evmChainID)
+		const v2Router = this[getQuoteIn].configService.getUniswapRouterV2Address(evmChainID)
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
@@ -445,9 +446,9 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		const v2Router = this[getQuoteIn].config.getUniswapRouterV2Address(evmChainID)
+		const v2Router = this[getQuoteIn].configService.getUniswapRouterV2Address(evmChainID)
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
@@ -483,9 +484,9 @@ export class IntentGateway {
 		let bestAmountIn = maxUint256
 		let bestFee = 0
 
-		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
+		const v3Quoter = this[getQuoteIn].configService.getUniswapV3QuoterAddress(evmChainID)
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
@@ -537,9 +538,9 @@ export class IntentGateway {
 		let bestAmountOut = BigInt(0)
 		let bestFee = 0
 
-		const v3Quoter = this[getQuoteIn].config.getUniswapV3QuoterAddress(evmChainID)
+		const v3Quoter = this[getQuoteIn].configService.getUniswapV3QuoterAddress(evmChainID)
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const tokenInForQuote = tokenIn === ADDRESS_ZERO ? wethAsset : tokenIn
 		const tokenOutForQuote = tokenOut === ADDRESS_ZERO ? wethAsset : tokenOut
 
@@ -591,7 +592,7 @@ export class IntentGateway {
 		let bestAmountIn = maxUint256
 		let bestFee = 0
 
-		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
+		const v4Quoter = this[getQuoteIn].configService.getUniswapV4QuoterAddress(evmChainID)
 
 		for (const fee of commonFees) {
 			try {
@@ -653,7 +654,7 @@ export class IntentGateway {
 		let bestAmountOut = BigInt(0)
 		let bestFee = 0
 
-		const v4Quoter = this[getQuoteIn].config.getUniswapV4QuoterAddress(evmChainID)
+		const v4Quoter = this[getQuoteIn].configService.getUniswapV4QuoterAddress(evmChainID)
 
 		for (const fee of commonFees) {
 			try {
@@ -718,7 +719,7 @@ export class IntentGateway {
 
 		const isPermit2 = false // Router constant for self
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
@@ -731,7 +732,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountIn,
 				]),
 			)
@@ -745,7 +746,7 @@ export class IntentGateway {
 				),
 				[
 					targetTokenAddress === ADDRESS_ZERO
-						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						? this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID)
 						: recipient,
 					amountIn,
 					amountOutMinimum,
@@ -778,7 +779,7 @@ export class IntentGateway {
 			const transferData = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "transfer",
-				args: [this[getQuoteIn].config.getUniversalRouterAddress(evmChainID), amountIn],
+				args: [this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID), amountIn],
 			})
 
 			transactions.push({
@@ -789,7 +790,7 @@ export class IntentGateway {
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountIn : 0n,
 			data: executeData,
 		})
@@ -814,7 +815,7 @@ export class IntentGateway {
 		}
 		const isPermit2 = false
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
@@ -828,7 +829,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountInMax,
 				]),
 			)
@@ -842,7 +843,7 @@ export class IntentGateway {
 				),
 				[
 					targetTokenAddress === ADDRESS_ZERO
-						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						? this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID)
 						: recipient,
 					amountOut,
 					amountInMax,
@@ -870,7 +871,7 @@ export class IntentGateway {
 			const transferData = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "transfer",
-				args: [this[getQuoteIn].config.getUniversalRouterAddress(evmChainID), amountInMax],
+				args: [this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID), amountInMax],
 			})
 
 			transactions.push({
@@ -881,7 +882,7 @@ export class IntentGateway {
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountInMax : 0n,
 			data: executeData,
 		})
@@ -907,7 +908,7 @@ export class IntentGateway {
 		}
 		const isPermit2 = false
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
@@ -920,7 +921,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountIn,
 				]),
 			)
@@ -934,7 +935,7 @@ export class IntentGateway {
 				),
 				[
 					targetTokenAddress === ADDRESS_ZERO
-						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						? this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID)
 						: recipient,
 					amountIn,
 					amountOutMinimum,
@@ -967,7 +968,7 @@ export class IntentGateway {
 			const transferData = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "transfer",
-				args: [this[getQuoteIn].config.getUniversalRouterAddress(evmChainID), amountIn],
+				args: [this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID), amountIn],
 			})
 
 			transactions.push({
@@ -978,7 +979,7 @@ export class IntentGateway {
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountIn : 0n,
 			data: executeData,
 		})
@@ -1004,7 +1005,7 @@ export class IntentGateway {
 		}
 		const isPermit2 = false
 
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const swapSourceAddress = sourceTokenAddress === ADDRESS_ZERO ? wethAsset : sourceTokenAddress
 		const swapTargetAddress = targetTokenAddress === ADDRESS_ZERO ? wethAsset : targetTokenAddress
 
@@ -1017,7 +1018,7 @@ export class IntentGateway {
 			commands.push(UniversalRouterCommands.WRAP_ETH)
 			inputs.push(
 				encodeAbiParameters(parseAbiParameters("address recipient, uint256 amountMin"), [
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountInMax,
 				]),
 			)
@@ -1031,7 +1032,7 @@ export class IntentGateway {
 				),
 				[
 					targetTokenAddress === ADDRESS_ZERO
-						? this[getQuoteIn].config.getUniversalRouterAddress(evmChainID)
+						? this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID)
 						: recipient,
 					amountOut,
 					amountInMax,
@@ -1061,7 +1062,7 @@ export class IntentGateway {
 			const transferData = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "transfer",
-				args: [this[getQuoteIn].config.getUniversalRouterAddress(evmChainID), amountInMax],
+				args: [this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID), amountInMax],
 			})
 
 			transactions.push({
@@ -1072,7 +1073,7 @@ export class IntentGateway {
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountInMax : 0n,
 			data: executeData,
 		})
@@ -1165,7 +1166,7 @@ export class IntentGateway {
 			const approveToPermit2Data = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "approve",
-				args: [this[getQuoteIn].config.getPermit2Address(evmChainID), amountIn],
+				args: [this[getQuoteIn].configService.getPermit2Address(evmChainID), amountIn],
 			})
 
 			transactions.push({
@@ -1179,21 +1180,21 @@ export class IntentGateway {
 				functionName: "approve",
 				args: [
 					sourceTokenAddress,
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountIn,
 					281474976710655, // Max expiration
 				],
 			})
 
 			transactions.push({
-				to: this[getQuoteIn].config.getPermit2Address(evmChainID),
+				to: this[getQuoteIn].configService.getPermit2Address(evmChainID),
 				value: 0n,
 				data: permit2ApprovalData,
 			})
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountIn : 0n,
 			data: executeData,
 		})
@@ -1286,7 +1287,7 @@ export class IntentGateway {
 			const approveToPermit2Data = encodeFunctionData({
 				abi: erc20Abi,
 				functionName: "approve",
-				args: [this[getQuoteIn].config.getPermit2Address(evmChainID), amountInMax],
+				args: [this[getQuoteIn].configService.getPermit2Address(evmChainID), amountInMax],
 			})
 
 			transactions.push({
@@ -1300,21 +1301,21 @@ export class IntentGateway {
 				functionName: "approve",
 				args: [
 					sourceTokenAddress,
-					this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+					this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 					amountInMax,
 					281474976710655, // Max expiration
 				],
 			})
 
 			transactions.push({
-				to: this[getQuoteIn].config.getPermit2Address(evmChainID),
+				to: this[getQuoteIn].configService.getPermit2Address(evmChainID),
 				value: 0n,
 				data: permit2ApprovalData,
 			})
 		}
 
 		transactions.push({
-			to: this[getQuoteIn].config.getUniversalRouterAddress(evmChainID),
+			to: this[getQuoteIn].configService.getUniversalRouterAddress(evmChainID),
 			value: sourceTokenAddress === ADDRESS_ZERO ? amountInMax : 0n,
 			data: executeData,
 		})
@@ -1801,6 +1802,160 @@ export class IntentGateway {
 		}
 	}
 
+	async createMultiHopSwapThroughPair(
+		dexPairAddress: HexString,
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+		recipient: HexString,
+		protocol: "v2" | "v3" = "v2",
+	): Promise<{ finalAmountOut: bigint; calldata: Transaction[] }> {
+		const client = this[getQuoteIn].client
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const calldispatcher = this[getQuoteIn].configService.getCalldispatcherAddress(evmChainID)
+
+		const [token0, token1] = await Promise.all([
+			client.readContract({
+				address: dexPairAddress,
+				abi: UniswapV2Pair.ABI,
+				functionName: "token0",
+			}),
+			client.readContract({
+				address: dexPairAddress,
+				abi: UniswapV2Pair.ABI,
+				functionName: "token1",
+			}),
+		])
+
+		const intermediateToken = tokenOut.toLowerCase() === token0.toLowerCase() ? token1 : token0
+
+		const swapPath = this.buildSwapPath(tokenIn, tokenOut, intermediateToken, wethAsset, calldispatcher, recipient)
+
+		return this.executeSwapPath(swapPath, amountIn, evmChainID, getQuoteIn, protocol)
+	}
+
+	private buildSwapPath(
+		tokenIn: HexString,
+		tokenOut: HexString,
+		intermediateToken: HexString,
+		wethAsset: HexString,
+		calldispatcher: HexString,
+		recipient: HexString,
+	): SwapSegment[] {
+		const normalize = (token: HexString) => token.toLowerCase()
+
+		// Direct swap: tokenIn -> tokenOut (when intermediateToken === tokenIn)
+		if (normalize(intermediateToken) === normalize(tokenIn)) {
+			return [{ from: tokenIn, to: tokenOut, recipient }]
+		}
+
+		// Two-hop swap: tokenIn -> WETH -> tokenOut
+		if (normalize(intermediateToken) === normalize(wethAsset)) {
+			return [
+				{ from: tokenIn, to: wethAsset, recipient: calldispatcher },
+				{ from: wethAsset, to: tokenOut, recipient },
+			]
+		}
+
+		// Three-hop swap: tokenIn -> WETH -> intermediateToken -> tokenOut
+		return [
+			{ from: tokenIn, to: wethAsset, recipient: calldispatcher },
+			{ from: wethAsset, to: intermediateToken, recipient: calldispatcher },
+			{ from: intermediateToken, to: tokenOut, recipient },
+		]
+	}
+
+	private async executeSwapPath(
+		path: SwapSegment[],
+		initialAmount: bigint,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+		protocol: "v2" | "v3",
+	): Promise<{ finalAmountOut: bigint; calldata: Transaction[] }> {
+		let currentAmount = initialAmount
+		const calldata: Transaction[] = []
+
+		for (let i = 0; i < path.length; i++) {
+			const segment = path[i]
+			// Using 0.5% slippage for all swaps except the last one, which gets 1%
+			const isLastSwap = i === path.length - 1
+			const slippage = isLastSwap && path.length > 1 ? 990n : 995n
+
+			const swapResult = await this.createSwapCalldata(
+				protocol,
+				segment.from,
+				segment.to,
+				currentAmount,
+				segment.recipient,
+				evmChainID,
+				getQuoteIn,
+				slippage,
+			)
+
+			currentAmount = swapResult.amountOut
+			calldata.push(...swapResult.calldata)
+		}
+
+		return {
+			finalAmountOut: currentAmount,
+			calldata,
+		}
+	}
+
+	private async createSwapCalldata(
+		protocol: "v2" | "v3",
+		tokenIn: HexString,
+		tokenOut: HexString,
+		amountIn: bigint,
+		recipient: HexString,
+		evmChainID: string,
+		getQuoteIn: "source" | "dest",
+		slippageFactor: bigint,
+	): Promise<{ amountOut: bigint; calldata: Transaction[] }> {
+		if (protocol === "v2") {
+			let amountOut = await this.getV2QuoteWithAmountIn(getQuoteIn, tokenIn, tokenOut, amountIn, evmChainID)
+			amountOut = (amountOut * slippageFactor) / 1000n
+
+			return {
+				amountOut,
+				calldata: this.createV2SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					amountOut,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				),
+			}
+		} else {
+			const { amountOut, fee } = await this.getV3QuoteWithAmountIn(
+				getQuoteIn,
+				tokenIn,
+				tokenOut,
+				amountIn,
+				evmChainID,
+			)
+			const adjustedAmountOut = (amountOut * slippageFactor) / 1000n
+
+			return {
+				amountOut: adjustedAmountOut,
+				calldata: this.createV3SwapCalldataExactIn(
+					tokenIn,
+					tokenOut,
+					amountIn,
+					adjustedAmountOut,
+					fee,
+					recipient,
+					evmChainID,
+					getQuoteIn,
+				),
+			}
+		}
+	}
+
 	/**
 	 * Checks if an order has been filled by verifying the commitment status on-chain.
 	 * Reads the storage slot corresponding to the order's commitment hash.
@@ -1809,7 +1964,7 @@ export class IntentGateway {
 	 * @returns True if the order has been filled, false otherwise
 	 */
 	async isOrderFilled(order: Order): Promise<boolean> {
-		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.destChain)
 
 		const filledSlot = await this.dest.client.readContract({
 			abi: IntentGatewayABI.ABI,
@@ -1862,8 +2017,8 @@ export class IntentGateway {
 		const sourceStateMachine = hexToString(order.sourceChain as HexString)
 		const destStateMachine = hexToString(order.destChain as HexString)
 
-		const sourceConsensusStateId = this.source.config.getConsensusStateId(sourceStateMachine)
-		const destConsensusStateId = this.dest.config.getConsensusStateId(destStateMachine)
+		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
+		const destConsensusStateId = this.dest.configService.getConsensusStateId(destStateMachine)
 
 		let destIProof: IProof
 
@@ -1908,7 +2063,7 @@ export class IntentGateway {
 				}
 
 				try {
-					const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
+					const intentGatewayAddress = this.dest.configService.getIntentGatewayAddress(destStateMachine)
 					const orderId = orderCommitment(order)
 					const slotHash = await this.dest.client.readContract({
 						abi: IntentGatewayABI.ABI,
@@ -2123,4 +2278,9 @@ interface StoredCancellationData {
 	destIProof?: IProof
 	getRequest?: IGetRequest
 	sourceIProof?: IProof
+}
+interface SwapSegment {
+	from: HexString
+	to: HexString
+	recipient: HexString
 }
