@@ -1438,7 +1438,7 @@ export class Swap {
 		tokenIn: HexString,
 		tokenOut: HexString,
 		evmChainID: string,
-		protocolParam?: "v2" | "v3",
+		protocol?: "v2" | "v3",
 	): Promise<{ pairAddress: HexString; intermediateToken: HexString }> {
 		const chainPopularTokens = popularTokens[evmChainID as keyof typeof popularTokens]
 
@@ -1462,13 +1462,13 @@ export class Swap {
 					intermediateToken as HexString,
 					tokenOut,
 					evmChainID,
-					protocolParam,
+					protocol,
 				)
 
 				if (pair.poolAddress && pair.poolAddress !== ADDRESS_ZERO) {
 					let liquidity = 0n
 
-					if (protocolParam === "v2") {
+					if (protocol === "v2") {
 						const reserves = await client.readContract({
 							address: pair.poolAddress,
 							abi: [parseAbiItem("function getReserves() view returns (uint112, uint112, uint32)")],
@@ -1476,7 +1476,7 @@ export class Swap {
 						})
 
 						liquidity = BigInt(reserves[0]) + BigInt(reserves[1])
-					} else if (protocolParam === "v3") {
+					} else if (protocol === "v3") {
 						liquidity = await client.readContract({
 							address: pair.poolAddress,
 							abi: [parseAbiItem("function liquidity() view returns (uint128)")],
