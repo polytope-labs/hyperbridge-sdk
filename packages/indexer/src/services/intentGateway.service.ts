@@ -123,7 +123,7 @@ export class IntentGatewayService {
 			const existingStatus = orderPlaced.status
 			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 
-			orderPlaced.user = order.user
+			orderPlaced.user = this.bytes32ToBytes20(order.user)
 			orderPlaced.sourceChain = order.sourceChain
 			orderPlaced.destChain = order.destChain
 			orderPlaced.deadline = order.deadline
