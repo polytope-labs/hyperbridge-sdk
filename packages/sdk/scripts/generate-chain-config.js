@@ -98,6 +98,14 @@ const coingeckoIds = Object.entries(config.chains)
 	.map(([chain, data]) => `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: "${data.coingecko}"`)
 	.join(",\n")
 
+const popularTokens = Object.entries(config.chains)
+	.filter(([_, data]) => data.popularTokens && data.popularTokens.tokens)
+	.map(([chain, data]) => {
+		const tokenEntries = data.popularTokens.tokens.map((token) => `\t\t"${token}"`).join(",\n")
+		return `\t[Chains.${chain.toUpperCase().replace(/-/g, "_")}]: [\n${tokenEntries}\n\t]`
+	})
+	.join(",\n")
+
 const tsContent = `
 import { Chain, bscTestnet, gnosisChiado, sepolia, mainnet, bsc, base, arbitrum, polygon, unichain } from "viem/chains"
 
@@ -145,6 +153,10 @@ ${consensusStateIds}
 
 export const coingeckoIds = {
 ${coingeckoIds}
+}
+
+export const popularTokens = {
+${popularTokens}
 }
 `
 
