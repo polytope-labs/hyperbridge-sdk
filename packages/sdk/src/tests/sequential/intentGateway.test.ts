@@ -1195,7 +1195,7 @@ describe.sequential("Swap Tests", () => {
 	}, 1_000_000)
 })
 
-describe.skip("Order Cancellation tests", () => {
+describe("Order Cancellation tests", () => {
 	let indexer: IndexerClient
 	let hyperbridgeInstance: SubstrateChain
 
