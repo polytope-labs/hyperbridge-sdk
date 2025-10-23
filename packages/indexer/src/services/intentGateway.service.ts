@@ -94,7 +94,7 @@ export class IntentGatewayService {
 			const pointsToAward = orderValue.floor().toNumber()
 
 			await PointsService.awardPoints(
-				this.bytes32ToBytes20(order.user),
+				order.user,
 				ethers.utils.toUtf8String(order.sourceChain),
 				BigInt(pointsToAward),
 				ProtocolParticipantType.USER,
@@ -106,7 +106,7 @@ export class IntentGatewayService {
 
 			await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
 
-			let user = await getOrCreateUser(this.bytes32ToBytes20(order.user), referrer, timestamp)
+			let user = await getOrCreateUser(order.user, referrer, timestamp)
 			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
 			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
 				.plus(new Decimal(inputUSD))
@@ -123,7 +123,7 @@ export class IntentGatewayService {
 			const existingStatus = orderPlaced.status
 			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
 
-			orderPlaced.user = this.bytes32ToBytes20(order.user)
+			orderPlaced.user = order.user
 			orderPlaced.sourceChain = order.sourceChain
 			orderPlaced.destChain = order.destChain
 			orderPlaced.deadline = order.deadline
@@ -155,7 +155,7 @@ export class IntentGatewayService {
 				const pointsToAward = orderValue.floor().toNumber()
 
 				await PointsService.awardPoints(
-					this.bytes32ToBytes20(order.user),
+					order.user,
 					ethers.utils.toUtf8String(order.sourceChain),
 					BigInt(pointsToAward),
 					ProtocolParticipantType.USER,
@@ -249,7 +249,7 @@ export class IntentGatewayService {
 
 			orderPlaced = await OrderPlaced.create({
 				id: commitment,
-				user: "0x0000000000000000000000000000000000000000",
+				user: "0x0000000000000000000000000000000000000000" as Hex,
 				sourceChain: "",
 				destChain: "",
 				commitment: commitment,
@@ -309,7 +309,7 @@ export class IntentGatewayService {
 				)
 
 				// User
-				let user = await getOrCreateUser(this.bytes32ToBytes20(orderPlaced.user), orderPlaced.referrer)
+				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
 				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
 					.plus(new Decimal(orderPlaced.inputUSD))
 					.toString()
@@ -366,8 +366,8 @@ export class IntentGatewayService {
 	}
 
 	static bytes32ToBytes20(bytes32: string): string {
-		if (bytes32 === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-			return "0x0000000000000000000000000000000000000000"
+		if (bytes32.length === 42) {
+			return bytes32
 		}
 
 		const bytes = hexToBytes(bytes32 as Hex)
