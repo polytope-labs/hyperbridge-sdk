@@ -106,12 +106,12 @@ export class IntentGatewayService {
 
 			await VolumeService.updateVolume("IntentGateway.USER", inputUSD, timestamp)
 
-			let user = await getOrCreateUser(order.user, referrer, timestamp)
+			let user = await getOrCreateUser(this.bytes32ToBytes20(order.user), referrer, timestamp)
 			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
 			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
 				.plus(new Decimal(inputUSD))
 				.toString()
-
+			user.createdAt = user.createdAt === timestampToDate(BigInt(0)) ? timestampToDate(timestamp) : user.createdAt
 			await user.save()
 		} else {
 			// Handle race condition: Order already exists (e.g., was filled first)
@@ -309,7 +309,7 @@ export class IntentGatewayService {
 				)
 
 				// User
-				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
+				let user = await getOrCreateUser(this.bytes32ToBytes20(orderPlaced.user), orderPlaced.referrer)
 				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
 					.plus(new Decimal(orderPlaced.inputUSD))
 					.toString()
