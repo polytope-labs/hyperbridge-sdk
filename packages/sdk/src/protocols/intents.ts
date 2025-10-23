@@ -71,8 +71,8 @@ export class IntentGateway {
 			body: constructRedeemEscrowRequestBody(order, MOCK_ADDRESS),
 			timeoutTimestamp: 0n,
 			nonce: await this.source.getHostNonce(),
-			from: this.source.config.getIntentGatewayAddress(order.destChain),
-			to: this.source.config.getIntentGatewayAddress(order.sourceChain),
+			from: this.source.configService.getIntentGatewayAddress(order.destChain),
+			to: this.source.configService.getIntentGatewayAddress(order.sourceChain),
 		}
 
 		const { decimals: sourceChainFeeTokenDecimals } = await this.source.getFeeTokenWithDecimals()
@@ -106,7 +106,7 @@ export class IntentGateway {
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
 			.reduce((sum, output) => sum + output.amount, 0n)
 
-		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.destChain)
 		const testValue = toHex(maxUint256 / 2n)
 
 		const orderOverrides = await Promise.all(
@@ -271,7 +271,7 @@ export class IntentGateway {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[getQuoteIn].client
-		const wethAsset = this[getQuoteIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAsset = this[getQuoteIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[getQuoteIn].getFeeTokenWithDecimals()
 
 		try {
@@ -316,7 +316,7 @@ export class IntentGateway {
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
 		const useEtherscan = USE_ETHERSCAN_CHAINS.has(evmChainID)
-		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].config.getEtherscanApiKey() : undefined
+		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].configService.getEtherscanApiKey() : undefined
 		const gasPrice =
 			useEtherscan && etherscanApiKey
 				? await retryPromise(() => getGasPriceFromEtherscan(evmChainID, etherscanApiKey), {
@@ -328,7 +328,7 @@ export class IntentGateway {
 					})
 				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
-		const wethAddr = this[gasEstimateIn].config.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
 
 		try {
@@ -376,7 +376,7 @@ export class IntentGateway {
 		}
 
 		const quoteNative = await this.dest.client.readContract({
-			address: this.dest.config.getIntentGatewayAddress(postRequest.dest),
+			address: this.dest.configService.getIntentGatewayAddress(postRequest.dest),
 			abi: IntentGatewayABI.ABI,
 			functionName: "quoteNative",
 			args: [dispatchPost] as any,
@@ -393,7 +393,7 @@ export class IntentGateway {
 	 * @returns True if the order has been filled, false otherwise
 	 */
 	async isOrderFilled(order: Order): Promise<boolean> {
-		const intentGatewayAddress = this.source.config.getIntentGatewayAddress(order.destChain)
+		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.destChain)
 
 		const filledSlot = await this.dest.client.readContract({
 			abi: IntentGatewayABI.ABI,
@@ -446,8 +446,8 @@ export class IntentGateway {
 		const sourceStateMachine = hexToString(order.sourceChain as HexString)
 		const destStateMachine = hexToString(order.destChain as HexString)
 
-		const sourceConsensusStateId = this.source.config.getConsensusStateId(sourceStateMachine)
-		const destConsensusStateId = this.dest.config.getConsensusStateId(destStateMachine)
+		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
+		const destConsensusStateId = this.dest.configService.getConsensusStateId(destStateMachine)
 
 		let destIProof: IProof
 
@@ -492,7 +492,7 @@ export class IntentGateway {
 				}
 
 				try {
-					const intentGatewayAddress = this.dest.config.getIntentGatewayAddress(destStateMachine)
+					const intentGatewayAddress = this.dest.configService.getIntentGatewayAddress(destStateMachine)
 					const orderId = orderCommitment(order)
 					const slotHash = await this.dest.client.readContract({
 						abi: IntentGatewayABI.ABI,
