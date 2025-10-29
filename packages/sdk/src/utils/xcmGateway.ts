@@ -81,13 +81,15 @@ export type XcmGatewayParams = {
  *
  * This function uses transferAssetsUsingTypeAndThen to construct XCM transfers with a custom
  * beneficiary structure that embeds Hyperbridge-specific parameters (sender account, recipient EVM address,
- * timeout, and nonce) within an X4 junction. The assets are transferred using LocalReserve transfer type.
+ * timeout, and nonce) within an X4 junction. The beneficiary is wrapped in a DepositAsset XCM instruction
+ * that deposits all transferred assets. The assets are transferred using LocalReserve transfer type.
  *
  * It handles the complete lifecycle of a teleport operation:
  * 1. Encoding Hyperbridge parameters into the beneficiary X4 junction
- * 2. Constructing the XCM transfer transaction using polkadotXcm pallet
- * 3. Transaction signing and broadcasting
- * 4. Yielding events about transaction status through a ReadableStream
+ * 2. Wrapping the beneficiary in a DepositAsset XCM instruction
+ * 3. Constructing the XCM transfer transaction using polkadotXcm pallet
+ * 4. Transaction signing and broadcasting
+ * 5. Yielding events about transaction status through a ReadableStream
  *
  * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
  * Consumers should listen for either one of these events instead of expecting both.
@@ -150,6 +152,7 @@ export async function teleportDot(param_: {
 		},
 	}
 
+
 	// AssetHub -> Hyperbridge parachain destination and assets
 	const destination = {
 		V3: {
@@ -180,6 +183,23 @@ export async function teleportDot(param_: {
 
 	const weightLimit = "Unlimited"
 
+	// Wrap beneficiary in DepositAsset XCM instruction as required by transferAssetsUsingTypeAndThen
+	// This instruction deposits all transferred assets to the custom beneficiary
+	const customXcmOnDest = {
+		V3: [
+			{
+				DepositAsset: {
+					assets: {
+						Wild: {
+							AllCounted: assets.V3.length,
+						},
+					},
+					beneficiary: beneficiary,
+				},
+			},
+		],
+	}
+
 	// Use transferAssetsUsingTypeAndThen for AssetHub -> Hyperbridge transfer
 	// This method allows us to specify custom beneficiary with embedded Hyperbridge parameters
 	// TransferType: LocalReserve means assets are held in reserve on the source chain (AssetHub)
@@ -189,7 +209,7 @@ export async function teleportDot(param_: {
 		{ LocalReserve: null }, // Assets transfer type
 		assets.V3[0].id, // Fee asset ID
 		{ LocalReserve: null }, // Remote fee transfer type
-		beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
+		customXcmOnDest, // XCM instruction with DepositAsset containing custom beneficiary
 		weightLimit,
 	)
 
