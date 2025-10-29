@@ -1,12 +1,11 @@
 import type { HexString } from "@/types"
-import { StateMachine, sleep } from "@/utils"
+import { StateMachine } from "@/utils"
 import type { ApiPromise } from "@polkadot/api"
 import type { SignerOptions } from "@polkadot/api/types"
 import { hexToU8a, u8aToHex } from "@polkadot/util"
 import { decodeAddress, keccakAsHex } from "@polkadot/util-crypto"
-import { Bytes, Struct, Tuple, u8, u64, u128 } from "scale-ts"
+import { Bytes, Struct, u64 } from "scale-ts"
 import { parseUnits } from "viem"
-import { Builder } from "@paraspell/sdk-pjs"
 
 const MultiAccount = Struct({
 	substrate_account: Bytes(32),
@@ -43,7 +42,7 @@ export type HyperbridgeTxEvents =
 
 const DECIMALS = 10
 /**
- * Parameters for teleporting DOT from Polkadot relay chain to EVM-based destination
+ * Parameters for teleporting DOT from AssetHub to EVM-based destination
  */
 export type XcmGatewayParams = {
 	/**
@@ -77,7 +76,7 @@ export type XcmGatewayParams = {
 }
 
 /**
- * Teleports DOT tokens from Polkadot relay chain or AssetHub to Hyperbridge parachain
+ * Teleports DOT tokens from AssetHub to Hyperbridge parachain
  * using XCM (Cross-Consensus Message Format) with transferAssetsUsingTypeAndThen.
  *
  * This function uses transferAssetsUsingTypeAndThen to construct XCM transfers with a custom
@@ -86,15 +85,14 @@ export type XcmGatewayParams = {
  *
  * It handles the complete lifecycle of a teleport operation:
  * 1. Encoding Hyperbridge parameters into the beneficiary X4 junction
- * 2. Constructing the XCM transfer transaction (polkadotXcm or xcmPallet based on source)
+ * 2. Constructing the XCM transfer transaction using polkadotXcm pallet
  * 3. Transaction signing and broadcasting
  * 4. Yielding events about transaction status through a ReadableStream
  *
  * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
  * Consumers should listen for either one of these events instead of expecting both.
  *
- * @param sourceApi - Polkadot API instance connected to the relay chain or asset hub
- * @param sourceIsAssetHub - If `true` uses AssetHub; if `false` uses Polkadot relay chain
+ * @param sourceApi - Polkadot API instance connected to AssetHub
  * @param who - Sender's SS58Address address
  * @param options - Transaction signing options
  * @param params - Teleport parameters including destination, recipient, amount, timeout, and paraId
@@ -102,12 +100,11 @@ export type XcmGatewayParams = {
  */
 export async function teleportDot(param_: {
 	sourceApi: ApiPromise
-	sourceIsAssetHub: boolean
 	who: string
 	xcmGatewayParams: XcmGatewayParams
 	options: Partial<SignerOptions>
 }): Promise<ReadableStream<HyperbridgeTxEvents>> {
-	const { sourceApi, sourceIsAssetHub, who, options, xcmGatewayParams: params } = param_
+	const { sourceApi, who, options, xcmGatewayParams: params } = param_
 	const { nonce: accountNonce } = (await sourceApi.query.system.account(who)) as any
 
 	const encoded_message = MultiAccount.enc({
@@ -120,7 +117,7 @@ export async function teleportDot(param_: {
 
 	const message_id = keccakAsHex(encoded_message)
 
-	// Set up the transaction parameters
+	// Set up the custom beneficiary with embedded Hyperbridge parameters
 	const beneficiary = {
 		V3: {
 			parents: 0,
@@ -153,96 +150,48 @@ export async function teleportDot(param_: {
 		},
 	}
 
-	let assets
-	let destination
-
-	if (sourceIsAssetHub) {
-		destination = {
-			V3: {
-				parents: 1,
-				interior: {
-					X1: {
-						Parachain: params.paraId,
-					},
+	// AssetHub -> Hyperbridge parachain destination and assets
+	const destination = {
+		V3: {
+			parents: 1,
+			interior: {
+				X1: {
+					Parachain: params.paraId,
 				},
 			},
-		}
-
-		assets = {
-			V3: [
-				{
-					id: {
-						Concrete: {
-							parents: 1,
-							interior: "Here",
-						},
-					},
-					fun: {
-						Fungible: parseUnits(params.amount.toString(), DECIMALS),
-					},
-				},
-			],
-		}
-	} else {
-		destination = {
-			V3: {
-				parents: 0,
-				interior: {
-					X1: {
-						Parachain: params.paraId,
-					},
-				},
-			},
-		}
-
-		assets = {
-			V3: [
-				{
-					id: {
-						Concrete: {
-							parents: 0,
-							interior: "Here",
-						},
-					},
-					fun: {
-						Fungible: parseUnits(params.amount.toString(), DECIMALS),
-					},
-				},
-			],
-		}
+		},
 	}
 
-	const feeAssetItem = 0
+	const assets = {
+		V3: [
+			{
+				id: {
+					Concrete: {
+						parents: 1,
+						interior: "Here",
+					},
+				},
+				fun: {
+					Fungible: parseUnits(params.amount.toString(), DECIMALS),
+				},
+			},
+		],
+	}
+
 	const weightLimit = "Unlimited"
 
-	// Use transferAssetsUsingTypeAndThen for both AssetHub and Relay chain transfers
+	// Use transferAssetsUsingTypeAndThen for AssetHub -> Hyperbridge transfer
 	// This method allows us to specify custom beneficiary with embedded Hyperbridge parameters
-	// TransferType: LocalReserve means assets are held in reserve on the source chain
-	let tx
-
-	if (sourceIsAssetHub) {
-		// AssetHub -> Hyperbridge parachain transfer using polkadotXcm pallet
-		tx = sourceApi.tx.polkadotXcm.transferAssetsUsingTypeAndThen(
-			destination,
-			assets,
-			{ LocalReserve: null }, // Assets transfer type
-			assets.V3[0].id, // Fee asset ID
-			{ LocalReserve: null }, // Remote fee transfer type
-			beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
-			weightLimit,
-		)
-	} else {
-		// Relay chain -> Hyperbridge parachain transfer using xcmPallet
-		tx = sourceApi.tx.xcmPallet.transferAssetsUsingTypeAndThen(
-			destination,
-			assets,
-			{ LocalReserve: null }, // Assets transfer type
-			assets.V3[0].id, // Fee asset ID
-			{ LocalReserve: null }, // Remote fee transfer type
-			beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
-			weightLimit,
-		)
-	}
+	// TransferType: LocalReserve means assets are held in reserve on the source chain (AssetHub)
+	const tx = sourceApi.tx.polkadotXcm.transferAssetsUsingTypeAndThen(
+		destination,
+		assets,
+		{ LocalReserve: null }, // Assets transfer type
+		assets.V3[0].id, // Fee asset ID
+		{ LocalReserve: null }, // Remote fee transfer type
+		beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
+		weightLimit,
+	)
 
 	let closed = false
 	// Create the stream to report events

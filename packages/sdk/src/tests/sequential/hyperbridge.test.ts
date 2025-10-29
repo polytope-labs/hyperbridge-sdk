@@ -104,7 +104,6 @@ describe("Hyperbridge Requests", () => {
 			console.log("Teleport Dot with Indexer started")
 			const result = await teleportDot({
 				sourceApi: relayApi,
-				sourceIsAssetHub: true,
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
@@ -155,7 +154,6 @@ describe("Hyperbridge Requests", () => {
 
 			const result = await teleportDot({
 				sourceApi: relayApi,
-				sourceIsAssetHub: true,
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
@@ -262,7 +260,6 @@ describe("Hyperbridge Requests", () => {
 			}
 			const stream = await teleportDot({
 				sourceApi: relayApi,
-				sourceIsAssetHub: true,
 				who: bob.address,
 				options: { signer },
 				xcmGatewayParams: params,
@@ -519,7 +516,6 @@ describe("Hyperbridge Requests", () => {
 		}
 		const result = await teleportDot({
 			sourceApi: relayApi,
-			sourceIsAssetHub: true,
 			who: bob.address,
 			options: { signer },
 			xcmGatewayParams: params,
