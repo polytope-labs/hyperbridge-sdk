@@ -193,7 +193,7 @@ export async function teleportDot(param_: {
 	// Wrap beneficiary in DepositAsset XCM instruction as required by transferAssetsUsingTypeAndThen
 	// This instruction deposits all transferred assets to the custom beneficiary
 	// Use sourceApi to create properly typed XCM instruction
-	const customXcmOnDest = sourceApi.createType("XcmVersionedXcm", {
+	const customXcmOnDest = [{
 		V5: [
 			{
 				DepositAsset: {
@@ -206,7 +206,7 @@ export async function teleportDot(param_: {
 				},
 			},
 		],
-	})
+	}]
 
 	// Use transferAssetsUsingTypeAndThen for AssetHub -> Hyperbridge transfer
 	// This method allows us to specify custom beneficiary with embedded Hyperbridge parameters
