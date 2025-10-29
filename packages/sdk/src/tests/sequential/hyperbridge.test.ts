@@ -21,6 +21,7 @@ import TOKEN_GATEWAY from "@/abis/tokenGateway"
 import { WsProvider, ApiPromise, Keyring } from "@polkadot/api"
 import type { Signer, SignerResult } from "@polkadot/api/types"
 import { IndexerClient } from "@/client"
+import { getChain } from "@/chain"
 import { teleportDot } from "@/utils/xcmGateway"
 import type { KeyringPair } from "@polkadot/keyring/types"
 import type { SignerPayloadRaw } from "@polkadot/types/types"
@@ -48,32 +49,40 @@ function assertIsToday(timestamp: bigint) {
 	expect(diff < 3600).toBeTruthy()
 }
 
-describe.skip("Hyperbridge Requests", () => {
+describe("Hyperbridge Requests", () => {
 	let indexer: IndexerClient
 
 	beforeAll(async () => {
 		const { bscIsmpHost } = await bscSetup()
 
+		// Create chain instances
+		const destChain = await getChain({
+			consensusStateId: "BSC0",
+			rpcUrl: process.env.BSC_CHAPEL!,
+			stateMachineId: "EVM-97",
+			host: bscIsmpHost.address,
+		})
+
+		const sourceChain = await getChain({
+			consensusStateId: "PAS0",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			stateMachineId: "KUSAMA-4009",
+			hasher: "Keccak" as const,
+		})
+
+		const hyperbridgeChain = await getChain({
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			hasher: "Keccak" as const,
+		})
+
 		indexer = new IndexerClient({
+			source: sourceChain,
+			dest: destChain,
+			hyperbridge: hyperbridgeChain,
 			queryClient: query_client,
-			pollInterval: 1_000, // every second
-			dest: {
-				consensusStateId: "BSC0",
-				rpcUrl: process.env.BSC_CHAPEL!,
-				stateMachineId: "EVM-97",
-				host: bscIsmpHost.address,
-			},
-			source: {
-				consensusStateId: "PAS0",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-				stateMachineId: "KUSAMA-4009",
-				hasher: "Keccak",
-			},
-			hyperbridge: {
-				consensusStateId: "PAS0",
-				stateMachineId: "KUSAMA-4009",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-			},
+			pollInterval: 1_000,
 		})
 	})
 
@@ -323,26 +332,35 @@ describe.skip("Hyperbridge Requests", () => {
 
 	it("should successfully deliver requests to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscIsmpHost } = await bscSetup()
+		
+		// Create chain instances
+		const sourceChain = await getChain({
+			consensusStateId: "BSC0",
+			rpcUrl: process.env.BSC_CHAPEL!,
+			stateMachineId: "EVM-97",
+			host: bscIsmpHost.address,
+		})
+
+		const destChain = await getChain({
+			consensusStateId: "PAS0",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			stateMachineId: "KUSAMA-4009",
+			hasher: "Keccak" as const,
+		})
+
+		const hyperbridgeChain = await getChain({
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			hasher: "Keccak" as const,
+		})
+
 		indexer = new IndexerClient({
+			source: sourceChain,
+			dest: destChain,
+			hyperbridge: hyperbridgeChain,
 			queryClient: query_client,
-			pollInterval: 1_000, // every second
-			source: {
-				consensusStateId: "BSC0",
-				rpcUrl: process.env.BSC_CHAPEL!,
-				stateMachineId: "EVM-97",
-				host: bscIsmpHost.address,
-			},
-			dest: {
-				consensusStateId: "PAS0",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-				stateMachineId: "KUSAMA-4009",
-				hasher: "Keccak",
-			},
-			hyperbridge: {
-				consensusStateId: "PAS0",
-				stateMachineId: "KUSAMA-4009",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-			},
+			pollInterval: 1_000,
 		})
 		console.log("\n\nSending Post Request\n\n")
 
@@ -408,26 +426,34 @@ describe.skip("Hyperbridge Requests", () => {
 	it("should successfully timeout requests sent to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscHandler, bscIsmpHost } = await bscSetup()
 
+		// Create chain instances
+		const sourceChain = await getChain({
+			consensusStateId: "BSC0",
+			rpcUrl: process.env.BSC_CHAPEL!,
+			stateMachineId: "EVM-97",
+			host: bscIsmpHost.address,
+		})
+
+		const destChain = await getChain({
+			consensusStateId: "PAS0",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			stateMachineId: "KUSAMA-4009",
+			hasher: "Keccak" as const,
+		})
+
+		const hyperbridgeChain = await getChain({
+			consensusStateId: "PAS0",
+			stateMachineId: "KUSAMA-4009",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			hasher: "Keccak" as const,
+		})
+
 		indexer = new IndexerClient({
-			source: {
-				consensusStateId: "BSC0",
-				rpcUrl: process.env.BSC_CHAPEL!,
-				stateMachineId: "EVM-97",
-				host: bscIsmpHost.address,
-			},
-			dest: {
-				consensusStateId: "PAS0",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-				stateMachineId: "KUSAMA-4009",
-				hasher: "Keccak",
-			},
-			hyperbridge: {
-				consensusStateId: "PAS0",
-				stateMachineId: "KUSAMA-4009",
-				wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
-			},
+			source: sourceChain,
+			dest: destChain,
+			hyperbridge: hyperbridgeChain,
 			queryClient: query_client,
-			pollInterval: 1_000, // every second
+			pollInterval: 1_000,
 		})
 
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()

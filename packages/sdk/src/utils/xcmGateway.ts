@@ -6,6 +6,7 @@ import { hexToU8a, u8aToHex } from "@polkadot/util"
 import { decodeAddress, keccakAsHex } from "@polkadot/util-crypto"
 import { Bytes, Struct, Tuple, u8, u64, u128 } from "scale-ts"
 import { parseUnits } from "viem"
+import { Builder } from "@paraspell/sdk-pjs"
 
 const MultiAccount = Struct({
 	substrate_account: Bytes(32),
@@ -76,28 +77,27 @@ export type XcmGatewayParams = {
 }
 
 /**
- * Teleports DOT tokens from Polkadot relay chain to an EVM-based destination chain
- * using XCM (Cross-Consensus Message Format) and uses the indexer client to track
- * the transaction instead of polling hyperbridge blocks.
+ * Teleports DOT tokens from Polkadot relay chain or AssetHub to Hyperbridge parachain
+ * using XCM (Cross-Consensus Message Format) with transferAssetsUsingTypeAndThen.
  *
- * This function initiates a teleport transaction, monitors its status through the indexer,
- * and yields events about the transaction's progress through a ReadableStream.
+ * This function uses transferAssetsUsingTypeAndThen to construct XCM transfers with a custom
+ * beneficiary structure that embeds Hyperbridge-specific parameters (sender account, recipient EVM address,
+ * timeout, and nonce) within an X4 junction. The assets are transferred using LocalReserve transfer type.
+ *
  * It handles the complete lifecycle of a teleport operation:
- * 1. Transaction preparation and signing
- * 2. Broadcasting to the relay chain
- * 3. Tracking the transaction via the indexer client
- * 4. Yielding events about transaction status
+ * 1. Encoding Hyperbridge parameters into the beneficiary X4 junction
+ * 2. Constructing the XCM transfer transaction (polkadotXcm or xcmPallet based on source)
+ * 3. Transaction signing and broadcasting
+ * 4. Yielding events about transaction status through a ReadableStream
  *
  * Note: There is no guarantee that both Dispatched and Finalized events will be yielded.
  * Consumers should listen for either one of these events instead of expecting both.
  *
  * @param sourceApi - Polkadot API instance connected to the relay chain or asset hub
- * @param sourceIsAssetHub - If `true` uses AssetHub Network for teleport
+ * @param sourceIsAssetHub - If `true` uses AssetHub; if `false` uses Polkadot relay chain
  * @param who - Sender's SS58Address address
  * @param options - Transaction signing options
- * @param params - Teleport parameters including destination, recipient, and amount
- * @param indexerClient - The indexer client to track the transaction
- * @param pollInterval - Optional polling interval in milliseconds (default: 2000)
+ * @param params - Teleport parameters including destination, recipient, amount, timeout, and paraId
  * @yields {HyperbridgeTxEvents} Stream of events indicating transaction status
  */
 export async function teleportDot(param_: {
@@ -215,22 +215,31 @@ export async function teleportDot(param_: {
 	const feeAssetItem = 0
 	const weightLimit = "Unlimited"
 
+	// Use transferAssetsUsingTypeAndThen for both AssetHub and Relay chain transfers
+	// This method allows us to specify custom beneficiary with embedded Hyperbridge parameters
+	// TransferType: LocalReserve means assets are held in reserve on the source chain
 	let tx
 
 	if (sourceIsAssetHub) {
-		tx = sourceApi.tx.polkadotXcm.limitedReserveTransferAssets(
+		// AssetHub -> Hyperbridge parachain transfer using polkadotXcm pallet
+		tx = sourceApi.tx.polkadotXcm.transferAssetsUsingTypeAndThen(
 			destination,
-			beneficiary,
 			assets,
-			feeAssetItem,
+			{ LocalReserve: null }, // Assets transfer type
+			assets.V3[0].id, // Fee asset ID
+			{ LocalReserve: null }, // Remote fee transfer type
+			beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
 			weightLimit,
 		)
 	} else {
-		tx = sourceApi.tx.xcmPallet.limitedReserveTransferAssets(
+		// Relay chain -> Hyperbridge parachain transfer using xcmPallet
+		tx = sourceApi.tx.xcmPallet.transferAssetsUsingTypeAndThen(
 			destination,
-			beneficiary,
 			assets,
-			feeAssetItem,
+			{ LocalReserve: null }, // Assets transfer type
+			assets.V3[0].id, // Fee asset ID
+			{ LocalReserve: null }, // Remote fee transfer type
+			beneficiary, // Custom beneficiary with X4 junction containing Hyperbridge parameters
 			weightLimit,
 		)
 	}
