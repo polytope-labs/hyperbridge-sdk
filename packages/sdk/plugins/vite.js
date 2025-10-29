@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { copyFile } from "node:fs/promises"
 import path from "node:path"
 import { colorize } from "consola/utils"
@@ -18,7 +19,7 @@ const logMessage = (message) => {
 
 /**
  *
- * @returns {Plugin}
+ * @returns {import('vite').PluginContainer}
  */
 const copyWasm = () => {
   let is_dev_server = false
@@ -32,12 +33,11 @@ const copyWasm = () => {
     },
     buildStart: async function makeCopy() {
       if (!is_dev_server) {
-        logMessage("⏭️ Skipping wasm dependency. No neccessary in build step");
+        logMessage("⏭️ Skipping wasm dependency. Not neccessary for bundling step");
         return;
       }
 
       // @todo: Add monorepo support
-
       // Get path to the consuming project's node_modules
       const projectNodeModules = path.resolve(process.cwd(), "node_modules")
 
@@ -48,20 +48,32 @@ const copyWasm = () => {
       )
 
       // Destination in the Vite cache directory
-      const destDir = path.resolve(projectNodeModules, ".vite/deps")
-      const dest = path.resolve(destDir, "web_bg.wasm")
+      const destDir = path.resolve(projectNodeModules, "./.vite/deps");
+      const dest = path.resolve(destDir, "web_bg.wasm");
 
-      // Wait for .vite folder to exist
-      setTimeout(async () => {
-        try {
-          logMessage("📦 Copying wasm dependency")
-          await copyFile(source, dest)
-          logMessage("✅ Copy complete")
-        } catch (error) {
-          logMessage(`❌ Error copying wasm file: ${error?.message}`)
+      const interval = 2000; // 1 second
+      const timeout = 60000; // 60 seconds
+      let elapsedTime = 0;
+
+      const tryCopy = () => {
+        if (existsSync(destDir)) {
+          logMessage("📦 Copying wasm dependency");
+          copyFile(source, dest)
+            .then(() => logMessage("✅ Copy complete"))
+            .catch(error => logMessage(`❌ Error copying wasm file: ${error?.message}`));
+        } else {
+          elapsedTime += interval;
+          if (elapsedTime < timeout) {
+            logMessage(`... waiting for ${destDir} to be created (retrying in 1s)`)
+            setTimeout(tryCopy, interval);
+          } else {
+            logMessage(`❌ Timed out waiting for ${destDir} to be created.`);
+          }
         }
-      }, 2000)
-    },
+      };
+
+      tryCopy();
+    }
   }
 }
 
