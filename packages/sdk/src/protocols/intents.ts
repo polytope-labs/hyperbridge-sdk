@@ -69,12 +69,8 @@ export class IntentGateway {
 		postRequestCalldata: HexString
 	}> {
 		// Order with commitment and stringified chains
-		const orderWithCommitment = {
-			...order,
-			id: orderCommitment(order),
-			sourceChain: hexToString(order.sourceChain as HexString),
-			destChain: hexToString(order.destChain as HexString),
-		}
+		const orderWithCommitment = transformOrder(order)
+
 		const postRequest: IPostRequest = {
 			source: orderWithCommitment.destChain,
 			dest: orderWithCommitment.sourceChain,
@@ -411,6 +407,7 @@ export class IntentGateway {
 	 * @returns True if the order has been filled, false otherwise
 	 */
 	async isOrderFilled(order: Order): Promise<boolean> {
+		order = transformOrder(order)
 		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.destChain)
 
 		const filledSlot = await this.dest.client.readContract({
@@ -652,24 +649,12 @@ export class IntentGateway {
  * @param order - The order to transform
  * @returns The order in contract-compatible format
  */
-function transformOrderForContract(order: Order) {
+function transformOrder(order: Order) {
 	return {
-		sourceChain: toHex(order.sourceChain),
-		destChain: toHex(order.destChain),
-		fees: order.fees,
-		callData: order.callData,
-		deadline: order.deadline,
-		nonce: order.nonce,
-		inputs: order.inputs.map((input) => ({
-			token: input.token,
-			amount: input.amount,
-		})),
-		outputs: order.outputs.map((output) => ({
-			token: output.token,
-			amount: output.amount,
-			beneficiary: output.beneficiary,
-		})),
-		user: order.user,
+		...order,
+		id: orderCommitment(order),
+		sourceChain: hexToString(order.sourceChain as HexString),
+		destChain: hexToString(order.destChain as HexString),
 	}
 }
 
