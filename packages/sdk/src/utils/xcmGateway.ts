@@ -152,7 +152,6 @@ export async function teleportDot(param_: {
 		},
 	}
 
-
 	// AssetHub -> Hyperbridge parachain destination and assets
 	const destination = {
 		V5: {
@@ -179,7 +178,17 @@ export async function teleportDot(param_: {
 		],
 	}
 
+	const assetId = {
+		V5: {
+			id: {
+				parents: 1,
+				interior: "Here",
+			},
+		},
+	}
+
 	const weightLimit = "Unlimited"
+	const localReserve = "LocalReserve"
 
 	// Wrap beneficiary in DepositAsset XCM instruction as required by transferAssetsUsingTypeAndThen
 	// This instruction deposits all transferred assets to the custom beneficiary
@@ -205,9 +214,9 @@ export async function teleportDot(param_: {
 	const tx = sourceApi.tx.polkadotXcm.transferAssetsUsingTypeAndThen(
 		destination,
 		assets,
-		{ LocalReserve: null }, // Assets transfer type
-		assets.V5[0].id, // Fee asset ID
-		{ LocalReserve: null }, // Remote fee transfer type
+		localReserve, // Assets transfer type
+		assetId, // Fee asset ID
+		localReserve, // Remote fee transfer type
 		customXcmOnDest, // XCM instruction with DepositAsset containing custom beneficiary
 		weightLimit,
 	)
