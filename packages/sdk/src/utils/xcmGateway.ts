@@ -121,7 +121,7 @@ export async function teleportDot(param_: {
 
 	// Set up the custom beneficiary with embedded Hyperbridge parameters
 	const beneficiary = {
-		V3: {
+		V5: {
 			parents: 0,
 			interior: {
 				X4: [
@@ -155,7 +155,7 @@ export async function teleportDot(param_: {
 
 	// AssetHub -> Hyperbridge parachain destination and assets
 	const destination = {
-		V3: {
+		V5: {
 			parents: 1,
 			interior: {
 				X1: {
@@ -166,13 +166,11 @@ export async function teleportDot(param_: {
 	}
 
 	const assets = {
-		V3: [
+		V5: [
 			{
 				id: {
-					Concrete: {
-						parents: 1,
-						interior: "Here",
-					},
+					parents: 1,
+					interior: "Here",
 				},
 				fun: {
 					Fungible: parseUnits(params.amount.toString(), DECIMALS),
@@ -185,20 +183,21 @@ export async function teleportDot(param_: {
 
 	// Wrap beneficiary in DepositAsset XCM instruction as required by transferAssetsUsingTypeAndThen
 	// This instruction deposits all transferred assets to the custom beneficiary
-	const customXcmOnDest = {
-		V3: [
+	// Use sourceApi to create properly typed XCM instruction
+	const customXcmOnDest = sourceApi.createType("XcmVersionedXcm", {
+		V5: [
 			{
 				DepositAsset: {
 					assets: {
 						Wild: {
-							AllCounted: assets.V3.length,
+							AllCounted: 1,
 						},
 					},
-					beneficiary: beneficiary,
+					beneficiary: beneficiary.V5,
 				},
 			},
 		],
-	}
+	})
 
 	// Use transferAssetsUsingTypeAndThen for AssetHub -> Hyperbridge transfer
 	// This method allows us to specify custom beneficiary with embedded Hyperbridge parameters
@@ -207,7 +206,7 @@ export async function teleportDot(param_: {
 		destination,
 		assets,
 		{ LocalReserve: null }, // Assets transfer type
-		assets.V3[0].id, // Fee asset ID
+		assets.V5[0].id, // Fee asset ID
 		{ LocalReserve: null }, // Remote fee transfer type
 		customXcmOnDest, // XCM instruction with DepositAsset containing custom beneficiary
 		weightLimit,
