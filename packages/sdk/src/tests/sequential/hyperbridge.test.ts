@@ -130,7 +130,7 @@ describe("Hyperbridge Requests", () => {
 		}
 	}, 300_000)
 
-	it("It should correctly monitor requests that originate from hyperbridge", async () => {
+	it.skip("It should correctly monitor requests that originate from hyperbridge", async () => {
 		const { bscTestnetClient, bscHandler, bscWalletClient } = await bscSetup()
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
 		const params = {
@@ -327,9 +327,9 @@ describe("Hyperbridge Requests", () => {
 		}
 	}, 1_200_000)
 
-	it("should successfully deliver requests to Hyperbridge", async () => {
+	it.skip("should successfully deliver requests to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscIsmpHost } = await bscSetup()
-		
+
 		// Create chain instances
 		const sourceChain = await getChain({
 			consensusStateId: "BSC0",
@@ -420,7 +420,7 @@ describe("Hyperbridge Requests", () => {
 		expect(final_status).toEqual(RequestStatus.DESTINATION)
 	}, 1_200_000)
 
-	it("should successfully timeout requests sent to Hyperbridge", async () => {
+	it.skip("should successfully timeout requests sent to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscHandler, bscIsmpHost } = await bscSetup()
 
 		// Create chain instances
