@@ -130,7 +130,7 @@ describe("Hyperbridge Requests", () => {
 		}
 	}, 300_000)
 
-	it.skip("It should correctly monitor requests that originate from hyperbridge", async () => {
+	it("It should correctly monitor requests that originate from hyperbridge", async () => {
 		const { bscTestnetClient, bscHandler, bscWalletClient } = await bscSetup()
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
 		const params = {
@@ -238,7 +238,7 @@ describe("Hyperbridge Requests", () => {
 	}, 1_000_000)
 
 	// non membership proofs are returning trie root mismatch errors due to the Erigon proof bug
-	it.skip("It should correctly monitor requests that timeout from hyperbridge", async () => {
+	it("It should correctly monitor requests that timeout from hyperbridge", async () => {
 		const { hyperbridge, relayApi, bob, signer } = await hyperbridgeSetup()
 		const params = {
 			destination: 97,
@@ -327,7 +327,7 @@ describe("Hyperbridge Requests", () => {
 		}
 	}, 1_200_000)
 
-	it.skip("should successfully deliver requests to Hyperbridge", async () => {
+	it("should successfully deliver requests to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscIsmpHost } = await bscSetup()
 
 		// Create chain instances
@@ -420,7 +420,7 @@ describe("Hyperbridge Requests", () => {
 		expect(final_status).toEqual(RequestStatus.DESTINATION)
 	}, 1_200_000)
 
-	it.skip("should successfully timeout requests sent to Hyperbridge", async () => {
+	it("should successfully timeout requests sent to Hyperbridge", async () => {
 		const { bscTestnetClient, bscTokenGateway, bscHandler, bscIsmpHost } = await bscSetup()
 
 		// Create chain instances
