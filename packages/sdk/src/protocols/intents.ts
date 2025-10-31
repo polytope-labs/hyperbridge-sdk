@@ -456,188 +456,64 @@ export class IntentGateway {
 		hyperbridgeConfig: IHyperbridgeConfig,
 		indexerClient: IndexerClient,
 		storedData?: StoredCancellationData,
-	) {
+	): AsyncGenerator<CancelEvent> {
 		const hyperbridge = (await getChain({ ...hyperbridgeConfig, hasher: "Keccak" })) as SubstrateChain
 		const sourceStateMachine = hexToString(order.sourceChain as HexString)
 		const destStateMachine = hexToString(order.destChain as HexString)
-
 		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
 		const destConsensusStateId = this.dest.configService.getConsensusStateId(destStateMachine)
 
-		let destIProof: IProof
+		const destIProof =
+			storedData?.destIProof ??
+			(yield* fetchDestinationProof(
+				order,
+				this.dest,
+				destStateMachine,
+				destConsensusStateId,
+				indexerClient,
+				hyperbridgeConfig,
+			))
 
-		if (storedData?.destIProof) {
-			destIProof = storedData.destIProof
-			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
-		} else {
-			let latestHeight = 0n
-			let lastFailedHeight: bigint | null = null
-			let proofHex: HexString | null = null
-
-			while (!proofHex) {
-				const height = await retryPromise(
-					() =>
-						indexerClient.queryLatestStateMachineHeight({
-							statemachineId: destStateMachine,
-							chain: hyperbridgeConfig.stateMachineId,
-						}),
-					{ maxRetries: 5, backoffMs: 500, logMessage: "Failed to fetch latest state machine height" },
-				)
-
-				if (!height) {
-					throw new Error("No state machine updates found for destination chain")
-				}
-
-				latestHeight = height
-
-				const shouldFetchProof =
-					lastFailedHeight === null ? latestHeight > order.deadline : latestHeight > lastFailedHeight
-
-				if (!shouldFetchProof) {
-					yield {
-						status: "AWAITING_DESTINATION_FINALIZED",
-						data: {
-							currentHeight: latestHeight,
-							deadline: order.deadline,
-							...(lastFailedHeight && { lastFailedHeight }),
-						},
-					}
-					await sleep(10000)
-					continue
-				}
-
-				try {
-					const intentGatewayAddress = this.dest.configService.getIntentGatewayAddress(destStateMachine)
-					const orderId = orderCommitment(order)
-					const slotHash = await this.dest.client.readContract({
-						abi: IntentGatewayABI.ABI,
-						address: intentGatewayAddress,
-						functionName: "calculateCommitmentSlotHash",
-						args: [orderId],
-					})
-					proofHex = await this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress)
-				} catch (error) {
-					lastFailedHeight = latestHeight
-					yield {
-						status: "PROOF_FETCH_FAILED",
-						data: {
-							failedHeight: latestHeight,
-							error: error instanceof Error ? error.message : String(error),
-							deadline: order.deadline,
-						},
-					}
-					await sleep(10000)
-				}
-			}
-
-			destIProof = {
-				consensusStateId: destConsensusStateId,
-				height: latestHeight,
-				proof: proofHex,
-				stateMachine: destStateMachine,
-			}
-
-			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
-		}
-
-		const getRequest = storedData?.getRequest ?? ((yield { status: "AWAITING_GET_REQUEST" }) as IGetRequest)
-		if (!getRequest) throw new Error("[Cancel Order]: Get Request not provided")
+		const getRequest = storedData?.getRequest ?? (yield { status: "AWAITING_GET_REQUEST", data: undefined })
+		if (!getRequest) throw new Error("GetRequest missing")
 
 		const commitment = getRequestCommitment({ ...getRequest, keys: [...getRequest.keys] })
-
 		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
 		for await (const statusUpdate of sourceStatusStream) {
-			yield statusUpdate
+			if (statusUpdate.status !== RequestStatus.SOURCE_FINALIZED) continue
 
-			if (statusUpdate.status !== RequestStatus.SOURCE_FINALIZED) {
-				continue
-			}
+			yield { status: "SOURCE_FINALIZED", data: { metadata: statusUpdate.metadata } }
 
-			let sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
-			let proof: HexString | undefined
-			// Check if request was delivered while waiting for proof
-			const checkIfAlreadyDelivered = async () => {
-				const currentStatus = await indexerClient.queryGetRequestWithStatus(commitment)
-				return (
-					currentStatus?.statuses.some((status) => status.status === RequestStatus.HYPERBRIDGE_DELIVERED) ??
-					false
-				)
-			}
+			const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+			const sourceIProof =
+				storedData?.sourceIProof ??
+				(await fetchSourceProof(
+					commitment,
+					this.source,
+					sourceStateMachine,
+					sourceConsensusStateId,
+					sourceHeight,
+				))
+			yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
 
-			const { slot1, slot2 } = requestCommitmentKey(commitment)
-
-			while (true) {
-				try {
-					proof = await this.source.queryStateProof(sourceHeight, [slot1, slot2])
-					break
-				} catch {
-					const failedHeight = sourceHeight
-					while (sourceHeight <= failedHeight) {
-						if (await checkIfAlreadyDelivered()) {
-							break
-						}
-
-						const nextHeight = await retryPromise(
-							() =>
-								indexerClient.queryLatestStateMachineHeight({
-									statemachineId: sourceStateMachine,
-									chain: hyperbridgeConfig.stateMachineId,
-								}),
-							{
-								maxRetries: 5,
-								backoffMs: 5000,
-								logMessage: "Failed to fetch latest state machine height (post-source-proof failure)",
-							},
-						)
-
-						if (!nextHeight) {
-							throw new Error(
-								`No state machine updates found for ${sourceStateMachine} on chain ${hyperbridgeConfig.stateMachineId}`,
-							)
-						}
-
-						if (nextHeight <= failedHeight) {
-							await sleep(10000)
-							continue
-						}
-
-						sourceHeight = nextHeight
-					}
-
-					if (await checkIfAlreadyDelivered()) {
-						break
-					}
-				}
-			}
-
-			if (proof) {
-				const sourceIProof: IProof = {
-					height: sourceHeight,
-					stateMachine: sourceStateMachine,
+			await waitForChallengePeriod(hyperbridge, {
+				height: sourceIProof.height,
+				id: {
+					stateId: parseStateMachineId(sourceStateMachine).stateId,
 					consensusStateId: sourceConsensusStateId,
-					proof,
-				}
+				},
+			})
 
-				yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
-
-				const getRequestMessage: IGetRequestMessage = {
-					kind: "GetRequest",
-					requests: [getRequest],
-					source: sourceIProof,
-					response: destIProof,
-					signer: pad("0x"),
-				}
-
-				await waitForChallengePeriod(hyperbridge, {
-					height: sourceHeight,
-					id: {
-						stateId: parseStateMachineId(sourceStateMachine).stateId,
-						consensusStateId: sourceConsensusStateId,
-					},
-				})
-
-				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+			const getRequestMessage: IGetRequestMessage = {
+				kind: "GetRequest",
+				requests: [getRequest],
+				source: sourceIProof,
+				response: destIProof,
+				signer: pad("0x"),
 			}
+
+			await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+			return
 		}
 	}
 }
@@ -657,6 +533,105 @@ function transformOrder(order: Order) {
 		destChain: hexToString(order.destChain as HexString),
 	}
 }
+
+/**
+ * Fetches proof for the destination chain.
+ */
+async function* fetchDestinationProof(
+	order: Order,
+	dest: EvmChain,
+	destStateMachine: string,
+	destConsensusStateId: string,
+	indexerClient: IndexerClient,
+	hyperbridgeConfig: IHyperbridgeConfig,
+): AsyncGenerator<CancelEvent, IProof, void> {
+	let latestHeight = 0n
+	let lastFailedHeight: bigint | null = null
+
+	while (true) {
+		const height = await indexerClient.queryLatestStateMachineHeight({
+			statemachineId: destStateMachine,
+			chain: hyperbridgeConfig.stateMachineId,
+		})
+
+		latestHeight = height ?? 0n
+		const shouldFetch = lastFailedHeight === null ? latestHeight > order.deadline : latestHeight > lastFailedHeight
+
+		if (!shouldFetch) {
+			yield {
+				status: "AWAITING_DESTINATION_FINALIZED",
+				data: { latestHeight, lastFailedHeight, deadline: order.deadline },
+			}
+			await sleep(10000)
+			continue
+		}
+
+		try {
+			const intentGatewayAddress = dest.configService.getIntentGatewayAddress(destStateMachine)
+			const orderId = orderCommitment(order)
+			const slotHash = await dest.client.readContract({
+				abi: IntentGatewayABI.ABI,
+				address: intentGatewayAddress,
+				functionName: "calculateCommitmentSlotHash",
+				args: [orderId],
+			})
+
+			const proofHex = await dest.queryStateProof(latestHeight, [slotHash], intentGatewayAddress)
+
+			const proof: IProof = {
+				consensusStateId: destConsensusStateId,
+				height: latestHeight,
+				proof: proofHex,
+				stateMachine: destStateMachine,
+			}
+
+			yield { status: "DESTINATION_FINALIZED", data: { proof } }
+			return proof
+		} catch (error) {
+			lastFailedHeight = latestHeight
+			yield {
+				status: "PROOF_FETCH_FAILED",
+				data: { failedHeight: latestHeight, error: String(error) },
+			}
+			await sleep(10000)
+		}
+	}
+}
+
+/**
+ * Fetches proof for the source chain.
+ */
+async function fetchSourceProof(
+	commitment: HexString,
+	source: EvmChain,
+	sourceStateMachine: string,
+	sourceConsensusStateId: string,
+	sourceHeight: bigint,
+): Promise<IProof> {
+	const { slot1, slot2 } = requestCommitmentKey(commitment)
+	const proofHex = await source.queryStateProof(sourceHeight, [slot1, slot2])
+
+	return {
+		height: sourceHeight,
+		stateMachine: sourceStateMachine,
+		consensusStateId: sourceConsensusStateId,
+		proof: proofHex,
+	}
+}
+
+interface CancelEventMap {
+	AWAITING_DESTINATION_FINALIZED: { latestHeight: bigint; lastFailedHeight: bigint | null; deadline: bigint }
+	DESTINATION_FINALIZED: { proof: IProof }
+	PROOF_FETCH_FAILED: { failedHeight: bigint; error: string }
+	AWAITING_GET_REQUEST: undefined
+	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
+	SOURCE_PROOF_RECEIVED: IProof
+	RECEIPT_CONFIRMED: { commitment: string }
+}
+
+type CancelEvent = {
+	[K in keyof CancelEventMap]: { status: K; data: CancelEventMap[K] }
+}[keyof CancelEventMap]
 
 interface StoredCancellationData {
 	destIProof?: IProof
