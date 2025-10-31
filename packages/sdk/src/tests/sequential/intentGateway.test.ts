@@ -1309,11 +1309,15 @@ describe.sequential("Order Cancellation tests", () => {
 
 		console.log("Order placed on BSC")
 
-		const orderPlaceEvent = parseEventLogs({ abi: IntentGatewayABI.ABI, logs: receipt.logs })[0]
-		if (orderPlaceEvent.eventName !== "OrderPlaced") {
-			throw new Error("Unexpected Event type")
+		const orderPlacedEvent = await getOrderPlacedFromTx(bscChapelPublicClient, hash)
+
+		if (!orderPlacedEvent) {
+			throw new Error("OrderPlaced event not found")
 		}
-		const orderPlaced = orderPlaceEvent.args
+
+		console.log("orderPlacedEvent", orderPlacedEvent)
+
+		const orderPlaced = orderPlacedEvent.args
 
 		const hyperbridgeConfig: IHyperbridgeConfig = {
 			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
@@ -1426,18 +1430,6 @@ describe.sequential("Order Cancellation tests", () => {
 
 		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
 	}, 1_000_000)
-})
-
-describe.sequential("Decode Transaction events", () => {
-	it("Should decode OrderPlaced event", async () => {
-		const { bscChapelPublicClient } = await setUpBscToSepoliaOrder()
-		const orderPlaced = await getOrderPlacedFromTx(
-			bscChapelPublicClient,
-			"0x2e563c9c5f4ec7cd9749687bbdd3ba0ef35a7b58464c15edcfa6804e35f4c3f9",
-		)
-		console.log("orderPlaced", orderPlaced)
-		expect(orderPlaced).toBeDefined()
-	})
 })
 
 async function setUp() {
