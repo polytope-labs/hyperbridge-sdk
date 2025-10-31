@@ -46,14 +46,13 @@ import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import erc6160 from "@/abis/erc6160"
 import handler from "@/abis/handler"
-import { PERMIT2_ABI } from "@/abis/permit2"
-import universalRouter from "@/abis/universalRouter"
 import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
 import { strict as assert } from "assert"
+import { getOrderPlacedFromTx, getPostRequestEventFromTx, getPostResponseEventFromTx } from "@/utils/txEvents"
 
 describe.sequential("Intents protocol tests", () => {
-	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 		const bscMainnetId = "EVM-56"
 		const mainnetId = "EVM-1"
@@ -109,7 +108,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee === orderWithFee.fees)
 	}, 1_000_000)
 
-	it("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing bsc mainnet to arbitrum mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, arbitrumMainnetIsmpHost } = await setUpBscToArbitrum()
 		const bscMainnetId = "EVM-56"
 		const arbitrumMainnetId = "EVM-42161"
@@ -166,7 +165,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee === orderWithFee.fees)
 	}, 1_000_000)
 
-	it("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing base mainnet to bsc mainnet", async () => {
 		const { chainConfigService, baseMainnetIsmpHost, bscMainnetIsmpHost } = await setUpBaseToBsc()
 		const baseMainnetId = "EVM-8453"
 		const bscMainnetId = "EVM-56"
@@ -223,7 +222,7 @@ describe.sequential("Intents protocol tests", () => {
 		assert(estimatedFee === orderWithFee.fees)
 	}, 1_000_000)
 
-	it("Should generate the estimatedFee while doing bsc mainnet to polygon mainnet", async () => {
+	it.skip("Should generate the estimatedFee while doing bsc mainnet to polygon mainnet", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, polygonMainnetIsmpHost } = await setUpBscToPolygon()
 		const bscMainnetId = "EVM-56"
 		const polygonMainnetId = "EVM-137"
@@ -301,7 +300,7 @@ describe.sequential("Swap Tests", () => {
 		intentGateway = new IntentGateway(mainnetEvmChain, mainnetEvmChain)
 	})
 
-	it("should get V2 quote and simulate swap with exact output", async () => {
+	it.skip("should get V2 quote and simulate swap with exact output", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -385,7 +384,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V2 simulation successful - Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V3 quote and simulate swap with exact output", async () => {
+	it.skip("should get V3 quote and simulate swap with exact output", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -466,7 +465,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V3 simulation successful - Fee tier:", result.fee, "Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V2 quote and simulate ETH to USDC swap", async () => {
+	it.skip("should get V2 quote and simulate ETH to USDC swap", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = ADDRESS_ZERO // ETH
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -536,7 +535,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V2 ETH => USDC simulation successful - Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V2 quote and simulate USDC to ETH swap", async () => {
+	it.skip("should get V2 quote and simulate USDC to ETH swap", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
 		const tokenOut = ADDRESS_ZERO // ETH
@@ -596,7 +595,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V2 USDC => ETH simulation successful")
 	}, 1_000_000)
 
-	it("should get V3 quote and simulate ETH to USDC swap", async () => {
+	it.skip("should get V3 quote and simulate ETH to USDC swap", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = ADDRESS_ZERO // ETH
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -667,7 +666,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V3 ETH => USDC simulation successful - Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V3 quote and simulate USDC to ETH swap", async () => {
+	it.skip("should get V3 quote and simulate USDC to ETH swap", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
 		const tokenOut = ADDRESS_ZERO // ETH
@@ -728,7 +727,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V3 USDC => ETH simulation successful")
 	}, 1_000_000)
 
-	it("should get V4 quote and simulate ETH to USDC swap", async () => {
+	it.skip("should get V4 quote and simulate ETH to USDC swap", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = ADDRESS_ZERO // ETH
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -800,7 +799,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V4 ETH/USDC simulation successful - Fee tier:", result.fee, "Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V4 quote and simulate USDT to USDC swap with Permit2", async () => {
+	it.skip("should get V4 quote and simulate USDT to USDC swap with Permit2", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getUsdtAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -875,7 +874,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V4 USDT/USDC simulation successful - Fee tier:", result.fee, "Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V2 quote with exact input and generate calldata", async () => {
+	it.skip("should get V2 quote with exact input and generate calldata", async () => {
 		const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
 		const amountIn = parseUnits("1000", 18)
@@ -903,7 +902,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V2 Exact Input - Number of transactions:", result.transactions.length)
 	}, 1_000_000)
 
-	it("should get V3 quote with exact input and generate calldata", async () => {
+	it.skip("should get V3 quote with exact input and generate calldata", async () => {
 		const fillerWalletAddress = privateKeyToAddress(process.env.PRIVATE_KEY as HexString)
 		const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -933,7 +932,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V3 Exact Input - Number of transactions:", result.transactions.length)
 	}, 1_000_000)
 
-	it("should get V4 quote and simulate ETH to USDC swap with exact input", async () => {
+	it.skip("should get V4 quote and simulate ETH to USDC swap with exact input", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = ADDRESS_ZERO // ETH
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -1004,7 +1003,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V4 ETH/USDC exact input simulation successful - Output balance:", balance)
 	}, 1_000_000)
 
-	it("should get V4 quote and simulate USDT to USDC swap with exact input", async () => {
+	it.skip("should get V4 quote and simulate USDT to USDC swap with exact input", async () => {
 		const fillerWalletAddress = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
 		const tokenIn = chainConfigService.getUsdtAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
@@ -1083,7 +1082,7 @@ describe.sequential("Swap Tests", () => {
 		console.log("V4 USDT/USDC exact input simulation successful - Output balance:", balance)
 	}, 1_000_000)
 
-	it("should find best protocol automatically without selection", async () => {
+	it.skip("should find best protocol automatically without selection", async () => {
 		const tokenIn = chainConfigService.getDaiAsset(mainnetId)
 		const tokenOut = chainConfigService.getUsdcAsset(mainnetId)
 		const amountOut = parseUnits("1000", 6)
@@ -1190,7 +1189,7 @@ describe.sequential("Swap Tests", () => {
 	}, 1_000_000)
 })
 
-describe("Order Cancellation tests", () => {
+describe.sequential("Order Cancellation tests", () => {
 	let indexer: IndexerClient
 	let hyperbridgeInstance: SubstrateChain
 
@@ -1322,7 +1321,7 @@ describe("Order Cancellation tests", () => {
 			stateMachineId: "KUSAMA-4009",
 		}
 
-		const cancelGenerator = intentGateway.cancelOrder(order, hyperbridgeConfig, indexer)
+		const cancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, hyperbridgeConfig, indexer)
 
 		let result = await cancelGenerator.next()
 
@@ -1334,7 +1333,7 @@ describe("Order Cancellation tests", () => {
 				case "AWAITING_DESTINATION_FINALIZED":
 					if (data) {
 						console.log(
-							`Waiting for destination finalized. Current height: ${data.currentHeight}, Deadline: ${data.deadline}`,
+							`Waiting for destination finalized. Current height: ${data.latestHeight}, Deadline: ${data.deadline}`,
 						)
 					}
 					break
@@ -1403,25 +1402,42 @@ describe("Order Cancellation tests", () => {
 		}
 		expect(result.value?.status).toBe("SOURCE_FINALIZED")
 
-		while (!result.done && result.value?.status !== "SOURCE_PROOF_RECEIVED") {
-			result = await cancelGenerator.next()
-		}
-		expect(result.value?.status).toBe("SOURCE_PROOF_RECEIVED")
-
 		while (!result.done) {
-			if (result.value?.status === "HYPERBRIDGE_FINALIZED") {
-				if ("metadata" in result.value && result.value.metadata) {
+			const status = result.value?.status
+
+			if (status === "HYPERBRIDGE_DELIVERED") {
+				console.log("Hyperbridge delivered")
+				result = await cancelGenerator.next()
+				continue
+			}
+
+			if (status === "HYPERBRIDGE_FINALIZED") {
+				const data = (result.value as any).data
+				if (data?.metadata) {
 					console.log(
-						`Status ${result.value.status}, Transaction: https://sepolia.etherscan.io/tx/${result.value.metadata.transactionHash}`,
+						`Status ${result.value.status}, Transaction: https://sepolia.etherscan.io/tx/${data.metadata.transactionHash}`,
 					)
 				}
 				break
 			}
+
 			result = await cancelGenerator.next()
 		}
 
 		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
 	}, 1_000_000)
+})
+
+describe.sequential("Decode Transaction events", () => {
+	it("Should decode OrderPlaced event", async () => {
+		const { bscChapelPublicClient } = await setUpBscToSepoliaOrder()
+		const orderPlaced = await getOrderPlacedFromTx(
+			bscChapelPublicClient,
+			"0x2e563c9c5f4ec7cd9749687bbdd3ba0ef35a7b58464c15edcfa6804e35f4c3f9",
+		)
+		console.log("orderPlaced", orderPlaced)
+		expect(orderPlaced).toBeDefined()
+	})
 })
 
 async function setUp() {

@@ -24,6 +24,7 @@ import {
 	IGetRequest,
 	IHyperbridgeConfig,
 	RequestStatus,
+	RequestStatusWithMetadata,
 	type FillOptions,
 	type HexString,
 	type IPostRequest,
@@ -35,6 +36,7 @@ import { Decimal } from "decimal.js"
 import { getChain, IGetRequestMessage, IProof, requestCommitmentKey, SubstrateChain } from "@/chain"
 import { IndexerClient } from "@/client"
 import { Swap } from "@/utils/swap"
+import { createCancellationStorage, STORAGE_KEYS } from "@/storage"
 
 /**
  * IntentGateway handles cross-chain intent operations between EVM chains.
@@ -43,6 +45,8 @@ import { Swap } from "@/utils/swap"
  */
 export class IntentGateway {
 	public readonly swap: Swap
+	private readonly storage = createCancellationStorage()
+
 	/**
 	 * Creates a new IntentGateway instance for cross-chain operations.
 	 * @param source - The source EVM chain
@@ -455,65 +459,87 @@ export class IntentGateway {
 		order: Order,
 		hyperbridgeConfig: IHyperbridgeConfig,
 		indexerClient: IndexerClient,
-		storedData?: StoredCancellationData,
 	): AsyncGenerator<CancelEvent> {
+		const orderId = orderCommitment(order)
+
 		const hyperbridge = (await getChain({ ...hyperbridgeConfig, hasher: "Keccak" })) as SubstrateChain
 		const sourceStateMachine = hexToString(order.sourceChain as HexString)
 		const destStateMachine = hexToString(order.destChain as HexString)
 		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
 		const destConsensusStateId = this.dest.configService.getConsensusStateId(destStateMachine)
 
-		const destIProof =
-			storedData?.destIProof ??
-			(yield* fetchDestinationProof(
+		let destIProof: IProof | null = await this.storage.getItem(STORAGE_KEYS.destProof(orderId))
+		if (!destIProof) {
+			destIProof = yield* fetchDestinationProof(
 				order,
 				this.dest,
 				destStateMachine,
 				destConsensusStateId,
 				indexerClient,
 				hyperbridgeConfig,
-			))
+			)
+			await this.storage.setItem(STORAGE_KEYS.destProof(orderId), destIProof)
+		}
 
-		const getRequest = storedData?.getRequest ?? (yield { status: "AWAITING_GET_REQUEST", data: undefined })
-		if (!getRequest) throw new Error("GetRequest missing")
+		let getRequest: IGetRequest | null = await this.storage.getItem(STORAGE_KEYS.getRequest(orderId))
+		if (!getRequest) {
+			getRequest = yield { status: "AWAITING_GET_REQUEST", data: undefined }
+			if (!getRequest) throw new Error("GetRequest missing")
+			await this.storage.setItem(STORAGE_KEYS.getRequest(orderId), getRequest)
+		}
 
 		const commitment = getRequestCommitment({ ...getRequest, keys: [...getRequest.keys] })
 		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
+
 		for await (const statusUpdate of sourceStatusStream) {
-			if (statusUpdate.status !== RequestStatus.SOURCE_FINALIZED) continue
+			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
+				yield { status: "SOURCE_FINALIZED", data: { metadata: statusUpdate.metadata } }
 
-			yield { status: "SOURCE_FINALIZED", data: { metadata: statusUpdate.metadata } }
+				const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+				let sourceIProof: IProof | null = await this.storage.getItem(STORAGE_KEYS.sourceProof(orderId))
+				if (!sourceIProof) {
+					sourceIProof = await fetchSourceProof(
+						commitment,
+						this.source,
+						sourceStateMachine,
+						sourceConsensusStateId,
+						sourceHeight,
+					)
+					await this.storage.setItem(STORAGE_KEYS.sourceProof(orderId), sourceIProof)
+				}
 
-			const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
-			const sourceIProof =
-				storedData?.sourceIProof ??
-				(await fetchSourceProof(
-					commitment,
-					this.source,
-					sourceStateMachine,
-					sourceConsensusStateId,
-					sourceHeight,
-				))
-			yield { status: "SOURCE_PROOF_RECEIVED", data: sourceIProof }
+				await waitForChallengePeriod(hyperbridge, {
+					height: sourceIProof.height,
+					id: {
+						stateId: parseStateMachineId(sourceStateMachine).stateId,
+						consensusStateId: sourceConsensusStateId,
+					},
+				})
 
-			await waitForChallengePeriod(hyperbridge, {
-				height: sourceIProof.height,
-				id: {
-					stateId: parseStateMachineId(sourceStateMachine).stateId,
-					consensusStateId: sourceConsensusStateId,
-				},
-			})
+				const getRequestMessage: IGetRequestMessage = {
+					kind: "GetRequest",
+					requests: [getRequest],
+					source: sourceIProof,
+					response: destIProof,
+					signer: pad("0x"),
+				}
 
-			const getRequestMessage: IGetRequestMessage = {
-				kind: "GetRequest",
-				requests: [getRequest],
-				source: sourceIProof,
-				response: destIProof,
-				signer: pad("0x"),
+				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+				continue
 			}
 
-			await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
-			return
+			if (statusUpdate.status === RequestStatus.HYPERBRIDGE_DELIVERED) {
+				yield { status: "HYPERBRIDGE_DELIVERED", data: statusUpdate as RequestStatusWithMetadata }
+				continue
+			}
+
+			if (statusUpdate.status === RequestStatus.HYPERBRIDGE_FINALIZED) {
+				yield { status: "HYPERBRIDGE_FINALIZED", data: statusUpdate as RequestStatusWithMetadata }
+				await this.storage.removeItem(STORAGE_KEYS.destProof(orderId))
+				await this.storage.removeItem(STORAGE_KEYS.getRequest(orderId))
+				await this.storage.removeItem(STORAGE_KEYS.sourceProof(orderId))
+				return
+			}
 		}
 	}
 }
@@ -587,12 +613,9 @@ async function* fetchDestinationProof(
 
 			yield { status: "DESTINATION_FINALIZED", data: { proof } }
 			return proof
-		} catch (error) {
+		} catch (e) {
 			lastFailedHeight = latestHeight
-			yield {
-				status: "PROOF_FETCH_FAILED",
-				data: { failedHeight: latestHeight, error: String(error) },
-			}
+			yield { status: "PROOF_FETCH_FAILED", data: { failedHeight: latestHeight, error: (e as Error).message } }
 			await sleep(10000)
 		}
 	}
@@ -625,16 +648,11 @@ interface CancelEventMap {
 	PROOF_FETCH_FAILED: { failedHeight: bigint; error: string }
 	AWAITING_GET_REQUEST: undefined
 	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
+	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata
+	HYPERBRIDGE_FINALIZED: RequestStatusWithMetadata
 	SOURCE_PROOF_RECEIVED: IProof
-	RECEIPT_CONFIRMED: { commitment: string }
 }
 
 type CancelEvent = {
 	[K in keyof CancelEventMap]: { status: K; data: CancelEventMap[K] }
 }[keyof CancelEventMap]
-
-interface StoredCancellationData {
-	destIProof?: IProof
-	getRequest?: IGetRequest
-	sourceIProof?: IProof
-}
