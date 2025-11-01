@@ -1325,7 +1325,7 @@ describe.sequential("Order Cancellation tests", () => {
 			stateMachineId: "KUSAMA-4009",
 		}
 
-		const cancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, hyperbridgeConfig, indexer)
+		const cancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
 
 		let result = await cancelGenerator.next()
 

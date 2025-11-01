@@ -33,7 +33,6 @@ export async function getPostRequestEventFromTx(
 ): Promise<DecodedPostRequestEvent | undefined> {
 	const receipt = await client.getTransactionReceipt({ hash: txHash as Hex })
 	const events = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs }) as unknown as DecodedPostRequestEvent[]
-	console.log("events", events)
 	return events.find((e) => e.eventName === "PostRequestEvent")
 }
 
