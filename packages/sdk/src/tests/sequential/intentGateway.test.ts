@@ -1333,23 +1333,6 @@ describe.sequential("Order Cancellation tests", () => {
 			const status = result.value?.status
 			const data = result.value && "data" in result.value ? (result.value as any).data : undefined
 
-			switch (status) {
-				case "AWAITING_DESTINATION_FINALIZED":
-					if (data) {
-						console.log(
-							`Waiting for destination finalized. Current height: ${data.latestHeight}, Deadline: ${data.deadline}`,
-						)
-					}
-					break
-				case "PROOF_FETCH_FAILED":
-					if (data) {
-						console.log(`Proof fetch failed at height: ${data.failedHeight}`)
-					}
-					break
-				default:
-					break
-			}
-
 			result = await cancelGenerator.next()
 		}
 
@@ -1381,25 +1364,7 @@ describe.sequential("Order Cancellation tests", () => {
 
 		console.log("Order cancelled on BSC")
 
-		// parse EvmHost GetRequestEvent emitted in the transaction logs
-		const event = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })[0]
-		if (event.eventName !== "GetRequestEvent") {
-			throw new Error("Unexpected Event type")
-		}
-
-		const { source, dest, from, nonce, height, keys, timeoutTimestamp, context } = event.args
-		const getRequest: IGetRequest = {
-			source,
-			dest,
-			from,
-			nonce,
-			height,
-			keys: Array.from(keys),
-			timeoutTimestamp,
-			context,
-		}
-
-		result = await cancelGenerator.next(getRequest)
+		result = await cancelGenerator.next(hash)
 
 		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
 			result = await cancelGenerator.next()

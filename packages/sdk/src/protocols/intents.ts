@@ -676,9 +676,7 @@ async function fetchSourceProof(
 }
 
 interface CancelEventMap {
-	AWAITING_DESTINATION_FINALIZED: { latestHeight: bigint; lastFailedHeight: bigint | null; deadline: bigint }
 	DESTINATION_FINALIZED: { proof: IProof }
-	PROOF_FETCH_FAILED: { failedHeight: bigint; error: string }
 	AWAITING_GET_REQUEST: undefined
 	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
 	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata
