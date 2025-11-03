@@ -282,16 +282,19 @@ export class IntentGatewayService {
 
 			// Award points for order filling - using USD value directly
 			if (status === OrderStatus.FILLED && filler) {
-				// Volume
-				let outputPaymentInfo: PaymentInfo[] = orderPlaced.outputTokens.map((token, index) => {
-					return {
-						token: token as Hex,
-						amount: orderPlaced.outputAmounts[index],
-						beneficiary: orderPlaced.outputBeneficiaries[index] as Hex,
-					}
-				})
-				let outputUSD = await this.getOutputValuesUSD(outputPaymentInfo)
-				await VolumeService.updateVolume(`IntentGateway.FILLER.${filler}`, outputUSD.total, timestamp)
+				if (orderPlaced.outputTokens.length > 0) {
+					// Volume
+					let outputPaymentInfo: PaymentInfo[] = orderPlaced.outputTokens.map((token, index) => {
+						return {
+							token: token as Hex,
+							amount: orderPlaced.outputAmounts[index],
+							beneficiary: orderPlaced.outputBeneficiaries[index] as Hex,
+						}
+					})
+					let outputUSD = await this.getOutputValuesUSD(outputPaymentInfo)
+
+					await VolumeService.updateVolume(`IntentGateway.FILLER.${filler}`, outputUSD.total, timestamp)
+				}
 
 				const orderValue = new Decimal(orderPlaced.inputUSD)
 				const pointsToAward = orderValue.floor().toNumber()
