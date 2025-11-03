@@ -455,35 +455,21 @@ export class IntentGateway {
 	 * @param fee - The fee amount in fee token
 	 * @returns The native token amount required
 	 */
-	async quoteNative(request: IPostRequest | IGetRequest, fee: bigint): Promise<bigint> {
-		console.log({
-			get: request,
-		})
-		let dispatch: DispatchPost | DispatchGet
-		if ("body" in request) {
-			dispatch = {
-				dest: toHex(request.dest),
-				to: request.to,
-				body: request.body,
-				timeout: request.timeoutTimestamp,
-				fee,
-				payer: request.from,
-			}
-		} else {
-			dispatch = {
-				dest: toHex(request.dest),
-				height: request.height,
-				keys: request.keys,
-				timeout: request.timeoutTimestamp,
-				fee,
-				context: request.context,
-			}
+	async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
+		const dispatchPost: DispatchPost = {
+			dest: toHex(postRequest.dest),
+			to: postRequest.to,
+			body: postRequest.body,
+			timeout: postRequest.timeoutTimestamp,
+			fee: fee,
+			payer: postRequest.from,
 		}
+
 		const quoteNative = await this.dest.client.readContract({
-			address: this.dest.configService.getIntentGatewayAddress(dispatch.dest),
+			address: this.dest.configService.getIntentGatewayAddress(postRequest.dest),
 			abi: IntentGatewayABI.ABI,
 			functionName: "quoteNative",
-			args: [dispatch] as any,
+			args: [dispatchPost] as any,
 		})
 
 		return quoteNative

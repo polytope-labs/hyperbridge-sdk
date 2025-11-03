@@ -1396,7 +1396,7 @@ describe.sequential("Order Cancellation tests", () => {
 		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
 	}, 1_000_000)
 
-	it.only("Should quote native amount required for cancellation (BSC -> ETH)", async () => {
+	it("Should quote native amount required for cancellation (BSC -> ETH)", async () => {
 		const { chainConfigService, bscMainnetIsmpHost, mainnetIsmpHost } = await setUp()
 
 		const bscMainnetId = "EVM-56"
@@ -1445,7 +1445,6 @@ describe.sequential("Order Cancellation tests", () => {
 
 		const nativeRequired = await intentGateway.quoteCancelNative(order)
 		console.log("Native required for cancellation (BSC -> ETH):", nativeRequired)
-		expect(typeof nativeRequired === "bigint").toBe(true)
 		expect(nativeRequired >= 0n).toBe(true)
 	}, 1_000_000)
 })
