@@ -331,23 +331,6 @@ export class IntentGatewayService {
 					)
 				}
 			}
-
-			// Deduct points when order is cancelled
-			if (status === OrderStatus.REFUNDED) {
-				const orderValue = new Decimal(orderPlaced.inputUSD)
-				const pointsToDeduct = orderValue.floor().toNumber()
-
-				await PointsService.deductPoints(
-					orderPlaced.user,
-					orderPlaced.sourceChain,
-					BigInt(pointsToDeduct),
-					ProtocolParticipantType.USER,
-					PointsActivityType.ORDER_PLACED_POINTS,
-					transactionHash,
-					`Points deducted for refunded order ${commitment} with value ${orderPlaced.inputUSD} USD`,
-					timestamp,
-				)
-			}
 		}
 
 		const orderStatusMetadata = await OrderStatusMetadata.create({
