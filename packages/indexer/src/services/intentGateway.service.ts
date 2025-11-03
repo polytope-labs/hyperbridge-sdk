@@ -294,44 +294,44 @@ export class IntentGatewayService {
 					let outputUSD = await this.getOutputValuesUSD(outputPaymentInfo)
 
 					await VolumeService.updateVolume(`IntentGateway.FILLER.${filler}`, outputUSD.total, timestamp)
-				}
 
-				const orderValue = new Decimal(orderPlaced.inputUSD)
-				const pointsToAward = orderValue.floor().toNumber()
+					const orderValue = new Decimal(orderPlaced.inputUSD)
+					const pointsToAward = orderValue.floor().toNumber()
 
-				// Rewards
-				await PointsService.awardPoints(
-					filler,
-					ethers.utils.toUtf8String(orderPlaced.destChain),
-					BigInt(pointsToAward),
-					ProtocolParticipantType.FILLER,
-					PointsActivityType.ORDER_FILLED_POINTS,
-					transactionHash,
-					`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
-					timestamp,
-				)
-
-				// User
-				let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
-				user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
-					.plus(new Decimal(orderPlaced.inputUSD))
-					.toString()
-				user.totalFilledOrders = user.totalFilledOrders + BigInt(1)
-				await user.save()
-
-				// Referrer
-				if (user.referrer) {
-					const referrerPointsToAward = Math.floor(pointsToAward / 2)
+					// Rewards
 					await PointsService.awardPoints(
-						user.referrer,
-						ethers.utils.toUtf8String(orderPlaced.sourceChain),
-						BigInt(referrerPointsToAward),
-						ProtocolParticipantType.REFERRER,
-						PointsActivityType.ORDER_REFERRED_POINTS,
+						filler,
+						ethers.utils.toUtf8String(orderPlaced.destChain),
+						BigInt(pointsToAward),
+						ProtocolParticipantType.FILLER,
+						PointsActivityType.ORDER_FILLED_POINTS,
 						transactionHash,
 						`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
 						timestamp,
 					)
+
+					// User
+					let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
+					user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
+						.plus(new Decimal(orderPlaced.inputUSD))
+						.toString()
+					user.totalFilledOrders = user.totalFilledOrders + BigInt(1)
+					await user.save()
+
+					// Referrer
+					if (user.referrer) {
+						const referrerPointsToAward = Math.floor(pointsToAward / 2)
+						await PointsService.awardPoints(
+							user.referrer,
+							ethers.utils.toUtf8String(orderPlaced.sourceChain),
+							BigInt(referrerPointsToAward),
+							ProtocolParticipantType.REFERRER,
+							PointsActivityType.ORDER_REFERRED_POINTS,
+							transactionHash,
+							`Points awarded for filling order ${commitment} with value ${orderPlaced.inputUSD} USD`,
+							timestamp,
+						)
+					}
 				}
 			}
 		}
