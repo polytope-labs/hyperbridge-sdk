@@ -494,7 +494,7 @@ export class EvmChain implements IChain {
 			address: this.params.host,
 			abi: EvmHost.ABI,
 			functionName: "perByteFee",
-			args,
+			args: args as any,
 		})
 
 		const length = bodyByteLength < 32 ? 32 : bodyByteLength
