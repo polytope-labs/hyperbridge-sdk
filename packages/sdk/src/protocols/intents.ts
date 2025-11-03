@@ -72,66 +72,6 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Returns the native token amount required to dispatch a cancellation GET request for the given order.
-	 * Internally constructs the IGetRequest and calls quoteNative.
-	 */
-	async quoteCancelNative(order: Order): Promise<bigint> {
-		const orderWithCommitment = transformOrder(order)
-
-		const height = (orderWithCommitment.deadline as bigint) + 1n
-
-		const destIntentGateway = this.dest.configService.getIntentGatewayAddress(orderWithCommitment.destChain)
-		const slotHash = await this.dest.client.readContract({
-			abi: IntentGatewayABI.ABI,
-			address: destIntentGateway,
-			functionName: "calculateCommitmentSlotHash",
-			args: [orderWithCommitment.id as HexString],
-		})
-		const key = concatHex([destIntentGateway as HexString, slotHash as HexString]) as HexString
-
-		const context = encodeAbiParameters(
-			[
-				{
-					name: "requestBody",
-					type: "tuple",
-					components: [
-						{ name: "commitment", type: "bytes32" },
-						{ name: "beneficiary", type: "bytes32" },
-						{
-							name: "tokens",
-							type: "tuple[]",
-							components: [
-								{ name: "token", type: "bytes32" },
-								{ name: "amount", type: "uint256" },
-							],
-						},
-					],
-				},
-			],
-			[
-				{
-					commitment: orderWithCommitment.id as HexString,
-					beneficiary: orderWithCommitment.user as HexString,
-					tokens: orderWithCommitment.inputs,
-				},
-			],
-		) as HexString
-
-		const getRequest: IGetRequest = {
-			source: orderWithCommitment.sourceChain,
-			dest: orderWithCommitment.destChain,
-			from: this.source.configService.getIntentGatewayAddress(orderWithCommitment.destChain),
-			nonce: await this.source.getHostNonce(),
-			height,
-			keys: [key],
-			timeoutTimestamp: 0n,
-			context,
-		}
-
-		return await this.source.quoteNative(getRequest, 0n)
-	}
-
-	/**
 	 * Estimates the total cost required to fill an order, including gas fees, relayer fees,
 	 * protocol fees, and swap operations.
 	 *
@@ -529,6 +469,66 @@ export class IntentGateway {
 		}
 
 		console.log("Hyperbridge Receipt confirmed.")
+	}
+
+	/**
+	 * Returns the native token amount required to dispatch a cancellation GET request for the given order.
+	 * Internally constructs the IGetRequest and calls quoteNative.
+	 */
+	async quoteCancelNative(order: Order): Promise<bigint> {
+		const orderWithCommitment = transformOrder(order)
+
+		const height = (orderWithCommitment.deadline as bigint) + 1n
+
+		const destIntentGateway = this.dest.configService.getIntentGatewayAddress(orderWithCommitment.destChain)
+		const slotHash = await this.dest.client.readContract({
+			abi: IntentGatewayABI.ABI,
+			address: destIntentGateway,
+			functionName: "calculateCommitmentSlotHash",
+			args: [orderWithCommitment.id as HexString],
+		})
+		const key = concatHex([destIntentGateway as HexString, slotHash as HexString]) as HexString
+
+		const context = encodeAbiParameters(
+			[
+				{
+					name: "requestBody",
+					type: "tuple",
+					components: [
+						{ name: "commitment", type: "bytes32" },
+						{ name: "beneficiary", type: "bytes32" },
+						{
+							name: "tokens",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+					],
+				},
+			],
+			[
+				{
+					commitment: orderWithCommitment.id as HexString,
+					beneficiary: orderWithCommitment.user as HexString,
+					tokens: orderWithCommitment.inputs,
+				},
+			],
+		) as HexString
+
+		const getRequest: IGetRequest = {
+			source: orderWithCommitment.sourceChain,
+			dest: orderWithCommitment.destChain,
+			from: this.source.configService.getIntentGatewayAddress(orderWithCommitment.destChain),
+			nonce: await this.source.getHostNonce(),
+			height,
+			keys: [key],
+			timeoutTimestamp: 0n,
+			context,
+		}
+
+		return await this.source.quoteNative(getRequest, 0n)
 	}
 
 	/**
