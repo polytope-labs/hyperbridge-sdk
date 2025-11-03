@@ -18,8 +18,19 @@ import {
 	getGasPriceFromEtherscan,
 	USE_ETHERSCAN_CHAINS,
 } from "@/utils"
-import { formatUnits, hexToString, maxUint256, pad, parseEventLogs, parseUnits, toHex } from "viem"
 import {
+	formatUnits,
+	hexToString,
+	maxUint256,
+	pad,
+	parseEventLogs,
+	parseUnits,
+	toHex,
+	encodeAbiParameters,
+	concatHex,
+} from "viem"
+import {
+	DispatchGet,
 	DispatchPost,
 	IGetRequest,
 	IHyperbridgeConfig,
@@ -58,6 +69,66 @@ export class IntentGateway {
 		public readonly dest: EvmChain,
 	) {
 		this.swap = new Swap()
+	}
+
+	/**
+	 * Returns the native token amount required to dispatch a cancellation GET request for the given order.
+	 * Internally constructs the IGetRequest and calls quoteNative.
+	 */
+	async quoteCancelNative(order: Order): Promise<bigint> {
+		const orderWithCommitment = transformOrder(order)
+
+		const height = (orderWithCommitment.deadline as bigint) + 1n
+
+		const destIntentGateway = this.dest.configService.getIntentGatewayAddress(orderWithCommitment.destChain)
+		const slotHash = await this.dest.client.readContract({
+			abi: IntentGatewayABI.ABI,
+			address: destIntentGateway,
+			functionName: "calculateCommitmentSlotHash",
+			args: [orderWithCommitment.id as HexString],
+		})
+		const key = concatHex([destIntentGateway as HexString, slotHash as HexString]) as HexString
+
+		const context = encodeAbiParameters(
+			[
+				{
+					name: "requestBody",
+					type: "tuple",
+					components: [
+						{ name: "commitment", type: "bytes32" },
+						{ name: "beneficiary", type: "bytes32" },
+						{
+							name: "tokens",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+					],
+				},
+			],
+			[
+				{
+					commitment: orderWithCommitment.id as HexString,
+					beneficiary: orderWithCommitment.user as HexString,
+					tokens: orderWithCommitment.inputs,
+				},
+			],
+		) as HexString
+
+		const getRequest: IGetRequest = {
+			source: orderWithCommitment.sourceChain,
+			dest: orderWithCommitment.destChain,
+			from: this.source.configService.getIntentGatewayAddress(orderWithCommitment.destChain),
+			nonce: await this.source.getHostNonce(),
+			height,
+			keys: [key],
+			timeoutTimestamp: 0n,
+			context,
+		}
+
+		return await this.source.quoteNative(getRequest, 0n)
 	}
 
 	/**
@@ -384,21 +455,35 @@ export class IntentGateway {
 	 * @param fee - The fee amount in fee token
 	 * @returns The native token amount required
 	 */
-	async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
-		const dispatchPost: DispatchPost = {
-			dest: toHex(postRequest.dest),
-			to: postRequest.to,
-			body: postRequest.body,
-			timeout: postRequest.timeoutTimestamp,
-			fee: fee,
-			payer: postRequest.from,
+	async quoteNative(request: IPostRequest | IGetRequest, fee: bigint): Promise<bigint> {
+		console.log({
+			get: request,
+		})
+		let dispatch: DispatchPost | DispatchGet
+		if ("body" in request) {
+			dispatch = {
+				dest: toHex(request.dest),
+				to: request.to,
+				body: request.body,
+				timeout: request.timeoutTimestamp,
+				fee,
+				payer: request.from,
+			}
+		} else {
+			dispatch = {
+				dest: toHex(request.dest),
+				height: request.height,
+				keys: request.keys,
+				timeout: request.timeoutTimestamp,
+				fee,
+				context: request.context,
+			}
 		}
-
 		const quoteNative = await this.dest.client.readContract({
-			address: this.dest.configService.getIntentGatewayAddress(postRequest.dest),
+			address: this.dest.configService.getIntentGatewayAddress(dispatch.dest),
 			abi: IntentGatewayABI.ABI,
 			functionName: "quoteNative",
-			args: [dispatchPost] as any,
+			args: [dispatch] as any,
 		})
 
 		return quoteNative
