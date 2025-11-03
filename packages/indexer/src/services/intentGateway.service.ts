@@ -282,8 +282,12 @@ export class IntentGatewayService {
 
 			// Award points for order filling - using USD value directly
 			if (status === OrderStatus.FILLED && filler) {
-				// Volume
-				let outputPaymentInfo: PaymentInfo[] = orderPlaced.outputTokens.map((token, index) => {
+				// Skip awarding points if outputs are empty
+				if (orderPlaced.outputTokens.length === 0) {
+					logger.info(`Order ${commitment} has no outputs, skipping point awards`)
+				} else {
+					// Volume
+					let outputPaymentInfo: PaymentInfo[] = orderPlaced.outputTokens.map((token, index) => {
 					return {
 						token: token as Hex,
 						amount: orderPlaced.outputAmounts[index],
@@ -330,6 +334,7 @@ export class IntentGatewayService {
 						timestamp,
 					)
 				}
+				}
 			}
 
 			// Deduct points when order is cancelled
@@ -350,7 +355,7 @@ export class IntentGatewayService {
 			}
 		}
 
-		const orderStatusMetadata = await OrderStatusMetadata.create({
+		const orderStatusMetadata = OrderStatusMetadata.create({
 			id: `${commitment}.${status}`,
 			orderId: commitment,
 			status,
