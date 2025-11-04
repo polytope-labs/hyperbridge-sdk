@@ -1,15 +1,4 @@
-import {
-	getContract,
-	toHex,
-	encodePacked,
-	keccak256,
-	maxUint256,
-	PublicClient,
-	encodeAbiParameters,
-	parseAbiParameters,
-	formatUnits,
-	parseUnits,
-} from "viem"
+import { getContract, toHex, encodePacked, keccak256, maxUint256, formatUnits, parseUnits } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -41,8 +30,6 @@ import { ApiPromise, WsProvider } from "@polkadot/api"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import { CacheService } from "./CacheService"
 import { UNISWAP_ROUTER_V2_ABI } from "@/config/abis/UniswapRouterV2"
-import { UNISWAP_V3_QUOTER_V2_ABI } from "@/config/abis/UniswapV3QuoterV2"
-import { UNISWAP_V4_QUOTER_ABI } from "@/config/abis/UniswapV4Quoter"
 import { getLogger } from "@/services/Logger"
 import { Decimal } from "decimal.js"
 
