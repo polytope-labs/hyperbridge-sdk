@@ -773,10 +773,10 @@ export class ContractInteractionService {
 		const inputs = order.inputs
 
 		// Restrict to only USDC and USDT on both sides; otherwise throw error
-		const destUsdc = this.configService.getUsdcAsset(order.destChain).toLowerCase()
-		const destUsdt = this.configService.getUsdtAsset(order.destChain).toLowerCase()
-		const sourceUsdc = this.configService.getUsdcAsset(order.sourceChain).toLowerCase()
-		const sourceUsdt = this.configService.getUsdtAsset(order.sourceChain).toLowerCase()
+		const destUsdc = this.configService.getUsdcAsset(order.destChain)
+		const destUsdt = this.configService.getUsdtAsset(order.destChain)
+		const sourceUsdc = this.configService.getUsdcAsset(order.sourceChain)
+		const sourceUsdt = this.configService.getUsdtAsset(order.sourceChain)
 
 		const outputsAreStableOnly = outputs.every((o) => {
 			const addr = bytes32ToBytes20(o.token).toLowerCase()
