@@ -12,7 +12,6 @@ import {
 	FillerConfigService,
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
-	CoinGeckoConfig,
 	EtherscanConfig,
 	LoggingConfig,
 } from "../services/FillerConfigService.js"
@@ -58,7 +57,6 @@ interface FillerTomlConfig {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
-		coingecko?: CoinGeckoConfig
 		etherscan?: EtherscanConfig
 		logging?: LoggingConfig
 	}
@@ -102,16 +100,14 @@ program
 				rpcUrl: chain.rpcUrl,
 			}))
 
-			const fillerConfigForService: FillerServiceConfig | undefined =
-				config.filler.coingecko || config.filler.logging
-					? {
-							privateKey: config.filler.privateKey,
-							maxConcurrentOrders: config.filler.maxConcurrentOrders,
-							coingecko: config.filler.coingecko,
-							etherscan: config.filler.etherscan,
-							logging: config.filler.logging,
-						}
-					: undefined
+			const fillerConfigForService: FillerServiceConfig | undefined = config.filler.logging
+				? {
+						privateKey: config.filler.privateKey,
+						maxConcurrentOrders: config.filler.maxConcurrentOrders,
+						etherscan: config.filler.etherscan,
+						logging: config.filler.logging,
+					}
+				: undefined
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
 

@@ -791,6 +791,57 @@ describe.sequential("Basic", () => {
 	}, 300_000)
 })
 
+describe.sequential("ContractInteractionService - getTokenUsdValue", () => {
+	it("Should compute USD totals for USDC/USDT-only orders using token decimals", async () => {
+		const { chainConfigService, bscChapelId, mainnetId, contractInteractionService } = await setUp()
+
+		const sourceUsdc = chainConfigService.getUsdcAsset(bscChapelId)
+		const sourceUsdt = chainConfigService.getUsdtAsset(bscChapelId)
+		const destUsdc = chainConfigService.getUsdcAsset(mainnetId)
+		const destUsdt = chainConfigService.getUsdtAsset(mainnetId)
+
+		const srcUsdcDec = await contractInteractionService.getTokenDecimals(sourceUsdc, bscChapelId)
+		const srcUsdtDec = await contractInteractionService.getTokenDecimals(sourceUsdt, bscChapelId)
+		const dstUsdcDec = await contractInteractionService.getTokenDecimals(destUsdc, mainnetId)
+		const dstUsdtDec = await contractInteractionService.getTokenDecimals(destUsdt, mainnetId)
+
+		const inputs: TokenInfo[] = [
+			{ token: bytes20ToBytes32(sourceUsdc), amount: parseUnits("10.0112", srcUsdcDec) },
+			{ token: bytes20ToBytes32(sourceUsdt), amount: parseUnits("2.223", srcUsdtDec) },
+		]
+
+		const outputs: PaymentInfo[] = [
+			{
+				token: bytes20ToBytes32(destUsdc),
+				amount: parseUnits("3.3345", dstUsdcDec),
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+			{
+				token: bytes20ToBytes32(destUsdt),
+				amount: parseUnits("4.4456", dstUsdtDec),
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order: Order = {
+			user: "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString,
+			sourceChain: bscChapelId,
+			destChain: mainnetId,
+			deadline: 65337297000n,
+			nonce: 0n,
+			fees: 0n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		const { outputUsdValue, inputUsdValue } = await contractInteractionService.getTokenUsdValue(order)
+
+		console.log("outputUsdValue", outputUsdValue.toNumber())
+		console.log("inputUsdValue", inputUsdValue.toNumber())
+	})
+})
+
 describe.sequential("ConfirmationPolicy", () => {
 	it("Should return correct confirmations for min, max, and interpolated amounts", () => {
 		const policyConfig = {

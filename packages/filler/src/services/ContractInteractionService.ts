@@ -578,32 +578,6 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Gets the current native token price in USD with 18 decimal precision.
-	 *
-	 * @param chain - The chain identifier to get native token price for
-	 * @returns The native token price in USD scaled to 18 decimals (e.g., $3000.50 becomes 3000500000000000000000n)
-	 */
-	async getNativeTokenPrice(chain: string): Promise<bigint> {
-		let client = this.clientManager.getPublicClient(chain)
-		const nativeToken = client.chain?.nativeCurrency
-		const chainId = client.chain?.id
-
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
-		}
-
-		const nativeTokenPriceUsd = await retryPromise(
-			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
-			{
-				maxRetries: 3,
-				backoffMs: 250,
-			},
-		)
-
-		return BigInt(Math.floor(nativeTokenPriceUsd * Math.pow(10, 18)))
-	}
-
-	/**
 	 * Converts gas costs to the equivalent amount in the fee token.
 	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
 	 *
@@ -627,26 +601,38 @@ export class ContractInteractionService {
 					})
 				: await client.getGasPrice()
 		const gasCostInWei = gasEstimate * gasPrice
-		const nativeToken = client.chain?.nativeCurrency
-		const chainId = client.chain?.id
 
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
+		const routerAddr = this.configService.getUniswapRouterV2Address(chain)
+		const wethAddr = this.configService.getWrappedNativeAssetWithDecimals(chain).asset
+		const feeToken = await this.getFeeTokenWithDecimals(chain)
+
+		try {
+			const quoteIn = await client.simulateContract({
+				abi: UNISWAP_ROUTER_V2_ABI,
+				address: routerAddr,
+				// @ts-ignore
+				functionName: "getAmountsIn",
+				// @ts-ignore
+				args: [gasCostInWei, [feeToken.address, wethAddr]],
+			})
+			return quoteIn.result[0]
+		} catch {
+			// Testnet block
+			this.logger.warn({ chain }, "On-chain quote failed, falling back to price API")
+			const nativeToken = client.chain?.nativeCurrency
+			const chainId = client.chain?.id
+			if (!nativeToken?.symbol || !nativeToken?.decimals) {
+				throw new Error("Chain native currency information not available")
+			}
+			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeToken.decimals))
+			const tokenPriceUsd = new Decimal(
+				await retryPromise(() => fetchPrice(nativeToken.symbol, chainId), { maxRetries: 3, backoffMs: 250 }),
+			)
+			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
+			const feeTokenPriceUsd = new Decimal(1)
+			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
+			return parseUnits(gasCostInFeeToken.toFixed(targetDecimals), targetDecimals)
 		}
-
-		const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeToken.decimals))
-		const tokenPriceUsd = new Decimal(
-			await retryPromise(() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()), {
-				maxRetries: 3,
-				backoffMs: 250,
-			}),
-		)
-		const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
-
-		const feeTokenPriceUsd = new Decimal(1) // DAI/USDC/USDT ≈ $1 (stable coin)
-		const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
-
-		return parseUnits(gasCostInFeeToken.toFixed(targetDecimals), targetDecimals)
 	}
 
 	/**
@@ -781,156 +767,47 @@ export class ContractInteractionService {
 	 * @returns An object containing the total USD values of outputs and inputs
 	 */
 	async getTokenUsdValue(order: Order): Promise<{ outputUsdValue: Decimal; inputUsdValue: Decimal }> {
-		const { destClient, sourceClient } = this.clientManager.getClientsForOrder(order)
 		let outputUsdValue = new Decimal(0)
 		let inputUsdValue = new Decimal(0)
 		const outputs = order.outputs
 		const inputs = order.inputs
 
+		// Restrict to only USDC and USDT on both sides; otherwise throw error
+		const destUsdc = this.configService.getUsdcAsset(order.destChain).toLowerCase()
+		const destUsdt = this.configService.getUsdtAsset(order.destChain).toLowerCase()
+		const sourceUsdc = this.configService.getUsdcAsset(order.sourceChain).toLowerCase()
+		const sourceUsdt = this.configService.getUsdtAsset(order.sourceChain).toLowerCase()
+
+		const outputsAreStableOnly = outputs.every((o) => {
+			const addr = bytes32ToBytes20(o.token).toLowerCase()
+			return addr === destUsdc || addr === destUsdt
+		})
+		const inputsAreStableOnly = inputs.every((i) => {
+			const addr = bytes32ToBytes20(i.token).toLowerCase()
+			return addr === sourceUsdc || addr === sourceUsdt
+		})
+
+		if (!outputsAreStableOnly || !inputsAreStableOnly) {
+			throw new Error("Only USDC and USDT are supported for token value calculation")
+		}
+
+		// For stables, USD value equals the normalized token amount (peg ~ $1)
 		for (const output of outputs) {
-			let tokenAddress = bytes32ToBytes20(output.token)
-			let decimals = 18
-			let amount = output.amount
-			let priceIdentifier: string
-
-			if (tokenAddress === ADDRESS_ZERO) {
-				priceIdentifier = destClient.chain?.nativeCurrency?.symbol!
-				decimals = destClient.chain?.nativeCurrency?.decimals!
-			} else {
-				decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
-				priceIdentifier = tokenAddress
-			}
-
-			const pricePerToken = await retryPromise(
-				() => fetchPrice(priceIdentifier, destClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
-				{
-					maxRetries: 3,
-					backoffMs: 250,
-				},
-			)
-
-			// Use Decimal for precise calculations
+			const tokenAddress = bytes32ToBytes20(output.token)
+			const decimals = await this.getTokenDecimals(tokenAddress, order.destChain)
+			const amount = output.amount
 			const tokenAmount = new Decimal(formatUnits(amount, decimals))
-			const tokenPrice = new Decimal(pricePerToken)
-			const tokenAmountValue = tokenAmount.times(tokenPrice)
-			outputUsdValue = outputUsdValue.plus(tokenAmountValue)
+			outputUsdValue = outputUsdValue.plus(tokenAmount)
 		}
 
 		for (const input of inputs) {
-			let tokenAddress = bytes32ToBytes20(input.token)
-			let decimals = 18
-			let amount = input.amount
-			let priceIdentifier: string
-
-			if (tokenAddress === ADDRESS_ZERO) {
-				priceIdentifier = sourceClient.chain?.nativeCurrency?.symbol!
-				decimals = sourceClient.chain?.nativeCurrency?.decimals!
-			} else {
-				decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
-				priceIdentifier = tokenAddress
-			}
-
-			const pricePerToken = await retryPromise(
-				() => fetchPrice(priceIdentifier, sourceClient.chain?.id!, this.configService.getCoinGeckoApiKey()),
-				{
-					maxRetries: 3,
-					backoffMs: 250,
-				},
-			)
-
+			const tokenAddress = bytes32ToBytes20(input.token)
+			const decimals = await this.getTokenDecimals(tokenAddress, order.sourceChain)
+			const amount = input.amount
 			const tokenAmount = new Decimal(formatUnits(amount, decimals))
-			const tokenPrice = new Decimal(pricePerToken)
-			const tokenAmountValue = tokenAmount.times(tokenPrice)
-			inputUsdValue = inputUsdValue.plus(tokenAmountValue)
+			inputUsdValue = inputUsdValue.plus(tokenAmount)
 		}
 
-		return {
-			outputUsdValue: outputUsdValue,
-			inputUsdValue: inputUsdValue,
-		}
-	}
-
-	/**
-	 * Gets the filler's token balances and their total USD value on a specific chain.
-	 * Includes native token, DAI, USDT, and USDC balances.
-	 *
-	 * @param chain - The chain identifier to get balances for
-	 * @returns An object containing individual token balances and total USD value
-	 */
-	async getFillerBalanceUSD(chain: string): Promise<{
-		nativeTokenBalance: bigint
-		daiBalance: bigint
-		usdtBalance: bigint
-		usdcBalance: bigint
-		totalBalanceUsd: Decimal
-	}> {
-		const fillerWalletAddress = privateKeyToAddress(this.privateKey)
-		const destClient = this.clientManager.getPublicClient(chain)
-		const chainId = destClient.chain?.id!
-
-		const nativeTokenBalance = await destClient.getBalance({ address: fillerWalletAddress })
-		const nativeToken = destClient.chain?.nativeCurrency
-		if (!nativeToken?.symbol || !nativeToken?.decimals) {
-			throw new Error("Chain native currency information not available")
-		}
-
-		const nativeTokenPriceUsd = await retryPromise(
-			() => fetchPrice(nativeToken.symbol, chainId, this.configService.getCoinGeckoApiKey()),
-			{
-				maxRetries: 3,
-				backoffMs: 250,
-			},
-		)
-
-		// Use Decimal for precise calculations
-		const nativeTokenAmount = new Decimal(formatUnits(nativeTokenBalance, nativeToken.decimals))
-		const nativeTokenPrice = new Decimal(nativeTokenPriceUsd)
-		const nativeTokenUsdValue = nativeTokenAmount.times(nativeTokenPrice)
-
-		// DAI Balance
-		const daiAddress = this.configService.getDaiAsset(chain)
-		const daiBalance = await destClient.readContract({
-			abi: ERC20_ABI,
-			address: daiAddress,
-			functionName: "balanceOf",
-			args: [fillerWalletAddress],
-		})
-		const daiDecimals = await this.getTokenDecimals(daiAddress, chain)
-		const daiAmount = new Decimal(formatUnits(daiBalance, daiDecimals))
-		const daiBalanceUsd = daiAmount // DAI ≈ $1
-
-		// USDT Balance
-		const usdtAddress = this.configService.getUsdtAsset(chain)
-		const usdtBalance = await destClient.readContract({
-			abi: ERC20_ABI,
-			address: usdtAddress,
-			functionName: "balanceOf",
-			args: [fillerWalletAddress],
-		})
-		const usdtDecimals = await this.getTokenDecimals(usdtAddress, chain)
-		const usdtAmount = new Decimal(formatUnits(usdtBalance, usdtDecimals))
-		const usdtBalanceUsd = usdtAmount // USDT ≈ $1
-
-		// USDC Balance
-		const usdcAddress = this.configService.getUsdcAsset(chain)
-		const usdcBalance = await destClient.readContract({
-			abi: ERC20_ABI,
-			address: usdcAddress,
-			functionName: "balanceOf",
-			args: [fillerWalletAddress],
-		})
-		const usdcDecimals = await this.getTokenDecimals(usdcAddress, chain)
-		const usdcAmount = new Decimal(formatUnits(usdcBalance, usdcDecimals))
-		const usdcBalanceUsd = usdcAmount // USDC ≈ $1
-
-		const totalBalanceUsd = nativeTokenUsdValue.plus(daiBalanceUsd).plus(usdtBalanceUsd).plus(usdcBalanceUsd)
-
-		return {
-			nativeTokenBalance,
-			daiBalance,
-			usdtBalance,
-			usdcBalance,
-			totalBalanceUsd,
-		}
+		return { outputUsdValue, inputUsdValue }
 	}
 }

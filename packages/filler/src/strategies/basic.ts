@@ -194,7 +194,6 @@ export class BasicFiller implements FillerStrategy {
 			const getTokenType = (tokenAddress: string, chain: string): string | null => {
 				tokenAddress = bytes32ToBytes20(tokenAddress).toLowerCase()
 				const assets = {
-					DAI: this.configService.getDaiAsset(chain).toLowerCase(),
 					USDT: this.configService.getUsdtAsset(chain).toLowerCase(),
 					USDC: this.configService.getUsdcAsset(chain).toLowerCase(),
 				}
