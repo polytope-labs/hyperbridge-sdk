@@ -1,50 +1,53 @@
-import stringify from "safe-stable-stringify"
 import { createStorage } from "unstorage"
 // @ts-expect-error failed to resolve types
 import inMemoryDriver from "unstorage/drivers/memory"
 import { loadDriver } from "@/storage/load-driver"
-
+import { bytesToHex, hexToBytes } from "viem"
+import { GetRequest, Proof } from "@/utils/substrate"
+import {
+	convertCodecToIGetRequest,
+	convertIGetRequestToCodec,
+	convertCodecToIProof,
+	convertIProofToCodec,
+} from "@/chains/substrate"
+import type { IGetRequest, HexString } from "@/types"
+import type { IProof } from "@/chain"
 import type { CancellationStorageOptions, StorageDriverKey } from "@/storage/types"
 
-const convertBigIntsToSerializable = (value: unknown): unknown => {
-	if (value === null || value === undefined) return value
-	if (typeof value === "bigint") return value.toString()
-	if (Array.isArray(value)) return value.map(convertBigIntsToSerializable)
-	if (typeof value === "object") {
-		return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [k, v]) => {
-			acc[k] = convertBigIntsToSerializable(v)
-			return acc
-		}, {})
-	}
-	return value
+/**
+ * Encode IGetRequest to hex string using scale codec
+ */
+function encodeIGetRequest(request: IGetRequest): string {
+	const codec = convertIGetRequestToCodec(request)
+	const encoded = GetRequest.enc(codec)
+	return bytesToHex(encoded)
 }
 
-const BIGINT_FIELDS = new Set(["nonce", "height", "timeoutTimestamp", "deadline", "fees", "amount"])
+/**
+ * Decode hex string back to IGetRequest using scale codec
+ */
+function decodeIGetRequest(hex: string): IGetRequest {
+	const bytes = hexToBytes(hex as HexString)
+	const decoded = GetRequest.dec(bytes)
+	return convertCodecToIGetRequest(decoded)
+}
 
-const convertSerializableToBigInts = (value: unknown, key?: string): unknown => {
-	if (value === null || value === undefined) return value
-	if (typeof value === "bigint") return value
+/**
+ * Encode IProof to hex string using scale codec
+ */
+function encodeIProof(proof: IProof): string {
+	const codec = convertIProofToCodec(proof)
+	const encoded = Proof.enc(codec)
+	return bytesToHex(encoded)
+}
 
-	if (typeof value === "string" && /^\d+$/.test(value)) {
-		if (key && BIGINT_FIELDS.has(key)) return BigInt(value)
-		try {
-			const bigIntVal = BigInt(value)
-			if (bigIntVal > BigInt(Number.MAX_SAFE_INTEGER)) return bigIntVal
-		} catch (error) {
-			console.error("Failed to convert string to bigint", error)
-		}
-	}
-
-	if (Array.isArray(value)) return value.map((v) => convertSerializableToBigInts(v))
-	if (typeof value === "object") {
-		const obj = value as Record<string, unknown>
-		return Object.entries(obj).reduce<Record<string, unknown>>((acc, [k, v]) => {
-			acc[k] = convertSerializableToBigInts(v, k)
-			return acc
-		}, {})
-	}
-
-	return value
+/**
+ * Decode hex string back to IProof using scale codec
+ */
+function decodeIProof(hex: string): IProof {
+	const bytes = hexToBytes(hex as HexString)
+	const decoded = Proof.dec(bytes)
+	return convertCodecToIProof(decoded)
 }
 
 const detectEnvironment = (): StorageDriverKey => {
@@ -60,16 +63,36 @@ export function createCancellationStorage(options: CancellationStorageOptions = 
 	const baseStorage = createStorage({ driver })
 
 	const getItem = async <T>(key: string): Promise<T | null> => {
-		const value = await baseStorage.getItem<string | object>(key)
+		const value = await baseStorage.getItem<string>(key)
 		if (!value) return null
-		const parsed = typeof value === "string" ? JSON.parse(value) : value
-		return convertSerializableToBigInts(parsed) as T
+
+		if (key.includes("getRequest")) {
+			const decoded = decodeIGetRequest(value)
+			return decoded as T
+		}
+
+		if (key.includes("Proof")) {
+			const decoded = decodeIProof(value)
+			return decoded as T
+		}
+
+		throw new Error(`Unknown storage key type: ${key}`)
 	}
 
 	const setItem = async (key: string, value: unknown): Promise<void> => {
-		const serializable = convertBigIntsToSerializable(value)
-		const stringified = stringify(serializable) ?? "null"
-		await baseStorage.setItem(key, stringified)
+		if (key.includes("getRequest") && value && typeof value === "object") {
+			const encoded = encodeIGetRequest(value as IGetRequest)
+			await baseStorage.setItem(key, encoded)
+			return
+		}
+
+		if (key.includes("Proof") && value && typeof value === "object") {
+			const encoded = encodeIProof(value as IProof)
+			await baseStorage.setItem(key, encoded)
+			return
+		}
+
+		throw new Error(`Unknown storage key type: ${key}`)
 	}
 
 	const removeItem = async (key: string): Promise<void> => {
