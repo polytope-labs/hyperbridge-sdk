@@ -584,6 +584,8 @@ export class IntentGateway {
 		if (!destIProof) {
 			destIProof = yield* this.fetchDestinationProof(order, indexerClient)
 			await this.storage.setItem(STORAGE_KEYS.destProof(orderId), destIProof)
+		} else {
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		}
 
 		let getRequest: IGetRequest | null = await this.storage.getItem(STORAGE_KEYS.getRequest(orderId))

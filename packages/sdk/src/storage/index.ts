@@ -8,7 +8,7 @@ import type { CancellationStorageOptions, StorageDriverKey } from "@/storage/typ
 
 const convertBigIntsToSerializable = (value: unknown): unknown => {
 	if (value === null || value === undefined) return value
-	if (typeof value === "bigint") return { __type: "bigint", value: value.toString() }
+	if (typeof value === "bigint") return value.toString()
 	if (Array.isArray(value)) return value.map(convertBigIntsToSerializable)
 	if (typeof value === "object") {
 		return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [k, v]) => {
@@ -19,19 +19,31 @@ const convertBigIntsToSerializable = (value: unknown): unknown => {
 	return value
 }
 
-const convertSerializableToBigInts = (value: unknown): unknown => {
+const BIGINT_FIELDS = new Set(["nonce", "height", "timeoutTimestamp", "deadline", "fees", "amount"])
+
+const convertSerializableToBigInts = (value: unknown, key?: string): unknown => {
 	if (value === null || value === undefined) return value
-	if (Array.isArray(value)) return value.map(convertSerializableToBigInts)
-	if (typeof value === "object" && value !== null) {
-		const obj = value as Record<string, unknown>
-		if (obj.__type === "bigint" && typeof obj.value === "string") {
-			return BigInt(obj.value)
+	if (typeof value === "bigint") return value
+
+	if (typeof value === "string" && /^\d+$/.test(value)) {
+		if (key && BIGINT_FIELDS.has(key)) return BigInt(value)
+		try {
+			const bigIntVal = BigInt(value)
+			if (bigIntVal > BigInt(Number.MAX_SAFE_INTEGER)) return bigIntVal
+		} catch (error) {
+			console.error("Failed to convert string to bigint", error)
 		}
+	}
+
+	if (Array.isArray(value)) return value.map((v) => convertSerializableToBigInts(v))
+	if (typeof value === "object") {
+		const obj = value as Record<string, unknown>
 		return Object.entries(obj).reduce<Record<string, unknown>>((acc, [k, v]) => {
-			acc[k] = convertSerializableToBigInts(v)
+			acc[k] = convertSerializableToBigInts(v, k)
 			return acc
 		}, {})
 	}
+
 	return value
 }
 
@@ -44,19 +56,14 @@ const detectEnvironment = (): StorageDriverKey => {
 
 export function createCancellationStorage(options: CancellationStorageOptions = {}) {
 	const key = options.env ?? detectEnvironment()
-
-	const driver = loadDriver({ key, options }) ?? inMemoryDriver
-
+	const driver = loadDriver({ key, options }) ?? inMemoryDriver()
 	const baseStorage = createStorage({ driver })
 
 	const getItem = async <T>(key: string): Promise<T | null> => {
-		const value = await baseStorage.getItem<string>(key)
+		const value = await baseStorage.getItem<string | object>(key)
 		if (!value) return null
-		try {
-			return convertSerializableToBigInts(JSON.parse(value)) as T
-		} catch {
-			return value as T
-		}
+		const parsed = typeof value === "string" ? JSON.parse(value) : value
+		return convertSerializableToBigInts(parsed) as T
 	}
 
 	const setItem = async (key: string, value: unknown): Promise<void> => {
@@ -66,7 +73,7 @@ export function createCancellationStorage(options: CancellationStorageOptions = 
 	}
 
 	const removeItem = async (key: string): Promise<void> => {
-		baseStorage.removeItem(key)
+		await baseStorage.removeItem(key)
 	}
 
 	return Object.freeze({
