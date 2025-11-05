@@ -1,20 +1,10 @@
-import { createStorage, Storage } from "unstorage"
 import stringify from "safe-stable-stringify"
-// @ts-ignore upstream driver types have export path resolution
-import fsDriver from "unstorage/drivers/fs"
-// @ts-ignore upstream driver types have export path resolution
-import indexedDBDriver from "unstorage/drivers/indexedb"
-// @ts-ignore upstream driver types have export path resolution
-import localStorageDriver from "unstorage/drivers/localstorage"
-// @ts-ignore upstream driver types have export path resolution
-import memoryDriver from "unstorage/drivers/memory"
+import { createStorage } from "unstorage"
+// @ts-expect-error failed to resolve types
+import inMemoryDriver from "unstorage/drivers/memory"
+import { loadDriver } from "@/storage/load-driver"
 
-type StorageEnvironment = "node" | "localstorage" | "indexeddb" | "memory"
-
-interface CancellationStorageOptions {
-	env?: StorageEnvironment
-	basePath?: string
-}
+import type { CancellationStorageOptions, StorageDriverKey } from "@/storage/types"
 
 const convertBigIntsToSerializable = (value: unknown): unknown => {
 	if (value === null || value === undefined) return value
@@ -45,7 +35,7 @@ const convertSerializableToBigInts = (value: unknown): unknown => {
 	return value
 }
 
-const detectEnvironment = (): StorageEnvironment => {
+const detectEnvironment = (): StorageDriverKey => {
 	if (typeof process !== "undefined" && !!process.versions?.node) return "node"
 	if (typeof globalThis !== "undefined" && "localStorage" in globalThis) return "localstorage"
 	if (typeof globalThis !== "undefined" && "indexedDB" in globalThis) return "indexeddb"
@@ -53,20 +43,9 @@ const detectEnvironment = (): StorageEnvironment => {
 }
 
 export function createCancellationStorage(options: CancellationStorageOptions = {}) {
-	const environment = options.env ?? detectEnvironment()
+	const key = options.env ?? detectEnvironment()
 
-	const driver = (() => {
-		switch (environment) {
-			case "node":
-				return fsDriver({ base: options.basePath ?? "./.hyperbridge-cache" })
-			case "localstorage":
-				return localStorageDriver({ base: "hyperbridge" })
-			case "indexeddb":
-				return indexedDBDriver({ base: "hyperbridge" })
-			default:
-				return memoryDriver()
-		}
-	})()
+	const driver = loadDriver({ key, options }) ?? inMemoryDriver
 
 	const baseStorage = createStorage({ driver })
 
@@ -86,7 +65,9 @@ export function createCancellationStorage(options: CancellationStorageOptions = 
 		await baseStorage.setItem(key, stringified)
 	}
 
-	const removeItem = (key: string): Promise<void> => baseStorage.removeItem(key)
+	const removeItem = async (key: string): Promise<void> => {
+		baseStorage.removeItem(key)
+	}
 
 	return Object.freeze({
 		...baseStorage,

@@ -89,7 +89,6 @@
 		"jsdom": "^26.0.0",
 		"log-timestamp": "^0.3.0",
 		"tsup": "^8.4.0",
-		"typescript": "^5.9.3",
 		"vite-tsconfig-paths": "^5.1.4",
 		"vitest": "^3.1.4"
 	},
@@ -123,7 +122,7 @@
 		"@polkadot/x-textdecoder": "^13.5.6",
 		"@polkadot/x-textencoder": "^13.5.6",
 		"@polkadot/x-ws": "^13.5.6",
-		"typescript": "^5.5.4"
+		"typescript": "^5.9.3"
 	},
 	"peerDependencies": {
 		"vite": "^5.0.0 || ^6.0.0"

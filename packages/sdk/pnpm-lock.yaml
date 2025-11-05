@@ -34,7 +34,7 @@ overrides:
   '@polkadot/x-textdecoder': ^13.5.6
   '@polkadot/x-textencoder': ^13.5.6
   '@polkadot/x-ws': ^13.5.6
-  typescript: ^5.5.4
+  typescript: ^5.9.3
 
 importers:
 
@@ -131,9 +131,6 @@ importers:
       tsup:
         specifier: ^8.4.0
         version: 8.4.0(postcss@8.5.3)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.5.4
-        version: 5.9.3
       vite-tsconfig-paths:
         specifier: ^5.1.4
         version: 5.1.4(typescript@5.9.3)(vite@6.3.5(@types/node@22.13.9))
@@ -815,7 +812,7 @@ packages:
   abitype@1.0.8:
     resolution: {integrity: sha512-ZeiI6h3GnW06uYDLx0etQtX/p8E24UaHHBj57RSjK7YBFe7iuVn07EDpOeP451D06sF27VOz9JJPlIKJmXgkEg==}
     peerDependencies:
-      typescript: ^5.5.4
+      typescript: ^5.9.3
       zod: ^3 >=3.22.0
     peerDependenciesMeta:
       typescript:
@@ -1283,7 +1280,7 @@ packages:
   ox@0.8.7:
     resolution: {integrity: sha512-W1f0FiMf9NZqtHPEDEAEkyzZDwbIKfmH2qmQx8NNiQ/9JhxrSblmtLJsSfTtQG5YKowLOnBlLVguCyxm/7ztxw==}
     peerDependencies:
-      typescript: ^5.5.4
+      typescript: ^5.9.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -1526,7 +1523,7 @@ packages:
     engines: {node: ^18 || >=20}
     hasBin: true
     peerDependencies:
-      typescript: ^5.5.4
+      typescript: ^5.9.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -1542,7 +1539,7 @@ packages:
       '@microsoft/api-extractor': ^7.36.0
       '@swc/core': ^1
       postcss: ^8.4.12
-      typescript: ^5.5.4
+      typescript: ^5.9.3
     peerDependenciesMeta:
       '@microsoft/api-extractor':
         optional: true
@@ -1637,7 +1634,7 @@ packages:
   viem@2.34.0:
     resolution: {integrity: sha512-HJZG9Wt0DLX042MG0PK17tpataxtdAEhpta9/Q44FqKwy3xZMI5Lx4jF+zZPuXFuYjZ68R0PXqRwlswHs6r4gA==}
     peerDependencies:
-      typescript: ^5.5.4
+      typescript: ^5.9.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -3242,7 +3239,8 @@ snapshots:
       - tsx
       - yaml
 
-  typescript@5.9.3: {}
+  typescript@5.9.3:
+    optional: true
 
   ufo@1.6.1: {}
 
