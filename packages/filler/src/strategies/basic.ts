@@ -12,6 +12,7 @@ import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
+import { CacheService } from "@/services/CacheService"
 import { compareDecimalValues } from "@/utils"
 import { formatUnits, parseUnits } from "viem"
 import { getLogger } from "@/services/Logger"
@@ -24,11 +25,16 @@ export class BasicFiller implements FillerStrategy {
 	private configService: FillerConfigService
 	private logger = getLogger("basic-filler")
 
-	constructor(privateKey: HexString, configService: FillerConfigService) {
+	constructor(privateKey: HexString, configService: FillerConfigService, sharedCacheService?: CacheService) {
 		this.privateKey = privateKey
 		this.configService = configService
 		this.clientManager = new ChainClientManager(configService, privateKey)
-		this.contractService = new ContractInteractionService(this.clientManager, privateKey, configService)
+		this.contractService = new ContractInteractionService(
+			this.clientManager,
+			privateKey,
+			configService,
+			sharedCacheService,
+		)
 	}
 
 	/**

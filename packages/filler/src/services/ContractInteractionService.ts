@@ -48,9 +48,10 @@ export class ContractInteractionService {
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 		configService: FillerConfigService,
+		sharedCacheService?: CacheService,
 	) {
 		this.configService = configService
-		this.cacheService = new CacheService()
+		this.cacheService = sharedCacheService || new CacheService()
 		this.initCache()
 	}
 
@@ -69,13 +70,17 @@ export class ContractInteractionService {
 			await this.getTokenDecimals(usdt, destChain)
 			for (const sourceChain of chainNames) {
 				if (sourceChain === destChain) continue
-				const perByteFee = await destClient.readContract({
-					address: this.configService.getHostAddress(destChain),
-					abi: EVM_HOST,
-					functionName: "perByteFee",
-					args: [toHex(sourceChain)],
-				})
-				this.cacheService.setPerByteFee(destChain, sourceChain, perByteFee)
+				// Check cache before making RPC call to avoid duplicate requests when cache is shared
+				const cachedPerByteFee = this.cacheService.getPerByteFee(destChain, sourceChain)
+				if (cachedPerByteFee === null) {
+					const perByteFee = await destClient.readContract({
+						address: this.configService.getHostAddress(destChain),
+						abi: EVM_HOST,
+						functionName: "perByteFee",
+						args: [toHex(sourceChain)],
+					})
+					this.cacheService.setPerByteFee(destChain, sourceChain, perByteFee)
+				}
 			}
 		}
 	}
