@@ -318,13 +318,14 @@ describe.sequential("Basic", () => {
 
 		const inputs: TokenInfo[] = [
 			{
-				token: bytes20ToBytes32(chainConfigService.getDaiAsset(gnosisChiadoId)),
+				token: bytes20ToBytes32(chainConfigService.getUsdcAsset(gnosisChiadoId)),
 				amount: 100n,
 			},
 		]
+
 		const outputs: PaymentInfo[] = [
 			{
-				token: bytes20ToBytes32(chainConfigService.getDaiAsset(bscChapelId)),
+				token: bytes20ToBytes32(chainConfigService.getUsdcAsset(bscChapelId)),
 				amount: 100n,
 				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
 			},
@@ -354,7 +355,7 @@ describe.sequential("Basic", () => {
 		await approveTokens(
 			gnosisChiadoWalletClient,
 			gnosisChiadoPublicClient,
-			chainConfigService.getDaiAsset(gnosisChiadoId),
+			chainConfigService.getUsdcAsset(gnosisChiadoId),
 			gnosisChiadoIntentGateway.address,
 		)
 
