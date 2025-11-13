@@ -20,6 +20,29 @@ export interface CoinGeckoResponse {
 	}
 }
 
+export interface CoinGeckoTokenListToken {
+	chainId: number
+	address: string
+	name: string
+	symbol: string
+	decimals: number
+	logoURI?: string
+	extensions?: Record<string, unknown>
+}
+
+export interface CoinGeckoTokenList {
+	name: string
+	logoURI: string
+	keywords?: string[]
+	timestamp?: string
+	version?: {
+		major: number
+		minor: number
+		patch: number
+	}
+	tokens: CoinGeckoTokenListToken[]
+}
+
 export interface PriceResponse {
 	priceInUSD: string
 	amountValueInUSD: string
@@ -353,6 +376,37 @@ export default class PriceHelper {
 		return {
 			priceInUSD,
 			amountValueInUSD,
+		}
+	}
+
+	/**
+	 * Retrieve CoinGecko token list for a given chain.
+	 * @param chainName - CoinGecko chain slug (e.g., "ethereum", "polygon-pos")
+	 * @returns Parsed token list or null if not available
+	 */
+	static async getCoinGeckoTokenList(chainName: string): Promise<CoinGeckoTokenList | null> {
+		if (!chainName || typeof chainName !== "string") {
+			logger.warn(`[PriceHelper.getCoinGeckoTokenList] Invalid chain name provided: ${chainName}`)
+			return null
+		}
+
+		try {
+			const response = await fetch(`https://tokens.coingecko.com/${chainName}/all.json`, {
+				method: "GET",
+				headers: { accept: "application/json" },
+			})
+
+			if (!response.ok) {
+				logger.error(
+					`[PriceHelper.getCoinGeckoTokenList] CoinGecko token list error (${chainName}): ${response.status} ${response.statusText}`,
+				)
+				return null
+			}
+
+			return (await response.json()) as CoinGeckoTokenList
+		} catch (error) {
+			logger.error(`[PriceHelper.getCoinGeckoTokenList] Error fetching token list for ${chainName}: ${error}`)
+			return null
 		}
 	}
 

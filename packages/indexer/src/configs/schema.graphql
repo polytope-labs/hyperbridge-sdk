@@ -1261,6 +1261,36 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 }
 
 """
+CoinGecko token lists stored per chain
+"""
+type CoinGeckoTokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
+	"""
+	Unique identifier: chainId
+	"""
+	id: ID!
+
+	"""
+	Numeric EVM chain id (as string) the list belongs to
+	"""
+	chainId: String! @index
+
+	"""
+	Raw CoinGecko token list JSON payload
+	"""
+	payload: String!
+
+	"""
+	When the token list was last synced
+	"""
+	updatedAt: Date! @index
+
+	"""
+	When this list entry was first created
+	"""
+	createdAt: Date! @index
+}
+
+"""
 Token Registry - Configuration and metadata for supported tokens
 """
 type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"], ["symbol", "createdAt"]]) {
