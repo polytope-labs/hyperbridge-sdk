@@ -19,6 +19,7 @@ import {
 	getGasPriceFromEtherscan,
 	USE_ETHERSCAN_CHAINS,
 	retryPromise,
+	adjustFeeDecimals,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -565,6 +566,7 @@ export class ContractInteractionService {
 					functionName: "quote",
 					args: [dispatchPost] as any,
 				})
+
 				const feeToken = (await this.getFeeTokenWithDecimals(chain)).address
 				const routerAddr = this.configService.getUniswapRouterV2Address(chain)
 				const WETH = this.configService.getWrappedNativeAssetWithDecimals(chain).asset
@@ -620,7 +622,8 @@ export class ContractInteractionService {
 				// @ts-ignore
 				args: [gasCostInWei, [feeToken.address, wethAddr]],
 			})
-			return quoteIn.result[0]
+
+			return adjustFeeDecimals(quoteIn.result[0], feeToken.decimals, targetDecimals)
 		} catch {
 			// Testnet block
 			this.logger.warn({ chain }, "On-chain quote failed, falling back to price API")
