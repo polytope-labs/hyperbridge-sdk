@@ -301,8 +301,12 @@ export class IndexerClient {
 		const ascNode = ascResponse?.stateMachineUpdateEvents?.nodes[0]
 		const descNode = descResponse?.stateMachineUpdateEvents?.nodes[0]
 
+		if (!ascNode) {
+			return undefined
+		}
+
 		const timestamp = Math.floor(dateStringtoTimestamp(ascNode.createdAt) / 1000)
-		const stateMachineHeight = descNode?.height
+		const stateMachineHeight = descNode?.height ?? ascNode.height
 
 		const combined: StateMachineUpdate = {
 			height: stateMachineHeight,
