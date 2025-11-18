@@ -547,6 +547,9 @@ export class IntentGateway {
 	 *
 	 * @param order - The order to cancel, containing source/dest chains, deadline, and other order details
 	 * @param indexerClient - Client for querying the indexer and interacting with Hyperbridge
+	 * @param destIntentGatewayAddress - Optional custom IntentGateway address for the destination chain.
+	 *   If not provided, uses the default address from the chain configuration.
+	 *   This allows using different IntentGateway contract versions (e.g., old vs new contracts).
 	 *
 	 * @yields {CancelEvent} Status updates during the cancellation process:
 	 *   - DESTINATION_FINALIZED: Destination proof has been obtained
@@ -559,7 +562,15 @@ export class IntentGateway {
 	 *
 	 * @example
 	 * ```typescript
+	 * // Using default IntentGateway address
 	 * const cancelStream = intentGateway.cancelOrder(order, indexerClient);
+	 *
+	 * // Using custom IntentGateway address (e.g., for old contract version)
+	 * const cancelStream = intentGateway.cancelOrder(
+	 *   order,
+	 *   indexerClient,
+	 *   "0xd54165e45926720b062C192a5bacEC64d5bB08DA"
+	 * );
 	 *
 	 * for await (const event of cancelStream) {
 	 *   switch (event.status) {
@@ -573,7 +584,11 @@ export class IntentGateway {
 	 * }
 	 * ```
 	 */
-	async *cancelOrder(order: Order, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
+	async *cancelOrder(
+		order: Order,
+		indexerClient: IndexerClient,
+		destIntentGatewayAddress?: HexString,
+	): AsyncGenerator<CancelEvent> {
 		const orderId = orderCommitment(order)
 
 		const hyperbridge = indexerClient.hyperbridge as SubstrateChain
@@ -582,7 +597,7 @@ export class IntentGateway {
 
 		let destIProof: IProof | null = await this.storage.getItem(STORAGE_KEYS.destProof(orderId))
 		if (!destIProof) {
-			destIProof = yield* this.fetchDestinationProof(order, indexerClient)
+			destIProof = yield* this.fetchDestinationProof(order, indexerClient, destIntentGatewayAddress)
 			await this.storage.setItem(STORAGE_KEYS.destProof(orderId), destIProof)
 		} else {
 			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
@@ -675,10 +690,14 @@ export class IntentGateway {
 
 	/**
 	 * Fetches proof for the destination chain.
+	 * @param order - The order to fetch proof for
+	 * @param indexerClient - Client for querying the indexer
+	 * @param destIntentGatewayAddress - Optional custom IntentGateway address. If not provided, uses default from config.
 	 */
 	private async *fetchDestinationProof(
 		order: Order,
 		indexerClient: IndexerClient,
+		destIntentGatewayAddress?: HexString,
 	): AsyncGenerator<CancelEvent, IProof, void> {
 		let latestHeight = 0n
 		let lastFailedHeight: bigint | null = null
@@ -699,9 +718,9 @@ export class IntentGateway {
 			}
 
 			try {
-				const intentGatewayAddress = this.dest.configService.getIntentGatewayAddress(
-					this.dest.config.stateMachineId,
-				)
+				const intentGatewayAddress =
+					destIntentGatewayAddress ??
+					this.dest.configService.getIntentGatewayAddress(this.dest.config.stateMachineId)
 				const orderId = orderCommitment(order)
 				const slotHash = await this.dest.client.readContract({
 					abi: IntentGatewayABI.ABI,
