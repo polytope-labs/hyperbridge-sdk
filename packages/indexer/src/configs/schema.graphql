@@ -1285,7 +1285,17 @@ type TokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
 	tokenName: String!
 
 	"""
-	Array of pair information strings in format: "pairAddress-TokenName-protocolName-fee"
+	Token symbol (e.g., "WETH", "USDC", "USDT")
+	"""
+	tokenSymbol: String!
+
+	"""
+	Token image URI from CoinGecko (nullable if not available)
+	"""
+	tokenURI: String
+
+	"""
+	Array of pair information strings in format: "pairAddress-TokenSymbol-protocolName-fee"
 	Example: "0xe0554a476a092703abdb3ef35c80e0d76d32939f-WETH-uniswap_v3-0.01"
 	"""
 	pairedWith: [String!]!

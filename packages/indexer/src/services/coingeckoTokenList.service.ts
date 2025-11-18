@@ -1,6 +1,6 @@
 import { TokenList } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
-import PriceHelper, { type GeckoTerminalPool } from "@/utils/price.helpers"
+import PriceHelper, { type GeckoTerminalPool, type GeckoTerminalToken } from "@/utils/price.helpers"
 
 const UPDATE_INTERVAL_SECONDS = 86400 // 24 hours
 
@@ -23,48 +23,17 @@ const NETWORK_TO_CHAIN_ID: Record<string, string> = {
 
 /**
  * Extract token address from CoinGecko OnChain token ID format (e.g., "eth_0x..." -> "0x...")
+ * Handles multi-part network names like "polygon_pos_0x..." -> "0x..."
  */
 function extractTokenAddress(tokenId: string): string {
+	const addressMatch = tokenId.match(/0x[a-fA-F0-9]+/)
+	if (addressMatch) {
+		const addressIndex = tokenId.indexOf(addressMatch[0])
+		return tokenId.substring(addressIndex)
+	}
+	// Fallback: if no 0x found, try splitting by underscore and taking the last part
 	const parts = tokenId.split("_")
-	if (parts.length >= 2) {
-		return parts.slice(1).join("_") // Handle cases where address might have underscores
-	}
-	return tokenId
-}
-
-/**
- * Extract token name from pool name
- * @param poolName - Pool name (e.g., "WETH / USDT 0.01%")
- * @param tokenAddress - Token address to identify which token in the pair
- * @param isBaseToken - Whether this is the base token (true) or quote token (false)
- * @returns Token name extracted from pool name
- */
-function extractTokenNameFromPoolName(poolName: string, tokenAddress: string, isBaseToken: boolean = true): string {
-	// Try to extract from pool name (format: "TOKEN1 / TOKEN2 ..." or "TOKEN1 / TOKEN2 / TOKEN3")
-	const parts = poolName.split(" / ")
-
-	// Determine which part to use based on whether it's base or quote token
-	// For base token, use first part; for quote token, use second part (if available)
-	let namePart: string | undefined
-	if (isBaseToken && parts.length > 0) {
-		namePart = parts[0]
-	} else if (!isBaseToken && parts.length > 1) {
-		namePart = parts[1]
-	} else if (parts.length > 0) {
-		// Fallback to first part if we can't determine
-		namePart = parts[0]
-	}
-
-	if (namePart) {
-		// Remove fee tier info if present (e.g., "0.01%", "0.05%")
-		const name = namePart.trim().replace(/\s+\d+\.?\d*%$/, "")
-		if (name) {
-			return name
-		}
-	}
-
-	// Fallback: return a generic name based on address
-	return `Token ${tokenAddress.slice(0, 8)}...`
+	return parts[parts.length - 1]
 }
 
 /**
@@ -81,13 +50,13 @@ function extractFeeFromPoolName(poolName: string): string {
 }
 
 /**
- * Format pair information as a string: "pairAddress-TokenName-protocolName-fee"
+ * Format pair information as a string: "pairAddress-TokenSymbol-protocolName-fee"
  */
-function formatPairInfo(pairAddress: string, tokenName: string, protocolName: string, fee: string): string {
+function formatPairInfo(pairAddress: string, tokenSymbol: string, protocolName: string, fee: string): string {
 	if (fee) {
-		return `${pairAddress}-${tokenName}-${protocolName}-${fee}`
+		return `${pairAddress}-${tokenSymbol}-${protocolName}-${fee}`
 	}
-	return `${pairAddress}-${tokenName}-${protocolName}`
+	return `${pairAddress}-${tokenSymbol}-${protocolName}`
 }
 
 export class CoinGeckoTokenListService {
@@ -171,9 +140,12 @@ export class CoinGeckoTokenListService {
 			}
 		}
 		let pools: GeckoTerminalPool[] = []
+		let tokensMap: Map<string, GeckoTerminalToken> = new Map()
 
 		try {
-			pools = await PriceHelper.getGeckoTerminalPools(networkName, currentPage)
+			const result = await PriceHelper.getGeckoTerminalPools(networkName, currentPage)
+			pools = result.pools
+			tokensMap = result.tokens
 
 			if (!pools || pools.length === 0) {
 				this.resetPage(networkName)
@@ -216,54 +188,30 @@ export class CoinGeckoTokenListService {
 
 		const allPools = pools
 
-		const tokenMap = new Map<string, { tokenName: string; pairedWith: Set<string> }>()
-		const tokenNameMap = new Map<string, string>()
+		const tokenMap = new Map<
+			string,
+			{ tokenName: string; tokenSymbol: string; tokenURI: string | null; pairedWith: Set<string> }
+		>()
 
-		const ensureTokenInMap = (tokenAddress: string, tokenName: string): void => {
+		const ensureTokenInMap = (tokenAddress: string): void => {
 			if (!tokenMap.has(tokenAddress)) {
+				const normalizedAddress = tokenAddress.toLowerCase()
+				const token = tokensMap.get(normalizedAddress)
+
+				if (!token) {
+					logger.warn(
+						`[CoinGeckoTokenListService.syncChain] Token not found in included array for address: ${tokenAddress}`,
+					)
+					return
+				}
+
 				tokenMap.set(tokenAddress, {
-					tokenName,
+					tokenName: token.attributes.name,
+					tokenSymbol: token.attributes.symbol,
+					tokenURI: token.attributes.image_url || null,
 					pairedWith: new Set(),
 				})
-			} else {
-				const existingData = tokenMap.get(tokenAddress)!
-				// Update token name if we have a better one (not a fallback name)
-				if (!existingData.tokenName.startsWith("Token ") && tokenName.startsWith("Token ")) {
-					tokenName = existingData.tokenName
-				} else if (tokenName && !tokenName.startsWith("Token ")) {
-					existingData.tokenName = tokenName
-				}
 			}
-			// Update tokenNameMap for quick lookup
-			if (tokenName && !tokenName.startsWith("Token ")) {
-				tokenNameMap.set(tokenAddress, tokenName)
-			} else if (!tokenNameMap.has(tokenAddress)) {
-				tokenNameMap.set(tokenAddress, tokenName)
-			}
-		}
-
-		const getTokenName = (
-			tokenAddress: string,
-			poolName: string,
-			isBaseToken: boolean,
-			poolNameParts?: string[],
-			partIndex?: number,
-		): string => {
-			if (tokenNameMap.has(tokenAddress)) {
-				const existingName = tokenNameMap.get(tokenAddress)!
-				if (!existingName.startsWith("Token ")) {
-					return existingName
-				}
-			}
-
-			if (poolNameParts && partIndex !== undefined && partIndex < poolNameParts.length) {
-				const name = poolNameParts[partIndex].trim().replace(/\s+\d+\.?\d*%$/, "")
-				if (name) {
-					return name
-				}
-			}
-
-			return extractTokenNameFromPoolName(poolName, tokenAddress, isBaseToken)
 		}
 
 		for (const pool of allPools) {
@@ -271,15 +219,14 @@ export class CoinGeckoTokenListService {
 			const poolName = pool.attributes.name
 			const protocolName = pool.relationships.dex?.data?.id || "unknown"
 			const fee = extractFeeFromPoolName(poolName)
-			const poolNameParts = poolName.split(" / ")
 
-			const allTokensInPool: Array<{ address: string; isBase: boolean; partIndex: number }> = []
+			const allTokensInPool: string[] = []
 			const seenAddresses = new Set<string>()
 
 			if (pool.relationships.base_token?.data) {
 				const baseTokenAddress = extractTokenAddress(pool.relationships.base_token.data.id)
 				if (!seenAddresses.has(baseTokenAddress)) {
-					allTokensInPool.push({ address: baseTokenAddress, isBase: true, partIndex: 0 })
+					allTokensInPool.push(baseTokenAddress)
 					seenAddresses.add(baseTokenAddress)
 				}
 			}
@@ -287,50 +234,43 @@ export class CoinGeckoTokenListService {
 			if (pool.relationships.quote_token?.data) {
 				const quoteTokenAddress = extractTokenAddress(pool.relationships.quote_token.data.id)
 				if (!seenAddresses.has(quoteTokenAddress)) {
-					allTokensInPool.push({ address: quoteTokenAddress, isBase: false, partIndex: 1 })
+					allTokensInPool.push(quoteTokenAddress)
 					seenAddresses.add(quoteTokenAddress)
 				}
 			}
 
 			if (pool.relationships.quote_tokens?.data) {
-				let partIndex = 1
 				for (const quoteToken of pool.relationships.quote_tokens.data) {
 					const quoteTokenAddress = extractTokenAddress(quoteToken.id)
 					if (!seenAddresses.has(quoteTokenAddress)) {
-						allTokensInPool.push({ address: quoteTokenAddress, isBase: false, partIndex })
+						allTokensInPool.push(quoteTokenAddress)
 						seenAddresses.add(quoteTokenAddress)
-						partIndex++
 					}
 				}
 			}
 
-			for (const tokenInfo of allTokensInPool) {
-				const tokenAddress = tokenInfo.address
-				const tokenName = getTokenName(
-					tokenAddress,
-					poolName,
-					tokenInfo.isBase,
-					poolNameParts,
-					tokenInfo.partIndex,
-				)
+			for (const tokenAddress of allTokensInPool) {
+				ensureTokenInMap(tokenAddress)
+				const tokenData = tokenMap.get(tokenAddress)
 
-				ensureTokenInMap(tokenAddress, tokenName)
-				const tokenData = tokenMap.get(tokenAddress)!
+				if (!tokenData) {
+					continue
+				}
 
-				for (const otherTokenInfo of allTokensInPool) {
-					if (otherTokenInfo.address !== tokenAddress) {
-						const otherTokenAddress = otherTokenInfo.address
-						const otherTokenName = getTokenName(
-							otherTokenAddress,
-							poolName,
-							otherTokenInfo.isBase,
-							poolNameParts,
-							otherTokenInfo.partIndex,
-						)
-						ensureTokenInMap(otherTokenAddress, otherTokenName)
+				for (const otherTokenAddress of allTokensInPool) {
+					if (otherTokenAddress !== tokenAddress) {
+						ensureTokenInMap(otherTokenAddress)
 
-						const pairInfoString = formatPairInfo(pairAddress, otherTokenName, protocolName, fee)
-						tokenData.pairedWith.add(pairInfoString)
+						const otherTokenData = tokenMap.get(otherTokenAddress)
+						if (otherTokenData) {
+							const pairInfoString = formatPairInfo(
+								pairAddress,
+								otherTokenData.tokenSymbol,
+								protocolName,
+								fee,
+							)
+							tokenData.pairedWith.add(pairInfoString)
+						}
 					}
 				}
 			}
@@ -350,6 +290,8 @@ export class CoinGeckoTokenListService {
 
 				if (existingEntity) {
 					existingEntity.tokenName = tokenData.tokenName
+					existingEntity.tokenSymbol = tokenData.tokenSymbol
+					existingEntity.tokenURI = tokenData.tokenURI || undefined
 					existingEntity.pairedWith = pairedWithArray
 					existingEntity.updatedAt = timestampDate
 					await existingEntity.save()
@@ -360,6 +302,8 @@ export class CoinGeckoTokenListService {
 						tokenAddress,
 						chainId,
 						tokenName: tokenData.tokenName,
+						tokenSymbol: tokenData.tokenSymbol,
+						tokenURI: tokenData.tokenURI || undefined,
 						pairedWith: pairedWithArray,
 						updatedAt: timestampDate,
 						createdAt: timestampDate,
