@@ -20,27 +20,28 @@ export interface CoinGeckoResponse {
 	}
 }
 
-export interface CoinGeckoTokenListToken {
-	chainId: number
-	address: string
-	name: string
-	symbol: string
-	decimals: number
-	logoURI?: string
-	extensions?: Record<string, unknown>
+export interface GeckoTerminalPool {
+	id: string
+	type: string
+	attributes: {
+		address: string
+		name: string
+		[key: string]: unknown
+	}
+	relationships: {
+		base_token?: { data: { id: string; type: string } }
+		quote_token?: { data: { id: string; type: string } }
+		quote_tokens?: { data: Array<{ id: string; type: string }> }
+		dex?: { data: { id: string; type: string } }
+		[key: string]: unknown
+	}
 }
 
-export interface CoinGeckoTokenList {
-	name: string
-	logoURI: string
-	keywords?: string[]
-	timestamp?: string
-	version?: {
-		major: number
-		minor: number
-		patch: number
+export interface GeckoTerminalResponse {
+	data: GeckoTerminalPool[]
+	links?: {
+		next?: string
 	}
-	tokens: CoinGeckoTokenListToken[]
 }
 
 export interface PriceResponse {
@@ -380,33 +381,47 @@ export default class PriceHelper {
 	}
 
 	/**
-	 * Retrieve CoinGecko token list for a given chain.
-	 * @param chainName - CoinGecko chain slug (e.g., "ethereum", "polygon-pos")
-	 * @returns Parsed token list or null if not available
+	 * Retrieve pools from CoinGecko OnChain DEX API for a given network.
+	 * @param networkName - Network name (e.g., "eth", "polygon_pos", "base")
+	 * @param page - Page number (default: 1)
+	 * @returns Array of pools or empty array if not available
 	 */
-	static async getCoinGeckoTokenList(chainName: string): Promise<CoinGeckoTokenList | null> {
-		if (!chainName || typeof chainName !== "string") {
-			logger.warn(`[PriceHelper.getCoinGeckoTokenList] Invalid chain name provided: ${chainName}`)
-			return null
+	static async getGeckoTerminalPools(networkName: string, page: number = 1): Promise<GeckoTerminalPool[]> {
+		if (!networkName || typeof networkName !== "string") {
+			logger.warn(`[PriceHelper.getGeckoTerminalPools] Invalid network name provided: ${networkName}`)
+			return []
 		}
 
 		try {
-			const response = await fetch(`https://tokens.coingecko.com/${chainName}/all.json`, {
+			const headers = { accept: "application/json", "content-type": "application/json" } as Record<string, string>
+
+			const coingeckoApiKey = ENV_CONFIG["COIN_GECKGO_API_KEY"]
+			if (coingeckoApiKey) {
+				headers["x-cg-pro-api-key"] = coingeckoApiKey
+			}
+
+			const baseUrl = coingeckoApiKey ? "https://pro-api.coingecko.com" : "https://api.coingecko.com"
+			const url = `${baseUrl}/api/v3/onchain/networks/${networkName}/pools?page=${page}`
+
+			const response = await fetch(url, {
 				method: "GET",
-				headers: { accept: "application/json" },
+				headers,
 			})
 
 			if (!response.ok) {
 				logger.error(
-					`[PriceHelper.getCoinGeckoTokenList] CoinGecko token list error (${chainName}): ${response.status} ${response.statusText}`,
+					`[PriceHelper.getGeckoTerminalPools] CoinGecko OnChain API error (${networkName}, page ${page}): ${response.status} ${response.statusText}`,
 				)
-				return null
+				return []
 			}
 
-			return (await response.json()) as CoinGeckoTokenList
+			const data = (await response.json()) as GeckoTerminalResponse
+			return data.data || []
 		} catch (error) {
-			logger.error(`[PriceHelper.getCoinGeckoTokenList] Error fetching token list for ${chainName}: ${error}`)
-			return null
+			logger.error(
+				`[PriceHelper.getGeckoTerminalPools] Error fetching pools for ${networkName} (page ${page}): ${error}`,
+			)
+			return []
 		}
 	}
 

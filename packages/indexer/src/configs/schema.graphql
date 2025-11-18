@@ -1261,23 +1261,34 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 }
 
 """
-CoinGecko token lists stored per chain
+Token list from CoinGecko OnChain DEX API - stores tokens with their pair information
 """
-type CoinGeckoTokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
+type TokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
 	"""
-	Unique identifier: chainId
+	Unique identifier: tokenAddress-chainId (e.g., "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2-1")
 	"""
 	id: ID!
 
 	"""
-	Numeric EVM chain id (as string) the list belongs to
+	Token contract address (zero address for native tokens)
+	"""
+	tokenAddress: String! @index
+
+	"""
+	Numeric EVM chain id (as string) the token belongs to
 	"""
 	chainId: String! @index
 
 	"""
-	Raw CoinGecko token list JSON payload
+	Token name (e.g., "Wrapped Ether", "USD Coin")
 	"""
-	payload: String!
+	tokenName: String!
+
+	"""
+	Array of pair information strings in format: "pairAddress-TokenName-protocolName-fee"
+	Example: "0xe0554a476a092703abdb3ef35c80e0d76d32939f-WETH-uniswap_v3-0.01"
+	"""
+	pairedWith: [String!]!
 
 	"""
 	When the token list was last synced
@@ -1285,7 +1296,7 @@ type CoinGeckoTokenList @entity @compositeIndexes(fields: [["chainId", "updatedA
 	updatedAt: Date! @index
 
 	"""
-	When this list entry was first created
+	When this token entry was first created
 	"""
 	createdAt: Date! @index
 }
