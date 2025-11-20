@@ -62,6 +62,7 @@ function formatPairInfo(pairAddress: string, tokenSymbol: string, protocolName: 
 export class CoinGeckoTokenListService {
 	/**
 	 * Get the current page number for a chain from the database, defaulting to 1 if not set
+	 * Creates the entity with page 1 if it doesn't exist
 	 * @param networkName - CoinGecko OnChain network name
 	 * @param currentTimestamp - Current timestamp in bigint
 	 * @returns Current page number (defaults to 1)
@@ -72,12 +73,23 @@ export class CoinGeckoTokenListService {
 			if (syncState) {
 				return syncState.currentPage
 			}
+			// Entity doesn't exist, initialize it with page 1
+			await this.setPage(networkName, 1, currentTimestamp)
+			return 1
 		} catch (error) {
 			logger.debug(
 				`[CoinGeckoTokenListService.getCurrentPage] Error getting page number for ${networkName}: ${error}`,
 			)
+			// On error, try to initialize with page 1
+			try {
+				await this.setPage(networkName, 1, currentTimestamp)
+			} catch (initError) {
+				logger.debug(
+					`[CoinGeckoTokenListService.getCurrentPage] Error initializing sync state for ${networkName}: ${initError}`,
+				)
+			}
+			return 1
 		}
-		return 1
 	}
 
 	/**
