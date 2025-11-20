@@ -1,4 +1,4 @@
-import { TokenList } from "@/configs/src/types"
+import { TokenList, TokenListSyncState } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import PriceHelper, { type GeckoTerminalPool, type GeckoTerminalToken } from "@/utils/price.helpers"
 
@@ -61,36 +61,75 @@ function formatPairInfo(pairAddress: string, tokenSymbol: string, protocolName: 
 
 export class CoinGeckoTokenListService {
 	/**
-	 * Track current page number per chain (networkName -> page number)
-	 * Page numbers start at 1 and increment with each successful fetch
-	 * Reset to 1 when empty response is received
-	 */
-	private static pageNumbers = new Map<string, number>()
-
-	/**
-	 * Get the current page number for a chain, defaulting to 1 if not set
+	 * Get the current page number for a chain from the database, defaulting to 1 if not set
 	 * @param networkName - CoinGecko OnChain network name
+	 * @param currentTimestamp - Current timestamp in bigint
 	 * @returns Current page number (defaults to 1)
 	 */
-	private static getCurrentPage(networkName: string): number {
-		return this.pageNumbers.get(networkName) || 1
+	private static async getCurrentPage(networkName: string, currentTimestamp: bigint): Promise<number> {
+		try {
+			const syncState = await TokenListSyncState.get(networkName)
+			if (syncState) {
+				return syncState.currentPage
+			}
+		} catch (error) {
+			logger.debug(
+				`[CoinGeckoTokenListService.getCurrentPage] Error getting page number for ${networkName}: ${error}`,
+			)
+		}
+		return 1
 	}
 
 	/**
-	 * Increment the page number for a chain
+	 * Increment the page number for a chain in the database
 	 * @param networkName - CoinGecko OnChain network name
+	 * @param currentTimestamp - Current timestamp in bigint
 	 */
-	private static incrementPage(networkName: string): void {
-		const currentPage = this.getCurrentPage(networkName)
-		this.pageNumbers.set(networkName, currentPage + 1)
+	private static async incrementPage(networkName: string, currentTimestamp: bigint): Promise<void> {
+		const currentPage = await this.getCurrentPage(networkName, currentTimestamp)
+		const newPage = currentPage + 1
+		await this.setPage(networkName, newPage, currentTimestamp)
 	}
 
 	/**
-	 * Reset the page number to 1 for a chain
+	 * Reset the page number to 1 for a chain in the database
 	 * @param networkName - CoinGecko OnChain network name
+	 * @param currentTimestamp - Current timestamp in bigint
 	 */
-	private static resetPage(networkName: string): void {
-		this.pageNumbers.set(networkName, 1)
+	private static async resetPage(networkName: string, currentTimestamp: bigint): Promise<void> {
+		await this.setPage(networkName, 1, currentTimestamp)
+	}
+
+	/**
+	 * Set the page number for a chain in the database
+	 * @param networkName - CoinGecko OnChain network name
+	 * @param pageNumber - Page number to set
+	 * @param currentTimestamp - Current timestamp in bigint
+	 */
+	private static async setPage(networkName: string, pageNumber: number, currentTimestamp: bigint): Promise<void> {
+		const chainId = NETWORK_TO_CHAIN_ID[networkName] || networkName
+		const timestampDate = timestampToDate(currentTimestamp)
+		try {
+			const existingState = await TokenListSyncState.get(networkName)
+			if (existingState) {
+				existingState.currentPage = pageNumber
+				existingState.chainId = chainId
+				existingState.lastUpdatedAt = timestampDate
+				await existingState.save()
+			} else {
+				const newState = TokenListSyncState.create({
+					id: networkName,
+					networkName,
+					chainId,
+					currentPage: pageNumber,
+					lastUpdatedAt: timestampDate,
+					createdAt: timestampDate,
+				})
+				await newState.save()
+			}
+		} catch (error) {
+			logger.error(`[CoinGeckoTokenListService.setPage] Error setting page number for ${networkName}: ${error}`)
+		}
 	}
 
 	/**
@@ -114,7 +153,7 @@ export class CoinGeckoTokenListService {
 	private static async syncChain(networkName: string, currentTimestamp: bigint): Promise<void> {
 		const chainId = NETWORK_TO_CHAIN_ID[networkName] || networkName
 
-		const currentPage = this.getCurrentPage(networkName)
+		const currentPage = await this.getCurrentPage(networkName, currentTimestamp)
 
 		if (currentPage === 1) {
 			try {
@@ -148,7 +187,7 @@ export class CoinGeckoTokenListService {
 			tokensMap = result.tokens
 
 			if (!pools || pools.length === 0) {
-				this.resetPage(networkName)
+				await this.resetPage(networkName, currentTimestamp)
 
 				const timestampDate = timestampToDate(currentTimestamp)
 				try {
@@ -173,16 +212,17 @@ export class CoinGeckoTokenListService {
 				return
 			}
 
-			this.incrementPage(networkName)
+			await this.incrementPage(networkName, currentTimestamp)
+			const nextPage = await this.getCurrentPage(networkName, currentTimestamp)
 			logger.info(
-				`[CoinGeckoTokenListService.syncChain] Fetched page ${currentPage} for ${networkName}: ${pools.length} pools. Next page will be ${this.getCurrentPage(networkName)}`,
+				`[CoinGeckoTokenListService.syncChain] Fetched page ${currentPage} for ${networkName}: ${pools.length} pools. Next page will be ${nextPage}`,
 			)
 		} catch (error) {
 			logger.error(
 				`[CoinGeckoTokenListService.syncChain] Error fetching page ${currentPage} for ${networkName}: ${error}`,
 			)
 			// On error, reset to page 1 to avoid getting stuck
-			this.resetPage(networkName)
+			await this.resetPage(networkName, currentTimestamp)
 			return
 		}
 

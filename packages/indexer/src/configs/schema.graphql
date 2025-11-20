@@ -1312,6 +1312,41 @@ type TokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
 }
 
 """
+Sync state for CoinGecko Token List pagination - tracks current page number per chain
+"""
+type TokenListSyncState @entity {
+	"""
+	Unique identifier: networkName (e.g., "eth", "polygon_pos", "arbitrum")
+	"""
+	id: ID!
+
+	"""
+	CoinGecko OnChain network name (e.g., "eth", "polygon_pos", "arbitrum")
+	"""
+	networkName: String! @index
+
+	"""
+	Numeric EVM chain id (as string) the sync state belongs to
+	"""
+	chainId: String! @index
+
+	"""
+	Current page number for pagination (starts at 1)
+	"""
+	currentPage: Int!
+
+	"""
+	Timestamp when this sync state was last updated
+	"""
+	lastUpdatedAt: Date! @index
+
+	"""
+	When this sync state entry was first created
+	"""
+	createdAt: Date! @index
+}
+
+"""
 Token Registry - Configuration and metadata for supported tokens
 """
 type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"], ["symbol", "createdAt"]]) {
