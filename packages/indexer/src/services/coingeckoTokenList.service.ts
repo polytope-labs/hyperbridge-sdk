@@ -169,13 +169,10 @@ export class CoinGeckoTokenListService {
 
 		if (currentPage === 1) {
 			try {
-				const existingTokens = await TokenList.getByChainId(chainId, {
-					orderBy: "updatedAt",
-					orderDirection: "DESC",
-					limit: 1,
-				})
-				if (existingTokens && existingTokens.length > 0) {
-					const lastUpdateTime = existingTokens[0].updatedAt.getTime()
+				const syncState = await TokenListSyncState.get(networkName)
+
+				if (syncState?.lastUpdatedAt) {
+					const lastUpdateTime = syncState.lastUpdatedAt.getTime()
 					const currentTime = timestampToDate(currentTimestamp).getTime()
 					const timeSinceUpdateMs = currentTime - lastUpdateTime
 
@@ -187,7 +184,9 @@ export class CoinGeckoTokenListService {
 					}
 				}
 			} catch (error) {
-				logger.debug(`[CoinGeckoTokenListService.syncChain] Could not check last update time: ${error}`)
+				logger.debug(
+					`[CoinGeckoTokenListService.syncChain] Could not check sync state last update time: ${error}`,
+				)
 			}
 		}
 		let pools: GeckoTerminalPool[] = []
