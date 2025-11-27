@@ -1187,6 +1187,100 @@ describe.sequential("Swap Tests", () => {
 
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
+
+	it("Should be able to drop gas on the destination chain, through calldata", async () => {
+		const bscMainnetId = "EVM-56"
+		const bscEvmChain = new EvmChain({
+			chainId: 56,
+			host: chainConfigService.getHostAddress(bscMainnetId),
+			rpcUrl: process.env.BSC_MAINNET!,
+		})
+
+		const mainnetEvmChain = new EvmChain({
+			chainId: 1,
+			host: chainConfigService.getHostAddress(mainnetId),
+			rpcUrl: process.env.ETH_MAINNET!,
+		})
+		const intentGateway = new IntentGateway(mainnetEvmChain, bscEvmChain)
+		const tokenIn = chainConfigService.getUsdcAsset(mainnetId)
+		const tokenOut = chainConfigService.getUsdcAsset(bscMainnetId)
+
+		// The user gives 5 USDC, and expects 10c worth of gas, along with 4.9 USDC back
+		const amountIn = parseUnits("5", 6)
+		const firstAmountOut = parseUnits("4.9", 18) // This goes to the user
+		const gasDropUsdcAmount = parseUnits("0.1", 18) // Gets swapped to Native token
+		const bscCalldispatcher = chainConfigService.getCalldispatcherAddress(bscMainnetId)
+
+		// Filler sends firstAmountOut + gasDropUsdcAmount to the calldispatcher which equals 5 USDC
+		// Calldispatcher sends firstAmountOut to the user, and gasDropUsdcAmount to universal router for swapping
+
+		// This is the calldata for the calldispatcher sending the funds to the user
+		// Which is firstAmountout
+
+		let firstCallData = {
+			to: tokenOut,
+			data: encodeFunctionData({
+				abi: erc6160.ABI,
+				functionName: "transfer",
+				args: ["0xFbd87afA57268560ae4D820a5B73Db71916852a7", firstAmountOut],
+			}),
+			value: 0n,
+		}
+
+		// This is the calldata for the calldispatcher using the rest of the amount to swap to native token and send to user
+		// Even though we are using createMultiHopSwapThroughPair, this is a simple swap to native token
+		const { calldata } = await intentGateway.swap.createMultiHopSwapThroughPair(
+			intentGateway.dest.client,
+			tokenOut,
+			ADDRESS_ZERO,
+			gasDropUsdcAmount,
+			bscMainnetId,
+			"0xFbd87afA57268560ae4D820a5B73Db71916852a7", // User
+			"v2",
+			100n, // 1% slippage
+		)
+
+		const { ethMainnetIsmpHost, bscMainnetIsmpHost } = await setUpEthToBsc()
+
+		const encodedCalls = encodeAbiParameters(
+			[
+				{
+					type: "tuple[]",
+					components: [
+						{ name: "to", type: "address" },
+						{ name: "value", type: "uint256" },
+						{ name: "data", type: "bytes" },
+					],
+				},
+			],
+			[[firstCallData, ...calldata]],
+		)
+
+		const order: Order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await ethMainnetIsmpHost.read.host(),
+			destChain: await bscMainnetIsmpHost.read.host(),
+			deadline: 65337297000n,
+			nonce: 0n,
+			fees: 0n,
+			outputs: [
+				{
+					token: bytes20ToBytes32(tokenOut),
+					amount: firstAmountOut + gasDropUsdcAmount, // 5 USDC`
+					beneficiary: bytes20ToBytes32(bscCalldispatcher),
+				},
+			],
+			inputs: [{ token: bytes20ToBytes32(tokenIn), amount: amountIn }], // 5 USDC
+			callData: encodedCalls,
+		}
+
+		const { feeTokenAmount: estimatedFee, nativeTokenAmount } = await intentGateway.estimateFillOrder(order)
+		console.log("ETH => BSC")
+		console.log("Estimated fee:", estimatedFee)
+		console.log("Native token amount:", nativeTokenAmount)
+
+		assert(estimatedFee > 0n)
+	}, 1_000_000)
 })
 
 describe.sequential("Order Cancellation tests", () => {
@@ -1446,6 +1540,453 @@ describe.sequential("Order Cancellation tests", () => {
 		const nativeRequired = await intentGateway.quoteCancelNative(order)
 		console.log("Native required for cancellation (BSC -> ETH):", nativeRequired)
 		expect(nativeRequired >= 0n).toBe(true)
+	}, 1_000_000)
+
+	it.skip("Should resume order cancellation from stored destProof", async () => {
+		const {
+			bscChapelId,
+			chainConfigService,
+			bscChapelIntentGateway,
+			feeTokenBscChapelAddress,
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			bscChapelIsmpHost,
+			ethSepoliaIsmpHost,
+		} = await setUpBscToSepoliaOrder()
+
+		let bscChapelEvmStructParams: EvmChainParams = {
+			chainId: 97,
+			host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+			rpcUrl: process.env.BSC_CHAPEL!,
+		}
+
+		let ethSepoliaEvmStructParams: EvmChainParams = {
+			chainId: 11155111,
+			host: "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
+			rpcUrl: process.env.SEPOLIA!,
+		}
+
+		let bscEvmChain = new EvmChain(bscChapelEvmStructParams)
+		let ethSepoliaEvmChain = new EvmChain(ethSepoliaEvmStructParams)
+		let intentGateway = new IntentGateway(bscEvmChain, ethSepoliaEvmChain)
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
+
+		const inputs: TokenInfo[] = [
+			{
+				token: bytes20ToBytes32(daiAsset),
+				amount: 100n,
+			},
+		]
+		const outputs: PaymentInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await bscChapelIsmpHost.read.host(),
+			destChain: await ethSepoliaIsmpHost.read.host(),
+			deadline: 0n,
+			nonce: 0n,
+			fees: 1000000n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		await approveTokens(
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			feeTokenBscChapelAddress,
+			bscChapelIntentGateway.address,
+		)
+
+		let hash = await bscChapelIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		const orderPlacedEvent = await getOrderPlacedFromTx(bscChapelPublicClient, hash)
+		if (!orderPlacedEvent) {
+			throw new Error("OrderPlaced event not found")
+		}
+
+		const orderPlaced = orderPlacedEvent.args
+
+		// First attempt: fetch and store destProof
+		console.log("Test 1: Storing destProof...")
+		const firstCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+		let result = await firstCancelGenerator.next()
+
+		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			result = await firstCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+		const firstProof = (result.value as any).data.proof as IProof
+		console.log("destProof stored at height", firstProof.height)
+
+		// Second attempt: should resume from stored destProof
+		console.log("Test 1: Resuming from stored destProof...")
+		const secondCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+		result = await secondCancelGenerator.next()
+
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+		const resumedProof = (result.value as any).data.proof as IProof
+		expect(resumedProof.height).toBe(firstProof.height)
+		expect(resumedProof.stateMachine).toBe(firstProof.stateMachine)
+		console.log("Successfully resumed from stored destProof")
+
+		// Continue to completion
+		result = await secondCancelGenerator.next()
+		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
+
+		const finalizedHeight = resumedProof.height
+		const cancelOptions = {
+			relayerFee: 10000000000n,
+			height: finalizedHeight,
+		}
+
+		hash = await bscChapelIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		result = await secondCancelGenerator.next(hash)
+
+		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
+			result = await secondCancelGenerator.next()
+		}
+		expect(result.value?.status).toBe("SOURCE_FINALIZED")
+
+		while (!result.done) {
+			const status = result.value?.status
+			if (status === "HYPERBRIDGE_DELIVERED") {
+				result = await secondCancelGenerator.next()
+				continue
+			}
+			if (status === "HYPERBRIDGE_FINALIZED") {
+				break
+			}
+			result = await secondCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
+	}, 1_000_000)
+
+	it.skip("Should resume order cancellation from stored destProof and getRequest", async () => {
+		const {
+			bscChapelId,
+			chainConfigService,
+			bscChapelIntentGateway,
+			feeTokenBscChapelAddress,
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			bscChapelIsmpHost,
+			ethSepoliaIsmpHost,
+		} = await setUpBscToSepoliaOrder()
+
+		let bscChapelEvmStructParams: EvmChainParams = {
+			chainId: 97,
+			host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+			rpcUrl: process.env.BSC_CHAPEL!,
+		}
+
+		let ethSepoliaEvmStructParams: EvmChainParams = {
+			chainId: 11155111,
+			host: "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
+			rpcUrl: process.env.SEPOLIA!,
+		}
+
+		let bscEvmChain = new EvmChain(bscChapelEvmStructParams)
+		let ethSepoliaEvmChain = new EvmChain(ethSepoliaEvmStructParams)
+		let intentGateway = new IntentGateway(bscEvmChain, ethSepoliaEvmChain)
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
+
+		const inputs: TokenInfo[] = [
+			{
+				token: bytes20ToBytes32(daiAsset),
+				amount: 100n,
+			},
+		]
+		const outputs: PaymentInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await bscChapelIsmpHost.read.host(),
+			destChain: await ethSepoliaIsmpHost.read.host(),
+			deadline: 0n,
+			nonce: 0n,
+			fees: 1000000n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		await approveTokens(
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			feeTokenBscChapelAddress,
+			bscChapelIntentGateway.address,
+		)
+
+		let hash = await bscChapelIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		const orderPlacedEvent = await getOrderPlacedFromTx(bscChapelPublicClient, hash)
+		if (!orderPlacedEvent) {
+			throw new Error("OrderPlaced event not found")
+		}
+
+		const orderPlaced = orderPlacedEvent.args
+
+		// First attempt: store destProof and getRequest
+		console.log("Test 2: Storing destProof and getRequest...")
+		const firstCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+		let result = await firstCancelGenerator.next()
+
+		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			result = await firstCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+		const finalizedHeight = (result.value as any).data.proof.height as bigint
+
+		result = await firstCancelGenerator.next()
+		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
+
+		const cancelOptions = {
+			relayerFee: 10000000000n,
+			height: finalizedHeight,
+		}
+
+		hash = await bscChapelIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		result = await firstCancelGenerator.next(hash)
+		console.log("destProof and getRequest stored")
+
+		console.log("Test 2: Resuming from stored destProof and getRequest...")
+		const secondCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+
+		result = await secondCancelGenerator.next()
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+
+		result = await secondCancelGenerator.next()
+		expect(result.value?.status).not.toBe("AWAITING_GET_REQUEST")
+		console.log("Successfully resumed from stored destProof and getRequest, next status:", result.value?.status)
+
+		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
+			const status = result.value?.status
+			if (status === "HYPERBRIDGE_DELIVERED") {
+				console.log("Received HYPERBRIDGE_DELIVERED, continuing...")
+				result = await secondCancelGenerator.next()
+				continue
+			}
+			result = await secondCancelGenerator.next()
+		}
+		expect(result.value?.status).toBe("SOURCE_FINALIZED")
+
+		while (!result.done) {
+			const status = result.value?.status
+			if (status === "HYPERBRIDGE_DELIVERED") {
+				result = await secondCancelGenerator.next()
+				continue
+			}
+			if (status === "HYPERBRIDGE_FINALIZED") {
+				break
+			}
+			result = await secondCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
+	}, 1_000_000)
+
+	it("Should resume order cancellation from stored destProof, getRequest, and sourceProof", async () => {
+		const {
+			bscChapelId,
+			chainConfigService,
+			bscChapelIntentGateway,
+			feeTokenBscChapelAddress,
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			bscChapelIsmpHost,
+			ethSepoliaIsmpHost,
+		} = await setUpBscToSepoliaOrder()
+
+		let bscChapelEvmStructParams: EvmChainParams = {
+			chainId: 97,
+			host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
+			rpcUrl: process.env.BSC_CHAPEL!,
+		}
+
+		let ethSepoliaEvmStructParams: EvmChainParams = {
+			chainId: 11155111,
+			host: "0x2EdB74C269948b60ec1000040E104cef0eABaae8",
+			rpcUrl: process.env.SEPOLIA!,
+		}
+
+		let bscEvmChain = new EvmChain(bscChapelEvmStructParams)
+		let ethSepoliaEvmChain = new EvmChain(ethSepoliaEvmStructParams)
+		let intentGateway = new IntentGateway(bscEvmChain, ethSepoliaEvmChain)
+
+		const daiAsset = chainConfigService.getDaiAsset(bscChapelId)
+
+		const inputs: TokenInfo[] = [
+			{
+				token: bytes20ToBytes32(daiAsset),
+				amount: 100n,
+			},
+		]
+		const outputs: PaymentInfo[] = [
+			{
+				token: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				amount: 100n,
+				beneficiary: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E",
+			},
+		]
+
+		const order = {
+			user: "0x000000000000000000000000Ea4f68301aCec0dc9Bbe10F15730c59FB79d237E" as HexString,
+			sourceChain: await bscChapelIsmpHost.read.host(),
+			destChain: await ethSepoliaIsmpHost.read.host(),
+			deadline: 0n,
+			nonce: 0n,
+			fees: 1000000n,
+			outputs,
+			inputs,
+			callData: "0x" as HexString,
+		}
+
+		await approveTokens(
+			bscChapelWalletClient,
+			bscChapelPublicClient,
+			feeTokenBscChapelAddress,
+			bscChapelIntentGateway.address,
+		)
+
+		let hash = await bscChapelIntentGateway.write.placeOrder([order, DEFAULT_GRAFFITI], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		const orderPlacedEvent = await getOrderPlacedFromTx(bscChapelPublicClient, hash)
+		if (!orderPlacedEvent) {
+			throw new Error("OrderPlaced event not found")
+		}
+
+		const orderPlaced = orderPlacedEvent.args
+
+		console.log("Test 3: Storing destProof, getRequest, and sourceProof...")
+		const firstCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+		let result = await firstCancelGenerator.next()
+
+		while (!result.done && result.value?.status !== "DESTINATION_FINALIZED") {
+			result = await firstCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+		const finalizedHeight = (result.value as any).data.proof.height as bigint
+
+		result = await firstCancelGenerator.next()
+		expect(result.value?.status).toBe("AWAITING_GET_REQUEST")
+
+		const cancelOptions = {
+			relayerFee: 10000000000n,
+			height: finalizedHeight,
+		}
+
+		hash = await bscChapelIntentGateway.write.cancelOrder([orderPlaced, cancelOptions], {
+			account: privateKeyToAccount(process.env.PRIVATE_KEY as HexString),
+			chain: bscTestnet,
+		})
+
+		await bscChapelPublicClient.waitForTransactionReceipt({
+			hash,
+			confirmations: 1,
+		})
+
+		result = await firstCancelGenerator.next(hash)
+
+		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
+			result = await firstCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("SOURCE_FINALIZED")
+		const firstSourceHeight = BigInt((result.value as any).data.metadata.blockNumber)
+		console.log("destProof, getRequest, and sourceProof stored at source height", firstSourceHeight)
+
+		console.log("Test 3: Resuming from stored destProof, getRequest, and sourceProof...")
+		const secondCancelGenerator = intentGateway.cancelOrder(orderPlaced as Order, indexer)
+
+		result = await secondCancelGenerator.next()
+		expect(result.value?.status).toBe("DESTINATION_FINALIZED")
+
+		result = await secondCancelGenerator.next()
+		expect(result.value?.status).not.toBe("AWAITING_GET_REQUEST")
+
+		while (!result.done && result.value?.status !== "SOURCE_FINALIZED") {
+			result = await secondCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("SOURCE_FINALIZED")
+		const resumedSourceHeight = BigInt((result.value as any).data.metadata.blockNumber)
+		expect(resumedSourceHeight).toBe(firstSourceHeight)
+		console.log("Successfully resumed from all stored values (destProof, getRequest, sourceProof)")
+
+		while (!result.done) {
+			const status = result.value?.status
+			if (status === "HYPERBRIDGE_DELIVERED") {
+				result = await secondCancelGenerator.next()
+				continue
+			}
+			if (status === "HYPERBRIDGE_FINALIZED") {
+				break
+			}
+			result = await secondCancelGenerator.next()
+		}
+
+		expect(result.value?.status).toBe("HYPERBRIDGE_FINALIZED")
 	}, 1_000_000)
 })
 
