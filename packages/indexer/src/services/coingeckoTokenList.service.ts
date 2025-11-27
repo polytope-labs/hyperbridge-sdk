@@ -200,23 +200,6 @@ export class CoinGeckoTokenListService {
 			if (!pools || pools.length === 0) {
 				await this.resetPage(networkName, currentTimestamp)
 
-				const timestampDate = timestampToDate(currentTimestamp)
-				try {
-					const existingTokens = await TokenList.getByChainId(chainId, {
-						orderBy: "updatedAt",
-						orderDirection: "DESC",
-						limit: 1,
-					})
-					if (existingTokens && existingTokens.length > 0) {
-						existingTokens[0].updatedAt = timestampDate
-						await existingTokens[0].save()
-					}
-				} catch (error) {
-					logger.debug(
-						`[CoinGeckoTokenListService.syncChain] Could not update timestamp after empty response: ${error}`,
-					)
-				}
-
 				logger.info(
 					`[CoinGeckoTokenListService.syncChain] Empty response for page ${currentPage} on ${networkName}, resetting to page 1. Will wait 24 hours before starting again.`,
 				)
