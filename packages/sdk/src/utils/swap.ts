@@ -13,7 +13,7 @@ import UniswapRouterV2 from "@/abis/uniswapRouterV2"
 import UniswapV3Quoter from "@/abis/uniswapV3Quoter"
 import { UNISWAP_V4_QUOTER_ABI } from "@/abis/uniswapV4Quoter"
 import universalRouter from "@/abis/universalRouter"
-import { UniversalRouterCommands } from "@/utils"
+import { adjustFeeDecimals, UniversalRouterCommands } from "@/utils"
 import { PERMIT2_ABI } from "@/abis/permit2"
 import { popularTokens } from "@/configs/chain"
 
@@ -1597,7 +1597,7 @@ export class Swap {
 		return { poolAddress: mostLiquidPool, fee: bestFee }
 	}
 
-	async createMultiHopSwapThroughPair(
+	async createSwap(
 		client: PublicClient,
 		tokenIn: HexString,
 		tokenOut: HexString,
@@ -1644,7 +1644,7 @@ export class Swap {
 			intermediateToken = foundIntermediateToken
 		}
 
-		const swapPath = this.buildSwapPath(tokenIn, tokenOut, intermediateToken, wethAsset)
+		const swapPath = this.buildSwapPath(tokenInForPairLookup, tokenOutForPairLookup, intermediateToken, wethAsset)
 
 		const { finalAmountOut, fees } = await this.getQuoteForPath(client, swapPath, amountIn, evmChainID, protocol)
 
@@ -1658,6 +1658,85 @@ export class Swap {
 		return {
 			finalAmountOut: amountOutMinimum,
 			calldata,
+		}
+	}
+
+	/**
+	 * Helper function for any-token → any-token swaps across two EVM chains via USDC.
+	 *
+	 * - On the source chain, it swaps `sourceToken` → source USDC.
+	 * - It then normalizes the USDC amount across differing decimals.
+	 * - On the destination chain, it swaps dest USDC → `destToken`.
+	 *
+	 */
+	async createCompleteSwap(
+		sourceClient: PublicClient,
+		destClient: PublicClient,
+		sourceToken: HexString, // Token Address in Source chain
+		destToken: HexString, // Token Address in Dest chain
+		amountIn: bigint, // Amount in Source chain
+		sourceChain: string, // Source chain ID
+		destChain: string, // Dest chain ID
+		recipient: HexString,
+		slippagePercentage: bigint,
+		protocol: "v2" | "v3" = "v2",
+	): Promise<{ finalAmountOut: bigint; calldata: Transaction[] }> {
+		const sourceUsdc = this.chainConfigService.getUsdcAsset(sourceChain)
+		const destUsdc = this.chainConfigService.getUsdcAsset(destChain)
+
+		// This helper is intended for non-USDC assets on both ends; USDC↔USDC or
+		// USDC↔token flows should use `createSwap` directly.
+		if (sourceToken.toLowerCase() === sourceUsdc.toLowerCase()) {
+			throw new Error("createCompleteSwap: sourceToken is already USDC – use createSwap instead")
+		}
+
+		if (destToken.toLowerCase() === destUsdc.toLowerCase()) {
+			throw new Error("createCompleteSwap: destToken is already USDC – use createSwap instead")
+		}
+
+		const sourceUsdcDecimals = await sourceClient.readContract({
+			address: sourceUsdc,
+			abi: [parseAbiItem("function decimals() view returns (uint8)")],
+			functionName: "decimals",
+		})
+
+		const destUsdcDecimals = await destClient.readContract({
+			address: destUsdc,
+			abi: [parseAbiItem("function decimals() view returns (uint8)")],
+			functionName: "decimals",
+		})
+
+		// Handle source swaps – swap `sourceToken` → source-chain USDC
+		const { finalAmountOut: sourceAmountOut, calldata: sourceCalldata } = await this.createSwap(
+			sourceClient,
+			sourceToken,
+			sourceUsdc,
+			amountIn,
+			sourceChain,
+			recipient,
+			protocol,
+			slippagePercentage,
+		)
+
+		// Now that we have the USDC amount out, we need to create a USDC to dest token swap,
+		// but first handle decimal conversion between source/dest USDC representations
+		const destUsdcAmountOut = adjustFeeDecimals(sourceAmountOut, sourceUsdcDecimals, destUsdcDecimals)
+
+		// Handle dest swaps – swap dest-chain USDC → `destToken`
+		const { finalAmountOut: destAmountOut, calldata: destCalldata } = await this.createSwap(
+			destClient,
+			destUsdc,
+			destToken,
+			destUsdcAmountOut,
+			destChain,
+			recipient,
+			protocol,
+			slippagePercentage,
+		)
+
+		return {
+			finalAmountOut: destAmountOut,
+			calldata: [...sourceCalldata, ...destCalldata],
 		}
 	}
 

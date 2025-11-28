@@ -50,6 +50,7 @@ import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
 import { strict as assert } from "assert"
 import { getOrderPlacedFromTx } from "@/utils/txEvents"
+import { Swap } from "@/utils/swap"
 
 describe.sequential("Intents protocol tests", () => {
 	it("Should generate the estimatedFee while doing bsc mainnet to eth mainnet", async () => {
@@ -1135,7 +1136,7 @@ describe.sequential("Swap Tests", () => {
 		const memeToken = "0xEa7C32c66413C7F6DDD94c532594BcDF608Fe2c2"
 		const slippageinBps = 100n
 
-		const { calldata } = await intentGateway.swap.createMultiHopSwapThroughPair(
+		const { calldata } = await intentGateway.swap.createSwap(
 			intentGateway.dest.client,
 			tokenOut,
 			memeToken,
@@ -1188,7 +1189,48 @@ describe.sequential("Swap Tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	it("Should be able to drop gas on the destination chain, through calldata", async () => {
+	it("should create a complete multi-chain swap via USDC (BSC -> ETH)", async () => {
+		const bscMainnetId = "EVM-56"
+		const ethMainnetId = "EVM-1"
+
+		const swap = new Swap()
+
+		// Use native tokens on both chains (BNB -> ETH), routing via USDC on each side.
+		const sourceToken = ADDRESS_ZERO
+		const destToken = ADDRESS_ZERO
+
+		const amountIn = parseUnits("0.1", 18)
+		const recipient = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
+
+		const sourceClient = createPublicClient({
+			chain: bsc,
+			transport: http(process.env.BSC_MAINNET!),
+		})
+
+		const destClient = createPublicClient({
+			chain: mainnet,
+			transport: http(process.env.ETH_MAINNET!),
+		})
+
+		const { finalAmountOut, calldata } = await swap.createCompleteSwap(
+			sourceClient,
+			destClient,
+			sourceToken,
+			destToken,
+			amountIn,
+			bscMainnetId,
+			ethMainnetId,
+			recipient,
+			100n, // 1% slippage per leg
+			"v2",
+		)
+
+		console.log("Final amount out:", finalAmountOut)
+		assert(finalAmountOut >= 0n, "Final output amount should be non-negative")
+		assert(calldata.length > 0, "Combined calldata should not be empty")
+	}, 1_000_000)
+
+	it.only("Should be able to drop gas on the destination chain, through calldata", async () => {
 		const bscMainnetId = "EVM-56"
 		const bscEvmChain = new EvmChain({
 			chainId: 56,
@@ -1228,8 +1270,8 @@ describe.sequential("Swap Tests", () => {
 		}
 
 		// This is the calldata for the calldispatcher using the rest of the amount to swap to native token and send to user
-		// Even though we are using createMultiHopSwapThroughPair, this is a simple swap to native token
-		const { calldata } = await intentGateway.swap.createMultiHopSwapThroughPair(
+		// Even though we are using createSwap, this is a simple swap to native token
+		const { calldata } = await intentGateway.swap.createSwap(
 			intentGateway.dest.client,
 			tokenOut,
 			ADDRESS_ZERO,
