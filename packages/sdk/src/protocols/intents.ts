@@ -453,6 +453,32 @@ export class IntentGateway {
 		return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
+	/**
+	 * Checks if an order has been refunded by verifying the commitment status on-chain.
+	 * Reads the storage slot corresponding to the order's commitment hash on the source chain
+	 * (where the escrow is held).
+	 *
+	 * @param order - The order to check
+	 * @returns True if the order has been refunded, false otherwise
+	 */
+	async isOrderRefunded(order: Order): Promise<boolean> {
+		order = transformOrder(order)
+		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.sourceChain)
+
+		const refundedSlot = await this.source.client.readContract({
+			abi: IntentGatewayABI.ABI,
+			address: intentGatewayAddress,
+			functionName: "calculateCommitmentSlotHash",
+			args: [order.id as HexString],
+		})
+
+		const refundedStatus = await this.source.client.getStorageAt({
+			address: intentGatewayAddress,
+			slot: refundedSlot,
+		})
+		return refundedStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
+	}
+
 	private async submitAndConfirmReceipt(
 		hyperbridge: SubstrateChain,
 		commitment: HexString,
