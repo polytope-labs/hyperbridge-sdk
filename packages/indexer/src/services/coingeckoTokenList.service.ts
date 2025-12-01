@@ -23,11 +23,11 @@ function extractTokenAddress(tokenId: string): string {
 	const addressMatch = tokenId.match(/0x[a-fA-F0-9]+/)
 	if (addressMatch) {
 		const addressIndex = tokenId.indexOf(addressMatch[0])
-		return tokenId.substring(addressIndex)
+		return tokenId.substring(addressIndex).toLowerCase()
 	}
 	// Fallback: if no 0x found, try splitting by underscore and taking the last part
 	const parts = tokenId.split("_")
-	return parts[parts.length - 1]
+	return parts[parts.length - 1].toLowerCase()
 }
 
 /**
@@ -48,9 +48,9 @@ function extractFeeFromPoolName(poolName: string): string {
  */
 function formatPairInfo(pairAddress: string, tokenSymbol: string, protocolName: string, fee: string): string {
 	if (fee) {
-		return `${pairAddress}-${tokenSymbol}-${protocolName}-${fee}`
+		return `${pairAddress.toLowerCase()}-${tokenSymbol}-${protocolName}-${fee}`
 	}
-	return `${pairAddress}-${tokenSymbol}-${protocolName}`
+	return `${pairAddress.toLowerCase()}-${tokenSymbol}-${protocolName}`
 }
 
 export class CoinGeckoTokenListService {
@@ -233,7 +233,7 @@ export class CoinGeckoTokenListService {
 					return
 				}
 
-				tokenMap.set(tokenAddress, {
+				tokenMap.set(normalizedAddress, {
 					tokenName: token.attributes.name,
 					tokenSymbol: token.attributes.symbol,
 					tokenURI: token.attributes.image_url || null,
