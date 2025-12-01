@@ -1644,7 +1644,7 @@ export class Swap {
 			intermediateToken = foundIntermediateToken
 		}
 
-		const swapPath = this.buildSwapPath(tokenInForPairLookup, tokenOutForPairLookup, intermediateToken, wethAsset)
+		const swapPath = this.buildSwapPath(tokenIn, tokenOut, intermediateToken, wethAsset)
 
 		const { finalAmountOut, fees } = await this.getQuoteForPath(client, swapPath, amountIn, evmChainID, protocol)
 
@@ -1680,7 +1680,13 @@ export class Swap {
 		recipient: HexString,
 		slippagePercentage: bigint,
 		protocol: "v2" | "v3" = "v2",
-	): Promise<{ finalAmountOut: bigint; calldata: Transaction[] }> {
+	): Promise<{
+		destTokenAmountOut: bigint
+		orderInput: bigint
+		orderOutput: bigint
+		placeOrderCalldata: Transaction[]
+		fillOrderCalldata: Transaction[]
+	}> {
 		const sourceUsdc = this.chainConfigService.getUsdcAsset(sourceChain)
 		const destUsdc = this.chainConfigService.getUsdcAsset(destChain)
 
@@ -1735,8 +1741,11 @@ export class Swap {
 		)
 
 		return {
-			finalAmountOut: destAmountOut,
-			calldata: [...sourceCalldata, ...destCalldata],
+			destTokenAmountOut: destAmountOut,
+			orderInput: sourceAmountOut,
+			orderOutput: destUsdcAmountOut,
+			placeOrderCalldata: sourceCalldata,
+			fillOrderCalldata: destCalldata,
 		}
 	}
 
@@ -1746,7 +1755,7 @@ export class Swap {
 		intermediateToken: HexString,
 		wethAsset: HexString,
 	): HexString[] {
-		const normalize = (token: HexString) => token.toLowerCase()
+		const normalize = (token: HexString) => (token === ADDRESS_ZERO ? wethAsset.toLowerCase() : token.toLowerCase())
 
 		if (normalize(intermediateToken) === normalize(tokenIn)) {
 			return [tokenIn, tokenOut]
