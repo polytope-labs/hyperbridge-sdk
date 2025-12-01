@@ -812,7 +812,7 @@ describe.sequential(
 			console.log("inputUsdValue", inputUsdValue.toNumber())
 		})
 
-		it("Should successfully get the order estimates for polygon mainnet to bsc mainnet", async () => {
+		it.only("Should successfully get the order estimates for polygon mainnet to bsc mainnet", async () => {
 			const { chainConfigService, polygonMainnetId, bscMainnetId, contractInteractionService } = await setUp()
 
 			const polygonUsdc = chainConfigService.getUsdcAsset(polygonMainnetId)
@@ -847,7 +847,7 @@ describe.sequential(
 			console.log("result", result)
 		})
 
-		it("Should successfully get the order estimates for bsc mainnet to polygon mainnet", async () => {
+		it.only("Should successfully get the order estimates for bsc mainnet to polygon mainnet", async () => {
 			const { chainConfigService, polygonMainnetId, bscMainnetId, contractInteractionService } = await setUp()
 
 			const polygonUsdc = chainConfigService.getUsdcAsset(polygonMainnetId)

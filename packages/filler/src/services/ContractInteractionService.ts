@@ -438,6 +438,8 @@ export class ContractInteractionService {
 					order.destChain,
 				)
 
+				this.logger.debug("Protocol fee in native token is " + protocolFeeInNativeToken.toString())
+
 				// Add 0.5% markup
 				protocolFeeInNativeToken = protocolFeeInNativeToken + (protocolFeeInNativeToken * 50n) / 10000n
 
@@ -455,9 +457,9 @@ export class ContractInteractionService {
 					"Estimated fill gas",
 				)
 				relayerFeeInNativeToken = protocolFeeInNativeToken
-			} catch {
+			} catch (e) {
 				this.logger.warn(
-					{ chain: order.destChain },
+					{ chain: order.destChain, err: e },
 					"Could not estimate gas with native token fees; trying fee token",
 				)
 				const destChainFeeTokenAddress = (await this.getFeeTokenWithDecimals(order.destChain)).address
@@ -560,7 +562,7 @@ export class ContractInteractionService {
 				args: [dispatchPost] as any,
 			})
 			.catch(async () => {
-				const quoteInFeeToken = await client.readContract({
+				const quoteInFeeToken: bigint = await client.readContract({
 					abi: INTENT_GATEWAY_ABI,
 					address: this.configService.getIntentGatewayAddress(postRequest.dest),
 					functionName: "quote",
@@ -570,6 +572,17 @@ export class ContractInteractionService {
 				const feeToken = (await this.getFeeTokenWithDecimals(chain)).address
 				const routerAddr = this.configService.getUniswapRouterV2Address(chain)
 				const WETH = this.configService.getWrappedNativeAssetWithDecimals(chain).asset
+
+				this.logger.debug(
+					"Get Amounts in is called in quoteNative using amountOut as " +
+						quoteInFeeToken.toString() +
+						" and WETH as " +
+						WETH +
+						" and feeToken as " +
+						feeToken +
+						" and routerAddr as " +
+						routerAddr,
+				)
 				const quote = await client.simulateContract({
 					abi: UNISWAP_ROUTER_V2_ABI,
 					address: routerAddr,
@@ -607,6 +620,9 @@ export class ContractInteractionService {
 						return await client.getGasPrice()
 					})
 				: await client.getGasPrice()
+
+		this.logger.debug("Gas price is " + gasPrice.toString())
+		this.logger.debug("Gas estimate is " + gasEstimate.toString())
 		const gasCostInWei = gasEstimate * gasPrice
 
 		const routerAddr = this.configService.getUniswapRouterV2Address(chain)
@@ -614,6 +630,16 @@ export class ContractInteractionService {
 		const feeToken = await this.getFeeTokenWithDecimals(chain)
 
 		try {
+			this.logger.debug(
+				"Get Amounts in is called in convertGasToFeeToken using gasCostInWei as " +
+					gasCostInWei.toString() +
+					" and feeToken.address as " +
+					feeToken.address +
+					" and wethAddr as " +
+					wethAddr +
+					" and routerAddr as " +
+					routerAddr,
+			)
 			const quoteIn = await client.simulateContract({
 				abi: UNISWAP_ROUTER_V2_ABI,
 				address: routerAddr,
