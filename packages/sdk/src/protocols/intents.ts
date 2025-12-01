@@ -454,29 +454,31 @@ export class IntentGateway {
 	}
 
 	/**
-	 * Checks if an order has been refunded by verifying the commitment status on-chain.
+	 * Checks if an order has been refunded by verifying the escrowed token amount on-chain.
 	 * Reads the storage slot corresponding to the order's commitment hash on the source chain
-	 * (where the escrow is held).
+	 * (where the escrow is held). An order is considered refunded when the escrowed amount is 0.
 	 *
 	 * @param order - The order to check
-	 * @returns True if the order has been refunded, false otherwise
+	 * @returns True if the order has been refunded (amount is 0), false otherwise
 	 */
 	async isOrderRefunded(order: Order): Promise<boolean> {
 		order = transformOrder(order)
 		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.sourceChain)
 
-		const refundedSlot = await this.source.client.readContract({
+		const orderSlot = await this.source.client.readContract({
 			abi: IntentGatewayABI.ABI,
 			address: intentGatewayAddress,
 			functionName: "calculateCommitmentSlotHash",
 			args: [order.id as HexString],
 		})
 
-		const refundedStatus = await this.source.client.getStorageAt({
+		const escrowedAmount = await this.source.client.getStorageAt({
 			address: intentGatewayAddress,
-			slot: refundedSlot,
+			slot: orderSlot,
 		})
-		return refundedStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+		// Order is refunded when the escrowed amount is 0
+		return escrowedAmount === "0x0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
 	private async submitAndConfirmReceipt(
