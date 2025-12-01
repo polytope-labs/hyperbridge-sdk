@@ -5,12 +5,6 @@ import PriceHelper, { type GeckoTerminalPool, type GeckoTerminalToken } from "@/
 const UPDATE_INTERVAL_SECONDS = 86400 // 24 hours
 
 /**
- * Supported chains for CoinGecko OnChain token list syncing
- * Maps to CoinGecko OnChain network names
- */
-const supportedChains = ["eth", "polygon_pos", "arbitrum", "base", "bsc"] as const
-
-/**
  * Map CoinGecko OnChain network names to their numeric chain IDs for storage
  */
 const NETWORK_TO_CHAIN_ID: Record<string, string> = {
@@ -151,7 +145,7 @@ export class CoinGeckoTokenListService {
 	 * @param currentTimestamp - Current timestamp in bigint
 	 */
 	static async sync(currentTimestamp: bigint): Promise<void> {
-		const syncPromises = supportedChains.map((networkName) => this.syncChain(networkName, currentTimestamp))
+		const syncPromises = Object.keys(NETWORK_TO_CHAIN_ID).map((networkName) => this.syncChain(networkName, currentTimestamp))
 
 		await Promise.allSettled(syncPromises)
 		logger.info(`[CoinGeckoTokenListService.sync] Completed sync for all supported chains`)
