@@ -169,8 +169,9 @@ export class CoinGeckoTokenListService {
 					const lastUpdateTime = syncState.lastUpdatedAt.getTime()
 					const currentTime = timestampToDate(currentTimestamp).getTime()
 					const timeSinceUpdateMs = currentTime - lastUpdateTime
+					let timeSinceCreatedAt = currentTime - syncState.createdAt.getTime()
 
-					if (timeSinceUpdateMs < UPDATE_INTERVAL_SECONDS * 1000) {
+					if (timeSinceUpdateMs < UPDATE_INTERVAL_SECONDS * 1000 && timeSinceCreatedAt > UPDATE_INTERVAL_SECONDS * 1000) {
 						logger.info(
 							`[CoinGeckoTokenListService.syncChain] Skipping sync for network ${networkName} (page 1), only ${Math.floor(timeSinceUpdateMs / 1000)}s since last update. Need to wait ${Math.floor((UPDATE_INTERVAL_SECONDS * 1000 - timeSinceUpdateMs) / 1000)}s more.`,
 						)
