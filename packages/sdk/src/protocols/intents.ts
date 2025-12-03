@@ -463,7 +463,8 @@ export class IntentGateway {
 	 */
 	async isOrderRefunded(order: Order): Promise<boolean> {
 		order = transformOrder(order)
-		const intentGatewayAddress = this.source.configService.getIntentGatewayAddress(order.sourceChain)
+		const intentGatewayAddress =
+			this.destIntentGatewayAddress ?? this.source.configService.getIntentGatewayAddress(order.sourceChain)
 
 		const orderSlot = await this.source.client.readContract({
 			abi: IntentGatewayABI.ABI,
