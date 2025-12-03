@@ -1677,7 +1677,7 @@ export class Swap {
 		amountIn: bigint, // Amount in Source chain
 		sourceChain: string, // Source chain ID
 		destChain: string, // Dest chain ID
-		recipient: HexString,
+		finalRecipient: HexString,
 		slippagePercentage: bigint,
 		protocol: "v2" | "v3" = "v2",
 	): Promise<{
@@ -1719,7 +1719,7 @@ export class Swap {
 			sourceUsdc,
 			amountIn,
 			sourceChain,
-			recipient,
+			this.chainConfigService.getCalldispatcherAddress(sourceChain),
 			protocol,
 			slippagePercentage,
 		)
@@ -1735,7 +1735,7 @@ export class Swap {
 			destToken,
 			destUsdcAmountOut,
 			destChain,
-			recipient,
+			finalRecipient,
 			protocol,
 			slippagePercentage,
 		)
