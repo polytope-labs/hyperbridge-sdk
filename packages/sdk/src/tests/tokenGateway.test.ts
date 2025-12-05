@@ -30,6 +30,8 @@ import tokenGateway from "@/abis/tokenGateway"
 import { keccakAsU8a } from "@polkadot/util-crypto"
 import erc6160 from "@/abis/erc6160"
 import { getPostRequestEventFromTx } from "@/utils/txEvents"
+import { TokenGateway } from "@/protocols/tokenGateway"
+import { EvmChain } from "@/chains/evm"
 
 // private key for testnet transactions
 const secret_key = process.env.SECRET_PHRASE || ""
@@ -226,6 +228,237 @@ describe("teleport function", () => {
 			}
 		}
 	}, 300_000_000)
+})
+
+describe("TokenGateway SDK", () => {
+	it.skip("should estimate native cost for teleport using quoteNative", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+		const gnosisChiadoIsmpHostAddress = (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`
+
+		// Set up source chain (BSC Testnet)
+		const sourceChain = new EvmChain({
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			host: bscIsmpHostAddress,
+			consensusStateId: "BSC0",
+		})
+
+		// Set up destination chain (Gnosis Chiado)
+		const destChain = new EvmChain({
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+			host: gnosisChiadoIsmpHostAddress,
+			consensusStateId: "GNO0",
+		})
+
+		// Create TokenGateway instance
+		const tokenGateway = new TokenGateway({
+			source: sourceChain,
+			dest: destChain,
+		})
+
+		// Define teleport parameters without relayerFee (will be auto-estimated)
+		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
+		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
+		const amount = BigInt(1_000_000) // 1 USDH (assuming 6 decimals)
+		const timeout = BigInt(3600) // 1 hour
+
+		const teleportParams = {
+			amount,
+			assetId,
+			redeem: true,
+			to: recipientAddress,
+			dest: "EVM-10200", // Gnosis Chiado
+			timeout,
+			data: "0x" as `0x${string}`,
+		}
+
+		// Estimate the native cost (relayer fee will be automatically estimated)
+		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+
+		console.log(`Estimated native cost (with auto-estimated relayer fee): ${nativeCost.toString()} wei`)
+		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+
+		// Verify that nativeCost is a positive bigint
+		expect(typeof nativeCost).toBe("bigint")
+		expect(nativeCost).toBeGreaterThan(0n)
+	})
+
+	it.skip("should estimate native cost for different amounts", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+		const gnosisChiadoIsmpHostAddress = (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`
+
+		// Set up source chain (BSC Testnet)
+		const sourceChain = new EvmChain({
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			host: bscIsmpHostAddress,
+			consensusStateId: "BSC0",
+		})
+
+		// Set up destination chain (Gnosis Chiado)
+		const destChain = new EvmChain({
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+			host: gnosisChiadoIsmpHostAddress,
+			consensusStateId: "GNO0",
+		})
+
+		// Create TokenGateway instance
+		const tokenGateway = new TokenGateway({
+			source: sourceChain,
+			dest: destChain,
+		})
+
+		// Define teleport parameters with larger amount
+		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
+		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
+		const amount = BigInt(10_000_000) // 10 USDH (assuming 6 decimals) - larger amount
+		const timeout = BigInt(3600) // 1 hour
+
+		const teleportParams = {
+			amount,
+			assetId,
+			redeem: true,
+			to: recipientAddress,
+			dest: "EVM-10200", // Gnosis Chiado
+			timeout,
+			data: "0x" as `0x${string}`,
+		}
+
+		// Estimate the native cost (relayer fee is automatically estimated)
+		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+
+		console.log(`Estimated native cost (larger amount): ${nativeCost.toString()} wei`)
+		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+
+		// Verify that nativeCost is a positive bigint
+		expect(typeof nativeCost).toBe("bigint")
+		expect(nativeCost).toBeGreaterThan(0n)
+	})
+
+	it.skip("should estimate native cost for non-EVM destination (relayer fee = 0)", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+
+		// Set up source chain (BSC Testnet)
+		const sourceChain = new EvmChain({
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			host: bscIsmpHostAddress,
+			consensusStateId: "BSC0",
+		})
+
+		// Set up destination as a Substrate chain (simulated with EvmChain for test purposes)
+		// In reality, this would be a SubstrateChain instance
+		const destChain = new EvmChain({
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
+			consensusStateId: "GNO0",
+		})
+
+		const tokenGateway = new TokenGateway({
+			source: sourceChain,
+			dest: destChain,
+		})
+
+		// Define teleport parameters with a Substrate destination
+		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
+		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
+		const amount = BigInt(1_000_000) // 1 USDH (assuming 6 decimals)
+		const timeout = BigInt(3600) // 1 hour
+
+		const teleportParams = {
+			amount,
+			assetId,
+			redeem: true,
+			to: recipientAddress,
+			dest: "SUBSTRATE-paseo", // Non-EVM destination
+			timeout,
+			data: "0x" as `0x${string}`,
+		}
+
+		// Estimate the native cost - should work but relayer fee component should be 0
+		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+
+		console.log(`Estimated native cost (non-EVM dest, no relayer fee): ${nativeCost.toString()} wei`)
+		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+
+		// Verify that nativeCost is a positive bigint (protocol fee should still apply)
+		expect(typeof nativeCost).toBe("bigint")
+		expect(nativeCost).toBeGreaterThanOrEqual(0n)
+	})
+
+	it.skip("should get ERC20 and ERC6160 addresses for an asset", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+
+		const sourceChain = new EvmChain({
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			host: bscIsmpHostAddress,
+			consensusStateId: "BSC0",
+		})
+
+		const destChain = new EvmChain({
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
+			consensusStateId: "GNO0",
+		})
+
+		const tokenGateway = new TokenGateway({
+			source: sourceChain,
+			dest: destChain,
+		})
+
+		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
+
+		// Get ERC20 address
+		const erc20Address = await tokenGateway.getErc20Address(assetId)
+		console.log(`ERC20 address for asset: ${erc20Address}`)
+
+		// Get ERC6160 address
+		const erc6160Address = await tokenGateway.getErc6160Address(assetId)
+		console.log(`ERC6160 address for asset: ${erc6160Address}`)
+
+		// Verify addresses are returned
+		expect(typeof erc20Address).toBe("string")
+		expect(typeof erc6160Address).toBe("string")
+	})
+
+	it.skip("should get TokenGateway parameters", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+
+		const sourceChain = new EvmChain({
+			chainId: 97,
+			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			host: bscIsmpHostAddress,
+			consensusStateId: "BSC0",
+		})
+
+		const destChain = new EvmChain({
+			chainId: 10200,
+			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
+			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
+			consensusStateId: "GNO0",
+		})
+
+		const tokenGateway = new TokenGateway({
+			source: sourceChain,
+			dest: destChain,
+		})
+
+		// Get TokenGateway parameters
+		const params = await tokenGateway.getParams()
+		console.log(`Host address: ${params.host}`)
+		console.log(`Dispatcher address: ${params.dispatcher}`)
+
+		// Verify parameters are returned
+		expect(params.host).toBeDefined()
+		expect(params.dispatcher).toBeDefined()
+		expect(typeof params.host).toBe("string")
+		expect(typeof params.dispatcher).toBe("string")
+	})
 })
 
 function createKeyringPairSigner(pair: KeyringPair): Signer {

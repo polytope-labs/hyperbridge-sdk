@@ -141,6 +141,75 @@ const hyperbridge = new SubstrateChain({
 const proof = await hyperbridge.queryStateProof(blockNumber, keys)
 ```
 
+### TokenGateway - Cross-Chain Token Transfers
+
+The TokenGateway class provides methods for estimating fees and managing cross-chain token teleports via Hyperbridge.
+
+```ts
+import { TokenGateway, EvmChain } from "@hyperbridge/sdk"
+import { keccak256, toHex, pad, parseEther } from "viem"
+
+// Create chain instances
+const sourceChain = new EvmChain({
+	chainId: 97, // BSC Testnet
+	rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
+	host: "0x...", // IsmpHost contract address
+	consensusStateId: "BSC0"
+})
+
+const destChain = new EvmChain({
+	chainId: 10200, // Gnosis Chiado
+	rpcUrl: "https://rpc.chiadochain.net",
+	host: "0x...", // IsmpHost contract address
+	consensusStateId: "GNO0"
+})
+
+// Initialize TokenGateway
+const tokenGateway = new TokenGateway({
+	source: sourceChain,
+	dest: destChain
+})
+
+// Estimate fees for a teleport
+const assetId = keccak256(toHex("USDC")) // Asset identifier
+const recipientAddress = pad("0xRecipientAddress", { size: 32 })
+
+const teleportParams = {
+	amount: parseEther("100"), // Amount to teleport
+	assetId: assetId,
+	redeem: true, // Redeem as ERC20 on destination
+	to: recipientAddress,
+	dest: "EVM-10200", // Destination chain
+	timeout: 3600n, // Timeout in seconds
+	data: "0x" // Optional call data
+}
+
+// Get native cost estimate (protocol + relayer fees)
+// For EVM destination chains, the relayer fee is automatically estimated by:
+// 1. Creating a dummy post request with 191 bytes of random data
+// 2. Estimating gas for delivery on the destination chain
+// 3. Converting gas cost to native tokens
+// For non-EVM chains, relayer fee is set to zero
+const estimatedCost = await tokenGateway.quoteNative(teleportParams)
+console.log(`Estimated cost: ${estimatedCost} wei`)
+
+// Get token addresses
+const erc20Address = await tokenGateway.getErc20Address(assetId)
+const erc6160Address = await tokenGateway.getErc6160Address(assetId)
+
+// Get gateway parameters
+const params = await tokenGateway.getParams()
+console.log(`Host: ${params.host}, Dispatcher: ${params.dispatcher}`)
+```
+
+**TokenGateway Methods:**
+
+- `quoteNative(params)` - Estimate native token cost for a teleport operation. For EVM destination chains, the relayer fee is automatically estimated by generating a dummy post request with 191 bytes of random data, estimating gas on the destination chain, and converting to native tokens. For non-EVM destinations, relayer fee is set to zero. Returns the sum of relayer fee + protocol fee.
+- `getErc20Address(assetId)` - Get the ERC20 contract address for an asset
+- `getErc6160Address(assetId)` - Get the ERC6160 (hyper-fungible) contract address for an asset
+- `getInstanceAddress(destination)` - Get the TokenGateway address on the destination chain
+- `getParams()` - Get the TokenGateway contract parameters (host and dispatcher addresses)
+
 ## Vite Integration
 
 If you're using Vite in your project, Hyperbridge SDK includes a plugin to handle WebAssembly dependencies correctly.
@@ -169,9 +238,10 @@ The plugin automatically copies the necessary WebAssembly files to the correct l
 
 ### Classes
 
-- IndexerClient - Main client for interacting with the indexer
-- EvmChain - Utilities for EVM chain interaction
-- SubstrateChain - Utilities for Substrate chain interaction
+- **IndexerClient** - Main client for interacting with the indexer
+- **EvmChain** - Utilities for EVM chain interaction
+- **SubstrateChain** - Utilities for Substrate chain interaction
+- **TokenGateway** - Utilities for cross-chain token transfers and fee estimation
 
 ### Types
 

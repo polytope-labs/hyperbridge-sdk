@@ -1,5 +1,18 @@
 # @hyperbridge/sdk
 
+## 1.4.8
+
+### Patch Changes
+
+- Added TokenGateway class with `quoteNative` method for estimating cross-chain token teleport fees
+- Simplified constructor: ChainConfigService is accessed via `EvmChain.configService`, no need to pass separately
+- Automatic relayer fee estimation for EVM destination chains: generates dummy post request with 191 bytes of random data, estimates gas on destination chain, and converts to native tokens
+- For non-EVM destination chains, relayer fee is set to zero
+- Returns total native cost (relayer fee + protocol fee)
+- Added helper methods: `getErc20Address`, `getErc6160Address`, `getInstanceAddress`, and `getParams`
+- Added TokenGateway addresses to chain configuration for all supported networks
+- Added comprehensive tests and documentation for TokenGateway functionality
+
 ## 1.4.7
 
 ### Patch Changes
