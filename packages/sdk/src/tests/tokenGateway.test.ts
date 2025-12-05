@@ -262,7 +262,7 @@ describe("TokenGateway SDK", () => {
 		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
 		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
 		const amount = BigInt(1_000_000) // 1 USDH (assuming 6 decimals)
-		const timeout = BigInt(3600) // 1 hour
+		const timeout = 0
 
 		const teleportParams = {
 			amount,
@@ -317,7 +317,7 @@ describe("TokenGateway SDK", () => {
 		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
 		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
 		const amount = BigInt(10_000_000) // 10 USDH (assuming 6 decimals) - larger amount
-		const timeout = BigInt(3600) // 1 hour
+		const timeout = 0
 
 		const teleportParams = {
 			amount,
@@ -370,7 +370,7 @@ describe("TokenGateway SDK", () => {
 		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
 		const recipientAddress = bytes20ToBytes32(ADDRESS_ZERO)
 		const amount = BigInt(1_000_000) // 1 USDH (assuming 6 decimals)
-		const timeout = BigInt(3600) // 1 hour
+		const timeout = 0
 
 		const teleportParams = {
 			amount,
