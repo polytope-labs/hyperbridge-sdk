@@ -143,10 +143,10 @@ const proof = await hyperbridge.queryStateProof(blockNumber, keys)
 
 ### TokenGateway - Cross-Chain Token Transfers
 
-The TokenGateway class provides methods for estimating fees and managing cross-chain token teleports via Hyperbridge.
+The TokenGateway class provides methods for estimating fees and managing cross-chain token teleports via Hyperbridge. Supports both EVM and Substrate chains as destination.
 
 ```ts
-import { TokenGateway, EvmChain } from "@hyperbridge/sdk"
+import { TokenGateway, EvmChain, SubstrateChain } from "@hyperbridge/sdk"
 import { keccak256, toHex, pad, parseEther } from "viem"
 
 // Create chain instances
@@ -164,10 +164,10 @@ const destChain = new EvmChain({
 	consensusStateId: "GNO0"
 })
 
-// Initialize TokenGateway
+// Initialize TokenGateway (destination can be EvmChain or SubstrateChain)
 const tokenGateway = new TokenGateway({
 	source: sourceChain,
-	dest: destChain
+	dest: destChain // EvmChain or SubstrateChain
 })
 
 // Estimate fees for a teleport
@@ -188,10 +188,39 @@ const teleportParams = {
 // For EVM destination chains, the relayer fee is automatically estimated by:
 // 1. Creating a dummy post request with 191 bytes of random data
 // 2. Estimating gas for delivery on the destination chain
-// 3. Converting gas cost to native tokens
-// For non-EVM chains, relayer fee is set to zero
-const estimatedCost = await tokenGateway.quoteNative(teleportParams)
-console.log(`Estimated cost: ${estimatedCost} wei`)
+// 3. Converting gas cost to native tokens and adding 1% buffer
+// 4. Converting relayer fee to source fee token using getAmountsOut
+// For Substrate destination chains, relayer fee is set to zero
+// Returns: totalNativeCost (protocol fee with 1% buffer) and relayerFeeInSourceFeeToken
+const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(teleportParams)
+console.log(`Total native cost: ${totalNativeCost} wei`)
+console.log(`Relayer fee in fee token: ${relayerFeeInSourceFeeToken}`)
+
+// Example with Substrate destination
+const substrateDestChain = new SubstrateChain({
+	stateMachineId: "KUSAMA-4009",
+	wsUrl: "wss://gargantua.polytope.technology",
+	hasher: "Keccak",
+	consensusStateId: "PAS0"
+})
+
+const tokenGatewayToSubstrate = new TokenGateway({
+	source: sourceChain,
+	dest: substrateDestChain // SubstrateChain destination
+})
+
+// For Substrate destinations, relayer fee will be 0
+const { totalNativeCost: substrateCost, relayerFeeInSourceFeeToken: substrateRelayerFee } = 
+	await tokenGatewayToSubstrate.quoteNative({
+		amount: parseEther("100"),
+		assetId: assetId,
+		redeem: true,
+		to: recipientAddress,
+		dest: "KUSAMA-4009",
+		timeout: 3600n
+	})
+console.log(`Substrate destination - Native cost: ${substrateCost} wei`)
+console.log(`Substrate destination - Relayer fee: ${substrateRelayerFee}`) // Will be 0
 
 // Get token addresses
 const erc20Address = await tokenGateway.getErc20Address(assetId)
@@ -204,7 +233,7 @@ console.log(`Host: ${params.host}, Dispatcher: ${params.dispatcher}`)
 
 **TokenGateway Methods:**
 
-- `quoteNative(params)` - Estimate native token cost for a teleport operation. For EVM destination chains, the relayer fee is automatically estimated by generating a dummy post request with 191 bytes of random data, estimating gas on the destination chain, and converting to native tokens. For non-EVM destinations, relayer fee is set to zero. Returns the sum of relayer fee + protocol fee.
+- `quoteNative(params)` - Estimate native token cost for a teleport operation. For EVM destination chains, the relayer fee is automatically estimated by generating a dummy post request with 191 bytes of random data, estimating gas on the destination chain, converting to native tokens, and adding a 1% buffer to the relayer fee. The relayer fee is then converted to source chain fee token using Uniswap V2's `getAmountsOut`. For Substrate destinations, relayer fee is set to zero. Returns an object with `totalNativeCost` (relayer fee + protocol fee, both with 1% buffers) and `relayerFeeInSourceFeeToken` (relayer fee converted to source chain fee token).
 - `getErc20Address(assetId)` - Get the ERC20 contract address for an asset
 - `getErc6160Address(assetId)` - Get the ERC6160 (hyper-fungible) contract address for an asset
 - `getInstanceAddress(destination)` - Get the TokenGateway address on the destination chain

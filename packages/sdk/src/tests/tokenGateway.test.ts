@@ -32,6 +32,7 @@ import erc6160 from "@/abis/erc6160"
 import { getPostRequestEventFromTx } from "@/utils/txEvents"
 import { TokenGateway } from "@/protocols/tokenGateway"
 import { EvmChain } from "@/chains/evm"
+import { SubstrateChain } from "@/chains/substrate"
 
 // private key for testnet transactions
 const secret_key = process.env.SECRET_PHRASE || ""
@@ -231,24 +232,26 @@ describe("teleport function", () => {
 })
 
 describe("TokenGateway SDK", () => {
-	it.skip("should estimate native cost for teleport using quoteNative", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
-		const gnosisChiadoIsmpHostAddress = (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`
+	it("should estimate native cost for teleport using quoteNative", async () => {
+		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
+			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
+		const baseIsmpHostAddress = (process.env.BASE_MAINNET_HOST_ADDRESS ||
+			"0x6FFe92e4d7a9D589549644544780e6725E84b248") as `0x${string}`
 
-		// Set up source chain (BSC Testnet)
+		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			chainId: 56,
+			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
 			host: bscIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
-		// Set up destination chain (Gnosis Chiado)
+		// Set up destination chain (Base Mainnet)
 		const destChain = new EvmChain({
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
-			host: gnosisChiadoIsmpHostAddress,
-			consensusStateId: "GNO0",
+			chainId: 8453,
+			rpcUrl: process.env.BASE_MAINNET || "https://base-mainnet.public.blastapi.io",
+			host: baseIsmpHostAddress,
+			consensusStateId: "ETH0",
 		})
 
 		// Create TokenGateway instance
@@ -268,40 +271,44 @@ describe("TokenGateway SDK", () => {
 			assetId,
 			redeem: true,
 			to: recipientAddress,
-			dest: "EVM-10200", // Gnosis Chiado
+			dest: "EVM-8453", // Base Mainnet
 			timeout,
 			data: "0x" as `0x${string}`,
 		}
 
 		// Estimate the native cost (relayer fee will be automatically estimated)
-		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+		const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(teleportParams)
 
-		console.log(`Estimated native cost (with auto-estimated relayer fee): ${nativeCost.toString()} wei`)
-		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+		console.log(`Total native cost (with auto-estimated relayer fee): ${totalNativeCost.toString()} wei`)
+		console.log(`Total cost in ETH: ${Number(totalNativeCost) / 1e18}`)
+		console.log(`Relayer fee in source fee token: ${relayerFeeInSourceFeeToken.toString()}`)
 
-		// Verify that nativeCost is a positive bigint
-		expect(typeof nativeCost).toBe("bigint")
-		expect(nativeCost).toBeGreaterThan(0n)
+		// Verify that totalNativeCost is a positive bigint
+		expect(typeof totalNativeCost).toBe("bigint")
+		expect(totalNativeCost).toBeGreaterThan(0n)
+		expect(typeof relayerFeeInSourceFeeToken).toBe("bigint")
 	})
 
 	it.skip("should estimate native cost for different amounts", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
-		const gnosisChiadoIsmpHostAddress = (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`
+		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
+			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
+		const baseIsmpHostAddress = (process.env.BASE_MAINNET_HOST_ADDRESS ||
+			"0x6FFe92e4d7a9D589549644544780e6725E84b248") as `0x${string}`
 
-		// Set up source chain (BSC Testnet)
+		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			chainId: 56,
+			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
 			host: bscIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
-		// Set up destination chain (Gnosis Chiado)
+		// Set up destination chain (Base Mainnet)
 		const destChain = new EvmChain({
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
-			host: gnosisChiadoIsmpHostAddress,
-			consensusStateId: "GNO0",
+			chainId: 8453,
+			rpcUrl: process.env.BASE_MAINNET || "https://base-mainnet.public.blastapi.io",
+			host: baseIsmpHostAddress,
+			consensusStateId: "ETH0",
 		})
 
 		// Create TokenGateway instance
@@ -321,40 +328,42 @@ describe("TokenGateway SDK", () => {
 			assetId,
 			redeem: true,
 			to: recipientAddress,
-			dest: "EVM-10200", // Gnosis Chiado
+			dest: "EVM-8453", // Base Mainnet
 			timeout,
 			data: "0x" as `0x${string}`,
 		}
 
 		// Estimate the native cost (relayer fee is automatically estimated)
-		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+		const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(teleportParams)
 
-		console.log(`Estimated native cost (larger amount): ${nativeCost.toString()} wei`)
-		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+		console.log(`Total native cost (larger amount): ${totalNativeCost.toString()} wei`)
+		console.log(`Total cost in ETH: ${Number(totalNativeCost) / 1e18}`)
+		console.log(`Relayer fee in source fee token: ${relayerFeeInSourceFeeToken.toString()}`)
 
-		// Verify that nativeCost is a positive bigint
-		expect(typeof nativeCost).toBe("bigint")
-		expect(nativeCost).toBeGreaterThan(0n)
+		// Verify that totalNativeCost is a positive bigint
+		expect(typeof totalNativeCost).toBe("bigint")
+		expect(totalNativeCost).toBeGreaterThan(0n)
+		expect(typeof relayerFeeInSourceFeeToken).toBe("bigint")
 	})
 
 	it.skip("should estimate native cost for non-EVM destination (relayer fee = 0)", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
+		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
+			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
 
-		// Set up source chain (BSC Testnet)
+		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
+			chainId: 56,
+			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
 			host: bscIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
-		// Set up destination as a Substrate chain (simulated with EvmChain for test purposes)
-		// In reality, this would be a SubstrateChain instance
-		const destChain = new EvmChain({
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
-			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
-			consensusStateId: "GNO0",
+		// Set up destination as a Substrate chain (Hyperbridge/Paseo)
+		const destChain = new SubstrateChain({
+			stateMachineId: "KUSAMA-4009",
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			hasher: "Keccak",
+			consensusStateId: "PAS0",
 		})
 
 		const tokenGateway = new TokenGateway({
@@ -373,91 +382,23 @@ describe("TokenGateway SDK", () => {
 			assetId,
 			redeem: true,
 			to: recipientAddress,
-			dest: "SUBSTRATE-paseo", // Non-EVM destination
+			dest: "KUSAMA-4009", // Substrate destination (Hyperbridge)
 			timeout,
 			data: "0x" as `0x${string}`,
 		}
 
 		// Estimate the native cost - should work but relayer fee component should be 0
-		const nativeCost = await tokenGateway.quoteNative(teleportParams)
+		const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(teleportParams)
 
-		console.log(`Estimated native cost (non-EVM dest, no relayer fee): ${nativeCost.toString()} wei`)
-		console.log(`Estimated cost in ETH: ${Number(nativeCost) / 1e18}`)
+		console.log(`Total native cost (non-EVM dest, no relayer fee): ${totalNativeCost.toString()} wei`)
+		console.log(`Total cost in ETH: ${Number(totalNativeCost) / 1e18}`)
+		console.log(`Relayer fee in source fee token: ${relayerFeeInSourceFeeToken.toString()}`)
 
-		// Verify that nativeCost is a positive bigint (protocol fee should still apply)
-		expect(typeof nativeCost).toBe("bigint")
-		expect(nativeCost).toBeGreaterThanOrEqual(0n)
-	})
-
-	it.skip("should get ERC20 and ERC6160 addresses for an asset", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
-
-		const sourceChain = new EvmChain({
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
-			host: bscIsmpHostAddress,
-			consensusStateId: "BSC0",
-		})
-
-		const destChain = new EvmChain({
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
-			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
-			consensusStateId: "GNO0",
-		})
-
-		const tokenGateway = new TokenGateway({
-			source: sourceChain,
-			dest: destChain,
-		})
-
-		const assetId = u8aToHex(keccakAsU8a("USDH")) as HexString
-
-		// Get ERC20 address
-		const erc20Address = await tokenGateway.getErc20Address(assetId)
-		console.log(`ERC20 address for asset: ${erc20Address}`)
-
-		// Get ERC6160 address
-		const erc6160Address = await tokenGateway.getErc6160Address(assetId)
-		console.log(`ERC6160 address for asset: ${erc6160Address}`)
-
-		// Verify addresses are returned
-		expect(typeof erc20Address).toBe("string")
-		expect(typeof erc6160Address).toBe("string")
-	})
-
-	it.skip("should get TokenGateway parameters", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_HOST_ADDRESS || "") as `0x${string}`
-
-		const sourceChain = new EvmChain({
-			chainId: 97,
-			rpcUrl: process.env.BSC_CHAPEL || "https://bnb-testnet.api.onfinality.io/public",
-			host: bscIsmpHostAddress,
-			consensusStateId: "BSC0",
-		})
-
-		const destChain = new EvmChain({
-			chainId: 10200,
-			rpcUrl: process.env.GNOSIS_CHIADO || "https://gnosis-chiado-rpc.publicnode.com",
-			host: (process.env.GNOSIS_CHIADO_HOST_ADDRESS || "") as `0x${string}`,
-			consensusStateId: "GNO0",
-		})
-
-		const tokenGateway = new TokenGateway({
-			source: sourceChain,
-			dest: destChain,
-		})
-
-		// Get TokenGateway parameters
-		const params = await tokenGateway.getParams()
-		console.log(`Host address: ${params.host}`)
-		console.log(`Dispatcher address: ${params.dispatcher}`)
-
-		// Verify parameters are returned
-		expect(params.host).toBeDefined()
-		expect(params.dispatcher).toBeDefined()
-		expect(typeof params.host).toBe("string")
-		expect(typeof params.dispatcher).toBe("string")
+		// Verify that totalNativeCost is a positive bigint (protocol fee should still apply)
+		expect(typeof totalNativeCost).toBe("bigint")
+		expect(totalNativeCost).toBeGreaterThanOrEqual(0n)
+		// For non-EVM destination, relayer fee should be 0
+		expect(relayerFeeInSourceFeeToken).toBe(0n)
 	})
 })
 

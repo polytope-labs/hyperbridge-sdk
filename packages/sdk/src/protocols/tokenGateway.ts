@@ -1,8 +1,19 @@
 import type { Address } from "viem"
 import { toHex, encodeAbiParameters, parseAbiParameters } from "viem"
 import { EvmChain } from "@/chains/evm"
-import TokenGatewayABI from "@/abis/tokenGateway"
+import { SubstrateChain } from "@/chains/substrate"
+import UniswapRouterV2 from "@/abis/uniswapRouterV2"
 import type { HexString, DispatchPost, IPostRequest } from "@/types"
+
+/**
+ * Result of the quoteNative fee estimation
+ */
+export interface QuoteNativeResult {
+	/** Total native token cost including relayer fee and protocol fee with 1% buffer */
+	totalNativeCost: bigint
+	/** Relayer fee converted to source chain fee token */
+	relayerFeeInSourceFeeToken: bigint
+}
 
 /**
  * Parameters for token gateway teleport operations
@@ -30,11 +41,13 @@ export interface TeleportParams {
  * This class provides methods to interact with the TokenGateway contract, including
  * estimating fees for cross-chain token teleports.
  *
+ * Supports both EVM and Substrate chains as destination.
+ *
  * @example
  * ```typescript
  * const tokenGateway = new TokenGateway({
  *   source: sourceChain,
- *   dest: destChain
+ *   dest: destChain // Can be EvmChain or SubstrateChain
  * })
  *
  * const teleportParams: TeleportParams = {
@@ -46,19 +59,17 @@ export interface TeleportParams {
  *   timeout: 3600n,
  * }
  *
- * // Estimate native cost (relayer fee + protocol fee)
- * const nativeCost = await tokenGateway.quoteNative(teleportParams)
- * console.log(`Estimated native cost: ${formatEther(nativeCost)} ETH`)
+ * // Estimate native cost (relayer fee + protocol fee with 1% buffer)
+ * const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(teleportParams)
+ * console.log(`Total native cost: ${formatEther(totalNativeCost)} ETH`)
+ * console.log(`Relayer fee in fee token: ${relayerFeeInSourceFeeToken}`)
  * ```
  */
 export class TokenGateway {
 	private readonly source: EvmChain
-	private readonly dest: EvmChain
+	private readonly dest: EvmChain | SubstrateChain
 
-	constructor(params: {
-		source: EvmChain
-		dest: EvmChain
-	}) {
+	constructor(params: { source: EvmChain; dest: EvmChain | SubstrateChain }) {
 		this.source = params.source
 		this.dest = params.dest
 	}
@@ -81,15 +92,17 @@ export class TokenGateway {
 	 * The relayer fee is automatically estimated for EVM destination chains by:
 	 * 1. Creating a dummy post request with 191 bytes of random data in the body
 	 * 2. Estimating gas for delivery on the destination chain
-	 * 3. Converting the gas estimate to native tokens as the relayer fee
-	 * 
+	 * 3. Converting the gas estimate to native tokens
+	 * 4. Adding a 1% buffer to the relayer fee for safety margin
+	 *
 	 * For non-EVM destination chains, the relayer fee is set to zero.
 	 *
-	 * The function then constructs a proper post request and calls quoteNative on the 
-	 * source chain to get protocol fees, and returns the sum of relayer fee + protocol fee.
+	 * The function then constructs a proper post request and calls quoteNative on the
+	 * source chain to get protocol fees (with 1% buffer), converts the relayer fee to
+	 * source chain fee token using Uniswap V2's getAmountsOut, and returns both values.
 	 *
 	 * @param params - The teleport parameters
-	 * @returns The estimated native cost in wei (relayer fee + protocol fee)
+	 * @returns Object containing totalNativeCost (with 1% buffer) and relayerFeeInSourceFeeToken
 	 *
 	 * @throws Will throw an error if the contract call fails
 	 *
@@ -105,20 +118,14 @@ export class TokenGateway {
 	 *   data: "0x"
 	 * }
 	 *
-	 * const nativeCost = await tokenGateway.quoteNative(params)
-	 * console.log(`Estimated native cost: ${formatEther(nativeCost)} ETH`)
+	 * const { totalNativeCost, relayerFeeInSourceFeeToken } = await tokenGateway.quoteNative(params)
+	 * console.log(`Total native cost: ${formatEther(totalNativeCost)} ETH`)
+	 * console.log(`Relayer fee in fee token: ${relayerFeeInSourceFeeToken}`)
 	 * ```
 	 */
-	async quoteNative(params: TeleportParams): Promise<bigint> {
-		// Convert dest to hex if it's Uint8Array
-		const destHex = typeof params.dest === "string" ? toHex(params.dest) : toHex(params.dest)
-
+	async quoteNative(params: TeleportParams): Promise<QuoteNativeResult> {
 		// Convert data to hex if it's Uint8Array, default to empty bytes
-		const dataHex = params.data
-			? typeof params.data === "string"
-				? params.data
-				: toHex(params.data)
-			: "0x"
+		const dataHex = params.data ? (typeof params.data === "string" ? params.data : toHex(params.data)) : "0x"
 
 		// Get the TokenGateway addresses
 		const sourceTokenGatewayAddress = this.getTokenGatewayAddress(this.source.config.stateMachineId)
@@ -128,14 +135,13 @@ export class TokenGateway {
 
 		// Only estimate relayer fee if destination is an EVM chain
 		const destChainId = typeof params.dest === "string" ? params.dest : new TextDecoder().decode(params.dest)
-		const isEvmDest = destChainId.startsWith("EVM-")
+		const isEvmDest = destChainId.startsWith("EVM-") && this.dest instanceof EvmChain
 
 		if (isEvmDest) {
 			// Create a dummy post request with 191 bytes of random data
 			// Generate 191 random bytes as hex string (191 * 2 hex chars + 0x prefix)
-			const randomHex = "0x" + Array.from({ length: 191 * 2 }, () => 
-				Math.floor(Math.random() * 16).toString(16)
-			).join("")
+			const randomHex =
+				"0x" + Array.from({ length: 191 * 2 }, () => Math.floor(Math.random() * 16).toString(16)).join("")
 			const randomBody = randomHex as HexString
 
 			const dummyPostRequest: IPostRequest = {
@@ -148,17 +154,17 @@ export class TokenGateway {
 				timeoutTimestamp: params.timeout,
 			}
 
-			// Estimate gas on destination chain
-			const { gas } = await this.dest.estimateGas(dummyPostRequest)
+			// Estimate gas on destination chain (only available for EvmChain)
+			const { gas } = await (this.dest as EvmChain).estimateGas(dummyPostRequest)
 
 			// Get current gas price on destination chain
-			const gasPrice = await this.dest.client.getGasPrice()
+			const gasPrice = await (this.dest as EvmChain).client.getGasPrice()
 
 			// Calculate gas cost in native tokens (gas * gasPrice)
 			const gasCostInNative = gas * gasPrice
 
-			// This is the relayer fee
-			relayerFee = gasCostInNative
+			// Add 1% buffer to relayer fee
+			relayerFee = (gasCostInNative * 101n) / 100n
 		}
 
 		// Now encode the actual teleport body with the calculated relayer fee
@@ -189,125 +195,50 @@ export class TokenGateway {
 		// This returns the cost in native tokens for dispatching the request
 		const protocolFeeInNative = await this.source.quoteNative(postRequest, relayerFee)
 
-		// Return total native cost (relayer fee is already included in quoteNative calculation)
-		return protocolFeeInNative
+		// Add 1% buffer to the protocol fee
+		const protocolFeeWithBuffer = (protocolFeeInNative * 101n) / 100n
+
+		// Convert relayer fee from native to source fee token
+		let relayerFeeInSourceFeeToken = 0n
+		if (relayerFee > 0n) {
+			// Get fee token details from source chain
+			const feeToken = await this.source.getFeeTokenWithDecimals()
+
+			// Convert native relayer fee to fee token using Uniswap
+			relayerFeeInSourceFeeToken = await this.convertNativeToFeeToken(
+				relayerFee,
+				feeToken.address,
+				this.source.config.stateMachineId,
+			)
+		}
+
+		return {
+			totalNativeCost: protocolFeeWithBuffer,
+			relayerFeeInSourceFeeToken,
+		}
 	}
 
 	/**
-	 * Get the ERC20 address for a given asset ID
-	 *
-	 * This method queries the TokenGateway contract to retrieve the ERC20 token address
-	 * associated with a specific asset ID. This is useful for interacting with custodied tokens.
-	 *
-	 * @param assetId - The asset identifier (32-byte hash)
-	 * @returns The ERC20 contract address, or zero address if not found
-	 *
-	 * @example
-	 * ```typescript
-	 * const assetId = keccak256(toHex("USDC"))
-	 * const erc20Address = await tokenGateway.getErc20Address(assetId)
-	 * console.log(`ERC20 address: ${erc20Address}`)
-	 * ```
+	 * Convert native token amount to fee token amount using Uniswap V2 router
+	 * @private
 	 */
-	async getErc20Address(assetId: HexString): Promise<Address> {
-		const tokenGatewayAddress = this.getTokenGatewayAddress(this.source.config.stateMachineId)
+	private async convertNativeToFeeToken(
+		nativeAmount: bigint,
+		feeTokenAddress: HexString,
+		chain: string,
+	): Promise<bigint> {
+		const v2Router = this.source.configService.getUniswapRouterV2Address(chain)
+		const WETH = this.source.configService.getWrappedNativeAssetWithDecimals(chain).asset
 
-		const erc20Address = await this.source.client.readContract({
-			address: tokenGatewayAddress,
-			abi: TokenGatewayABI.ABI,
-			functionName: "erc20",
-			args: [assetId],
+		const v2AmountOut = await this.source.client.simulateContract({
+			address: v2Router,
+			abi: UniswapRouterV2.ABI,
+			// @ts-ignore
+			functionName: "getAmountsOut",
+			// @ts-ignore
+			args: [nativeAmount, [WETH, feeTokenAddress]],
 		})
 
-		return erc20Address as Address
-	}
-
-	/**
-	 * Get the ERC6160 (hyper-fungible) address for a given asset ID
-	 *
-	 * This method queries the TokenGateway contract to retrieve the ERC6160 token address
-	 * associated with a specific asset ID. ERC6160 tokens use burn-and-mint mechanisms
-	 * for cross-chain transfers.
-	 *
-	 * @param assetId - The asset identifier (32-byte hash)
-	 * @returns The ERC6160 contract address, or zero address if not found
-	 *
-	 * @example
-	 * ```typescript
-	 * const assetId = keccak256(toHex("hUSDC"))
-	 * const erc6160Address = await tokenGateway.getErc6160Address(assetId)
-	 * console.log(`ERC6160 address: ${erc6160Address}`)
-	 * ```
-	 */
-	async getErc6160Address(assetId: HexString): Promise<Address> {
-		const tokenGatewayAddress = this.getTokenGatewayAddress(this.source.config.stateMachineId)
-
-		const erc6160Address = await this.source.client.readContract({
-			address: tokenGatewayAddress,
-			abi: TokenGatewayABI.ABI,
-			functionName: "erc6160",
-			args: [assetId],
-		})
-
-		return erc6160Address as Address
-	}
-
-	/**
-	 * Get the TokenGateway instance address for a destination chain
-	 *
-	 * This method queries the source TokenGateway contract to find the corresponding
-	 * TokenGateway contract address on the destination chain. This is used for
-	 * constructing cross-chain messages.
-	 *
-	 * @param destination - The destination chain identifier (e.g., "EVM-1", "EVM-56")
-	 * @returns The TokenGateway contract address on the destination chain
-	 *
-	 * @example
-	 * ```typescript
-	 * const destChain = "EVM-1"
-	 * const destGatewayAddress = await tokenGateway.getInstanceAddress(destChain)
-	 * console.log(`Destination TokenGateway: ${destGatewayAddress}`)
-	 * ```
-	 */
-	async getInstanceAddress(destination: string | Uint8Array): Promise<Address> {
-		const tokenGatewayAddress = this.getTokenGatewayAddress(this.source.config.stateMachineId)
-		const destHex = typeof destination === "string" ? toHex(destination) : toHex(destination)
-
-		const instanceAddress = await this.source.client.readContract({
-			address: tokenGatewayAddress,
-			abi: TokenGatewayABI.ABI,
-			functionName: "instance",
-			args: [destHex],
-		})
-
-		return instanceAddress as Address
-	}
-
-	/**
-	 * Get the TokenGateway contract parameters
-	 *
-	 * This method retrieves the current configuration parameters of the TokenGateway contract,
-	 * including the host and dispatcher addresses.
-	 *
-	 * @returns The TokenGateway parameters including host and dispatcher addresses
-	 *
-	 * @example
-	 * ```typescript
-	 * const params = await tokenGateway.getParams()
-	 * console.log(`Host: ${params.host}`)
-	 * console.log(`Dispatcher: ${params.dispatcher}`)
-	 * ```
-	 */
-	async getParams(): Promise<{ host: Address; dispatcher: Address }> {
-		const tokenGatewayAddress = this.getTokenGatewayAddress(this.source.config.stateMachineId)
-
-		const params = await this.source.client.readContract({
-			address: tokenGatewayAddress,
-			abi: TokenGatewayABI.ABI,
-			functionName: "params",
-			args: [],
-		})
-
-		return params as { host: Address; dispatcher: Address }
+		return v2AmountOut.result[1]
 	}
 }
