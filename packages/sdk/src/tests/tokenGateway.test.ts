@@ -233,16 +233,14 @@ describe("teleport function", () => {
 
 describe("TokenGateway SDK", () => {
 	it("should estimate native cost for teleport using quoteNative", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
-			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
-		const baseIsmpHostAddress = (process.env.BASE_MAINNET_HOST_ADDRESS ||
-			"0x6FFe92e4d7a9D589549644544780e6725E84b248") as `0x${string}`
+		const baseIsmpHostAddress = "0x6FFe92e4d7a9D589549644544780e6725E84b248" as HexString
+		const bscMainnetIsmpHostAddress = "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7" as HexString
 
 		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
 			chainId: 56,
 			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
-			host: bscIsmpHostAddress,
+			host: bscMainnetIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
@@ -290,16 +288,14 @@ describe("TokenGateway SDK", () => {
 	})
 
 	it.skip("should estimate native cost for different amounts", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
-			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
-		const baseIsmpHostAddress = (process.env.BASE_MAINNET_HOST_ADDRESS ||
-			"0x6FFe92e4d7a9D589549644544780e6725E84b248") as `0x${string}`
+		const baseIsmpHostAddress = "0x6FFe92e4d7a9D589549644544780e6725E84b248" as HexString
+		const bscMainnetIsmpHostAddress = "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7" as HexString
 
 		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
 			chainId: 56,
 			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
-			host: bscIsmpHostAddress,
+			host: bscMainnetIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
@@ -346,15 +342,14 @@ describe("TokenGateway SDK", () => {
 		expect(typeof relayerFeeInSourceFeeToken).toBe("bigint")
 	})
 
-	it.skip("should estimate native cost for non-EVM destination (relayer fee = 0)", async () => {
-		const bscIsmpHostAddress = (process.env.BSC_MAINNET_HOST_ADDRESS ||
-			"0x24B5d421Ec373FcA57325dd2F0C074009Af021F7") as `0x${string}`
+	it("should estimate native cost for non-EVM destination (relayer fee = 0)", async () => {
+		const bscMainnetIsmpHostAddress = "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7" as HexString
 
 		// Set up source chain (BSC Mainnet)
 		const sourceChain = new EvmChain({
 			chainId: 56,
 			rpcUrl: process.env.BSC_MAINNET || "https://binance.llamarpc.com",
-			host: bscIsmpHostAddress,
+			host: bscMainnetIsmpHostAddress,
 			consensusStateId: "BSC0",
 		})
 
