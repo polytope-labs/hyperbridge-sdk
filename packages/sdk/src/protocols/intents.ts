@@ -4,6 +4,7 @@ import {
 	encodeAbiParameters,
 	formatUnits,
 	hexToString,
+	keccak256,
 	maxUint256,
 	pad,
 	parseEventLogs,
@@ -56,17 +57,29 @@ import { Swap } from "@/utils/swap"
 export class IntentGateway {
 	public readonly swap: Swap
 	private readonly storage = createCancellationStorage()
+	/**
+	 * Optional custom IntentGateway address for the destination chain.
+	 * If set, this address will be used when fetching destination proofs in `cancelOrder`.
+	 * If not set, uses the default address from the chain configuration.
+	 * This allows using different IntentGateway contract versions (e.g., old vs new contracts).
+	 */
+	public destIntentGatewayAddress?: HexString
 
 	/**
 	 * Creates a new IntentGateway instance for cross-chain operations.
 	 * @param source - The source EVM chain
 	 * @param dest - The destination EVM chain
+	 * @param destIntentGatewayAddress - Optional custom IntentGateway address for the destination chain.
+	 *   If provided, this address will be used when fetching destination proofs in `cancelOrder`.
+	 *   If not provided, uses the default address from the chain configuration.
 	 */
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
+		destIntentGatewayAddress?: HexString,
 	) {
 		this.swap = new Swap()
+		this.destIntentGatewayAddress = destIntentGatewayAddress
 	}
 
 	/**
@@ -441,6 +454,49 @@ export class IntentGateway {
 		return filledStatus !== "0x0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
+	/**
+	 * Checks if an order has been refunded by verifying the escrowed token amounts on-chain.
+	 * Reads the storage slots for the `_orders` mapping on the source chain (where the escrow is held).
+	 * An order is considered refunded when all input token amounts in the `_orders` mapping are 0.
+	 *
+	 * @param order - The order to check
+	 * @returns True if the order has been refunded (all token amounts are 0), false otherwise
+	 */
+	async isOrderRefunded(order: Order): Promise<boolean> {
+		order = transformOrder(order)
+		const intentGatewayAddress =
+			this.destIntentGatewayAddress ?? this.source.configService.getIntentGatewayAddress(order.sourceChain)
+
+		const commitment = order.id as HexString
+		const ORDERS_MAPPING_SLOT = 4n
+
+		const firstLevelSlot = keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "uint256" }], [commitment, ORDERS_MAPPING_SLOT]),
+		)
+
+		for (const input of order.inputs) {
+			const tokenAddress = bytes32ToBytes20(input.token)
+
+			const storageSlot = keccak256(
+				encodeAbiParameters(
+					[{ type: "address" }, { type: "bytes32" }],
+					[tokenAddress as `0x${string}`, firstLevelSlot as `0x${string}`],
+				),
+			)
+
+			const escrowedAmount = await this.source.client.getStorageAt({
+				address: intentGatewayAddress,
+				slot: storageSlot,
+			})
+
+			if (escrowedAmount !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+				return false
+			}
+		}
+
+		return true
+	}
+
 	private async submitAndConfirmReceipt(
 		hyperbridge: SubstrateChain,
 		commitment: HexString,
@@ -559,6 +615,21 @@ export class IntentGateway {
 	 *
 	 * @example
 	 * ```typescript
+	 * // Using default IntentGateway address
+	 * const intentGateway = new IntentGateway(sourceChain, destChain);
+	 * const cancelStream = intentGateway.cancelOrder(order, indexerClient);
+	 *
+	 * // Using custom IntentGateway address (e.g., for old contract version)
+	 * const intentGateway = new IntentGateway(
+	 *   sourceChain,
+	 *   destChain,
+	 *   "0xd54165e45926720b062C192a5bacEC64d5bB08DA"
+	 * );
+	 * const cancelStream = intentGateway.cancelOrder(order, indexerClient);
+	 *
+	 * // Or set it after instantiation
+	 * const intentGateway = new IntentGateway(sourceChain, destChain);
+	 * intentGateway.destIntentGatewayAddress = "0xd54165e45926720b062C192a5bacEC64d5bB08DA";
 	 * const cancelStream = intentGateway.cancelOrder(order, indexerClient);
 	 *
 	 * for await (const event of cancelStream) {
@@ -584,6 +655,8 @@ export class IntentGateway {
 		if (!destIProof) {
 			destIProof = yield* this.fetchDestinationProof(order, indexerClient)
 			await this.storage.setItem(STORAGE_KEYS.destProof(orderId), destIProof)
+		} else {
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
 		}
 
 		let getRequest: IGetRequest | null = await this.storage.getItem(STORAGE_KEYS.getRequest(orderId))
@@ -673,6 +746,8 @@ export class IntentGateway {
 
 	/**
 	 * Fetches proof for the destination chain.
+	 * @param order - The order to fetch proof for
+	 * @param indexerClient - Client for querying the indexer
 	 */
 	private async *fetchDestinationProof(
 		order: Order,
@@ -697,9 +772,9 @@ export class IntentGateway {
 			}
 
 			try {
-				const intentGatewayAddress = this.dest.configService.getIntentGatewayAddress(
-					this.dest.config.stateMachineId,
-				)
+				const intentGatewayAddress =
+					this.destIntentGatewayAddress ??
+					this.dest.configService.getIntentGatewayAddress(this.dest.config.stateMachineId)
 				const orderId = orderCommitment(order)
 				const slotHash = await this.dest.client.readContract({
 					abi: IntentGatewayABI.ABI,

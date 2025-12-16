@@ -22,12 +22,16 @@ export class ChainConfigService {
 		return {
 			chainId: chainIds[chain as keyof typeof chainIds],
 			rpcUrl: this.rpcUrls[chain as Chains],
-			intentGatewayAddress: addresses.IntentGateway[chain as keyof typeof addresses.IntentGateway]!,
+			intentGatewayAddress: this.getIntentGatewayAddress(chain),
 		}
 	}
 
 	getIntentGatewayAddress(chain: string): `0x${string}` {
 		return addresses.IntentGateway[chain as keyof typeof addresses.IntentGateway]! as `0x${string}`
+	}
+
+	getTokenGatewayAddress(chain: string): `0x${string}` {
+		return addresses.TokenGateway[chain as keyof typeof addresses.TokenGateway]! as `0x${string}`
 	}
 
 	getHostAddress(chain: string): `0x${string}` {
