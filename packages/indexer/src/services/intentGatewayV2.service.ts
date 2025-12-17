@@ -7,6 +7,9 @@ import { OrderStatus, ProtocolParticipantType, PointsActivityType } from "@/conf
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
 import { OrderV2 as OrderV2Placed } from "@/configs/src/types/models/OrderV2"
 import { OrderV2StatusMetadata } from "@/configs/src/types/models/OrderV2StatusMetadata"
+import { OrderV2PredispatchAsset } from "@/configs/src/types/models/OrderV2PredispatchAsset"
+import { OrderV2InputAsset } from "@/configs/src/types/models/OrderV2InputAsset"
+import { OrderV2OutputAsset } from "@/configs/src/types/models/OrderV2OutputAsset"
 import { timestampToDate } from "@/utils/date.helpers"
 
 import { PointsService } from "./points.service"
@@ -43,6 +46,94 @@ export interface OrderV2 {
 export const DEFAULT_REFERRER = "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex
 
 export class IntentGatewayV2Service {
+	/**
+	 * Create predispatch asset entities for an order
+	 */
+	private static async createPredispatchAssets(orderId: string, predispatch: DispatchInfo): Promise<void> {
+		await Promise.all(
+			predispatch.assets.map(async (asset, index) => {
+				const assetId = `${orderId}-predispatch-${index}`
+				let assetEntity = await OrderV2PredispatchAsset.get(assetId)
+
+				if (!assetEntity) {
+					assetEntity = await OrderV2PredispatchAsset.create({
+						id: assetId,
+						orderId,
+						token: asset.token,
+						amount: asset.amount,
+						index,
+						call: predispatch.call as string,
+					})
+				} else {
+					assetEntity.token = asset.token
+					assetEntity.amount = asset.amount
+					assetEntity.index = index
+					assetEntity.call = predispatch.call as string
+				}
+				await assetEntity.save()
+			}),
+		)
+	}
+
+	/**
+	 * Create input asset entities for an order
+	 */
+	private static async createInputAssets(orderId: string, inputs: TokenInfo[]): Promise<void> {
+		await Promise.all(
+			inputs.map(async (input, index) => {
+				const assetId = `${orderId}-input-${index}`
+				let assetEntity = await OrderV2InputAsset.get(assetId)
+
+				if (!assetEntity) {
+					assetEntity = await OrderV2InputAsset.create({
+						id: assetId,
+						orderId,
+						token: input.token,
+						amount: input.amount,
+						index,
+					})
+				} else {
+					assetEntity.token = input.token
+					assetEntity.amount = input.amount
+					assetEntity.index = index
+				}
+				await assetEntity.save()
+			}),
+		)
+	}
+
+	/**
+	 * Create output asset entities for an order
+	 */
+	private static async createOutputAssets(orderId: string, outputs: PaymentInfoV2): Promise<void> {
+		// Create/update output asset entities
+		await Promise.all(
+			outputs.assets.map(async (asset, index) => {
+				const assetId = `${orderId}-output-${index}`
+				let assetEntity = await OrderV2OutputAsset.get(assetId)
+
+				if (!assetEntity) {
+					assetEntity = await OrderV2OutputAsset.create({
+						id: assetId,
+						orderId,
+						token: asset.token,
+						amount: asset.amount,
+						index,
+						beneficiary: outputs.beneficiary as string,
+						call: outputs.call as string,
+					})
+				} else {
+					assetEntity.token = asset.token
+					assetEntity.amount = asset.amount
+					assetEntity.index = index
+					assetEntity.beneficiary = outputs.beneficiary as string
+					assetEntity.call = outputs.call as string
+				}
+				await assetEntity.save()
+			}),
+		)
+	}
+
 	static async getOrCreateOrder(
 		order: OrderV2,
 		referrer: string,
@@ -57,7 +148,7 @@ export class IntentGatewayV2Service {
 		let orderPlaced = await OrderV2Placed.get(order.id!)
 
 		if (!orderPlaced) {
-			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
+			const { inputUSD } = await this.getOrderValue(order)
 			orderPlaced = await OrderV2Placed.create({
 				id: order.id!,
 				user: order.user,
@@ -68,14 +159,7 @@ export class IntentGatewayV2Service {
 				nonce: order.nonce,
 				fees: order.fees,
 				session: order.session,
-				predispatchTokens: order.predispatch.assets.map((asset) => asset.token),
-				predispatchAmounts: order.predispatch.assets.map((asset) => asset.amount),
-				inputTokens: order.inputs.map((input) => input.token),
-				inputAmounts: order.inputs.map((input) => input.amount),
-				inputValuesUSD: inputValuesUSD,
 				inputUSD: inputUSD,
-				outputTokens: order.outputs.assets.map((output) => output.token),
-				outputAmounts: order.outputs.assets.map((output) => output.amount),
 				status: OrderStatus.PLACED,
 				referrer,
 				createdAt: timestampToDate(timestamp),
@@ -84,6 +168,11 @@ export class IntentGatewayV2Service {
 				transactionHash,
 			})
 			await orderPlaced.save()
+
+			// Create asset entities
+			await this.createPredispatchAssets(order.id!, order.predispatch)
+			await this.createInputAssets(order.id!, order.inputs)
+			await this.createOutputAssets(order.id!, order.outputs)
 
 			logger.info(
 				`OrderV2 Placed Event successfully saved: ${stringify({
@@ -125,7 +214,7 @@ export class IntentGatewayV2Service {
 			)
 
 			const existingStatus = orderPlaced.status
-			const { inputUSD, inputValuesUSD } = await this.getOrderValue(order)
+			const { inputUSD } = await this.getOrderValue(order)
 
 			orderPlaced.user = order.user
 			orderPlaced.sourceChain = order.sourceChain
@@ -134,18 +223,16 @@ export class IntentGatewayV2Service {
 			orderPlaced.nonce = order.nonce
 			orderPlaced.fees = order.fees
 			orderPlaced.session = order.session
-			orderPlaced.predispatchTokens = order.predispatch.assets.map((asset) => asset.token)
-			orderPlaced.predispatchAmounts = order.predispatch.assets.map((asset) => asset.amount)
-			orderPlaced.inputTokens = order.inputs.map((input) => input.token)
-			orderPlaced.inputAmounts = order.inputs.map((input) => input.amount)
-			orderPlaced.inputValuesUSD = inputValuesUSD
 			orderPlaced.inputUSD = inputUSD
-			orderPlaced.outputTokens = order.outputs.assets.map((asset) => asset.token)
-			orderPlaced.outputAmounts = order.outputs.assets.map((asset) => asset.amount)
 			orderPlaced.referrer = referrer
 			// Keep existing status - don't overwrite it
 
 			await orderPlaced.save()
+
+			// Update asset entities
+			await this.createPredispatchAssets(order.id!, order.predispatch)
+			await this.createInputAssets(order.id!, order.inputs)
+			await this.createOutputAssets(order.id!, order.outputs)
 
 			logger.info(
 				`OrderV2 ${stringify({ order })} updated with actual data. Status remains: ${stringify({ existingStatus })}`,
@@ -185,12 +272,11 @@ export class IntentGatewayV2Service {
 		return orderPlaced
 	}
 
-	private static async getOrderValue(order: OrderV2): Promise<{ inputUSD: string; inputValuesUSD: string[] }> {
+	private static async getOrderValue(order: OrderV2): Promise<{ inputUSD: string }> {
 		const inputValuesUSD = await this.getInputValuesUSD(order)
 
 		return {
 			inputUSD: inputValuesUSD.total,
-			inputValuesUSD: inputValuesUSD.values,
 		}
 	}
 
@@ -262,14 +348,7 @@ export class IntentGatewayV2Service {
 				nonce: BigInt(0),
 				fees: BigInt(0),
 				session: "0x0000000000000000000000000000000000000000" as Hex,
-				predispatchTokens: [],
-				predispatchAmounts: [],
-				inputTokens: [],
-				inputAmounts: [],
-				inputValuesUSD: [],
 				inputUSD: "0",
-				outputTokens: [],
-				outputAmounts: [],
 				status: OrderStatus.FILLED,
 				referrer: DEFAULT_REFERRER,
 				createdAt: timestampToDate(timestamp),
@@ -288,15 +367,22 @@ export class IntentGatewayV2Service {
 
 			// Award points for order filling - using USD value directly
 			if (status === OrderStatus.FILLED && filler) {
-				if (orderPlaced.outputTokens.length > 0) {
-					// Volume
-					let outputTokenInfo: TokenInfo[] = orderPlaced.outputTokens.map((token, index) => {
-						return {
-							token: token as Hex,
-							amount: orderPlaced.outputAmounts[index],
-						}
+				// Get output assets from the new entity relationships
+				// Query output assets by constructing IDs (we'll query up to a reasonable limit)
+				const outputAssets: TokenInfo[] = []
+				for (let index = 0; index < 100; index++) {
+					const assetId = `${commitment}-output-${index}`
+					const asset = await OrderV2OutputAsset.get(assetId)
+					if (!asset) break
+					outputAssets.push({
+						token: asset.token as Hex,
+						amount: asset.amount,
 					})
-					let outputUSD = await this.getOutputValuesUSD(outputTokenInfo)
+				}
+
+				if (outputAssets.length > 0) {
+					// Volume
+					let outputUSD = await this.getOutputValuesUSD(outputAssets)
 
 					await VolumeService.updateVolume(`IntentGatewayV2.FILLER.${filler}`, outputUSD.total, timestamp)
 

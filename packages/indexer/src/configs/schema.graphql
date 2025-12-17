@@ -1031,44 +1031,9 @@ type OrderV2 @entity {
 	session: String
 
 	"""
-	Array of predispatch token addresses
-	"""
-	predispatchTokens: [String!]!
-
-	"""
-	Array of predispatch token amounts corresponding to predispatchTokens
-	"""
-	predispatchAmounts: [BigInt!]!
-
-	"""
-	Array of input token addresses
-	"""
-	inputTokens: [String!]!
-
-	"""
-	Array of input token amounts corresponding to inputTokens
-	"""
-	inputAmounts: [BigInt!]!
-
-	"""
-	Array of input token values in USD
-	"""
-	inputValuesUSD: [String!]!
-
-	"""
 	Total input value in USD
 	"""
 	inputUSD: String!
-
-	"""
-	Array of output token addresses
-	"""
-	outputTokens: [String!]!
-
-	"""
-	Array of output token amounts corresponding to outputTokens
-	"""
-	outputAmounts: [BigInt!]!
 
 	"""
 	Status of the order
@@ -1079,6 +1044,21 @@ type OrderV2 @entity {
 	Metatdata about the order's progression through different statuses
 	"""
 	statusMetadata: [OrderV2StatusMetadata]! @derivedFrom(field: "order")
+
+	"""
+	Predispatch assets for this order
+	"""
+	predispatchAssets: [OrderV2PredispatchAsset!]! @derivedFrom(field: "order")
+
+	"""
+	Input assets for this order
+	"""
+	inputAssets: [OrderV2InputAsset!]! @derivedFrom(field: "order")
+
+	"""
+	Output assets for this order
+	"""
+	outputAssets: [OrderV2OutputAsset!]! @derivedFrom(field: "order")
 
 	"""
 	Referrer address that referred the user
@@ -1104,6 +1084,111 @@ type OrderV2 @entity {
 	Hash of the transaction that placed the order
 	"""
 	transactionHash: String! @index
+}
+
+"""
+Represents a predispatch asset in an OrderV2
+"""
+type OrderV2PredispatchAsset @entity {
+	"""
+	Unique identifier: {orderId}-predispatch-{index}
+	"""
+	id: ID!
+
+	"""
+	The order this asset belongs to
+	"""
+	order: OrderV2!
+
+	"""
+	Token address (bytes32 format)
+	"""
+	token: String! @index
+
+	"""
+	Token amount
+	"""
+	amount: BigInt! @index
+
+	"""
+	Position index in the predispatch assets array
+	"""
+	index: Int!
+
+	"""
+	Call data for predispatch
+	"""
+	call: String!
+}
+
+"""
+Represents an input asset in an OrderV2
+"""
+type OrderV2InputAsset @entity {
+	"""
+	Unique identifier: {orderId}-input-{index}
+	"""
+	id: ID!
+
+	"""
+	The order this asset belongs to
+	"""
+	order: OrderV2!
+
+	"""
+	Token address (bytes32 format)
+	"""
+	token: String! @index
+
+	"""
+	Token amount
+	"""
+	amount: BigInt! @index
+
+	"""
+	Position index in the input assets array
+	"""
+	index: Int!
+}
+
+"""
+Represents an output asset in an OrderV2
+"""
+type OrderV2OutputAsset @entity {
+	"""
+	Unique identifier: {orderId}-output-{index}
+	"""
+	id: ID!
+
+	"""
+	The order this asset belongs to
+	"""
+	order: OrderV2!
+
+	"""
+	Token address (bytes32 format)
+	"""
+	token: String! @index
+
+	"""
+	Token amount
+	"""
+	amount: BigInt! @index
+
+	"""
+	Position index in the output assets array
+	"""
+	index: Int!
+
+	"""
+	Beneficiary address for this output
+	"""
+	beneficiary: String! @index
+
+	"""
+	Call data for output
+	"""
+	call: String!
 }
 
 """
