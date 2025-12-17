@@ -7,7 +7,7 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 
 export const handleOrderFilledEventV2 = wrap(async (event: OrderFilledLog): Promise<void> => {
-	logger.info(`OrderV2 Filled Event: ${stringify(event)}`)
+	logger.info(`[Intent Gateway V2] Order Filled Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, blockHash } = event
 	const { commitment, filler } = args!
@@ -18,7 +18,7 @@ export const handleOrderFilledEventV2 = wrap(async (event: OrderFilledLog): Prom
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	logger.info(
-		`OrderV2 Filled: ${stringify({
+		`[Intent Gateway V2] Order Filled: ${stringify({
 			commitment,
 		})} by ${stringify({ filler })}`,
 	)

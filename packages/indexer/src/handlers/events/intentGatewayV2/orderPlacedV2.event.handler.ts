@@ -10,7 +10,7 @@ import { Interface } from "@ethersproject/abi"
 import IntentGatewayV2Abi from "@/configs/abis/IntentGatewayV2.abi.json"
 
 export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Promise<void> => {
-	logger.info(`OrderV2 Placed Event: ${stringify(event)}`)
+	logger.info(`[Intent Gateway V2] Order Placed Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, blockHash, transaction } = event
 	if (!args) return
@@ -64,7 +64,7 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 		}
 
 		logger.info(
-			`Computing OrderV2 Commitment: ${stringify({
+			`[Intent Gateway V2] Computing Order Commitment: ${stringify({
 				order,
 			})}`,
 		)
@@ -73,7 +73,7 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 
 		order.id = commitment
 
-		logger.info(`OrderV2 Commitment: ${commitment}`)
+		logger.info(`[Intent Gateway V2] Order Commitment: ${commitment}`)
 
 		await IntentGatewayV2Service.getOrCreateOrder(
 			{ ...order, user: IntentGatewayV2Service.bytes32ToBytes20(order.user) as Hex },

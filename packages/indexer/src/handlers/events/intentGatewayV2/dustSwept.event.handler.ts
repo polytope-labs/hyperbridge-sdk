@@ -6,7 +6,7 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 
 export const handleDustSweptEvent = wrap(async (event: DustSweptLog): Promise<void> => {
-	logger.info(`DustSweptV2 Event: ${stringify(event)}`)
+	logger.info(`[Intent Gateway V2] DustSwept Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, blockHash } = event
 	if (!args) return
@@ -17,7 +17,7 @@ export const handleDustSweptEvent = wrap(async (event: DustSweptLog): Promise<vo
 	const { token, amount } = args
 
 	logger.info(
-		`DustSweptV2: ${stringify({
+		`DustSwept: ${stringify({
 			token,
 			amount: amount.toString(),
 			beneficiary: args.beneficiary,

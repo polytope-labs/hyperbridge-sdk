@@ -7,7 +7,7 @@ import { getHostStateMachine } from "@/utils/substrate.helpers"
 import { wrap } from "@/utils/event.utils"
 
 export const handleEscrowReleasedEventV2 = wrap(async (event: EscrowReleasedLog): Promise<void> => {
-	logger.info(`EscrowV2 Released Event: ${stringify(event)}`)
+	logger.info(`[Intent Gateway V2] Escrow Released Event: ${stringify(event)}`)
 
 	const { blockNumber, transactionHash, args, blockHash } = event
 	const { commitment } = args!
@@ -18,7 +18,7 @@ export const handleEscrowReleasedEventV2 = wrap(async (event: EscrowReleasedLog)
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	logger.info(
-		`EscrowV2 Released: ${stringify({
+		`[Intent Gateway V2] Escrow Released: ${stringify({
 			commitment,
 		})}`,
 	)
