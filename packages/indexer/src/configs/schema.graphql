@@ -1738,3 +1738,73 @@ type UserActivity @entity {
 	"""
 	createdAt: Date! @index
 }
+
+"""
+Represents dust collected by the protocol
+"""
+type DustCollected @entity {
+	"""
+	Unique identifier: chainId-tokenAddress
+	"""
+	id: ID!
+
+	"""
+	Token symbol
+	"""
+	tokenSymbol: String! @index
+
+	"""
+	Total amount of dust collected
+	"""
+	amount: BigInt! @index
+
+	"""
+	Timestamp when this record was last updated
+	"""
+	lastUpdated: Date! @index
+}
+
+"""
+Represents dust swept by the protocol
+"""
+type DustSwept @entity {
+	"""
+	Unique identifier: chainId-tokenAddress
+	"""
+	id: ID!
+
+	"""
+	Token symbol
+	"""
+	tokenSymbol: String! @index
+
+	"""
+	Total amount of dust swept
+	"""
+	amount: BigInt! @index
+
+	"""
+	Timestamp when this record was last updated
+	"""
+	lastUpdated: Date! @index
+}
+
+"""
+Represents protocol revenue tracking
+"""
+type ProtocolRevenue @entity {
+	"""
+	Unique identifier: "protocol-revenue"
+	"""
+	id: ID!
+
+	"""
+	Total accrued revenue in USD
+	"""
+	accrued: String! @index
+
+	"""
+	Total withdrawn revenue in USD
+	"""
+	withdrawn: String! @index
+}
