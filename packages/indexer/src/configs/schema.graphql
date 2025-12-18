@@ -1873,23 +1873,3 @@ type DustSwept @entity {
 	"""
 	lastUpdated: Date! @index
 }
-
-"""
-Represents protocol revenue tracking
-"""
-type ProtocolRevenue @entity {
-	"""
-	Unique identifier: "protocol-revenue"
-	"""
-	id: ID!
-
-	"""
-	Total accrued revenue in USD
-	"""
-	accrued: String! @index
-
-	"""
-	Total withdrawn revenue in USD
-	"""
-	withdrawn: String! @index
-}
