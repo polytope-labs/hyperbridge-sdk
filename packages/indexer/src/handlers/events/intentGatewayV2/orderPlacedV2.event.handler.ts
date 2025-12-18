@@ -9,6 +9,7 @@ import { wrap } from "@/utils/event.utils"
 import { Interface } from "@ethersproject/abi"
 import IntentGatewayV2Abi from "@/configs/abis/IntentGatewayV2.abi.json"
 import { INTENT_GATEWAY_ADDRESSES } from "@/constants"
+import { bytes20ToBytes32 } from "@/utils/transfer.helpers"
 
 export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Promise<void> => {
 	logger.info(`[Intent Gateway V2] Order Placed Event: ${stringify(event)}`)
@@ -37,8 +38,9 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 
 				if (decodedArgs[1].toLowerCase() !== args.user.toLowerCase()) {
 					// Either Default Referrer or Actual Referrer
-					logger.info(`Using ${stringify(decodedArgs[1])} as graffiti`)
-					graffiti = decodedArgs[1] as Hex
+					// Normalize to 32 bytes
+					graffiti = bytes20ToBytes32(decodedArgs[1] as string) as Hex
+					logger.info(`Using ${stringify(graffiti)} as graffiti`)
 				}
 			}
 		} catch (e: any) {
@@ -72,8 +74,9 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 
 						if (decodedArgs[1].toLowerCase() !== args.user.toLowerCase()) {
 							// Either Default Referrer or Actual Referrer
-							logger.info(`Using ${stringify(decodedArgs[1])} as graffiti`)
-							graffiti = decodedArgs[1] as Hex
+							// Normalize to 32 bytes
+							graffiti = bytes20ToBytes32(decodedArgs[1] as string) as Hex
+							logger.info(`Using ${stringify(graffiti)} as graffiti`)
 						}
 					}
 				} else {

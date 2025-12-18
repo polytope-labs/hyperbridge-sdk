@@ -2,6 +2,7 @@ import Decimal from "decimal.js"
 import { ethers } from "ethers"
 import type { Hex } from "viem"
 import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters } from "viem"
+import { bytes20ToBytes32 } from "@/utils/transfer.helpers"
 
 import { OrderStatus, ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
@@ -199,7 +200,9 @@ export class IntentGatewayV2Service {
 
 			await VolumeService.updateVolume("IntentGatewayV2.USER", inputUSD, timestamp)
 
-			let user = await getOrCreateUser(order.user, referrer, timestamp)
+			// Convert user to 20 bytes for UserActivity ID, but keep referrer as 32 bytes
+			const userAddress20 = this.bytes32ToBytes20(order.user)
+			let user = await getOrCreateUser(userAddress20, referrer, timestamp)
 			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
 			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
 				.plus(new Decimal(inputUSD))
@@ -401,8 +404,9 @@ export class IntentGatewayV2Service {
 						timestamp,
 					)
 
-					// User
-					let user = await getOrCreateUser(orderPlaced.user, orderPlaced.referrer)
+					// User - convert to 20 bytes for UserActivity ID, referrer is already 32 bytes
+					const userAddress20 = this.bytes32ToBytes20(orderPlaced.user)
+					let user = await getOrCreateUser(userAddress20, orderPlaced.referrer)
 					user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
 						.plus(new Decimal(orderPlaced.inputUSD))
 						.toString()
