@@ -59,7 +59,7 @@ export type Params = {
 const TeleportParams = Struct({
   /// StateMachine
   destination: StateMachine,
-  /// Receipient
+  /// Recipient
   recepient: H256,
   /// Amount
   amount: u128,
@@ -142,7 +142,6 @@ export async function teleport(teleport_param: {
   const assetId = keccakAsU8a(params.symbol)
 
   // Fetch scale encoded local asset id
-
   const scaleEncodedAssetId = await fetchLocalAssetId({ api: apiPromise, assetId })
 
   if (scaleEncodedAssetId === null) {
@@ -261,7 +260,6 @@ function readIsmpCommitmentHash(events: EventRecord[]): HexString | undefined {
   }
 }
 
-
 /**
  * Teleports assets from Substrate to other chains via the token gateway
  *
@@ -284,10 +282,13 @@ function readIsmpCommitmentHash(events: EventRecord[]): HexString | undefined {
  * @throws Error when asset ID is unknown or transaction fails
  */
 export async function makeTeleportExtrinsics(teleport_param: {
+  who: string
   params: Params
   apiPromise: ApiPromise
-}): Promise<SubmittableExtrinsic<"promise", ISubmittableResult>> {
-  const { params, apiPromise } = teleport_param
+  options: Partial<SignerOptions>
+  extrinsics: SubmittableExtrinsic<"promise", ISubmittableResult>[]
+}): Promise<ReadableStream<HyperbridgeTxEvents>> {
+  const { params, apiPromise, extrinsics = [] } = teleport_param
 
   const substrateComplianceAddr = (address: HexString, stateMachine: string) => {
     if (stateMachine.startsWith("EVM-")) return pad(address, { size: 32, dir: "left" })
@@ -298,7 +299,7 @@ export async function makeTeleportExtrinsics(teleport_param: {
   const assetId = keccakAsU8a(params.symbol)
 
   // Fetch scale encoded local asset id
-  const scaleEncodedAssetId = await fetchLocalAssetId({ api: apiPromise, assetId });
+  const scaleEncodedAssetId = await fetchLocalAssetId({ api: apiPromise, assetId })
 
   if (scaleEncodedAssetId === null) {
     throw new Error("Unknown asset id provided")
@@ -322,29 +323,12 @@ export async function makeTeleportExtrinsics(teleport_param: {
   const encoded = TeleportParams.enc(teleportParams)
   const fullCallData = new Uint8Array([...scaleEncodedAssetId, ...encoded])
 
-  return apiPromise.tx.tokenGateway.teleport(fullCallData)
-}
+  const token_gateway_extrinsics = apiPromise.tx.tokenGateway.teleport(fullCallData)
 
-/**
- *
- * @param extrinsic - SubmittableExtrinsic
- * @param who - SS58Address
- * @param options - Signer options
- * @returns
- */
-export function submitExtrinsics(
-  {
-    extrinsics: tx,
-    who,
-    options,
-    apiPromise,
-  }: {
-    // biome-ignore lint/suspicious/noExplicitAny: Any is required in this case
-    extrinsics: SubmittableExtrinsic<"promise", any>
-    apiPromise: ApiPromise
-    who: string,
-    options: Partial<SignerOptions>,
-  }) {
+  const tx =
+    extrinsics.length === 0
+      ? token_gateway_extrinsics
+      : apiPromise.tx.utility.batchAll([...extrinsics, token_gateway_extrinsics])
 
   let unsub = () => { }
   let closed = false
@@ -352,7 +336,7 @@ export function submitExtrinsics(
   const stream = new ReadableStream<HyperbridgeTxEvents>(
     {
       async start(controller) {
-        unsub = await tx.signAndSend(who, options, async (result) => {
+        unsub = await tx.signAndSend(teleport_param.who, teleport_param.options, async (result) => {
           try {
             const { isInBlock, isError, dispatchError, txHash, isFinalized, status } = result
             const events = result.events as ISubmittableResult["events"]
