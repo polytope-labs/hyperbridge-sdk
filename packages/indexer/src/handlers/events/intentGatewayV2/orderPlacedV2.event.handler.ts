@@ -1,4 +1,4 @@
-import { getBlockTimestamp } from "@/utils/rpc.helpers"
+import { getBlockTimestamp, getContractCallInput } from "@/utils/rpc.helpers"
 import stringify from "safe-stable-stringify"
 import { OrderPlacedLog } from "@/configs/src/types/abi-interfaces/IntentGatewayV2Abi"
 import { DEFAULT_REFERRER, IntentGatewayV2Service, OrderV2 } from "@/services/intentGatewayV2.service"
@@ -8,6 +8,7 @@ import { Hex } from "viem"
 import { wrap } from "@/utils/event.utils"
 import { Interface } from "@ethersproject/abi"
 import IntentGatewayV2Abi from "@/configs/abis/IntentGatewayV2.abi.json"
+import { INTENT_GATEWAY_ADDRESSES } from "@/constants"
 
 export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Promise<void> => {
 	logger.info(`[Intent Gateway V2] Order Placed Event: ${stringify(event)}`)
@@ -20,6 +21,7 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 	let graffiti = DEFAULT_REFERRER
 	let decodedOrder: OrderV2 | null = null
 
+	// Try to decode from direct transaction input first (direct call to IntentGateway)
 	if (transaction?.input) {
 		logger.info(`Decoding transaction data for referral points: ${stringify(transaction.input)}`)
 
@@ -40,11 +42,50 @@ export const handleOrderPlacedEventV2 = wrap(async (event: OrderPlacedLog): Prom
 				}
 			}
 		} catch (e: any) {
-			logger.error(
-				`Error decoding placeOrder args, using default referrer: ${stringify({
+			logger.info(
+				`Failed to decode direct transaction input, trying nested call: ${stringify({
 					error: e as unknown as Error,
 				})}`,
 			)
+		}
+	}
+
+	// If direct decoding failed or didn't find placeOrder, try to find IntentGateway call in nested calls
+	if (!decodedOrder) {
+		const intentGatewayAddress = INTENT_GATEWAY_ADDRESSES[chain] // TODO: Update with V2 address
+		if (!intentGatewayAddress) {
+			logger.error(`No IntentGatewayV2 address found for chain: ${chain}`)
+		} else {
+			try {
+				logger.info(`Attempting to find IntentGateway call in nested calls for transaction: ${transactionHash}`)
+				const intentGatewayCalldata = await getContractCallInput(transactionHash, intentGatewayAddress, chain)
+
+				if (intentGatewayCalldata) {
+					logger.info(`Found IntentGateway call in nested calls, decoding calldata`)
+					const { name, args: decodedArgs } = new Interface(IntentGatewayV2Abi).parseTransaction({
+						data: intentGatewayCalldata,
+					})
+
+					if (name === "placeOrder") {
+						// decodedArgs[0] is the order object, decodedArgs[1] is the graffiti
+						decodedOrder = decodedArgs[0]
+
+						if (decodedArgs[1].toLowerCase() !== args.user.toLowerCase()) {
+							// Either Default Referrer or Actual Referrer
+							logger.info(`Using ${stringify(decodedArgs[1])} as graffiti`)
+							graffiti = decodedArgs[1] as Hex
+						}
+					}
+				} else {
+					logger.warn(`IntentGateway call not found in nested calls for transaction: ${transactionHash}`)
+				}
+			} catch (e: any) {
+				logger.error(
+					`Error finding or decoding nested IntentGateway call: ${stringify({
+						error: e as unknown as Error,
+					})}`,
+				)
+			}
 		}
 	}
 
