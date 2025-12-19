@@ -132,7 +132,7 @@ export async function teleport(teleport_param: {
   params: Params
   apiPromise: ApiPromise
   options: Partial<SignerOptions>
-  extrinsics: Array<SubmittableExtrinsic<"promise", ISubmittableResult>>
+  extrinsics?: Array<SubmittableExtrinsic<"promise", ISubmittableResult>>
 }): Promise<ReadableStream<HyperbridgeTxEvents>> {
   const { params, apiPromise, extrinsics = [] } = teleport_param
 
