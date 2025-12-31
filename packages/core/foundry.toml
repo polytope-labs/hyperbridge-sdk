@@ -9,5 +9,3 @@ exclude_lints = [
     "asm-keccak256",
     "mixed-case-function",
 ]
-
-[profile.ci]
