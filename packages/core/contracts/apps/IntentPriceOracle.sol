@@ -24,20 +24,6 @@ import {TokenInfo} from "./IntentGatewayV2.sol";
  */
 interface IIntentPriceOracle {
     /**
-     * @notice Struct to track cumulative spread data for weighted average calculation
-     */
-    struct CumulativeSpreadData {
-        /// @dev Sum of (spread * volume) for all fills
-        int256 weightedSpreadSum;
-        /// @dev Total volume in normalized token units (18 decimals)
-        uint256 totalVolume;
-        /// @dev Number of fills
-        uint256 fillCount;
-        /// @dev Last update timestamp
-        uint256 lastUpdate;
-    }
-
-    /**
      * @notice Event emitted when spread is recorded for a filled order
      * @param commitment The order commitment hash
      * @param destinationToken The destination token address
@@ -81,5 +67,5 @@ interface IIntentPriceOracle {
      * @param token The token address
      * @return data The cumulative spread data
      */
-    function spread(bytes memory sourceChain, address token) external view returns (CumulativeSpreadData memory data);
+    function spread(bytes memory sourceChain, address token) external view returns (int256 data);
 }
