@@ -1196,3 +1196,69 @@ export interface StorageFacade {
 	set<T>(key: string, value: T): Promise<void>
 	delete(key: string): Promise<void>
 }
+
+// =============================================================================
+// IntentGatewayV2 Types
+// =============================================================================
+
+export interface TokenInfoV2 {
+	token: HexString
+	amount: bigint
+}
+
+export interface PaymentInfoV2 {
+	beneficiary: HexString
+	assets: TokenInfoV2[]
+	call: HexString
+}
+
+export interface DispatchInfoV2 {
+	assets: TokenInfoV2[]
+	call: HexString
+}
+
+export interface OrderV2 {
+	user: HexString
+	source: HexString
+	destination: HexString
+	deadline: bigint
+	nonce: bigint
+	fees: bigint
+	session: HexString
+	predispatch: DispatchInfoV2
+	inputs: TokenInfoV2[]
+	output: PaymentInfoV2
+}
+
+export interface FillOptionsV2 {
+	relayerFee: bigint
+	nativeDispatchFee: bigint
+	outputs: TokenInfoV2[]
+}
+
+// =============================================================================
+// ERC-4337 Types (v0.7 PackedUserOperation)
+// =============================================================================
+
+export interface PackedUserOperation {
+	sender: HexString
+	nonce: bigint
+	initCode: HexString
+	callData: HexString
+	accountGasLimits: HexString
+	preVerificationGas: bigint
+	gasFees: HexString
+	paymasterAndData: HexString
+	signature: HexString
+}
+
+export interface SubmitBidOptions {
+	order: OrderV2
+	fillOptions: FillOptionsV2
+	solverAccount: HexString
+	solverPrivateKey: HexString
+	nonce: bigint
+	intentGatewayAddress: HexString
+	entryPointAddress: HexString
+	chainId: bigint
+}
