@@ -1051,6 +1051,11 @@ type OrderV2 @entity {
 	predispatchAssets: [OrderV2PredispatchAsset!]! @derivedFrom(field: "order")
 
 	"""
+	Pre dispatch calldata
+	"""
+	predispatchCalldata: String!
+
+	"""
 	Input assets for this order
 	"""
 	inputAssets: [OrderV2InputAsset!]! @derivedFrom(field: "order")
@@ -1059,6 +1064,11 @@ type OrderV2 @entity {
 	Output assets for this order
 	"""
 	outputAssets: [OrderV2OutputAsset!]! @derivedFrom(field: "order")
+
+	"""
+	Post dispatch calldata
+	"""
+	postDispatchCalldata: String!
 
 	"""
 	Referrer address that referred the user
@@ -1114,11 +1124,6 @@ type OrderV2PredispatchAsset @entity {
 	Position index in the predispatch assets array
 	"""
 	index: Int!
-
-	"""
-	Call data for predispatch
-	"""
-	call: String!
 }
 
 """
@@ -1184,11 +1189,6 @@ type OrderV2OutputAsset @entity {
 	Beneficiary address for this output
 	"""
 	beneficiary: String! @index
-
-	"""
-	Call data for output
-	"""
-	call: String!
 }
 
 """

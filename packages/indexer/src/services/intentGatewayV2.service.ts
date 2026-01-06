@@ -1,8 +1,8 @@
 import Decimal from "decimal.js"
 import { ethers } from "ethers"
 import type { Hex } from "viem"
-import { hexToBytes, bytesToHex, keccak256, encodeAbiParameters } from "viem"
-import { bytes20ToBytes32 } from "@/utils/transfer.helpers"
+import { keccak256, encodeAbiParameters } from "viem"
+import { bytes32ToBytes20 } from "@/utils/transfer.helpers"
 
 import { OrderStatus, ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
@@ -63,13 +63,11 @@ export class IntentGatewayV2Service {
 						token: asset.token,
 						amount: asset.amount,
 						index,
-						call: predispatch.call as string,
 					})
 				} else {
 					assetEntity.token = asset.token
 					assetEntity.amount = asset.amount
 					assetEntity.index = index
-					assetEntity.call = predispatch.call as string
 				}
 				await assetEntity.save()
 			}),
@@ -121,14 +119,12 @@ export class IntentGatewayV2Service {
 						amount: asset.amount,
 						index,
 						beneficiary: outputs.beneficiary as string,
-						call: outputs.call as string,
 					})
 				} else {
 					assetEntity.token = asset.token
 					assetEntity.amount = asset.amount
 					assetEntity.index = index
 					assetEntity.beneficiary = outputs.beneficiary as string
-					assetEntity.call = outputs.call as string
 				}
 				await assetEntity.save()
 			}),
@@ -161,6 +157,8 @@ export class IntentGatewayV2Service {
 				fees: order.fees,
 				session: order.session,
 				inputUSD: inputUSD,
+				predispatchCalldata: order.predispatch.call as string,
+				postDispatchCalldata: order.outputs.call as string,
 				status: OrderStatus.PLACED,
 				referrer,
 				createdAt: timestampToDate(timestamp),
@@ -201,7 +199,7 @@ export class IntentGatewayV2Service {
 			await VolumeService.updateVolume("IntentGatewayV2.USER", inputUSD, timestamp)
 
 			// Convert user to 20 bytes for UserActivity ID, but keep referrer as 32 bytes
-			const userAddress20 = this.bytes32ToBytes20(order.user)
+			const userAddress20 = bytes32ToBytes20(order.user)
 			let user = await getOrCreateUser(userAddress20, referrer, timestamp)
 			user.totalOrdersPlaced = user.totalOrdersPlaced + BigInt(1)
 			user.totalOrderPlacedVolumeUSD = new Decimal(user.totalOrderPlacedVolumeUSD)
@@ -227,6 +225,8 @@ export class IntentGatewayV2Service {
 			orderPlaced.fees = order.fees
 			orderPlaced.session = order.session
 			orderPlaced.inputUSD = inputUSD
+			orderPlaced.predispatchCalldata = order.predispatch.call as string
+			orderPlaced.postDispatchCalldata = order.outputs.call as string
 			orderPlaced.referrer = referrer
 			// Keep existing status - don't overwrite it
 
@@ -296,7 +296,7 @@ export class IntentGatewayV2Service {
 	): Promise<{ total: string; values: string[] }> {
 		const valuesUSD = await Promise.all(
 			tokens.map(async (token) => {
-				const tokenAddress = this.bytes32ToBytes20(token.token)
+				const tokenAddress = bytes32ToBytes20(token.token)
 				let decimals = 18
 				let symbol = "eth"
 
@@ -354,6 +354,8 @@ export class IntentGatewayV2Service {
 				inputUSD: "0",
 				status: OrderStatus.FILLED,
 				referrer: DEFAULT_REFERRER,
+				predispatchCalldata: "",
+				postDispatchCalldata: "",
 				createdAt: timestampToDate(timestamp),
 				blockNumber: BigInt(blockNumber),
 				blockTimestamp: timestamp,
@@ -405,7 +407,7 @@ export class IntentGatewayV2Service {
 					)
 
 					// User - convert to 20 bytes for UserActivity ID, referrer is already 32 bytes
-					const userAddress20 = this.bytes32ToBytes20(orderPlaced.user)
+					const userAddress20 = bytes32ToBytes20(orderPlaced.user)
 					let user = await getOrCreateUser(userAddress20, orderPlaced.referrer)
 					user.totalOrderFilledVolumeUSD = new Decimal(user.totalOrderFilledVolumeUSD)
 						.plus(new Decimal(orderPlaced.inputUSD))
@@ -444,16 +446,6 @@ export class IntentGatewayV2Service {
 		})
 
 		await orderStatusMetadata.save()
-	}
-
-	static bytes32ToBytes20(bytes32: string): string {
-		if (bytes32.length === 42) {
-			return bytes32
-		}
-
-		const bytes = hexToBytes(bytes32 as Hex)
-		const addressBytes = bytes.slice(12)
-		return bytesToHex(addressBytes) as Hex
 	}
 
 	static computeOrderCommitment(order: OrderV2): string {

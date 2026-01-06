@@ -1,5 +1,5 @@
 import { EthereumResult, EthereumLog } from "@subql/types-ethereum"
-import { pad } from "viem"
+import { bytesToHex, hexToBytes, pad } from "viem"
 import type { Hex } from "viem"
 
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
@@ -76,5 +76,15 @@ export function bytes20ToBytes32(bytes20: string): string {
 
 	// If it's already 32 bytes but without proper format, ensure it's padded
 	const cleaned = bytes20.startsWith("0x") ? bytes20 : `0x${bytes20}`
-	return pad(cleaned as Hex, { size: 32 }) as string
+	return pad(cleaned as Hex, { size: 32 }).toLowerCase() as Hex
+}
+
+export function bytes32ToBytes20(bytes32: string): string {
+	if (bytes32.length === 42) {
+		return bytes32
+	}
+
+	const bytes = hexToBytes(bytes32 as Hex)
+	const addressBytes = bytes.slice(12)
+	return bytesToHex(addressBytes).toLowerCase() as Hex
 }
