@@ -73,7 +73,7 @@ export class IntentGatewayV2 {
 		}) as HexString
 	}
 
-	/** Signs a solver selection message using the stored session key */
+	/** Signs a solver selection message using the stored session key (EIP-712) */
 	async signSolverSelection(
 		commitment: HexString,
 		solverAddress: HexString,
@@ -86,6 +86,7 @@ export class IntentGatewayV2 {
 
 		const account = privateKeyToAccount(sessionKeyData.privateKey as Hex)
 
+		// EIP-712 structHash: keccak256(abi.encode(typehash, commitment, solver))
 		const structHash = keccak256(
 			encodeAbiParameters(
 				[{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }],
@@ -93,16 +94,11 @@ export class IntentGatewayV2 {
 			),
 		)
 
-		const digest = keccak256(
-			encodeAbiParameters(
-				[{ type: "bytes2" }, { type: "bytes32" }, { type: "bytes32" }],
-				["0x1901", domainSeparator, structHash],
-			),
-		)
+		// EIP-712 digest: keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash))
+		const digest = keccak256(concat(["0x1901" as Hex, domainSeparator as Hex, structHash]))
 
-		const signature = await account.signMessage({
-			message: { raw: digest },
-		})
+		// Sign raw digest (no Ethereum signed message prefix for EIP-712)
+		const signature = await account.sign({ hash: digest })
 
 		return signature as HexString
 	}
@@ -176,7 +172,8 @@ export class IntentGatewayV2 {
 		const sessionKey = order.session
 
 		// Sign: keccak256(abi.encodePacked(userOpHash, commitment, sessionKey))
-		const messageHash = keccak256(concat([userOpHash, commitment, pad(sessionKey, { size: 32 })]))
+		// sessionKey is address (20 bytes), not padded to 32
+		const messageHash = keccak256(concat([userOpHash, commitment, sessionKey as Hex]))
 
 		const solverAccount_ = privateKeyToAccount(solverPrivateKey as Hex)
 		const solverSignature = await solverAccount_.signMessage({ message: { raw: messageHash } })
