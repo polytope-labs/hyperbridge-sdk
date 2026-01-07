@@ -1258,7 +1258,16 @@ export interface SubmitBidOptions {
 	solverAccount: HexString
 	solverPrivateKey: HexString
 	nonce: bigint
-	intentGatewayAddress: HexString
 	entryPointAddress: HexString
 	chainId: bigint
+	// Estimated gas for executing fillOrder calldata
+	callGasLimit: bigint
+	// Estimated gas for validateUserOp
+	verificationGasLimit: bigint
+	// Overhead gas for bundler
+	preVerificationGas: bigint
+	// Max gas price willing to pay
+	maxFeePerGas: bigint
+	// Priority fee (tip)
+	maxPriorityFeePerGas: bigint
 }

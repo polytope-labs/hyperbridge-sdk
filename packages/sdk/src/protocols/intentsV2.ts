@@ -142,14 +142,20 @@ export class IntentGatewayV2 {
 
 	/** Prepares a bid UserOperation for submitting to Hyperbridge (used by fillers/solvers) */
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
-		const { order, fillOptions, solverAccount, solverPrivateKey, nonce, entryPointAddress, chainId } = options
-
-		// Default gas parameters
-		const callGasLimit = 500000n
-		const verificationGasLimit = 100000n
-		const preVerificationGas = 21000n
-		const maxPriorityFeePerGas = 1000000000n // 1 gwei
-		const maxFeePerGas = 50000000000n // 50 gwei
+		const {
+			order,
+			fillOptions,
+			solverAccount,
+			solverPrivateKey,
+			nonce,
+			entryPointAddress,
+			chainId,
+			callGasLimit,
+			verificationGasLimit,
+			preVerificationGas,
+			maxFeePerGas,
+			maxPriorityFeePerGas,
+		} = options
 
 		const callData = this.encodeFillOrderCalldata(order, fillOptions)
 		const commitment = this.calculateOrderCommitmentV2(order)
