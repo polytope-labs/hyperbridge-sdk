@@ -117,6 +117,33 @@ export const assets = {
 	},
 }
 
+export const tokenStorageSlots = {
+	[Chains.MAINNET]: {
+		USDT: { balanceSlot: 2, allowanceSlot: 5 },
+		USDC: { balanceSlot: 9, allowanceSlot: 10 },
+		WETH: { balanceSlot: 3, allowanceSlot: 4 },
+		DAI: { balanceSlot: 0, allowanceSlot: 0 },
+	},
+	[Chains.BSC_MAINNET]: {
+		USDT: { balanceSlot: 1, allowanceSlot: 2 },
+		USDC: { balanceSlot: 1, allowanceSlot: 2 },
+		WETH: { balanceSlot: 3, allowanceSlot: 4 },
+		DAI: { balanceSlot: 0, allowanceSlot: 0 },
+	},
+	[Chains.POLYGON_MAINNET]: {
+		USDT: { balanceSlot: 0, allowanceSlot: 1 },
+		USDC: { balanceSlot: 9, allowanceSlot: 10 },
+		WETH: { balanceSlot: 3, allowanceSlot: 4 },
+		DAI: { balanceSlot: 0, allowanceSlot: 0 },
+	},
+	[Chains.ARBITRUM_MAINNET]: {
+		USDT: { balanceSlot: 51, allowanceSlot: 52 },
+		USDC: { balanceSlot: 9, allowanceSlot: 10 },
+		WETH: { balanceSlot: 51, allowanceSlot: 52 },
+		DAI: { balanceSlot: 0, allowanceSlot: 0 },
+	},
+}
+
 export const addresses: AddressMap = {
 	IntentGateway: {
 		[Chains.BSC_CHAPEL]: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",

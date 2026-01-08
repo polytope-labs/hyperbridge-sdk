@@ -1,6 +1,6 @@
 import type { ConsolaInstance } from "consola"
 import type { GraphQLClient } from "graphql-request"
-import type { ContractFunctionArgs, Hex, Log } from "viem"
+import type { ContractFunctionArgs, Hex, Log, PublicClient } from "viem"
 import type HandlerV1 from "@/abis/handler"
 import type { IChain } from "@/chain"
 
@@ -1270,4 +1270,21 @@ export interface SubmitBidOptions {
 	maxFeePerGas: bigint
 	// Priority fee (tip)
 	maxPriorityFeePerGas: bigint
+}
+
+export interface EstimateFillOrderV2Params {
+	order: OrderV2
+	fillOptions: FillOptionsV2
+	destClient: PublicClient
+	intentGatewayAddress: HexString
+	solverAccountAddress: HexString
+}
+
+export interface FillOrderEstimateV2 {
+	callGasLimit: bigint
+	verificationGasLimit: bigint
+	preVerificationGas: bigint
+	maxFeePerGas: bigint
+	maxPriorityFeePerGas: bigint
+	totalGasCostWei: bigint
 }

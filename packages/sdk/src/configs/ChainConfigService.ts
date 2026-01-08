@@ -9,6 +9,7 @@ import {
 	Chains,
 	WrappedNativeDecimals,
 	createRpcUrls,
+	tokenStorageSlots,
 } from "@/configs/chain"
 
 export class ChainConfigService {
@@ -111,5 +112,24 @@ export class ChainConfigService {
 
 	getCalldispatcherAddress(chain: string): HexString {
 		return addresses.Calldispatcher[chain as keyof typeof addresses.Calldispatcher]! as HexString
+	}
+
+	getTokenStorageSlots(
+		chain: string,
+		tokenAddress: string,
+	): { balanceSlot: number; allowanceSlot: number } | undefined {
+		const chainSlots = tokenStorageSlots[chain as keyof typeof tokenStorageSlots]
+		if (!chainSlots) return undefined
+
+		const chainAssets = assets[chain as keyof typeof assets]
+		if (!chainAssets) return undefined
+
+		const normalizedAddress = tokenAddress.toLowerCase()
+		for (const [symbol, address] of Object.entries(chainAssets)) {
+			if (address === normalizedAddress) {
+				return chainSlots[symbol as keyof typeof chainSlots]
+			}
+		}
+		return undefined
 	}
 }
