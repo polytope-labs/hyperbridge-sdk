@@ -19,7 +19,7 @@ import {
 	Chain,
 	keccak256,
 } from "viem"
-import { arbitrum, bsc, bscTestnet, mainnet, polygon, sepolia } from "viem/chains"
+import { arbitrum, base, bsc, bscTestnet, mainnet, polygon, sepolia } from "viem/chains"
 import {
 	ChainConfig,
 	FillerConfig,
@@ -294,6 +294,7 @@ describe.sequential("Swap Tests", () => {
 	const bscMainnetId = "EVM-56"
 	const polygonMainnetId = "EVM-137"
 	const arbitrumMainnetId = "EVM-42161"
+	const baseMainnetId = "EVM-8453"
 
 	let intentGateway: IntentGateway
 	let chainConfigService: ChainConfigService
@@ -1342,6 +1343,7 @@ describe.sequential("Swap Tests", () => {
 			[bscMainnetId, process.env.BSC_MAINNET!, bsc],
 			[polygonMainnetId, process.env.POLYGON_MAINNET!, polygon],
 			[arbitrumMainnetId, process.env.ARBITRUM_MAINNET!, arbitrum],
+			[baseMainnetId, process.env.BASE_MAINNET!, base],
 		]
 
 		console.log("\n=== TOKEN STORAGE SLOTS BY CHAIN ===\n")
