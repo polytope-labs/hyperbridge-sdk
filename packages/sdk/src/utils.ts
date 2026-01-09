@@ -630,6 +630,11 @@ export enum ERC20Method {
 	ALLOWANCE = "0xdd62ed3e",
 }
 
+export enum EvmLanguage {
+	Solidity,
+	Vyper,
+}
+
 export enum UniversalRouterCommands {
 	WRAP_ETH = 0x0b,
 	UNWRAP_WETH = 0x0c,
@@ -686,6 +691,39 @@ export async function getStorageSlot(
 	contractAddress: HexString,
 	data: HexString,
 ): Promise<string> {
+	async function getRecordedSlots(): Promise<string | undefined> {
+		const methodSignature = data.slice(0, 10)
+
+		const chainId = await client.getChainId()
+		const chain = `EVM-${chainId}`
+
+		const configService = new ChainConfigService()
+
+		const baseSlots = configService.getTokenStorageSlots(chain, contractAddress)
+		if (!baseSlots) return undefined
+
+		// If both slots are 0, treat as unknown (placeholder for tokens like DAI)
+		if (baseSlots.balanceSlot === 0 && baseSlots.allowanceSlot === 0) return undefined
+
+		if (methodSignature === ERC20Method.BALANCE_OF) {
+			// Extract holder address from data
+			// Format: 0x70a08231 + 32-byte padded address
+			// The actual address is the last 40 hex chars (20 bytes) of the 32-byte param
+			const holderAddress = `0x${data.slice(34, 74)}` as HexString
+			const baseSlot = BigInt(baseSlots.balanceSlot)
+			return calculateBalanceMappingLocation(baseSlot, holderAddress, EvmLanguage.Solidity)
+		} else if (methodSignature === ERC20Method.ALLOWANCE) {
+			// Extract owner and spender addresses from data
+			// Format: 0xdd62ed3e + 32-byte padded owner + 32-byte padded spender
+			const ownerAddress = `0x${data.slice(34, 74)}` as HexString
+			const spenderAddress = `0x${data.slice(98, 138)}` as HexString
+			const baseSlot = BigInt(baseSlots.allowanceSlot)
+			return calculateAllowanceMappingLocation(baseSlot, ownerAddress, spenderAddress, EvmLanguage.Solidity)
+		}
+
+		return undefined
+	}
+
 	// Default tracer (struct logger)
 	async function tryDefaultTracer(): Promise<string> {
 		const traceCallClient = client.extend((client) => ({
@@ -795,6 +833,13 @@ export async function getStorageSlot(
 		return storageSlots[storageSlots.length - 1] as HexString
 	}
 
+	// Try recorded slots first, then fall back to tracers
+	const recordedSlot = await getRecordedSlots()
+	if (recordedSlot) {
+		console.log("Storage slot found in recorded slots:", recordedSlot)
+		return recordedSlot
+	}
+
 	return tryDefaultTracer().catch(() => tryPrestateTracer())
 }
 
@@ -839,4 +884,78 @@ export function replaceWebsocketWithHttp(url: string): string {
 		return url.replace("wss://", "https://")
 	}
 	return url
+}
+
+/**
+ * Calculates the balance mapping location for a given slot and holder address.
+ * This function handles the different encoding formats used by Solidity and Vyper.
+ *
+ * @param slot - The slot number to calculate the mapping location for.
+ * @param holder - The address of the holder to calculate the mapping location for.
+ * @param language - The language of the contract.
+ * @returns The balance mapping location as a HexString.
+ */
+export function calculateBalanceMappingLocation(slot: bigint, holder: string, language: EvmLanguage): HexString {
+	const holderBytes = bytes20ToBytes32(holder)
+	const slotBytes = `0x${slot.toString(16).padStart(64, "0")}` as HexString
+
+	if (language === EvmLanguage.Solidity) {
+		return keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [holderBytes, slotBytes]) as HexString,
+		)
+	} else {
+		// Vyper uses reverse order
+		return keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [slotBytes, holderBytes]) as HexString,
+		)
+	}
+}
+
+/**
+ * Calculates the allowance mapping location for a given slot, owner, and spender.
+ * ERC20 allowance is a nested mapping: mapping(address owner => mapping(address spender => uint256))
+ *
+ * @param slot - The base slot number for the allowance mapping
+ * @param owner - The address of the token owner (first parameter in allowance(owner, spender))
+ * @param spender - The address approved to spend tokens (second parameter)
+ * @param language - The language of the contract (Solidity or Vyper)
+ * @returns The allowance mapping location as a HexString
+ */
+export function calculateAllowanceMappingLocation(
+	slot: bigint,
+	owner: string,
+	spender: string,
+	language: EvmLanguage,
+): HexString {
+	const ownerBytes = bytes20ToBytes32(owner)
+	const spenderBytes = bytes20ToBytes32(spender)
+	const slotBytes = `0x${slot.toString(16).padStart(64, "0")}` as HexString
+
+	if (language === EvmLanguage.Solidity) {
+		// For mapping(address => mapping(address => uint256)):
+		// Step 1: keccak256(abi.encode(owner, slot)) -> gives inner mapping location
+		const innerMappingSlot = keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [ownerBytes, slotBytes]) as HexString,
+		)
+
+		// Step 2: keccak256(abi.encode(spender, innerMappingSlot)) -> gives final storage location
+		return keccak256(
+			encodeAbiParameters(
+				[{ type: "bytes32" }, { type: "bytes32" }],
+				[spenderBytes, innerMappingSlot],
+			) as HexString,
+		)
+	} else {
+		// Vyper uses reverse order: keccak256(slot, owner) then keccak256(innerSlot, spender)
+		const innerMappingSlot = keccak256(
+			encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [slotBytes, ownerBytes]) as HexString,
+		)
+
+		return keccak256(
+			encodeAbiParameters(
+				[{ type: "bytes32" }, { type: "bytes32" }],
+				[innerMappingSlot, spenderBytes],
+			) as HexString,
+		)
+	}
 }
