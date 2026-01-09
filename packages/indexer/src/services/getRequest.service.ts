@@ -82,6 +82,7 @@ export class GetRequestService {
 				blockTimestamp: blockTimestamp || BigInt(0),
 				status: status || Status.SOURCE,
 				commitment: id,
+				createdAt: timestampToDate(blockTimestamp || BigInt(0)),
 			})
 
 			await getRequest.save()
@@ -138,6 +139,7 @@ export class GetRequestService {
 		let getRequest = await this.createOrUpdate({
 			id: commitment,
 			status,
+			blockTimestamp,
 		})
 
 		await getRequest.save()

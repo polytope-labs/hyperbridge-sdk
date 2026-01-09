@@ -705,6 +705,10 @@ type GetRequest @entity {
 	commitment of the request
 	"""
 	commitment: String!
+	"""
+	The timestamp when this record was created
+	"""
+	createdAt: Date! @index
 }
 
 """
