@@ -167,7 +167,7 @@ export class IntentGatewayV2 {
 		callGasLimit = callGasLimit + (callGasLimit * 20n) / 100n
 
 		// Estimate verificationGasLimit for SolverAccount.validateUserOp
-		const verificationGasLimit = 600_000n // TODO: Replace with Foundry Benchmarking results
+		const verificationGasLimit = 16_313n
 
 		// Pre-verification gas (bundler overhead for calldata, etc.)
 		const preVerificationGas = 21_000n
