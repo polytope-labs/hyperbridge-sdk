@@ -1,5 +1,5 @@
 import { createStorage } from "unstorage"
-// @ts-expect-error failed to resolve types
+// @ts-ignore - unstorage types don't resolve due to package.json exports
 import inMemoryDriver from "unstorage/drivers/memory"
 import { loadDriver } from "@/storage/load-driver"
 import { bytesToHex, hexToBytes } from "viem"

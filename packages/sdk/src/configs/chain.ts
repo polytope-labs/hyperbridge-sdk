@@ -396,3 +396,8 @@ const configsByStateMachineId = Object.fromEntries(
 ) as Record<Chains, ChainConfigData>
 
 export const getConfigByStateMachineId = (id: Chains): ChainConfigData | undefined => configsByStateMachineId[id]
+
+export const getChainId = (stateMachineId: string): number | undefined =>
+	configsByStateMachineId[stateMachineId as Chains]?.chainId
+
+export const getViemChain = (chainId: number): Chain | undefined => chainConfigs[chainId]?.viemChain
