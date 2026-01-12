@@ -180,11 +180,11 @@ export class IntentGatewayV2 {
 
 		// Estimate fillOrder gas (callGasLimit)
 		let callGasLimit: bigint
-		const postRequestGas = await this.source.configService.getRedeemGasEstimate(params.order.source)
+		const postRequestGas = 400_000n
 		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
 		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
 		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
-			postRequestGas! as unknown as bigint,
+			postRequestGas as bigint,
 			"source",
 			params.order.source,
 		)

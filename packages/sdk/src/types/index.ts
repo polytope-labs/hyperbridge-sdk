@@ -1053,21 +1053,6 @@ export interface OrderStatusMetadata {
 	filler?: string
 }
 
-export interface OrderStatusMetadataResponse {
-	orderStatusMetadata: {
-		nodes: Array<{
-			id: string
-			status: OrderStatus
-			chain: string
-			timestamp: string
-			blockNumber: string
-			transactionHash: string
-			filler?: string
-			createdAt: string
-		}>
-	}
-}
-
 export interface OrderWithStatus {
 	id: string
 	user: string
