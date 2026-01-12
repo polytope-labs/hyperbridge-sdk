@@ -1298,7 +1298,6 @@ describe.sequential("Swap Tests", () => {
 		assert(estimatedFee > 0n)
 	}, 1_000_000)
 
-	// Note: Disable getting stored slots in getStorageSlot function for this test to run without returning from config
 	it.skip("Get the base balance and allowance slot of USDT, USDC, WETH for the defined chains using reverse engineering", async () => {
 		// Functions to find the base slot for balance mapping
 		function findBaseBalanceSlot(fullSlotHex: HexString, holderAddress: string, language: EvmLanguage): bigint {

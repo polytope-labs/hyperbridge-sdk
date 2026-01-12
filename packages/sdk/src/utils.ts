@@ -711,39 +711,6 @@ export async function getStorageSlot(
 	contractAddress: HexString,
 	data: HexString,
 ): Promise<string> {
-	async function getRecordedSlots(): Promise<string | undefined> {
-		const methodSignature = data.slice(0, 10)
-
-		const chainId = await client.getChainId()
-		const chain = `EVM-${chainId}`
-
-		const configService = new ChainConfigService()
-
-		const baseSlots = configService.getTokenStorageSlots(chain, contractAddress)
-		if (!baseSlots) return undefined
-
-		// If both slots are 0, treat as unknown (placeholder for tokens like DAI)
-		if (baseSlots.balanceSlot === 0 && baseSlots.allowanceSlot === 0) return undefined
-
-		if (methodSignature === ERC20Method.BALANCE_OF) {
-			// Extract holder address from data
-			// Format: 0x70a08231 + 32-byte padded address
-			// The actual address is the last 40 hex chars (20 bytes) of the 32-byte param
-			const holderAddress = `0x${data.slice(34, 74)}` as HexString
-			const baseSlot = BigInt(baseSlots.balanceSlot)
-			return calculateBalanceMappingLocation(baseSlot, holderAddress, EvmLanguage.Solidity)
-		} else if (methodSignature === ERC20Method.ALLOWANCE) {
-			// Extract owner and spender addresses from data
-			// Format: 0xdd62ed3e + 32-byte padded owner + 32-byte padded spender
-			const ownerAddress = `0x${data.slice(34, 74)}` as HexString
-			const spenderAddress = `0x${data.slice(98, 138)}` as HexString
-			const baseSlot = BigInt(baseSlots.allowanceSlot)
-			return calculateAllowanceMappingLocation(baseSlot, ownerAddress, spenderAddress, EvmLanguage.Solidity)
-		}
-
-		return undefined
-	}
-
 	// Default tracer (struct logger)
 	async function tryDefaultTracer(): Promise<string> {
 		const traceCallClient = client.extend((client) => ({
@@ -853,14 +820,41 @@ export async function getStorageSlot(
 		return storageSlots[storageSlots.length - 1] as HexString
 	}
 
-	// Try recorded slots first, then fall back to tracers
-	const recordedSlot = await getRecordedSlots()
-	if (recordedSlot) {
-		console.log("Storage slot found in recorded slots:", recordedSlot)
-		return recordedSlot
+	return tryDefaultTracer().catch(() => tryPrestateTracer())
+}
+
+export function getRecordedStorageSlot(
+	chain: string,
+	contractAddress: HexString,
+	data: HexString,
+): HexString | undefined {
+	const methodSignature = data.slice(0, 10)
+
+	const configService = new ChainConfigService()
+
+	const baseSlots = configService.getTokenStorageSlots(chain, contractAddress)
+	if (!baseSlots) return undefined
+
+	// If both slots are 0, treat as unknown (placeholder for tokens like DAI)
+	if (baseSlots.balanceSlot === 0 && baseSlots.allowanceSlot === 0) return undefined
+
+	if (methodSignature === ERC20Method.BALANCE_OF) {
+		// Extract holder address from data
+		// Format: 0x70a08231 + 32-byte padded address
+		// The actual address is the last 40 hex chars (20 bytes) of the 32-byte param
+		const holderAddress = `0x${data.slice(34, 74)}` as HexString
+		const baseSlot = BigInt(baseSlots.balanceSlot)
+		return calculateBalanceMappingLocation(baseSlot, holderAddress, EvmLanguage.Solidity)
+	} else if (methodSignature === ERC20Method.ALLOWANCE) {
+		// Extract owner and spender addresses from data
+		// Format: 0xdd62ed3e + 32-byte padded owner + 32-byte padded spender
+		const ownerAddress = `0x${data.slice(34, 74)}` as HexString
+		const spenderAddress = `0x${data.slice(98, 138)}` as HexString
+		const baseSlot = BigInt(baseSlots.allowanceSlot)
+		return calculateAllowanceMappingLocation(baseSlot, ownerAddress, spenderAddress, EvmLanguage.Solidity)
 	}
 
-	return tryDefaultTracer().catch(() => tryPrestateTracer())
+	return undefined
 }
 
 /**

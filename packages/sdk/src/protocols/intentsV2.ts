@@ -38,6 +38,7 @@ import {
 	adjustFeeDecimals,
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
+	getRecordedStorageSlot,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
@@ -161,12 +162,14 @@ export class IntentGatewayV2 {
 			.reduce((sum, output) => sum + output.amount, 0n)
 
 		const testValue = toHex(maxUint256 / 2n)
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
 		const stateOverrides = await this.buildTokenStateOverrides(
-			this.dest.client,
+			this.dest.config.stateMachineId,
 			order.output.assets,
 			solverAccountAddress,
 			this.dest.configService.getIntentGatewayAddress(order.destination),
 			testValue,
+			intentGatewayV2Address,
 		)
 
 		// Add native balance override for the solver account
@@ -365,13 +368,34 @@ export class IntentGatewayV2 {
 
 	/** Builds state overrides for token balances and allowances to enable gas estimation */
 	private async buildTokenStateOverrides(
-		client: PublicClient,
+		chain: string,
 		outputAssets: { token: HexString; amount: bigint }[],
 		accountAddress: HexString,
 		spenderAddress: HexString,
 		testValue: HexString,
+		intentGatewayV2Address?: HexString,
 	): Promise<{ address: HexString; balance?: bigint; stateDiff?: { slot: HexString; value: HexString }[] }[]> {
 		const overrides: { address: HexString; stateDiff: { slot: HexString; value: HexString }[] }[] = []
+
+		// Params struct starts at slot 4, and slot 5 contains dispatcher + solverSelection packed
+		// Slot 5 layout (64 hex chars after 0x):
+		// - chars 2-23 (22 chars, 11 bytes): padding
+		// - chars 24-25 (2 chars, 1 byte): solverSelection
+		// - chars 26-65 (40 chars, 20 bytes): dispatcher
+		if (intentGatewayV2Address) {
+			const paramsSlot5 = pad(toHex(5n), { size: 32 }) as HexString
+			const currentSlot5Value = await this.dest.client.getStorageAt({
+				address: intentGatewayV2Address,
+				slot: paramsSlot5,
+			})
+			// Set solverSelection to 0x00 while preserving dispatcher
+			const currentValue = currentSlot5Value || "0x" + "0".repeat(64)
+			const newSlot5Value = (currentValue.slice(0, 24) + "00" + currentValue.slice(26)) as HexString
+			overrides.push({
+				address: intentGatewayV2Address,
+				stateDiff: [{ slot: paramsSlot5, value: newSlot5Value }],
+			})
+		}
 
 		for (const output of outputAssets) {
 			const tokenAddress = bytes32ToBytes20(output.token)
@@ -384,15 +408,19 @@ export class IntentGatewayV2 {
 				const stateDiffs: { slot: HexString; value: HexString }[] = []
 
 				const balanceData = (ERC20Method.BALANCE_OF + bytes20ToBytes32(accountAddress).slice(2)) as HexString
-				const balanceSlot = (await getStorageSlot(client, tokenAddress, balanceData)) as HexString
-				stateDiffs.push({ slot: balanceSlot, value: testValue })
+				const balanceSlot = getRecordedStorageSlot(chain, tokenAddress, balanceData)
+				if (balanceSlot) {
+					stateDiffs.push({ slot: balanceSlot, value: testValue })
+				}
 
 				try {
 					const allowanceData = (ERC20Method.ALLOWANCE +
 						bytes20ToBytes32(accountAddress).slice(2) +
 						bytes20ToBytes32(spenderAddress).slice(2)) as HexString
-					const allowanceSlot = (await getStorageSlot(client, tokenAddress, allowanceData)) as HexString
-					stateDiffs.push({ slot: allowanceSlot, value: testValue })
+					const allowanceSlot = getRecordedStorageSlot(chain, tokenAddress, allowanceData)
+					if (allowanceSlot) {
+						stateDiffs.push({ slot: allowanceSlot, value: testValue })
+					}
 				} catch (e) {
 					console.warn(`Could not find allowance slot for token ${tokenAddress}:`, e)
 				}
@@ -422,18 +450,7 @@ export class IntentGatewayV2 {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
-		const useEtherscan = USE_ETHERSCAN_CHAINS.has(evmChainID)
-		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].configService.getEtherscanApiKey() : undefined
-		const gasPrice =
-			useEtherscan && etherscanApiKey
-				? await retryPromise(() => getGasPriceFromEtherscan(evmChainID, etherscanApiKey), {
-						maxRetries: 3,
-						backoffMs: 250,
-					}).catch(async () => {
-						console.warn({ evmChainID }, "Error getting gas price from etherscan, using client's gas price")
-						return await client.getGasPrice()
-					})
-				: await client.getGasPrice()
+		const gasPrice = await retryPromise(() => client.getGasPrice(), { maxRetries: 3, backoffMs: 250 })
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
