@@ -8,6 +8,8 @@ import {
 	maxUint256,
 	type Hex,
 	type PublicClient,
+	formatUnits,
+	parseUnits,
 } from "viem"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import IntentGatewayV2ABI from "@/abis/IntentGatewayV2"
@@ -19,9 +21,29 @@ import type {
 	SubmitBidOptions,
 	EstimateFillOrderV2Params,
 	FillOrderEstimateV2,
+	IPostRequest,
+	DispatchPost,
 } from "@/types"
 import type { SessionKeyStorageOptions } from "@/storage/types"
-import { ADDRESS_ZERO, bytes32ToBytes20, bytes20ToBytes32, ERC20Method, getStorageSlot } from "@/utils"
+import {
+	ADDRESS_ZERO,
+	bytes32ToBytes20,
+	bytes20ToBytes32,
+	ERC20Method,
+	getStorageSlot,
+	retryPromise,
+	getGasPriceFromEtherscan,
+	USE_ETHERSCAN_CHAINS,
+	fetchPrice,
+	adjustFeeDecimals,
+	constructRedeemEscrowRequestBody,
+	MOCK_ADDRESS,
+} from "@/utils"
+import { orderV2Commitment } from "@/utils"
+import { Swap } from "@/utils/swap"
+import { EvmChain } from "@/chains/evm"
+import Decimal from "decimal.js"
+import IntentGateway from "@/abis/IntentGateway"
 
 /** EIP-712 type hash for SelectSolver message */
 export const SELECT_SOLVER_TYPEHASH = keccak256(toHex("SelectSolver(bytes32 commitment,address solver)"))
@@ -35,8 +57,12 @@ export const DEFAULT_GRAFFITI = "0x000000000000000000000000000000000000000000000
  */
 export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
-
-	constructor(storageOptions?: SessionKeyStorageOptions) {
+	private readonly swap: Swap = new Swap()
+	constructor(
+		public readonly source: EvmChain,
+		public readonly dest: EvmChain,
+		storageOptions?: SessionKeyStorageOptions,
+	) {
 		this.storage = createSessionKeyStorage(storageOptions)
 	}
 
@@ -52,7 +78,7 @@ export class IntentGatewayV2 {
 
 		order.session = sessionKeyAddress
 
-		const commitment = this.calculateOrderCommitmentV2(order)
+		const commitment = orderV2Commitment(order)
 
 		const sessionKeyData: SessionKeyData = {
 			privateKey: privateKey as HexString,
@@ -78,7 +104,6 @@ export class IntentGatewayV2 {
 			solverPrivateKey,
 			nonce,
 			entryPointAddress,
-			chainId,
 			callGasLimit,
 			verificationGasLimit,
 			preVerificationGas,
@@ -86,12 +111,16 @@ export class IntentGatewayV2 {
 			maxPriorityFeePerGas,
 		} = options
 
+		const chainId = BigInt(
+			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
+		)
+
 		const callData = encodeFunctionData({
 			abi: IntentGatewayV2ABI.ABI,
 			functionName: "fillOrder",
 			args: [order, fillOptions],
 		}) as HexString
-		const commitment = this.calculateOrderCommitmentV2(order)
+		const commitment = orderV2Commitment(order)
 		const accountGasLimits = this.packGasLimits(callGasLimit, verificationGasLimit)
 		const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
 
@@ -125,7 +154,7 @@ export class IntentGatewayV2 {
 
 	/** Estimates gas costs for fillOrder execution via ERC-4337 */
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
-		const { order, fillOptions, destClient, intentGatewayAddress, solverAccountAddress } = params
+		const { order, fillOptions, solverAccountAddress } = params
 
 		const totalEthValue = order.output.assets
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
@@ -133,10 +162,10 @@ export class IntentGatewayV2 {
 
 		const testValue = toHex(maxUint256 / 2n)
 		const stateOverrides = await this.buildTokenStateOverrides(
-			destClient,
+			this.dest.client,
 			order.output.assets,
 			solverAccountAddress,
-			intentGatewayAddress,
+			this.dest.configService.getIntentGatewayAddress(order.destination),
 			testValue,
 		)
 
@@ -148,14 +177,48 @@ export class IntentGatewayV2 {
 
 		// Estimate fillOrder gas (callGasLimit)
 		let callGasLimit: bigint
+		const postRequestGas = await this.source.configService.getRedeemGasEstimate(params.order.source)
+		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
+		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
+		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
+			postRequestGas! as unknown as bigint,
+			"source",
+			params.order.source,
+		)
+		const postRequestFeeInDestFeeToken = adjustFeeDecimals(
+			postRequestFeeInSourceFeeToken,
+			sourceFeeToken.decimals,
+			destFeeToken.decimals,
+		)
+
+		const postRequest: IPostRequest = {
+			source: params.order.destination,
+			dest: params.order.source,
+			body: constructRedeemEscrowRequestBody(
+				{ ...params.order, id: orderV2Commitment(params.order) },
+				MOCK_ADDRESS,
+			),
+			timeoutTimestamp: 0n,
+			nonce: await this.source.getHostNonce(),
+			from: this.source.configService.getIntentGatewayAddress(params.order.destination),
+			to: this.source.configService.getIntentGatewayAddress(params.order.source),
+		}
+
+		let protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
+			this.dest.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() => 0n),
+		)
+
+		// Buffer 0.5%
+		protocolFeeInNativeToken = (protocolFeeInNativeToken * 1005n) / 1000n
+
 		try {
-			callGasLimit = await destClient.estimateContractGas({
+			callGasLimit = await this.dest.client.estimateContractGas({
 				abi: IntentGatewayV2ABI.ABI,
-				address: intentGatewayAddress,
+				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
 				args: [order, fillOptions],
 				account: solverAccountAddress,
-				value: totalEthValue + fillOptions.nativeDispatchFee,
+				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
 			})
 		} catch (e) {
@@ -163,8 +226,8 @@ export class IntentGatewayV2 {
 			callGasLimit = 500_000n
 		}
 
-		// Add buffer for execution through SolverAccount (20%)
-		callGasLimit = callGasLimit + (callGasLimit * 20n) / 100n
+		// Add buffer for execution through SolverAccount (5%)
+		callGasLimit = callGasLimit + (callGasLimit * 5n) / 100n
 
 		// Estimate verificationGasLimit for SolverAccount.validateUserOp
 		const verificationGasLimit = 16_313n
@@ -173,13 +236,15 @@ export class IntentGatewayV2 {
 		const preVerificationGas = 21_000n
 
 		// Get current gas prices
-		const gasPrice = await destClient.getGasPrice()
+		const gasPrice = await this.dest.client.getGasPrice()
 		const maxFeePerGas = gasPrice + (gasPrice * 20n) / 100n
 		const maxPriorityFeePerGas = gasPrice / 10n
 
 		// Calculate total gas cost in wei
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
+
+		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGasCostWei, "dest", order.destination)
 
 		return {
 			callGasLimit,
@@ -188,6 +253,7 @@ export class IntentGatewayV2 {
 			maxFeePerGas,
 			maxPriorityFeePerGas,
 			totalGasCostWei,
+			totalGasInFeeToken,
 		}
 	}
 
@@ -219,18 +285,6 @@ export class IntentGatewayV2 {
 		const signature = await account.sign({ hash: digest })
 
 		return signature as HexString
-	}
-
-	/** Calculates the order commitment hash */
-	calculateOrderCommitmentV2(order: OrderV2): HexString {
-		const placeOrderAbi = IntentGatewayV2ABI.ABI.find(
-			(item) => item.type === "function" && "name" in item && item.name === "placeOrder",
-		)
-		const orderType = placeOrderAbi?.inputs?.[0]
-		if (!orderType) throw new Error("Could not find Order type in ABI")
-
-		const encoded = encodeAbiParameters([orderType], [order])
-		return keccak256(encoded)
 	}
 
 	/** Computes the userOpHash for ERC-4337 v0.7 PackedUserOperation */
@@ -350,5 +404,91 @@ export class IntentGatewayV2 {
 		}
 
 		return overrides
+	}
+
+	/**
+	 * Converts gas costs to the equivalent amount in the fee token (DAI).
+	 * Uses USD pricing to convert between native token gas costs and fee token amounts.
+	 *
+	 * @param gasEstimate - The estimated gas units
+	 * @param gasEstimateIn - Whether to use "source" or "dest" chain for the conversion
+	 * @param evmChainID - The EVM chain ID in format "EVM-{id}"
+	 * @returns The gas cost converted to fee token amount
+	 * @private
+	 */
+	private async convertGasToFeeToken(
+		gasEstimate: bigint,
+		gasEstimateIn: "source" | "dest",
+		evmChainID: string,
+	): Promise<bigint> {
+		const client = this[gasEstimateIn].client
+		const useEtherscan = USE_ETHERSCAN_CHAINS.has(evmChainID)
+		const etherscanApiKey = useEtherscan ? this[gasEstimateIn].configService.getEtherscanApiKey() : undefined
+		const gasPrice =
+			useEtherscan && etherscanApiKey
+				? await retryPromise(() => getGasPriceFromEtherscan(evmChainID, etherscanApiKey), {
+						maxRetries: 3,
+						backoffMs: 250,
+					}).catch(async () => {
+						console.warn({ evmChainID }, "Error getting gas price from etherscan, using client's gas price")
+						return await client.getGasPrice()
+					})
+				: await client.getGasPrice()
+		const gasCostInWei = gasEstimate * gasPrice
+		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
+		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
+
+		try {
+			const { amountOut } = await this.swap.findBestProtocolWithAmountIn(
+				this[gasEstimateIn].client,
+				wethAddr,
+				feeToken.address,
+				gasCostInWei,
+				evmChainID,
+				{ selectedProtocol: "v2" },
+			)
+			if (amountOut === 0n) {
+				console.log("Amount out not found")
+				throw new Error()
+			}
+			return amountOut
+		} catch {
+			// Testnet block
+			const nativeCurrency = client.chain?.nativeCurrency
+			const chainId = Number.parseInt(evmChainID.split("-")[1])
+			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
+			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
+			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
+			const feeTokenPriceUsd = new Decimal(1) // stable coin
+			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
+			return parseUnits(gasCostInFeeToken.toFixed(feeToken.decimals), feeToken.decimals)
+		}
+	}
+
+	/**
+	 * Gets a quote for the native token cost of dispatching a post request.
+	 *
+	 * @param postRequest - The post request to quote
+	 * @param fee - The fee amount in fee token
+	 * @returns The native token amount required
+	 */
+	private async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
+		const dispatchPost: DispatchPost = {
+			dest: toHex(postRequest.dest),
+			to: postRequest.to,
+			body: postRequest.body,
+			timeout: postRequest.timeoutTimestamp,
+			fee: fee,
+			payer: postRequest.from,
+		}
+
+		const quoteNative = await this.dest.client.readContract({
+			address: this.dest.configService.getIntentGatewayAddress(postRequest.dest),
+			abi: IntentGateway.ABI,
+			functionName: "quoteNative",
+			args: [dispatchPost] as any,
+		})
+
+		return quoteNative
 	}
 }

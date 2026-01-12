@@ -304,3 +304,28 @@ query TokenRegistry($symbol: String!) {
     }
   }
 }`
+
+export const ORDER_STATUS_METADATA_BY_STATUS_AND_CHAIN = `
+query OrderStatusMetadataByStatusAndChain($status: OrderStatus!, $chain: String!, $first: Int!) {
+  orderStatusMetadata(
+    filter: {
+      and: [
+        { status: { equalTo: $status } }
+        { chain: { equalTo: $chain } }
+      ]
+    }
+    first: $first
+    orderBy: TIMESTAMP_DESC
+  ) {
+    nodes {
+      id
+      status
+      chain
+      timestamp
+      blockNumber
+      transactionHash
+      filler
+      createdAt
+    }
+  }
+}`

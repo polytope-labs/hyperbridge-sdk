@@ -7,7 +7,7 @@ import {
 	type StateMachineHeight,
 	TimeoutStatus,
 } from "@/types"
-import type { EstimateGasCallData, Order, RequestStatusKey, RetryConfig, TimeoutStatusKey } from "@/types"
+import type { EstimateGasCallData, Order, OrderV2, RequestStatusKey, RetryConfig, TimeoutStatusKey } from "@/types"
 import { LogLevels, createConsola } from "consola"
 import {
 	type CallParameters,
@@ -26,6 +26,7 @@ import { type IChain, getStateCommitmentFieldSlot } from "./chain"
 import { _queryRequestInternal } from "./query-client"
 import { generateRootWithProof } from "./utils"
 import { ChainConfigService } from "./configs/ChainConfigService"
+import IntentGatewayV2 from "./abis/IntentGatewayV2"
 
 export * from "./utils/mmr"
 export * from "./utils/substrate"
@@ -259,6 +260,25 @@ export function orderCommitment(order: Order): HexString {
 	return keccak256(encodedOrder)
 }
 
+/** Calculates the order commitment hash */
+export function orderV2Commitment(order: OrderV2): HexString {
+	order = {
+		...order,
+		source: order.source.startsWith("0x") ? (order.source as `0x${string}`) : toHex(order.source),
+		destination: order.destination.startsWith("0x")
+			? (order.destination as `0x${string}`)
+			: toHex(order.destination),
+	}
+	const placeOrderAbi = IntentGatewayV2.ABI.find(
+		(item) => item.type === "function" && "name" in item && item.name === "placeOrder",
+	)
+	const orderType = placeOrderAbi?.inputs?.[0]
+	if (!orderType) throw new Error("Could not find Order type in ABI")
+
+	const encoded = encodeAbiParameters([orderType], [order])
+	return keccak256(encoded)
+}
+
 /**
  * Converts a bytes32 token address to bytes20 format
  * This removes the extra padded zeros from the address
@@ -474,7 +494,7 @@ export async function estimateGasForPost(params: {
  * This function encodes the order commitment, beneficiary address, and token inputs
  * to match the format expected by the IntentGateway contract.
  */
-export function constructRedeemEscrowRequestBody(order: Order, beneficiary: HexString): HexString {
+export function constructRedeemEscrowRequestBody(order: Order | OrderV2, beneficiary: HexString): HexString {
 	const commitment = order.id as HexString
 	const inputs = order.inputs
 

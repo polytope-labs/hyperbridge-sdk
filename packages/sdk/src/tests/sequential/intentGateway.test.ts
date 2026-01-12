@@ -30,6 +30,7 @@ import {
 	TokenInfo,
 	PaymentInfo,
 	RequestStatus,
+	OrderStatusMetadataResponse,
 } from "@/types"
 import {
 	orderCommitment,
@@ -51,12 +52,14 @@ import EVM_HOST from "@/abis/evmHost"
 import { EvmChain, EvmChainParams, IProof, SubstrateChain, getChain } from "@/chain"
 import { IntentGateway } from "@/protocols/intents"
 import { ChainConfigService } from "@/configs/ChainConfigService"
+import { chainConfigs } from "@/configs/chain"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import IntentGatewayABI from "@/abis/IntentGateway"
 import erc6160 from "@/abis/erc6160"
 import handler from "@/abis/handler"
 import { IndexerClient } from "@/client"
 import { createQueryClient } from "@/query-client"
+import { ORDER_STATUS_METADATA_BY_STATUS_AND_CHAIN } from "@/queries"
 import { strict as assert } from "assert"
 import { getOrderPlacedFromTx } from "@/utils/txEvents"
 
@@ -1430,6 +1433,109 @@ describe.sequential("Swap Tests", () => {
 
 		console.log("\n" + "=".repeat(80) + "\n")
 	}, 1_000_000)
+})
+
+describe.sequential.skip("REDEEMED Order Gas Usage Analysis", () => {
+	const MAINNET_CHAINS = [1, 56, 137, 42161, 8453] // ETH, BSC, Polygon, Arbitrum, Base
+
+	it("Should fetch REDEEMED order gas usage and update config", async () => {
+		const fs = await import("fs")
+		const path = await import("path")
+
+		const queryClient = createQueryClient({ url: "https://nexus.indexer.polytope.technology" })
+		const results: Record<number, number> = {} // chainId -> avgGas
+
+		for (const chainId of MAINNET_CHAINS) {
+			const config = chainConfigs[chainId]
+			if (!config?.viemChain) continue
+
+			console.log(`Processing ${config.stateMachineId}...`)
+
+			try {
+				const response = await queryClient.request<OrderStatusMetadataResponse>(
+					ORDER_STATUS_METADATA_BY_STATUS_AND_CHAIN,
+					{ status: "REDEEMED", chain: chainId.toString(), first: 100 },
+				)
+
+				const entries = response.orderStatusMetadata.nodes
+				console.log(`  Found ${entries.length} REDEEMED entries, fetching receipts...`)
+				if (entries.length === 0) continue
+
+				const client = createPublicClient({
+					chain: config.viemChain,
+					transport: http(process.env[config.rpcEnvKey!]),
+				})
+
+				const gasValues: bigint[] = []
+				for (const entry of entries) {
+					try {
+						const receipt = await client.getTransactionReceipt({ hash: entry.transactionHash as HexString })
+						gasValues.push(receipt.gasUsed)
+					} catch {
+						// Skip failed receipts
+					}
+				}
+
+				console.log(`  Got ${gasValues.length} receipts`)
+
+				if (gasValues.length > 0) {
+					const total = gasValues.reduce((sum, g) => sum + g, 0n)
+					const avg = Number(total / BigInt(gasValues.length))
+					results[chainId] = avg
+					console.log(`  Average gas: ${avg}`)
+				}
+			} catch (error) {
+				console.log(`Error on chain ${chainId}:`, error)
+			}
+		}
+
+		// Update chain.ts config file
+		const configPath = path.resolve(__dirname, "../../configs/chain.ts")
+		let configContent = fs.readFileSync(configPath, "utf-8")
+
+		for (const [chainId, avgGas] of Object.entries(results)) {
+			// Find start of this chain's config block
+			const blockStart = configContent.indexOf(`\t${chainId}: {`)
+			if (blockStart === -1) {
+				console.log(`  Could not find chain ${chainId} in config`)
+				continue
+			}
+
+			// Find the end of this chain's block (next chain or end of object)
+			const afterBlock = configContent.slice(blockStart)
+			const blockEndMatch = afterBlock.match(/\n\t\},\n\t\d+:|\n\t\},\n\}/)
+			const blockEnd = blockEndMatch ? blockStart + blockEndMatch.index! + 3 : configContent.length
+
+			const blockContent = configContent.slice(blockStart, blockEnd)
+
+			if (blockContent.includes("redeemGasEstimate:")) {
+				// Update existing value
+				const updatedBlock = blockContent.replace(/redeemGasEstimate:\s*\d+/, `redeemGasEstimate: ${avgGas}`)
+				configContent = configContent.slice(0, blockStart) + updatedBlock + configContent.slice(blockEnd)
+				console.log(`  Updated redeemGasEstimate for chain ${chainId}`)
+			} else {
+				// Add after popularTokens
+				const updatedBlock = blockContent.replace(
+					/(popularTokens:\s*\[[^\]]*\],)/,
+					`$1\n\t\tredeemGasEstimate: ${avgGas},`,
+				)
+				configContent = configContent.slice(0, blockStart) + updatedBlock + configContent.slice(blockEnd)
+				console.log(`  Added redeemGasEstimate for chain ${chainId}`)
+			}
+		}
+
+		fs.writeFileSync(configPath, configContent)
+		console.log("\n✅ Updated chain.ts with redeemGasEstimate values")
+
+		// Output results
+		console.log("\n=== REDEEM GAS ESTIMATES ===")
+		for (const [chainId, avgGas] of Object.entries(results)) {
+			const config = chainConfigs[Number(chainId)]
+			console.log(`${config?.stateMachineId}: ${avgGas}`)
+		}
+
+		expect(Object.keys(results).length).toBeGreaterThan(0)
+	}, 600_000)
 })
 
 describe.sequential("Order Cancellation tests", () => {

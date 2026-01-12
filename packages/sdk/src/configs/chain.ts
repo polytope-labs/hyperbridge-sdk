@@ -32,6 +32,7 @@ export interface ChainConfigData {
 	}
 	addresses: {
 		IntentGateway?: `0x${string}`
+		IntentGatewayV2?: `0x${string}`
 		TokenGateway?: `0x${string}`
 		Host?: `0x${string}`
 		UniswapRouter02?: `0x${string}`
@@ -48,6 +49,7 @@ export interface ChainConfigData {
 	consensusStateId: string
 	coingeckoId: string
 	popularTokens?: string[]
+	redeemGasEstimate?: number
 }
 
 // All chain configuration in one place - add new chains here
@@ -185,6 +187,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0xdAC17F958D2ee523a2206206994597C13D831ec7",
 			"0x6B175474E89094C44Da98b954EedeAC495271d0F",
 		],
+		redeemGasEstimate: 317090,
 	},
 	56: {
 		chainId: 56,
@@ -229,6 +232,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0x55d398326f99059fF775485246999027B3197955",
 			"0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
 		],
+		redeemGasEstimate: 382169,
 	},
 	42161: {
 		chainId: 42161,
@@ -270,6 +274,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
 			"0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
 		],
+		redeemGasEstimate: 237646,
 	},
 	8453: {
 		chainId: 8453,
@@ -311,6 +316,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
 			"0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
 		],
+		redeemGasEstimate: 225092,
 	},
 	137: {
 		chainId: 137,
@@ -352,6 +358,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
 			"0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
 		],
+		redeemGasEstimate: 237646,
 	},
 	130: {
 		chainId: 130,

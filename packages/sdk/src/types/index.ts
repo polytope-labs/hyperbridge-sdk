@@ -1053,6 +1053,21 @@ export interface OrderStatusMetadata {
 	filler?: string
 }
 
+export interface OrderStatusMetadataResponse {
+	orderStatusMetadata: {
+		nodes: Array<{
+			id: string
+			status: OrderStatus
+			chain: string
+			timestamp: string
+			blockNumber: string
+			transactionHash: string
+			filler?: string
+			createdAt: string
+		}>
+	}
+}
+
 export interface OrderWithStatus {
 	id: string
 	user: string
@@ -1218,6 +1233,7 @@ export interface DispatchInfoV2 {
 }
 
 export interface OrderV2 {
+	id?: string
 	user: HexString
 	source: HexString
 	destination: HexString
@@ -1259,7 +1275,6 @@ export interface SubmitBidOptions {
 	solverPrivateKey: HexString
 	nonce: bigint
 	entryPointAddress: HexString
-	chainId: bigint
 	// Estimated gas for executing fillOrder calldata
 	callGasLimit: bigint
 	// Estimated gas for validateUserOp
@@ -1275,8 +1290,6 @@ export interface SubmitBidOptions {
 export interface EstimateFillOrderV2Params {
 	order: OrderV2
 	fillOptions: FillOptionsV2
-	destClient: PublicClient
-	intentGatewayAddress: HexString
 	solverAccountAddress: HexString
 }
 
@@ -1287,4 +1300,5 @@ export interface FillOrderEstimateV2 {
 	maxFeePerGas: bigint
 	maxPriorityFeePerGas: bigint
 	totalGasCostWei: bigint
+	totalGasInFeeToken: bigint
 }

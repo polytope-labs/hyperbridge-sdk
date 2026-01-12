@@ -23,6 +23,7 @@ export {
 	USE_ETHERSCAN_CHAINS,
 	TESTNET_CHAINS,
 	retryPromise,
+	orderV2Commitment,
 } from "@/utils"
 export * from "@/protocols/intents"
 export * from "@/protocols/intentsV2"

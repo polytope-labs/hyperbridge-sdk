@@ -134,4 +134,12 @@ export class ChainConfigService {
 	getPopularTokens(chain: string): string[] {
 		return this.getConfig(chain)?.popularTokens ?? []
 	}
+
+	getRedeemGasEstimate(chain: string): number | undefined {
+		return this.getConfig(chain)?.redeemGasEstimate
+	}
+
+	getIntentGatewayV2Address(chain: string): HexString {
+		return (this.getConfig(chain)?.addresses.IntentGatewayV2 ?? "0x") as HexString
+	}
 }
