@@ -504,7 +504,7 @@ export interface AssetTeleportedResponse {
 
 export interface StateMachineIdParams {
 	stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number }
-	consensusStateId: HexString
+	consensusStateId: string
 }
 
 /**
@@ -973,7 +973,7 @@ export interface DispatchGet {
 export interface StateMachineHeight {
 	id: {
 		stateId: { Evm?: number; Substrate?: HexString; Polkadot?: number; Kusama?: number }
-		consensusStateId: HexString
+		consensusStateId: string
 	}
 	height: bigint
 }
