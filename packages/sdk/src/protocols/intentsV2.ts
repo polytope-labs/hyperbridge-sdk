@@ -7,7 +7,6 @@ import {
 	pad,
 	maxUint256,
 	type Hex,
-	type PublicClient,
 	formatUnits,
 	parseUnits,
 } from "viem"
@@ -30,10 +29,7 @@ import {
 	bytes32ToBytes20,
 	bytes20ToBytes32,
 	ERC20Method,
-	getStorageSlot,
 	retryPromise,
-	getGasPriceFromEtherscan,
-	USE_ETHERSCAN_CHAINS,
 	fetchPrice,
 	adjustFeeDecimals,
 	constructRedeemEscrowRequestBody,
@@ -155,7 +151,7 @@ export class IntentGatewayV2 {
 
 	/** Estimates gas costs for fillOrder execution via ERC-4337 */
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
-		const { order, fillOptions, solverAccountAddress } = params
+		const { order, solverAccountAddress } = params
 
 		const totalEthValue = order.output.assets
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
@@ -188,7 +184,7 @@ export class IntentGatewayV2 {
 			"source",
 			params.order.source,
 		)
-		const postRequestFeeInDestFeeToken = adjustFeeDecimals(
+		let postRequestFeeInDestFeeToken = adjustFeeDecimals(
 			postRequestFeeInSourceFeeToken,
 			sourceFeeToken.decimals,
 			destFeeToken.decimals,
@@ -213,13 +209,21 @@ export class IntentGatewayV2 {
 
 		// Buffer 0.5%
 		protocolFeeInNativeToken = (protocolFeeInNativeToken * 1005n) / 1000n
+		postRequestFeeInDestFeeToken = postRequestFeeInDestFeeToken + (postRequestFeeInDestFeeToken * 1005n) / 1000n
 
+		if (!params.fillOptions) {
+			params.fillOptions = {
+				relayerFee: postRequestFeeInDestFeeToken,
+				nativeDispatchFee: protocolFeeInNativeToken,
+				outputs: order.output.assets,
+			}
+		}
 		try {
 			callGasLimit = await this.dest.client.estimateContractGas({
 				abi: IntentGatewayV2ABI.ABI,
 				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
-				args: [order, fillOptions],
+				args: [order, params.fillOptions],
 				account: solverAccountAddress,
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
@@ -257,6 +261,7 @@ export class IntentGatewayV2 {
 			maxPriorityFeePerGas,
 			totalGasCostWei,
 			totalGasInFeeToken,
+			fillOptions: params.fillOptions,
 		}
 	}
 
