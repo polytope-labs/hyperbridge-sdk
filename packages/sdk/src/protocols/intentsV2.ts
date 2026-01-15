@@ -159,7 +159,7 @@ export class IntentGatewayV2 {
 
 		const testValue = toHex(maxUint256 / 2n)
 		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
-		const stateOverrides = await this.buildTokenStateOverrides(
+		const stateOverrides = this.buildTokenStateOverrides(
 			this.dest.config.stateMachineId,
 			order.output.assets,
 			solverAccountAddress,
@@ -372,14 +372,14 @@ export class IntentGatewayV2 {
 	// =========================================================================
 
 	/** Builds state overrides for token balances and allowances to enable gas estimation */
-	private async buildTokenStateOverrides(
+	private buildTokenStateOverrides(
 		chain: string,
 		outputAssets: { token: HexString; amount: bigint }[],
 		accountAddress: HexString,
 		spenderAddress: HexString,
 		testValue: HexString,
 		intentGatewayV2Address?: HexString,
-	): Promise<{ address: HexString; balance?: bigint; stateDiff?: { slot: HexString; value: HexString }[] }[]> {
+	): { address: HexString; balance?: bigint; stateDiff?: { slot: HexString; value: HexString }[] }[] {
 		const overrides: { address: HexString; stateDiff: { slot: HexString; value: HexString }[] }[] = []
 
 		// Params struct starts at slot 4, and slot 5 contains dispatcher + solverSelection packed
@@ -389,13 +389,9 @@ export class IntentGatewayV2 {
 		// - chars 26-65 (40 chars, 20 bytes): dispatcher
 		if (intentGatewayV2Address) {
 			const paramsSlot5 = pad(toHex(5n), { size: 32 }) as HexString
-			const currentSlot5Value = await this.dest.client.getStorageAt({
-				address: intentGatewayV2Address,
-				slot: paramsSlot5,
-			})
-			// Set solverSelection to 0x00 while preserving dispatcher
-			const currentValue = currentSlot5Value || "0x" + "0".repeat(64)
-			const newSlot5Value = (currentValue.slice(0, 24) + "00" + currentValue.slice(26)) as HexString
+			const dispatcherAddress = this.dest.configService.getCalldispatcherAddress(chain)
+			// Set solverSelection to 0x00, padding is zeros, dispatcher from config
+			const newSlot5Value = ("0x" + "0".repeat(22) + "00" + dispatcherAddress.slice(2).toLowerCase()) as HexString
 			overrides.push({
 				address: intentGatewayV2Address,
 				stateDiff: [{ slot: paramsSlot5, value: newSlot5Value }],
