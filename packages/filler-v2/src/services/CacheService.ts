@@ -31,6 +31,7 @@ interface CacheData {
 	feeTokens: Record<string, { address: HexString; decimals: number }>
 	perByteFees: Record<string, Record<string, bigint>>
 	tokenDecimals: Record<string, Record<HexString, number>>
+	solverSelection: Record<string, boolean>
 }
 
 export class CacheService {
@@ -39,7 +40,14 @@ export class CacheService {
 	private logger = getLogger("cache-service")
 
 	constructor() {
-		this.cacheData = { gasEstimates: {}, swapOperations: {}, feeTokens: {}, perByteFees: {}, tokenDecimals: {} }
+		this.cacheData = {
+			gasEstimates: {},
+			swapOperations: {},
+			feeTokens: {},
+			perByteFees: {},
+			tokenDecimals: {},
+			solverSelection: {},
+		}
 	}
 
 	private isCacheValid(timestamp: number): boolean {
@@ -245,5 +253,14 @@ export class CacheService {
 			this.logger.error({ chain: chain, tokenAddress: tokenAddress, err: error }, "Error setting token decimals")
 			throw error
 		}
+	}
+
+	getSolverSelection(chain: string): boolean | null {
+		const cached = this.cacheData.solverSelection[chain]
+		return cached !== undefined ? cached : null
+	}
+
+	setSolverSelection(chain: string, active: boolean): void {
+		this.cacheData.solverSelection[chain] = active
 	}
 }

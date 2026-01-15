@@ -1,4 +1,6 @@
 import { OrderV2, ExecutionResult } from "@hyperbridge/sdk"
+import type { HyperbridgeService } from "@/services"
+
 export interface FillerStrategy {
 	name: string
 
@@ -6,5 +8,5 @@ export interface FillerStrategy {
 
 	calculateProfitability(order: OrderV2): Promise<number>
 
-	executeOrder(order: OrderV2): Promise<ExecutionResult>
+	executeOrder(order: OrderV2, hyperbridge?: HyperbridgeService): Promise<ExecutionResult>
 }

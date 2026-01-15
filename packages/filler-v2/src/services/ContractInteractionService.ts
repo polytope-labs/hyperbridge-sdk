@@ -404,12 +404,19 @@ export class ContractInteractionService {
 	 * @returns True if solver selection is active
 	 */
 	async isSolverSelectionActive(chain: string): Promise<boolean> {
+		const cached = this.cacheService.getSolverSelection(chain)
+		if (cached !== null) {
+			return cached
+		}
+
 		const client = this.clientManager.getPublicClient(chain)
 		const params = await client.readContract({
 			abi: INTENT_GATEWAY_V2_ABI,
 			functionName: "params",
 			address: this.configService.getIntentGatewayV2Address(chain),
 		})
+
+		this.cacheService.setSolverSelection(chain, params.solverSelection)
 		return params.solverSelection
 	}
 

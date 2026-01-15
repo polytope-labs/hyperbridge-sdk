@@ -4,39 +4,44 @@ import { getLogger } from "./Logger"
 
 /**
  * Service for interacting with Hyperbridge via Polkadot.js
- * Handles bid submission to the pallet-intents coprocessor
+ * Handles bid submission to the pallet-intents coprocessor.
+ * Maintains a persistent WebSocket connection for efficiency.
+ *
+ * Use the static `create()` method to instantiate.
  */
 export class HyperbridgeService {
-	private logger = getLogger("hyperbridge-service")
-	private wsUrl: string
-	private substratePrivateKey: string
-
-	constructor(wsUrl: string, substratePrivateKey: string) {
-		this.wsUrl = wsUrl
-		this.substratePrivateKey = substratePrivateKey
-	}
+	private static logger = getLogger("hyperbridge-service")
 
 	/**
-	 * Creates a connection to Hyperbridge
-	 * @returns ApiPromise instance
+	 * Creates a new HyperbridgeService with an established connection.
+	 * WsProvider handles auto-reconnect internally.
+	 *
+	 * @param wsUrl - WebSocket URL for Hyperbridge
+	 * @param substratePrivateKey - Private key for signing extrinsics
 	 */
-	private async connect(): Promise<ApiPromise> {
-		this.logger.debug({ wsUrl: this.wsUrl }, "Connecting to Hyperbridge")
-		const provider = new WsProvider(this.wsUrl)
+	static async create(wsUrl: string, substratePrivateKey: string): Promise<HyperbridgeService> {
+		this.logger.debug({ wsUrl }, "Connecting to Hyperbridge")
+		const provider = new WsProvider(wsUrl)
 		const api = await ApiPromise.create({ provider })
 		await api.isReady
-		this.logger.debug("Connected to Hyperbridge")
-		return api
+		this.logger.info("Connected to Hyperbridge")
+
+		return new HyperbridgeService(api, substratePrivateKey)
 	}
 
+	private constructor(
+		private api: ApiPromise,
+		private substratePrivateKey: string,
+	) {}
+
 	/**
-	 * Disconnects from Hyperbridge
-	 * @param api The ApiPromise instance to disconnect
+	 * Disconnects from Hyperbridge.
+	 * Should be called when the filler is stopping.
 	 */
-	private async disconnect(api: ApiPromise): Promise<void> {
-		this.logger.debug("Disconnecting from Hyperbridge")
-		await api.disconnect()
-		this.logger.debug("Disconnected from Hyperbridge")
+	async disconnect(): Promise<void> {
+		HyperbridgeService.logger.debug("Disconnecting from Hyperbridge")
+		await this.api.disconnect()
+		HyperbridgeService.logger.debug("Disconnected from Hyperbridge")
 	}
 
 	/**
@@ -65,13 +70,10 @@ export class HyperbridgeService {
 	 * @returns BidSubmissionResult with success status and block/extrinsic hash
 	 */
 	async submitBid(commitment: HexString, userOp: HexString): Promise<BidSubmissionResult> {
-		let api: ApiPromise | null = null
-
 		try {
-			api = await this.connect()
 			const keyPair = this.getKeyPair()
 
-			this.logger.info(
+			HyperbridgeService.logger.info(
 				{
 					commitment,
 					userOpLength: userOp.length,
@@ -81,13 +83,13 @@ export class HyperbridgeService {
 			)
 
 			// The pallet expects: commitment (H256), user_op (BoundedVec<u8, 1MB>)
-			const extrinsic = api.tx.intents.placeBid(commitment, userOp)
+			const extrinsic = this.api.tx.intents.placeBid(commitment, userOp)
 
 			const result = await new Promise<BidSubmissionResult>((resolve) => {
 				extrinsic
 					.signAndSend(keyPair, { nonce: -1 }, (status) => {
 						if (status.isInBlock) {
-							this.logger.info(
+							HyperbridgeService.logger.info(
 								{
 									blockHash: status.status.asInBlock.toHex(),
 									extrinsicHash: extrinsic.hash.toHex(),
@@ -100,17 +102,20 @@ export class HyperbridgeService {
 								extrinsicHash: extrinsic.hash.toHex() as HexString,
 							})
 						} else if (status.isError) {
-							this.logger.error({ status: status.toHuman() }, "Bid submission error")
+							HyperbridgeService.logger.error({ status: status.toHuman() }, "Bid submission error")
 							resolve({
 								success: false,
 								error: `Extrinsic failed: ${status.status.toString()}`,
 							})
 						} else if (status.isFinalized) {
-							this.logger.debug({ blockHash: status.status.asFinalized.toHex() }, "Bid finalized")
+							HyperbridgeService.logger.debug(
+								{ blockHash: status.status.asFinalized.toHex() },
+								"Bid finalized",
+							)
 						}
 					})
 					.catch((err: Error) => {
-						this.logger.error({ err }, "Failed to submit bid extrinsic")
+						HyperbridgeService.logger.error({ err }, "Failed to submit bid extrinsic")
 						resolve({
 							success: false,
 							error: err.message,
@@ -120,14 +125,10 @@ export class HyperbridgeService {
 
 			return result
 		} catch (error) {
-			this.logger.error({ err: error }, "Error submitting bid to Hyperbridge")
+			HyperbridgeService.logger.error({ err: error }, "Error submitting bid to Hyperbridge")
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",
-			}
-		} finally {
-			if (api) {
-				await this.disconnect(api)
 			}
 		}
 	}

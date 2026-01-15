@@ -23,7 +23,6 @@ export class BasicFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
-	private hyperbridgeService: HyperbridgeService | null = null
 	private logger = getLogger("basic-filler")
 
 	constructor(privateKey: HexString, configService: FillerConfigService, sharedCacheService?: CacheService) {
@@ -36,12 +35,6 @@ export class BasicFiller implements FillerStrategy {
 			configService,
 			sharedCacheService,
 		)
-
-		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
-		const substrateKey = configService.getSubstratePrivateKey()
-		if (hyperbridgeWsUrl && substrateKey) {
-			this.hyperbridgeService = new HyperbridgeService(hyperbridgeWsUrl, substrateKey)
-		}
 	}
 
 	/**
@@ -94,24 +87,20 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Executes the order fill
-	 * If solver selection is active, submits a bid to Hyperbridge
-	 * Otherwise, directly fills the order via contract call
+	 * Executes the order fill.
+	 * If hyperbridge is provided, submits a bid (solver selection mode).
+	 * Otherwise, fills the order directly via contract call.
 	 *
 	 * @param order The order to fill
+	 * @param hyperbridge HyperbridgeService for bid submission (provided when solver selection is active)
 	 * @returns The execution result
 	 */
-	async executeOrder(order: OrderV2): Promise<ExecutionResult> {
+	async executeOrder(order: OrderV2, hyperbridge?: HyperbridgeService): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
 		try {
-			// Check if solver selection is active on the destination chain
-			const solverSelectionActive = await this.contractService.isSolverSelectionActive(order.destination)
-
-			if (solverSelectionActive) {
-				const entryPointAddress = this.configService.getEntryPointAddress()
-				const solverAccountAddress = this.configService.getSolverAccountAddress()
-				return await this.submitBidToHyperbridge(order, startTime, entryPointAddress, solverAccountAddress)
+			if (hyperbridge) {
+				return await this.submitBidToHyperbridge(order, startTime, hyperbridge)
 			}
 			return await this.fillOrder(order, startTime)
 		} catch (error) {
@@ -131,22 +120,14 @@ export class BasicFiller implements FillerStrategy {
 	private async submitBidToHyperbridge(
 		order: OrderV2,
 		startTime: number,
-		entryPointAddress?: HexString,
-		solverAccountAddress?: HexString,
+		hyperbridgeService: HyperbridgeService,
 	): Promise<ExecutionResult> {
-		if (!this.hyperbridgeService) {
-			const errorMsg =
-				"Solver selection is active but Hyperbridge config is not provided. " +
-				"Please configure hyperbridge.wsUrl and substratePrivateKey in your config."
-			this.logger.error(errorMsg)
-			return {
-				success: false,
-				error: errorMsg,
-			}
-		}
+		const entryPointAddress = this.configService.getEntryPointAddress()
+		const solverAccountAddress = this.configService.getSolverAccountAddress()
 
 		if (!entryPointAddress || !solverAccountAddress) {
-			const errorMsg = "Solver selection is active but entryPointAddress or solverAccountAddress is not provided."
+			const errorMsg =
+				"Solver selection is active but entryPointAddress or solverAccountAddress is not configured."
 			this.logger.error(errorMsg)
 			return {
 				success: false,
@@ -154,10 +135,7 @@ export class BasicFiller implements FillerStrategy {
 			}
 		}
 
-		this.logger.info(
-			{ orderId: order.id, destination: order.destination },
-			"Solver selection active, submitting bid to Hyperbridge",
-		)
+		this.logger.info({ orderId: order.id, destination: order.destination }, "Submitting bid to Hyperbridge")
 
 		// Prepare the signed UserOp for bid submission
 		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
@@ -167,7 +145,7 @@ export class BasicFiller implements FillerStrategy {
 		)
 
 		// Submit the bid to Hyperbridge
-		const bidResult = await this.hyperbridgeService.submitBid(commitment, userOp)
+		const bidResult = await hyperbridgeService.submitBid(commitment, userOp)
 
 		const endTime = Date.now()
 		const processingTimeMs = endTime - startTime

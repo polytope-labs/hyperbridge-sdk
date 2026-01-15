@@ -3,7 +3,7 @@ import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
 import { OrderV2, FillerConfig, ChainConfig } from "@hyperbridge/sdk"
 import pQueue from "p-queue"
-import { ChainClientManager, ContractInteractionService } from "@/services"
+import { ChainClientManager, ContractInteractionService, HyperbridgeService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { CacheService } from "@/services/CacheService"
 import { getLogger } from "@/services/Logger"
@@ -16,6 +16,7 @@ export class IntentFiller {
 	private globalQueue: pQueue
 	private chainClientManager: ChainClientManager
 	private contractService: ContractInteractionService
+	private hyperbridge: Promise<HyperbridgeService> | undefined = undefined
 	private config: FillerConfig
 	private configService: FillerConfigService
 	private logger = getLogger("intent-filler")
@@ -49,6 +50,12 @@ export class IntentFiller {
 			concurrency: config.maxConcurrentOrders || 5,
 		})
 
+		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
+		const substrateKey = configService.getSubstratePrivateKey()
+		if (hyperbridgeWsUrl && substrateKey) {
+			this.hyperbridge = HyperbridgeService.create(hyperbridgeWsUrl, substrateKey)
+		}
+
 		// Set up event handlers
 		this.monitor.on("newOrder", ({ order }) => {
 			this.handleNewOrder(order)
@@ -63,13 +70,19 @@ export class IntentFiller {
 		this.monitor.stopListening()
 
 		// Wait for all queues to complete
-		const promises = []
+		const promises: Promise<void>[] = []
 		this.chainQueues.forEach((queue) => {
 			promises.push(queue.onIdle())
 		})
 		promises.push(this.globalQueue.onIdle())
 
-		Promise.all(promises).then(() => {
+		Promise.all(promises).then(async () => {
+			// Disconnect shared Hyperbridge connection
+			if (this.hyperbridge) {
+				const service = await this.hyperbridge.catch(() => null)
+				await service?.disconnect()
+			}
+
 			this.logger.info("All orders processed, filler stopped")
 		})
 	}
@@ -82,6 +95,16 @@ export class IntentFiller {
 		this.globalQueue.add(async () => {
 			this.logger.info({ orderId: order.id }, "New order detected")
 			try {
+				// Early check: if solver selection is active, ensure hyperbridge is configured
+				const solverSelectionActive = await this.contractService.isSolverSelectionActive(order.destination)
+				if (solverSelectionActive && !this.hyperbridge) {
+					this.logger.error(
+						{ orderId: order.id },
+						"Solver selection is active but Hyperbridge is not configured. Skipping order.",
+					)
+					return
+				}
+
 				const sourceClient = this.chainClientManager.getPublicClient(order.source)
 				const orderValue = await this.contractService.getTokenUsdValue(order)
 				let currentConfirmations = await retryPromise(
@@ -122,14 +145,14 @@ export class IntentFiller {
 
 				this.logger.info({ orderId: order.id, currentConfirmations }, "Order confirmed on source chain")
 
-				this.evaluateAndExecuteOrder(order)
+				this.evaluateAndExecuteOrder(order, solverSelectionActive)
 			} catch (error) {
 				this.logger.error({ orderId: order.id, err: error }, "Error processing order")
 			}
 		})
 	}
 
-	private evaluateAndExecuteOrder(order: OrderV2): void {
+	private evaluateAndExecuteOrder(order: OrderV2, solverSelectionActive: boolean): void {
 		this.globalQueue.add(async () => {
 			try {
 				// Check if watch-only mode is enabled for the destination chain
@@ -194,7 +217,8 @@ export class IntentFiller {
 					)
 
 					try {
-						const result = await bestStrategy.executeOrder(order)
+						const hyperbridgeService = solverSelectionActive ? await this.hyperbridge : undefined
+						const result = await bestStrategy.executeOrder(order, hyperbridgeService)
 						this.logger.info({ orderId: order.id, result }, "Order execution completed")
 						if (result.success) {
 							this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
