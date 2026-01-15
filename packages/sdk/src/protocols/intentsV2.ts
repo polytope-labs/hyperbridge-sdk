@@ -55,12 +55,21 @@ export const DEFAULT_GRAFFITI = "0x000000000000000000000000000000000000000000000
 export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
 	private readonly swap: Swap = new Swap()
+	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
 		storageOptions?: SessionKeyStorageOptions,
 	) {
 		this.storage = createSessionKeyStorage(storageOptions)
+		this.initFeeTokenCache()
+	}
+
+	private async initFeeTokenCache(): Promise<void> {
+		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
+		this.feeTokenCache.set(this.source.config.stateMachineId, sourceFeeToken)
+		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
+		this.feeTokenCache.set(this.dest.config.stateMachineId, destFeeToken)
 	}
 
 	// =========================================================================
@@ -177,8 +186,8 @@ export class IntentGatewayV2 {
 		// Estimate fillOrder gas (callGasLimit)
 		let callGasLimit: bigint
 		const postRequestGas = 400_000n
-		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
-		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
+		const sourceFeeToken = this.feeTokenCache.get(this.source.config.stateMachineId)!
+		const destFeeToken = this.feeTokenCache.get(this.dest.config.stateMachineId)!
 		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
 			postRequestGas as bigint,
 			"source",
@@ -454,7 +463,7 @@ export class IntentGatewayV2 {
 		const gasPrice = await retryPromise(() => client.getGasPrice(), { maxRetries: 3, backoffMs: 250 })
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
-		const feeToken = await this[gasEstimateIn].getFeeTokenWithDecimals()
+		const feeToken = this.feeTokenCache.get(evmChainID)!
 
 		try {
 			const { amountOut } = await this.swap.findBestProtocolWithAmountIn(
