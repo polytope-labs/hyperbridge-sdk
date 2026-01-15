@@ -88,7 +88,7 @@ export class HyperbridgeService {
 			const result = await new Promise<BidSubmissionResult>((resolve) => {
 				extrinsic
 					.signAndSend(keyPair, { nonce: -1 }, (status) => {
-						if (status.isInBlock) {
+						if (status.isInBlock || status.isFinalized) {
 							HyperbridgeService.logger.info(
 								{
 									blockHash: status.status.asInBlock.toHex(),
@@ -107,11 +107,6 @@ export class HyperbridgeService {
 								success: false,
 								error: `Extrinsic failed: ${status.status.toString()}`,
 							})
-						} else if (status.isFinalized) {
-							HyperbridgeService.logger.debug(
-								{ blockHash: status.status.asFinalized.toHex() },
-								"Bid finalized",
-							)
 						}
 					})
 					.catch((err: Error) => {
