@@ -1,9 +1,7 @@
-import { getContract, toHex, encodePacked, keccak256, maxUint256, formatUnits, parseUnits } from "viem"
+import { toHex, maxUint256, formatUnits, encodeAbiParameters } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
-	Order,
-	PaymentInfo,
 	HexString,
 	bytes32ToBytes20,
 	getGasPriceFromEtherscan,
@@ -13,6 +11,9 @@ import {
 	IntentGatewayV2,
 	EvmChain,
 	getChainId,
+	orderV2Commitment,
+	type PackedUserOperation,
+	type FillOptionsV2,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -22,6 +23,7 @@ import { ApiPromise } from "@polkadot/api"
 import { CacheService } from "./CacheService"
 import { getLogger } from "@/services/Logger"
 import { Decimal } from "decimal.js"
+import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 
 // Configure for financial precision
 Decimal.config({ precision: 28, rounding: 4 })
@@ -241,7 +243,7 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Estimates gas for filling an order
+	 * Estimates gas for filling an order and caches the full estimate for bid preparation
 	 */
 	async estimateGasFillPost(order: OrderV2): Promise<{
 		totalCostInSourceFeeToken: bigint
@@ -252,19 +254,29 @@ export class ContractInteractionService {
 		try {
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
 			if (cachedEstimate) {
-				return cachedEstimate
+				return {
+					totalCostInSourceFeeToken: cachedEstimate.totalCostInSourceFeeToken,
+					dispatchFee: cachedEstimate.dispatchFee,
+					nativeDispatchFee: cachedEstimate.nativeDispatchFee,
+					callGasLimit: cachedEstimate.callGasLimit,
+				}
 			}
 			const sdkHelper = await this.getSdkHelper(order.source, order.destination)
 			const estimate = await sdkHelper.estimateFillOrderV2({
 				order,
 				solverAccountAddress: privateKeyToAddress(this.privateKey),
 			})
+			// Cache the full estimate including gas parameters for bid preparation
 			this.cacheService.setGasEstimate(
 				order.id!,
 				estimate.totalGasInFeeToken,
 				estimate.fillOptions.relayerFee,
 				estimate.fillOptions.nativeDispatchFee,
 				estimate.callGasLimit,
+				estimate.verificationGasLimit,
+				estimate.preVerificationGas,
+				estimate.maxFeePerGas,
+				estimate.maxPriorityFeePerGas,
 			)
 			return {
 				totalCostInSourceFeeToken: estimate.totalGasInFeeToken,
@@ -370,5 +382,122 @@ export class ContractInteractionService {
 		}
 
 		return { outputUsdValue, inputUsdValue }
+	}
+
+	/**
+	 * Checks if solver selection mode is active on the destination chain
+	 * When active, fillers must submit bids to Hyperbridge instead of filling directly
+	 *
+	 * @param chain - The chain identifier to check
+	 * @returns True if solver selection is active
+	 */
+	async isSolverSelectionActive(chain: string): Promise<boolean> {
+		const client = this.clientManager.getPublicClient(chain)
+		const params = await client.readContract({
+			abi: INTENT_GATEWAY_V2_ABI,
+			functionName: "params",
+			address: this.configService.getIntentGatewayV2Address(chain),
+		})
+		return params.solverSelection
+	}
+
+	/**
+	 * Prepares a signed PackedUserOperation for bid submission to Hyperbridge
+	 *
+	 * Uses cached gas estimates from prior profitability check (estimateGasFillPost)
+	 * to avoid redundant RPC calls.
+	 *
+	 * @param order - The order to prepare a bid for
+	 * @param entryPointAddress - The ERC-4337 EntryPoint address on the destination chain
+	 * @param solverAccountAddress - The solver's smart account address
+	 * @returns Object containing the commitment and encoded UserOp
+	 */
+	async prepareBidUserOp(
+		order: OrderV2,
+		entryPointAddress: HexString,
+		solverAccountAddress: HexString,
+	): Promise<{ commitment: HexString; userOp: HexString }> {
+		// Use cached estimate from prior profitability check
+		const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
+		if (!cachedEstimate) {
+			throw new Error(`No cached gas estimate found for order ${order.id}. Call estimateGasFillPost first.`)
+		}
+
+		const sdkHelper = await this.getSdkHelper(order.source, order.destination)
+
+		const fillOptions: FillOptionsV2 = {
+			relayerFee: cachedEstimate.dispatchFee,
+			nativeDispatchFee: cachedEstimate.nativeDispatchFee,
+			outputs: order.output.assets,
+		}
+
+		// TODO: Get the solver account nonce (this would typically come from the EntryPoint)
+		// For now, using 0n as placeholder
+		const nonce = 0n
+
+		const userOp = await sdkHelper.prepareSubmitBid({
+			order,
+			fillOptions,
+			solverAccount: solverAccountAddress,
+			solverPrivateKey: this.privateKey,
+			nonce,
+			entryPointAddress,
+			callGasLimit: cachedEstimate.callGasLimit,
+			verificationGasLimit: cachedEstimate.verificationGasLimit,
+			preVerificationGas: cachedEstimate.preVerificationGas,
+			maxFeePerGas: cachedEstimate.maxFeePerGas,
+			maxPriorityFeePerGas: cachedEstimate.maxPriorityFeePerGas,
+		})
+
+		const commitment = orderV2Commitment(order)
+
+		// Encode the UserOp as bytes for submission to Hyperbridge
+		const encodedUserOp = this.encodePackedUserOperation(userOp)
+
+		this.logger.info(
+			{
+				commitment,
+				solverAccount: solverAccountAddress,
+				callGasLimit: cachedEstimate.callGasLimit.toString(),
+				maxFeePerGas: cachedEstimate.maxFeePerGas.toString(),
+			},
+			"Prepared bid UserOp",
+		)
+
+		return { commitment, userOp: encodedUserOp }
+	}
+
+	/**
+	 * Encodes a PackedUserOperation into bytes for submission to Hyperbridge
+	 *
+	 * @param userOp - The PackedUserOperation to encode
+	 * @returns Hex-encoded bytes
+	 */
+	private encodePackedUserOperation(userOp: PackedUserOperation): HexString {
+		// Encode the UserOp struct as ABI-encoded bytes
+		return encodeAbiParameters(
+			[
+				{ type: "address", name: "sender" },
+				{ type: "uint256", name: "nonce" },
+				{ type: "bytes", name: "initCode" },
+				{ type: "bytes", name: "callData" },
+				{ type: "bytes32", name: "accountGasLimits" },
+				{ type: "uint256", name: "preVerificationGas" },
+				{ type: "bytes32", name: "gasFees" },
+				{ type: "bytes", name: "paymasterAndData" },
+				{ type: "bytes", name: "signature" },
+			],
+			[
+				userOp.sender,
+				userOp.nonce,
+				userOp.initCode,
+				userOp.callData,
+				userOp.accountGasLimits as HexString,
+				userOp.preVerificationGas,
+				userOp.gasFees as HexString,
+				userOp.paymasterAndData,
+				userOp.signature,
+			],
+		) as HexString
 	}
 }

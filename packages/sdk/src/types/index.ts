@@ -1323,3 +1323,28 @@ export interface FillOrderEstimateV2 {
 	totalGasCostWei: bigint
 	totalGasInFeeToken: bigint
 }
+
+/**
+ * Result of submitting a bid to Hyperbridge
+ */
+export interface BidSubmissionResult {
+	/**
+	 * Whether the bid submission was successful
+	 */
+	success: boolean
+
+	/**
+	 * Block hash where the bid was included
+	 */
+	blockHash?: HexString
+
+	/**
+	 * Extrinsic hash of the bid transaction
+	 */
+	extrinsicHash?: HexString
+
+	/**
+	 * Error message if submission failed
+	 */
+	error?: string
+}

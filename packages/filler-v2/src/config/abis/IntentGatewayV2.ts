@@ -851,4 +851,4 @@ export const INTENT_GATEWAY_V2_ABI = [
 	{ type: "error", name: "UnexpectedCall", inputs: [] },
 	{ type: "error", name: "UnknownOrder", inputs: [] },
 	{ type: "error", name: "WrongChain", inputs: [] },
-]
+] as const

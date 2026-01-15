@@ -10,7 +10,7 @@ import {
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService } from "@/services"
+import { ChainClientManager, ContractInteractionService, HyperbridgeService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { CacheService } from "@/services/CacheService"
 import { compareDecimalValues } from "@/utils"
@@ -23,6 +23,7 @@ export class BasicFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
+	private hyperbridgeService: HyperbridgeService | null = null
 	private logger = getLogger("basic-filler")
 
 	constructor(privateKey: HexString, configService: FillerConfigService, sharedCacheService?: CacheService) {
@@ -35,6 +36,12 @@ export class BasicFiller implements FillerStrategy {
 			configService,
 			sharedCacheService,
 		)
+
+		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
+		const substrateKey = configService.getSubstratePrivateKey()
+		if (hyperbridgeWsUrl && substrateKey) {
+			this.hyperbridgeService = new HyperbridgeService(hyperbridgeWsUrl, substrateKey)
+		}
 	}
 
 	/**
@@ -88,6 +95,9 @@ export class BasicFiller implements FillerStrategy {
 
 	/**
 	 * Executes the order fill
+	 * If solver selection is active, submits a bid to Hyperbridge
+	 * Otherwise, directly fills the order via contract call
+	 *
 	 * @param order The order to fill
 	 * @returns The execution result
 	 */
@@ -95,73 +105,15 @@ export class BasicFiller implements FillerStrategy {
 		const startTime = Date.now()
 
 		try {
-			const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
+			// Check if solver selection is active on the destination chain
+			const solverSelectionActive = await this.contractService.isSolverSelectionActive(order.destination)
 
-			const { dispatchFee, nativeDispatchFee, callGasLimit } =
-				await this.contractService.estimateGasFillPost(order)
-
-			const fillOptions: FillOptionsV2 = {
-				relayerFee: dispatchFee,
-				nativeDispatchFee: nativeDispatchFee,
-				outputs: order.output.assets,
+			if (solverSelectionActive) {
+				const entryPointAddress = this.configService.getEntryPointAddress()
+				const solverAccountAddress = this.configService.getSolverAccountAddress()
+				return await this.submitBidToHyperbridge(order, startTime, entryPointAddress, solverAccountAddress)
 			}
-
-			// Add all eth values from the outputs
-			const ethValue = order.output.assets.reduce((acc: bigint, output: TokenInfoV2) => {
-				if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
-					return acc + output.amount
-				}
-				return acc
-			}, 0n)
-
-			await this.contractService.approveTokensIfNeeded(order)
-
-			const tx = await walletClient
-				.writeContract({
-					abi: INTENT_GATEWAY_V2_ABI,
-					address: this.configService.getIntentGatewayV2Address(order.destination),
-					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-					account: privateKeyToAccount(this.privateKey),
-					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
-					chain: walletClient.chain,
-					gas: callGasLimit + (callGasLimit * 2500n) / 10000n,
-				})
-				.catch(async () => {
-					return await walletClient.writeContract({
-						abi: INTENT_GATEWAY_V2_ABI,
-						address: this.configService.getIntentGatewayV2Address(order.destination),
-						functionName: "fillOrder",
-						args: [this.contractService.transformOrderForContract(order), fillOptions as any],
-						account: privateKeyToAccount(this.privateKey),
-						value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
-						chain: walletClient.chain,
-					})
-				})
-
-			const endTime = Date.now()
-			const processingTimeMs = endTime - startTime
-
-			const receipt = await destClient.waitForTransactionReceipt({ hash: tx, confirmations: 1 })
-
-			if (receipt.status !== "success") {
-				this.logger.error({ txHash: receipt.transactionHash, status: receipt.status }, "Could not fill order")
-				return {
-					success: false,
-					txHash: tx,
-				}
-			}
-
-			return {
-				success: true,
-				txHash: receipt.transactionHash,
-				gasUsed: receipt.gasUsed.toString(),
-				gasPrice: receipt.effectiveGasPrice.toString(),
-				confirmedAtBlock: Number(receipt.blockNumber),
-				confirmedAt: new Date(),
-				strategyUsed: this.name,
-				processingTimeMs,
-			}
+			return await this.fillOrder(order, startTime)
 		} catch (error) {
 			this.logger.error({ err: error }, "Error executing order")
 
@@ -169,6 +121,152 @@ export class BasicFiller implements FillerStrategy {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",
 			}
+		}
+	}
+
+	/**
+	 * Submits a bid to Hyperbridge for solver selection mode
+	 * @private
+	 */
+	private async submitBidToHyperbridge(
+		order: OrderV2,
+		startTime: number,
+		entryPointAddress?: HexString,
+		solverAccountAddress?: HexString,
+	): Promise<ExecutionResult> {
+		if (!this.hyperbridgeService) {
+			const errorMsg =
+				"Solver selection is active but Hyperbridge config is not provided. " +
+				"Please configure hyperbridge.wsUrl and substratePrivateKey in your config."
+			this.logger.error(errorMsg)
+			return {
+				success: false,
+				error: errorMsg,
+			}
+		}
+
+		if (!entryPointAddress || !solverAccountAddress) {
+			const errorMsg = "Solver selection is active but entryPointAddress or solverAccountAddress is not provided."
+			this.logger.error(errorMsg)
+			return {
+				success: false,
+				error: errorMsg,
+			}
+		}
+
+		this.logger.info(
+			{ orderId: order.id, destination: order.destination },
+			"Solver selection active, submitting bid to Hyperbridge",
+		)
+
+		// Prepare the signed UserOp for bid submission
+		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
+			order,
+			entryPointAddress,
+			solverAccountAddress,
+		)
+
+		// Submit the bid to Hyperbridge
+		const bidResult = await this.hyperbridgeService.submitBid(commitment, userOp)
+
+		const endTime = Date.now()
+		const processingTimeMs = endTime - startTime
+
+		if (bidResult.success) {
+			this.logger.info(
+				{
+					commitment,
+					blockHash: bidResult.blockHash,
+					extrinsicHash: bidResult.extrinsicHash,
+				},
+				"Bid submitted to Hyperbridge successfully",
+			)
+
+			return {
+				success: true,
+				txHash: bidResult.extrinsicHash,
+				strategyUsed: this.name,
+				processingTimeMs,
+			}
+		}
+		this.logger.error({ commitment, error: bidResult.error }, "Failed to submit bid to Hyperbridge")
+
+		return {
+			success: false,
+			error: bidResult.error,
+		}
+	}
+
+	/**
+	 * Fills the order directly via contract call (non-solver selection mode)
+	 * @private
+	 */
+	private async fillOrder(order: OrderV2, startTime: number): Promise<ExecutionResult> {
+		const { destClient, walletClient } = this.clientManager.getClientsForOrder(order)
+
+		const { dispatchFee, nativeDispatchFee, callGasLimit } = await this.contractService.estimateGasFillPost(order)
+
+		const fillOptions: FillOptionsV2 = {
+			relayerFee: dispatchFee,
+			nativeDispatchFee: nativeDispatchFee,
+			outputs: order.output.assets,
+		}
+
+		// Add all eth values from the outputs
+		const ethValue = order.output.assets.reduce((acc: bigint, output: TokenInfoV2) => {
+			if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
+				return acc + output.amount
+			}
+			return acc
+		}, 0n)
+
+		await this.contractService.approveTokensIfNeeded(order)
+
+		const tx = await walletClient
+			.writeContract({
+				abi: INTENT_GATEWAY_V2_ABI,
+				address: this.configService.getIntentGatewayV2Address(order.destination),
+				functionName: "fillOrder",
+				args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+				account: privateKeyToAccount(this.privateKey),
+				value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+				chain: walletClient.chain,
+				gas: callGasLimit + (callGasLimit * 2500n) / 10000n,
+			})
+			.catch(async () => {
+				return await walletClient.writeContract({
+					abi: INTENT_GATEWAY_V2_ABI,
+					address: this.configService.getIntentGatewayV2Address(order.destination),
+					functionName: "fillOrder",
+					args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+					account: privateKeyToAccount(this.privateKey),
+					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+					chain: walletClient.chain,
+				})
+			})
+
+		const endTime = Date.now()
+		const processingTimeMs = endTime - startTime
+
+		const receipt = await destClient.waitForTransactionReceipt({ hash: tx, confirmations: 1 })
+
+		if (receipt.status !== "success") {
+			this.logger.error({ txHash: receipt.transactionHash, status: receipt.status }, "Could not fill order")
+			return {
+				success: false,
+				txHash: tx,
+			}
+		}
+
+		return {
+			success: true,
+			txHash: receipt.transactionHash,
+			gasUsed: receipt.gasUsed.toString(),
+			gasPrice: receipt.effectiveGasPrice.toString(),
+			confirmedAtBlock: Number(receipt.blockNumber),
+			confirmedAt: new Date(),
+			strategyUsed: this.name,
+			processingTimeMs,
 		}
 	}
 

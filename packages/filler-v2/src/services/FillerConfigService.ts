@@ -20,6 +20,10 @@ export interface FillerConfig {
 	maxConcurrentOrders: number
 	etherscan?: EtherscanConfig
 	logging?: LoggingConfig
+	hyperbridgeWsUrl?: string
+	substratePrivateKey?: string
+	entryPointAddress?: string
+	solverAccountAddress?: string
 }
 
 /**
@@ -153,5 +157,25 @@ export class FillerConfigService {
 
 	getLoggingConfig(): LoggingConfig | undefined {
 		return this.fillerConfig?.logging
+	}
+
+	getHyperbridgeAddress(): string {
+		return this.chainConfigService.getHyperbridgeAddress()
+	}
+
+	getHyperbridgeWsUrl(): string | undefined {
+		return this.fillerConfig?.hyperbridgeWsUrl
+	}
+
+	getSubstratePrivateKey(): string | undefined {
+		return this.fillerConfig?.substratePrivateKey
+	}
+
+	getEntryPointAddress(): HexString | undefined {
+		return this.fillerConfig?.entryPointAddress as HexString | undefined
+	}
+
+	getSolverAccountAddress(): HexString | undefined {
+		return this.fillerConfig?.solverAccountAddress as HexString | undefined
 	}
 }
