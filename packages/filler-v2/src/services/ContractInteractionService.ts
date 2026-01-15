@@ -35,6 +35,7 @@ export class ContractInteractionService {
 	private api: ApiPromise | null = null
 	public cacheService: CacheService
 	private logger = getLogger("contract-service")
+	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
 
 	constructor(
 		private clientManager: ChainClientManager,
@@ -48,12 +49,17 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Gets the SDK helper for a given source and destination chain
-	 * @dev TODO: This creates a new EvmChain instance for each call, which is inefficient.
-	 * @note: We should cache the EvmChain instances and reuse them.
+	 * Gets the SDK helper for a given source and destination chain.
+	 * Instances are cached and reused to avoid redundant RPC calls.
 	 */
-
 	async getSdkHelper(source: string, destination: string): Promise<IntentGatewayV2> {
+		const cacheKey = `${source}:${destination}`
+
+		const cached = this.sdkHelperCache.get(cacheKey)
+		if (cached) {
+			return cached
+		}
+
 		const sourceClient = this.clientManager.getPublicClient(source)
 		const destinationClient = this.clientManager.getPublicClient(destination)
 		const sourceEvmChain = new EvmChain({
@@ -66,7 +72,13 @@ export class ContractInteractionService {
 			host: this.configService.getHostAddress(destination),
 			rpcUrl: destinationClient.transport.url,
 		})
-		return new IntentGatewayV2(sourceEvmChain, destinationEvmChain)
+
+		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain)
+		this.sdkHelperCache.set(cacheKey, helper)
+
+		this.logger.debug({ source, destination }, "Created and cached new IntentGatewayV2 instance")
+
+		return helper
 	}
 
 	async initCache(): Promise<void> {
