@@ -19,6 +19,7 @@ export interface FillerConfig {
 	substratePrivateKey?: string
 	entryPointAddress?: string
 	solverAccountContractAddress?: string
+	dataDir?: string
 }
 
 /**
@@ -168,5 +169,9 @@ export class FillerConfigService {
 
 	getSolverAccountContractAddress(): HexString | undefined {
 		return this.fillerConfig?.solverAccountContractAddress as HexString | undefined
+	}
+
+	getDataDir(): string | undefined {
+		return this.fillerConfig?.dataDir
 	}
 }

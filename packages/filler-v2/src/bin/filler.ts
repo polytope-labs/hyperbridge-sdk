@@ -18,6 +18,7 @@ import { ChainClientManager } from "../services/ChainClientManager.js"
 import { ContractInteractionService } from "../services/ContractInteractionService.js"
 import { getLogger, configureLogger } from "../services/Logger.js"
 import { CacheService } from "../services/CacheService.js"
+import { BidStorageService } from "../services/BidStorageService.js"
 import { Decimal } from "decimal.js"
 
 // ASCII art header
@@ -64,6 +65,8 @@ interface FillerTomlConfig {
 		hyperbridgeWsUrl?: string
 		entryPointAddress?: string
 		solverAccountContractAddress?: string
+		/** Directory for persistent data storage (bids database, etc.) */
+		dataDir?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
@@ -114,6 +117,7 @@ program
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
 				entryPointAddress: config.filler.entryPointAddress,
 				solverAccountContractAddress: config.filler.solverAccountContractAddress,
+				dataDir: config.filler.dataDir,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
@@ -176,12 +180,26 @@ program
 				sharedCacheService,
 			)
 
+			// Initialize bid storage service for persistent storage of bid transaction hashes
+			// This enables later cleanup and fund recovery from Hyperbridge
+			const bidStorageService = new BidStorageService(configService.getDataDir())
+			logger.info(
+				{ dataDir: configService.getDataDir() || ".filler-data" },
+				"Bid storage initialized for fund recovery tracking",
+			)
+
 			// Initialize strategies with shared services
 			logger.info("Initializing strategies...")
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
 					case "basic":
-						return new BasicFiller(privateKey, configService, chainClientManager, contractService)
+						return new BasicFiller(
+							privateKey,
+							configService,
+							chainClientManager,
+							contractService,
+							bidStorageService,
+						)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}

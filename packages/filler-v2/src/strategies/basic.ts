@@ -10,7 +10,7 @@ import {
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService, HyperbridgeService } from "@/services"
+import { ChainClientManager, ContractInteractionService, HyperbridgeService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { compareDecimalValues } from "@/utils"
 import { formatUnits } from "viem"
@@ -22,6 +22,7 @@ export class BasicFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
+	private bidStorage?: BidStorageService
 	private logger = getLogger("basic-filler")
 
 	constructor(
@@ -29,11 +30,13 @@ export class BasicFiller implements FillerStrategy {
 		configService: FillerConfigService,
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
+		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
 		this.configService = configService
 		this.clientManager = clientManager
 		this.contractService = contractService
+		this.bidStorage = bidStorage
 	}
 
 	/**
@@ -163,6 +166,15 @@ export class BasicFiller implements FillerStrategy {
 				"Bid submitted to Hyperbridge successfully",
 			)
 
+			// Store successful bid for later cleanup/fund recovery
+			this.bidStorage?.storeBid({
+				commitment,
+				orderId: order.id!,
+				extrinsicHash: bidResult.extrinsicHash!,
+				blockHash: bidResult.blockHash!,
+				success: true,
+			})
+
 			return {
 				success: true,
 				txHash: bidResult.extrinsicHash,
@@ -171,6 +183,14 @@ export class BasicFiller implements FillerStrategy {
 			}
 		}
 		this.logger.error({ commitment, error: bidResult.error }, "Failed to submit bid to Hyperbridge")
+
+		// Store failed bid for debugging/analysis
+		this.bidStorage?.storeBid({
+			commitment,
+			orderId: order.id!,
+			success: false,
+			error: bidResult.error,
+		})
 
 		return {
 			success: false,
