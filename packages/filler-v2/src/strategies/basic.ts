@@ -169,7 +169,6 @@ export class BasicFiller implements FillerStrategy {
 			// Store successful bid for later cleanup/fund recovery
 			this.bidStorage?.storeBid({
 				commitment,
-				orderId: order.id!,
 				extrinsicHash: bidResult.extrinsicHash!,
 				blockHash: bidResult.blockHash!,
 				success: true,
@@ -187,7 +186,6 @@ export class BasicFiller implements FillerStrategy {
 		// Store failed bid for debugging/analysis
 		this.bidStorage?.storeBid({
 			commitment,
-			orderId: order.id!,
 			success: false,
 			error: bidResult.error,
 		})

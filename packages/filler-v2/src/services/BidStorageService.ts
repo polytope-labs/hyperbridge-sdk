@@ -7,7 +7,6 @@ import { join } from "path"
 export interface StoredBid {
 	id: number
 	commitment: HexString
-	orderId: string
 	extrinsicHash: HexString | null
 	blockHash: HexString | null
 	success: boolean
@@ -20,7 +19,6 @@ export interface StoredBid {
 
 export interface BidInsertData {
 	commitment: HexString
-	orderId: string
 	extrinsicHash?: HexString
 	blockHash?: HexString
 	success: boolean
@@ -62,7 +60,6 @@ export class BidStorageService {
 			CREATE TABLE IF NOT EXISTS bids (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				commitment TEXT NOT NULL,
-				order_id TEXT NOT NULL,
 				extrinsic_hash TEXT,
 				block_hash TEXT,
 				success INTEGER NOT NULL,
@@ -87,13 +84,12 @@ export class BidStorageService {
 	 */
 	storeBid(data: BidInsertData): number {
 		const stmt = this.db.prepare(`
-			INSERT INTO bids (commitment, order_id, extrinsic_hash, block_hash, success, error)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO bids (commitment, extrinsic_hash, block_hash, success, error)
+			VALUES (?, ?, ?, ?, ?)
 		`)
 
 		const result = stmt.run(
 			data.commitment,
-			data.orderId,
 			data.extrinsicHash || null,
 			data.blockHash || null,
 			data.success ? 1 : 0,
@@ -120,7 +116,6 @@ export class BidStorageService {
 			SELECT 
 				id,
 				commitment,
-				order_id as orderId,
 				extrinsic_hash as extrinsicHash,
 				block_hash as blockHash,
 				success,
@@ -155,7 +150,6 @@ export class BidStorageService {
 			SELECT 
 				id,
 				commitment,
-				order_id as orderId,
 				extrinsic_hash as extrinsicHash,
 				block_hash as blockHash,
 				success,
@@ -186,7 +180,6 @@ export class BidStorageService {
 			SELECT 
 				id,
 				commitment,
-				order_id as orderId,
 				extrinsic_hash as extrinsicHash,
 				block_hash as blockHash,
 				success,
@@ -272,7 +265,6 @@ export class BidStorageService {
 			SELECT 
 				id,
 				commitment,
-				order_id as orderId,
 				extrinsic_hash as extrinsicHash,
 				block_hash as blockHash,
 				success,
