@@ -1,5 +1,6 @@
 export * from "./ChainClientManager"
 export * from "./ContractInteractionService"
+export * from "./DelegationService"
 export * from "./FillerConfigService"
 export * from "./HyperbridgeService"
 export * from "./Logger"

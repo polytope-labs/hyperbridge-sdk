@@ -1,4 +1,5 @@
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api"
+import type { SubmittableExtrinsic } from "@polkadot/api/types"
 import type { BidSubmissionResult, HexString } from "@hyperbridge/sdk"
 import { getLogger } from "./Logger"
 
@@ -47,19 +48,59 @@ export class HyperbridgeService {
 	/**
 	 * Creates a Substrate keypair from the configured private key
 	 * Supports both hex seed (without 0x prefix) and mnemonic phrases
-	 * @returns KeyringPair for signing extrinsics
 	 */
 	private getKeyPair() {
 		const keyring = new Keyring({ type: "sr25519" })
 
-		// Check if the key contains spaces (mnemonic) or is a hex seed
 		if (this.substratePrivateKey.includes(" ")) {
-			// It's a mnemonic phrase
 			return keyring.addFromMnemonic(this.substratePrivateKey)
 		}
-		// It's a hex seed (no 0x prefix expected)
 		const seedBytes = Buffer.from(this.substratePrivateKey, "hex")
 		return keyring.addFromSeed(seedBytes)
+	}
+
+	/**
+	 * Signs and sends an extrinsic, handling status updates and errors
+	 */
+	private async signAndSendExtrinsic(
+		extrinsic: SubmittableExtrinsic<"promise">,
+		successMessage: string,
+		errorMessage: string,
+	): Promise<BidSubmissionResult> {
+		const keyPair = this.getKeyPair()
+
+		return new Promise<BidSubmissionResult>((resolve) => {
+			extrinsic
+				.signAndSend(keyPair, { nonce: -1 }, (status) => {
+					if (status.isInBlock || status.isFinalized) {
+						HyperbridgeService.logger.info(
+							{
+								blockHash: status.status.asInBlock.toHex(),
+								extrinsicHash: extrinsic.hash.toHex(),
+							},
+							successMessage,
+						)
+						resolve({
+							success: true,
+							blockHash: status.status.asInBlock.toHex() as HexString,
+							extrinsicHash: extrinsic.hash.toHex() as HexString,
+						})
+					} else if (status.isError) {
+						HyperbridgeService.logger.error({ status: status.toHuman() }, errorMessage)
+						resolve({
+							success: false,
+							error: `Extrinsic failed: ${status.status.toString()}`,
+						})
+					}
+				})
+				.catch((err: Error) => {
+					HyperbridgeService.logger.error({ err }, errorMessage)
+					resolve({
+						success: false,
+						error: err.message,
+					})
+				})
+		})
 	}
 
 	/**
@@ -71,56 +112,45 @@ export class HyperbridgeService {
 	 */
 	async submitBid(commitment: HexString, userOp: HexString): Promise<BidSubmissionResult> {
 		try {
-			const keyPair = this.getKeyPair()
-
 			HyperbridgeService.logger.info(
-				{
-					commitment,
-					userOpLength: userOp.length,
-					signer: keyPair.address,
-				},
+				{ commitment, userOpLength: userOp.length, signer: this.getKeyPair().address },
 				"Submitting bid to Hyperbridge",
 			)
 
-			// The pallet expects: commitment (H256), user_op (BoundedVec<u8, 1MB>)
 			const extrinsic = this.api.tx.intents.placeBid(commitment, userOp)
-
-			const result = await new Promise<BidSubmissionResult>((resolve) => {
-				extrinsic
-					.signAndSend(keyPair, { nonce: -1 }, (status) => {
-						if (status.isInBlock || status.isFinalized) {
-							HyperbridgeService.logger.info(
-								{
-									blockHash: status.status.asInBlock.toHex(),
-									extrinsicHash: extrinsic.hash.toHex(),
-								},
-								"Bid included in block",
-							)
-							resolve({
-								success: true,
-								blockHash: status.status.asInBlock.toHex() as HexString,
-								extrinsicHash: extrinsic.hash.toHex() as HexString,
-							})
-						} else if (status.isError) {
-							HyperbridgeService.logger.error({ status: status.toHuman() }, "Bid submission error")
-							resolve({
-								success: false,
-								error: `Extrinsic failed: ${status.status.toString()}`,
-							})
-						}
-					})
-					.catch((err: Error) => {
-						HyperbridgeService.logger.error({ err }, "Failed to submit bid extrinsic")
-						resolve({
-							success: false,
-							error: err.message,
-						})
-					})
-			})
-
-			return result
+			return await this.signAndSendExtrinsic(extrinsic, "Bid included in block", "Bid submission failed")
 		} catch (error) {
 			HyperbridgeService.logger.error({ err: error }, "Error submitting bid to Hyperbridge")
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : "Unknown error",
+			}
+		}
+	}
+
+	/**
+	 * Retracts a bid from Hyperbridge and reclaims the deposit
+	 *
+	 * Use this to remove unused quotes and claim back deposited BRIDGE tokens.
+	 *
+	 * @param commitment - The order commitment hash (bytes32)
+	 * @returns BidSubmissionResult with success status and block/extrinsic hash
+	 */
+	async retractBid(commitment: HexString): Promise<BidSubmissionResult> {
+		try {
+			HyperbridgeService.logger.info(
+				{ commitment, signer: this.getKeyPair().address },
+				"Retracting bid from Hyperbridge",
+			)
+
+			const extrinsic = this.api.tx.intents.retractBid(commitment)
+			return await this.signAndSendExtrinsic(
+				extrinsic,
+				"Bid retracted, deposit refunded",
+				"Bid retraction failed",
+			)
+		} catch (error) {
+			HyperbridgeService.logger.error({ err: error }, "Error retracting bid from Hyperbridge")
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",

@@ -15,6 +15,8 @@ import {
 	EtherscanConfig,
 	LoggingConfig,
 } from "../services/FillerConfigService.js"
+import { ChainClientManager } from "../services/ChainClientManager.js"
+import { ContractInteractionService } from "../services/ContractInteractionService.js"
 import { getLogger, configureLogger } from "../services/Logger.js"
 import { CacheService } from "../services/CacheService.js"
 import { Decimal } from "decimal.js"
@@ -38,7 +40,6 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
 interface StrategyConfig {
 	type: "basic" | "stable-swap"
-	privateKey: string
 }
 
 interface ChainConfirmationPolicy {
@@ -61,6 +62,10 @@ interface FillerTomlConfig {
 		etherscan?: EtherscanConfig
 		logging?: LoggingConfig
 		watchOnly?: boolean | Record<string, boolean>
+		substratePrivateKey?: string
+		hyperbridgeWsUrl?: string
+		entryPointAddress?: string
+		solverAccountContractAddress?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
@@ -103,14 +108,16 @@ program
 				rpcUrl: chain.rpcUrl,
 			}))
 
-			const fillerConfigForService: FillerServiceConfig | undefined = config.filler.logging
-				? {
-						privateKey: config.filler.privateKey,
-						maxConcurrentOrders: config.filler.maxConcurrentOrders,
-						etherscan: config.filler.etherscan,
-						logging: config.filler.logging,
-					}
-				: undefined
+			const fillerConfigForService: FillerServiceConfig = {
+				privateKey: config.filler.privateKey,
+				maxConcurrentOrders: config.filler.maxConcurrentOrders,
+				etherscan: config.filler.etherscan,
+				logging: config.filler.logging,
+				substratePrivateKey: config.filler.substratePrivateKey,
+				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
+				entryPointAddress: config.filler.entryPointAddress,
+				solverAccountContractAddress: config.filler.solverAccountContractAddress,
+			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
 
@@ -161,19 +168,23 @@ program
 				watchOnly: watchOnlyConfig,
 			} as FillerConfig
 
-			// Create shared cache service to avoid duplicate RPC calls during initialization
+			// Create shared services to avoid duplicate RPC calls and reuse connections
 			const sharedCacheService = new CacheService()
+			const privateKey = config.filler.privateKey as HexString
+			const chainClientManager = new ChainClientManager(configService, privateKey)
+			const contractService = new ContractInteractionService(
+				chainClientManager,
+				privateKey,
+				configService,
+				sharedCacheService,
+			)
 
-			// Initialize strategies
+			// Initialize strategies with shared services
 			logger.info("Initializing strategies...")
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
 					case "basic":
-						return new BasicFiller(
-							strategyConfig.privateKey as HexString,
-							configService,
-							sharedCacheService,
-						)
+						return new BasicFiller(privateKey, configService, chainClientManager, contractService)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}
@@ -186,8 +197,14 @@ program
 				strategies,
 				fillerConfig,
 				configService,
-				sharedCacheService,
+				chainClientManager,
+				contractService,
+				privateKey,
 			)
+
+			// Initialize (sets up EIP-7702 delegation if solver selection is configured)
+			await intentFiller.initialize()
+
 			// Start the filler
 			intentFiller.start()
 
@@ -273,8 +290,8 @@ function validateConfig(config: FillerTomlConfig): void {
 
 	// Validate strategies
 	for (const strategy of config.strategies) {
-		if (!strategy.type || !strategy.privateKey) {
-			throw new Error("Strategy type and private key are required")
+		if (!strategy.type) {
+			throw new Error("Strategy type is required")
 		}
 
 		if (!["basic", "stable-swap"].includes(strategy.type)) {

@@ -12,7 +12,6 @@ import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService, HyperbridgeService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
-import { CacheService } from "@/services/CacheService"
 import { compareDecimalValues } from "@/utils"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
@@ -25,16 +24,16 @@ export class BasicFiller implements FillerStrategy {
 	private configService: FillerConfigService
 	private logger = getLogger("basic-filler")
 
-	constructor(privateKey: HexString, configService: FillerConfigService, sharedCacheService?: CacheService) {
+	constructor(
+		privateKey: HexString,
+		configService: FillerConfigService,
+		clientManager: ChainClientManager,
+		contractService: ContractInteractionService,
+	) {
 		this.privateKey = privateKey
 		this.configService = configService
-		this.clientManager = new ChainClientManager(configService, privateKey)
-		this.contractService = new ContractInteractionService(
-			this.clientManager,
-			privateKey,
-			configService,
-			sharedCacheService,
-		)
+		this.clientManager = clientManager
+		this.contractService = contractService
 	}
 
 	/**
@@ -98,6 +97,9 @@ export class BasicFiller implements FillerStrategy {
 	async executeOrder(order: OrderV2, hyperbridge?: HyperbridgeService): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
+		// Ensure tokens are approved before submitting bid or direct fill
+		await this.contractService.approveTokensIfNeeded(order)
+
 		try {
 			if (hyperbridge) {
 				return await this.submitBidToHyperbridge(order, startTime, hyperbridge)
@@ -123,17 +125,18 @@ export class BasicFiller implements FillerStrategy {
 		hyperbridgeService: HyperbridgeService,
 	): Promise<ExecutionResult> {
 		const entryPointAddress = this.configService.getEntryPointAddress()
-		const solverAccountAddress = this.configService.getSolverAccountAddress()
 
-		if (!entryPointAddress || !solverAccountAddress) {
-			const errorMsg =
-				"Solver selection is active but entryPointAddress or solverAccountAddress is not configured."
+		if (!entryPointAddress) {
+			const errorMsg = "Solver selection is active but entryPointAddress is not configured."
 			this.logger.error(errorMsg)
 			return {
 				success: false,
 				error: errorMsg,
 			}
 		}
+
+		// With EIP-7702 delegation, the filler's EOA address IS the solver account
+		const solverAccountAddress = privateKeyToAccount(this.privateKey).address as HexString
 
 		this.logger.info({ orderId: order.id, destination: order.destination }, "Submitting bid to Hyperbridge")
 
@@ -197,8 +200,6 @@ export class BasicFiller implements FillerStrategy {
 			}
 			return acc
 		}, 0n)
-
-		await this.contractService.approveTokensIfNeeded(order)
 
 		const tx = await walletClient
 			.writeContract({

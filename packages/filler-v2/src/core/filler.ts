@@ -1,13 +1,11 @@
-import { getChainId, retryPromise } from "@hyperbridge/sdk"
+import { getChainId, retryPromise, type HexString } from "@hyperbridge/sdk"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
 import { OrderV2, FillerConfig, ChainConfig } from "@hyperbridge/sdk"
 import pQueue from "p-queue"
-import { ChainClientManager, ContractInteractionService, HyperbridgeService } from "@/services"
+import { ChainClientManager, ContractInteractionService, DelegationService, HyperbridgeService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
-import { CacheService } from "@/services/CacheService"
 import { getLogger } from "@/services/Logger"
-import { generatePrivateKey } from "viem/accounts"
 
 export class IntentFiller {
 	public monitor: EventMonitor
@@ -16,9 +14,11 @@ export class IntentFiller {
 	private globalQueue: pQueue
 	private chainClientManager: ChainClientManager
 	private contractService: ContractInteractionService
+	private delegationService?: DelegationService
 	private hyperbridge: Promise<HyperbridgeService> | undefined = undefined
 	private config: FillerConfig
 	private configService: FillerConfigService
+	private privateKey: HexString
 	private logger = getLogger("intent-filler")
 
 	constructor(
@@ -26,20 +26,18 @@ export class IntentFiller {
 		strategies: FillerStrategy[],
 		config: FillerConfig,
 		configService: FillerConfigService,
-		sharedCacheService?: CacheService,
+		chainClientManager: ChainClientManager,
+		contractService: ContractInteractionService,
+		privateKey: HexString,
 	) {
 		this.configService = configService
-		this.chainClientManager = new ChainClientManager(configService)
+		this.privateKey = privateKey
+		this.chainClientManager = chainClientManager
+		this.contractService = contractService
 		this.monitor = new EventMonitor(chainConfigs, configService, this.chainClientManager)
 		this.strategies = strategies
 		this.config = config
 
-		this.contractService = new ContractInteractionService(
-			this.chainClientManager,
-			generatePrivateKey(),
-			configService,
-			sharedCacheService,
-		)
 		this.chainQueues = new Map()
 		chainConfigs.forEach((chainConfig) => {
 			// 1 order per chain at a time due to EVM constraints
@@ -60,6 +58,38 @@ export class IntentFiller {
 		this.monitor.on("newOrder", ({ order }) => {
 			this.handleNewOrder(order)
 		})
+	}
+
+	/**
+	 * Initializes the filler, including setting up EIP-7702 delegation if solver selection is active on any chain.
+	 * This should be called before start().
+	 */
+	public async initialize(): Promise<void> {
+		// Check which chains have solver selection active
+		const chainIds = this.configService.getConfiguredChainIds()
+		const chainsWithSolverSelection: string[] = []
+
+		for (const chainId of chainIds) {
+			const chain = `EVM-${chainId}`
+			const isActive = await this.contractService.isSolverSelectionActive(chain)
+			if (isActive) {
+				chainsWithSolverSelection.push(chain)
+				this.logger.info({ chain }, "Solver selection is active on chain")
+			}
+		}
+
+		// Set up delegation service on chains where solver selection is active
+		if (chainsWithSolverSelection.length > 0 && this.hyperbridge) {
+			this.delegationService = new DelegationService(this.chainClientManager, this.configService, this.privateKey)
+			this.logger.info(
+				{ chains: chainsWithSolverSelection },
+				"Setting up EIP-7702 delegation on chains with solver selection",
+			)
+			const result = await this.delegationService.setupDelegationOnChains(chainsWithSolverSelection)
+			if (!result.success) {
+				this.logger.warn({ results: result.results }, "Some chains failed EIP-7702 delegation setup")
+			}
+		}
 	}
 
 	public start(): void {

@@ -23,7 +23,7 @@ export interface FillerConfig {
 	hyperbridgeWsUrl?: string
 	substratePrivateKey?: string
 	entryPointAddress?: string
-	solverAccountAddress?: string
+	solverAccountContractAddress?: string
 }
 
 /**
@@ -175,7 +175,7 @@ export class FillerConfigService {
 		return this.fillerConfig?.entryPointAddress as HexString | undefined
 	}
 
-	getSolverAccountAddress(): HexString | undefined {
-		return this.fillerConfig?.solverAccountAddress as HexString | undefined
+	getSolverAccountContractAddress(): HexString | undefined {
+		return this.fillerConfig?.solverAccountContractAddress as HexString | undefined
 	}
 }
