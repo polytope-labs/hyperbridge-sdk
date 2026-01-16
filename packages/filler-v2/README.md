@@ -7,36 +7,39 @@ A high-performance intent filler for the Hyperbridge IntentGatewayV2 protocol. T
 ### Binary
 
 ```bash
-npm install -g @hyperbridge/filler
+npm install -g @hyperbridge/filler-v2
 # or
-pnpm add -g @hyperbridge/filler
+pnpm add -g @hyperbridge/filler-v2
 ```
 
 ### Library
 
 ```bash
-npm install @hyperbridge/filler
+npm install @hyperbridge/filler-v2
 # or
-pnpm add @hyperbridge/filler
+pnpm add @hyperbridge/filler-v2
 ```
 
 ## Quick Start
 
-### 1. Generate Configuration
+### 1. Create Configuration
+
+Copy the example configuration file and customize it:
 
 ```bash
-filler init -o filler-config.toml
+cp filler-config-example.toml filler-config.toml
 ```
 
 ### 2. Edit Configuration
 
 Update `filler-config.toml` with:
 
-- Your private key
-- Chain configurations (chainId, rpcUrl, intentGatewayAddress)
+- Your EVM private key
+- RPC URLs for each chain you want to support
 - Confirmation policies for each chain
+- (Optional) Solver selection mode settings for Hyperbridge integration
 
-### 3. Run the Filler
+### 3. Run the FillerV2
 
 ```bash
 filler run -c filler-config.toml
@@ -61,96 +64,101 @@ We provide a simple script for Docker operations:
 
 ## Configuration
 
-The filler uses a TOML configuration file:
+The filler uses a TOML configuration file. See `filler-config-example.toml` for a complete example.
+
+### Basic Configuration
 
 ```toml
 [filler]
 privateKey = "0xYourPrivateKey"
 maxConcurrentOrders = 5
 
+# Logging configuration
+[filler.logging]
+level = "debug"  # Options: trace, debug, info, warn, error
+
+# Pending queue configuration
 [filler.pendingQueue]
 maxRechecks = 10
 recheckDelayMs = 30000
 
+# Strategy configuration
 [[strategies]]
 type = "basic"
-privateKey = "0xYourPrivateKey"
 
-# Chain configurations
+# Chain configurations (only chainId and rpcUrl required - other data from SDK)
 [[chains]]
-chainId = 97
-rpcUrl = "https://bsc-testnet.public.blastapi.io"
-intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"
+chainId = 1  # Ethereum Mainnet
+rpcUrl = "https://your-eth-rpc-url"
 
 [[chains]]
-chainId = 10200
-rpcUrl = "https://rpc.chiadochain.net"
-intentGatewayAddress = "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9"
+chainId = 56  # BSC Mainnet
+rpcUrl = "https://your-bsc-rpc-url"
 
-[confirmationPolicies."97"]
-minAmount = "1000000000000000000"
-maxAmount = "1000000000000000000000"
-minConfirmations = 1
-maxConfirmations = 5
+[[chains]]
+chainId = 42161  # Arbitrum Mainnet
+rpcUrl = "https://your-arbitrum-rpc-url"
 
-[confirmationPolicies."10200"]
-minAmount = "1000000000000000000"
-maxAmount = "1000000000000000000000"
-minConfirmations = 1
-maxConfirmations = 5
+# Confirmation policies per chain
+[confirmationPolicies."1"]  # Ethereum Mainnet
+minAmount = "5"       # 5 USD
+maxAmount = "5000"    # 5000 USD
+minConfirmations = 3
+maxConfirmations = 12
+
+[confirmationPolicies."56"]  # BSC Mainnet
+minAmount = "1"       # 1 USD
+maxAmount = "5000"    # 5000 USD
+minConfirmations = 3
+maxConfirmations = 15
+```
+
+### Watch-Only Mode
+
+Monitor orders without executing fills. Useful for testing or observing market activity.
+
+```toml
+# Option 1: Global watch-only (all chains)
+[filler]
+watchOnly = true
+
+# Option 2: Per-chain watch-only
+[filler.watchOnly]
+"1" = true    # Ethereum Mainnet - watch only
+"56" = false  # BSC Mainnet - normal execution
+```
+
+### Solver Selection Mode
+
+For participating in Hyperbridge's solver selection mechanism:
+
+```toml
+[filler]
+privateKey = "0xYourEVMPrivateKey"
+
+# Substrate private key for signing Hyperbridge extrinsics
+# Can be a hex seed (without 0x prefix) or mnemonic phrase
+# Note: Requires BRIDGE tokens for transaction fees
+substratePrivateKey = "your-substrate-seed-or-mnemonic"
+
+# Hyperbridge WebSocket URL
+hyperbridgeWsUrl = "wss://hyperbridge-rpc-url"
+
+# ERC-4337 EntryPoint contract address
+entryPointAddress = "0x..."
+
+# SolverAccount.sol contract address for EIP-7702 delegation
+solverAccountContractAddress = "0x..."
+
+# Directory for persistent bid storage (enables fund recovery)
+dataDir = "/path/to/data"
 ```
 
 ## CLI Commands
 
-- `filler init` - Generate a sample configuration file
-- `filler validate -c <config>` - Validate a configuration file
-- `filler run -c <config>` - Run the filler with the specified configuration
-
-## Library Usage
-
-```typescript
-import { IntentFiller, BasicFiller } from "@hyperbridge/filler"
-
-// Configure chains
-const chainConfigs = [
-	{
-		chainId: 97,
-		rpcUrl: "https://bsc-testnet.public.blastapi.io",
-		intentGatewayAddress: "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9",
-	},
-	{
-		chainId: 10200,
-		rpcUrl: "https://rpc.chiadochain.net",
-		intentGatewayAddress: "0xFC91c1932F70D36E35Ae7F622cE6C8B86CCeE8e9",
-	},
-]
-
-// Configure filler
-const fillerConfig = {
-	confirmationPolicy: {
-		getConfirmationBlocks: (chainId, amount) => 1,
-	},
-	maxConcurrentOrders: 5,
-	pendingQueueConfig: {
-		maxRechecks: 10,
-		recheckDelayMs: 30000,
-	},
-}
-
-// Initialize strategies
-const strategies = [new BasicFiller("0xYourPrivateKey")]
-
-// Create and start filler
-const intentFiller = new IntentFiller(chainConfigs, strategies, fillerConfig)
-intentFiller.start()
-
-// Listen to events
-const monitor = intentFiller.monitor
-monitor.on("newOrder", (data) => console.log("New order:", data.order))
-monitor.on("orderFilled", (data) => console.log("Order filled:", data.orderId))
-
-// Stop when done
-intentFiller.stop()
+```bash
+# Run the filler with configuration
+filler run -c <config-file>
 ```
 
 ## Strategies
@@ -160,12 +168,7 @@ intentFiller.stop()
 - Direct token transfers between chains
 - No swapping capability
 - Lower gas costs
-
-### Stable Swap Filler
-
-- Supports token swapping via Uniswap V2
-- Can capture arbitrage opportunities
-- Higher gas costs
+- Recommended for standard cross-chain fills
 
 ## Development
 
@@ -183,6 +186,10 @@ pnpm test
 pnpm cli run -c filler-config.toml
 ```
 
+## Data Storage
+
+The filler stores bid transaction hashes for fund recovery purposes. By default, data is stored in `.filler-data` in the current working directory. You can customize this with the `dataDir` configuration option.
+
 ## Security
 
 ⚠️ **Never commit private keys to version control!**
@@ -190,6 +197,7 @@ pnpm cli run -c filler-config.toml
 - Use environment variables or secure key management in production
 - Run fillers in isolated environments
 - Monitor for unusual activity
+- Keep your Substrate account funded with BRIDGE tokens for solver selection mode
 
 ## License
 
