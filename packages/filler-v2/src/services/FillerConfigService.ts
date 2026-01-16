@@ -7,10 +7,6 @@ export interface UserProvidedChainConfig {
 	rpcUrl: string
 }
 
-export interface EtherscanConfig {
-	apiKey?: string
-}
-
 export interface LoggingConfig {
 	level?: LogLevel
 }
@@ -18,7 +14,6 @@ export interface LoggingConfig {
 export interface FillerConfig {
 	privateKey: string
 	maxConcurrentOrders: number
-	etherscan?: EtherscanConfig
 	logging?: LoggingConfig
 	hyperbridgeWsUrl?: string
 	substratePrivateKey?: string
@@ -145,10 +140,6 @@ export class FillerConfigService {
 
 	getCoingeckoId(chain: string): string | undefined {
 		return this.chainConfigService.getCoingeckoId(chain)
-	}
-
-	getEtherscanApiKey(): string | undefined {
-		return this.fillerConfig?.etherscan?.apiKey
 	}
 
 	getConfiguredChainIds(): number[] {

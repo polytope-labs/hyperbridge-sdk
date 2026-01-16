@@ -196,22 +196,7 @@ export class ContractInteractionService {
 
 			if (allowance < token.amount) {
 				this.logger.info({ token: token.address }, "Approving token")
-				const etherscanApiKey = this.configService.getEtherscanApiKey()
-				const chain = order.destination
-				const useEtherscan = USE_ETHERSCAN_CHAINS.has(chain)
-				const gasPrice =
-					useEtherscan && etherscanApiKey
-						? await retryPromise(() => getGasPriceFromEtherscan(order.destination, etherscanApiKey), {
-								maxRetries: 3,
-								backoffMs: 250,
-							}).catch(async () => {
-								this.logger.warn(
-									{ chain: order.destination },
-									"Error getting gas price from etherscan, using client's gas price",
-								)
-								return await destClient.getGasPrice()
-							})
-						: await destClient.getGasPrice()
+				const gasPrice = await destClient.getGasPrice()
 				const tx = await walletClient.writeContract({
 					abi: ERC20_ABI,
 					address: token.address as HexString,

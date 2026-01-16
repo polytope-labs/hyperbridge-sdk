@@ -12,7 +12,6 @@ import {
 	FillerConfigService,
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
-	EtherscanConfig,
 	LoggingConfig,
 } from "../services/FillerConfigService.js"
 import { ChainClientManager } from "../services/ChainClientManager.js"
@@ -59,7 +58,6 @@ interface FillerTomlConfig {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
-		etherscan?: EtherscanConfig
 		logging?: LoggingConfig
 		watchOnly?: boolean | Record<string, boolean>
 		substratePrivateKey?: string
@@ -111,7 +109,6 @@ program
 			const fillerConfigForService: FillerServiceConfig = {
 				privateKey: config.filler.privateKey,
 				maxConcurrentOrders: config.filler.maxConcurrentOrders,
-				etherscan: config.filler.etherscan,
 				logging: config.filler.logging,
 				substratePrivateKey: config.filler.substratePrivateKey,
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,

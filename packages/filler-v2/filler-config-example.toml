@@ -40,9 +40,6 @@ solverAccountContractAddress = ""
 [filler.logging]
 level = "debug"  # Options: trace, debug, info, warn, error
 
-[filler.etherscan]
-apiKey = ""  # Optional: Add your Etherscan API key for higher rate limits
-
 # Pending queue configuration
 [filler.pendingQueue]
 maxRechecks = 10
