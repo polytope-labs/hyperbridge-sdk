@@ -1,6 +1,6 @@
-# Hyperbridge Intent Filler
+# Hyperbridge Intent FillerV2
 
-A high-performance intent filler for the Hyperbridge IntentGateway protocol. This package provides both a library interface and a CLI binary for running an intent filler that monitors and fills cross-chain orders.
+A high-performance intent filler for the Hyperbridge IntentGatewayV2 protocol. This package provides both a library interface and a CLI binary for running an intent filler that monitors and fills cross-chain orders.
 
 ## Installation
 

@@ -1,14 +1,14 @@
 # Scripts Directory
 
-This directory contains utility scripts for the Hyperbridge Filler.
+This directory contains utility scripts for the Hyperbridge FillerV2.
 
 ## Docker Script
 
 A single, simplified script to handle all Docker operations:
 
 - **docker.sh**: All-in-one Docker operations for building, running, and managing containers
-- **Dockerfile**: Used to build the filler Docker image
-- **docker-compose.yml**: Configuration for running the filler using Docker Compose
+- **Dockerfile**: Used to build the filler-v2 Docker image
+- **docker-compose.yml**: Configuration for running the filler-v2 using Docker Compose
 
 Note: The `.dockerignore` file is located in the parent directory as it needs to be in the root of the Docker build context.
 

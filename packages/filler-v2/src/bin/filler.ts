@@ -23,12 +23,13 @@ import { Decimal } from "decimal.js"
 
 // ASCII art header
 const ASCII_HEADER = `
-██╗███╗   ██╗████████╗███████╗███╗   ██╗████████╗ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
-██║████╗  ██║╚══██╔══╝██╔════╝████╗  ██║╚══██╔══╝██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
-██║██╔██╗ ██║   ██║   █████╗  ██╔██╗ ██║   ██║   ██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
-██║██║╚██╗██║   ██║   ██╔══╝  ██║╚██╗██║   ██║   ██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
-██║██║ ╚████║   ██║   ███████╗██║ ╚████║   ██║   ╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
-╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
+███████╗██╗██╗     ██╗     ███████╗██████╗     ██╗   ██╗██████╗
+██╔════╝██║██║     ██║     ██╔════╝██╔══██╗    ██║   ██║╚════██╗
+█████╗  ██║██║     ██║     █████╗  ██████╔╝    ██║   ██║ █████╔╝
+██╔══╝  ██║██║     ██║     ██╔══╝  ██╔══██╗    ╚██╗ ██╔╝██╔═══╝
+██║     ██║███████╗███████╗███████╗██║  ██║     ╚████╔╝ ███████╗
+╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝      ╚═══╝  ╚══════╝
+                    Hyperbridge IntentGatewayV2
 
 `
 
@@ -75,7 +76,7 @@ interface FillerTomlConfig {
 
 const program = new Command()
 
-program.name("filler").description("Hyperbridge IntentGateway Filler").version(packageJson.version)
+program.name("filler").description("Hyperbridge IntentGatewayV2 FillerV2").version(packageJson.version)
 
 program
 	.command("run")
@@ -100,7 +101,7 @@ program
 
 			const logger = getLogger("cli")
 			logger.info({ configPath }, "Loading configuration")
-			logger.info("Starting Hyperbridge IntentGateway Filler...")
+			logger.info("Starting Hyperbridge IntentGatewayV2 FillerV2...")
 
 			logger.info("Initializing services...")
 

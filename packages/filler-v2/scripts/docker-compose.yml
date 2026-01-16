@@ -1,19 +1,19 @@
 version: "3.8"
 
 services:
-    filler:
-        image: polytopelabs/hyperbridge-filler:latest
+    filler-v2:
+        image: polytopelabs/hyperbridge-filler-v2:latest
         build:
             context: ../../..
-            dockerfile: packages/filler/scripts/Dockerfile
-        container_name: hyperbridge-filler
+            dockerfile: packages/filler-v2/scripts/Dockerfile
+        container_name: hyperbridge-filler-v2
         restart: unless-stopped
         volumes:
-            - ${CONFIG_PATH:-../config.toml}:/app/packages/filler/config/config.toml:ro
+            - ${CONFIG_PATH:-../config.toml}:/app/packages/filler-v2/config/config.toml:ro
         environment:
             - NODE_ENV=production
         networks:
-            - filler-network
+            - filler-v2-network
         logging:
             driver: "json-file"
             options:
@@ -27,5 +27,5 @@ services:
             start_period: 5s
 
 networks:
-    filler-network:
+    filler-v2-network:
         driver: bridge

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Simple Docker script for Hyperbridge Filler
+# Simple Docker script for Hyperbridge FillerV2
 # Handles the essential Docker operations: build, run, and docker-compose
 
 # Color codes for output
@@ -23,7 +23,7 @@ show_help() {
     echo
     echo "Commands:"
     echo "  build       Build the Docker image"
-    echo "  run         Run the filler in a Docker container"
+    echo "  run         Run the filler-v2 in a Docker container"
     echo "  up          Start using Docker Compose"
     echo "  down        Stop and remove Docker Compose containers"
     echo "  logs        View logs from Docker Compose containers"
@@ -50,7 +50,7 @@ case "$COMMAND" in
     build)
         echo -e "${YELLOW}Building Docker image...${NC}"
         echo -e "$(dirname "$(dirname "$ROOT_DIR")")"
-        docker build -t polytopelabs/hyperbridge-filler:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
+        docker build -t polytopelabs/hyperbridge-filler-v2:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
         echo -e "${GREEN}✓ Docker image built successfully!${NC}"
         ;;
 
@@ -64,31 +64,31 @@ case "$COMMAND" in
         fi
 
         # Check if image exists
-        if ! docker image inspect polytopelabs/hyperbridge-filler:latest &> /dev/null; then
+        if ! docker image inspect polytopelabs/hyperbridge-filler-v2:latest &> /dev/null; then
             echo -e "${YELLOW}Image not found, building first...${NC}"
-            docker build -t polytopelabs/hyperbridge-filler:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
+            docker build -t polytopelabs/hyperbridge-filler-v2:latest -f "$DOCKERFILE" "$(dirname "$(dirname "$ROOT_DIR")")"
         fi
 
         # Remove existing container if it exists
-        if docker ps -a | grep -q hyperbridge-filler; then
+        if docker ps -a | grep -q hyperbridge-filler-v2; then
             echo -e "${YELLOW}Removing existing container...${NC}"
-            docker rm -f hyperbridge-filler
+            docker rm -f hyperbridge-filler-v2
         fi
 
         # Run the container
         docker run -d \
-            --name hyperbridge-filler \
+            --name hyperbridge-filler-v2 \
             --restart unless-stopped \
-            -v "$CONFIG_FILE:/app/packages/filler/config/config.toml:ro" \
+            -v "$CONFIG_FILE:/app/packages/filler-v2/config/config.toml:ro" \
             -e NODE_ENV=production \
             --log-driver json-file \
             --log-opt max-size=10m \
             --log-opt max-file=3 \
-            polytopelabs/hyperbridge-filler:latest
+            polytopelabs/hyperbridge-filler-v2:latest
 
         echo -e "${GREEN}✓ Container started!${NC}"
-        echo "  View logs:   docker logs -f hyperbridge-filler"
-        echo "  Stop:        docker stop hyperbridge-filler"
+        echo "  View logs:   docker logs -f hyperbridge-filler-v2"
+        echo "  Stop:        docker stop hyperbridge-filler-v2"
         ;;
 
     up)
