@@ -141,29 +141,14 @@ export class IntentFiller {
 
 				const sourceClient = this.chainClientManager.getPublicClient(order.source)
 				const orderValue = await this.contractService.getTokenUsdValue(order)
-				let currentConfirmations = await retryPromise(
-					() =>
-						sourceClient.getTransactionConfirmations({
-							hash: order.transactionHash!,
-						}),
-					{
-						maxRetries: 3,
-						backoffMs: 250,
-						logMessage: "Failed to get initial transaction confirmations",
-					},
-				)
 				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 					getChainId(order.source)!,
 					orderValue.inputUsdValue.toNumber(),
 				)
-				this.logger.info(
-					{ orderId: order.id, requiredConfirmations, currentConfirmations },
-					"Order confirmation requirements",
-				)
 
-				while (currentConfirmations < requiredConfirmations) {
-					await new Promise((resolve) => setTimeout(resolve, 300)) // Wait 300ms
-					currentConfirmations = await retryPromise(
+				// Run confirmation waiting and evaluation in parallel
+				const waitForConfirmations = async (): Promise<void> => {
+					let currentConfirmations = await retryPromise(
 						() =>
 							sourceClient.getTransactionConfirmations({
 								hash: order.transactionHash!,
@@ -171,100 +156,137 @@ export class IntentFiller {
 						{
 							maxRetries: 3,
 							backoffMs: 250,
-							logMessage: "Failed to get transaction confirmations",
+							logMessage: "Failed to get initial transaction confirmations",
 						},
 					)
-					this.logger.debug({ orderId: order.id, currentConfirmations }, "Order confirmation progress")
+
+					this.logger.info(
+						{ orderId: order.id, requiredConfirmations, currentConfirmations },
+						"Order confirmation requirements",
+					)
+
+					while (currentConfirmations < requiredConfirmations) {
+						await new Promise((resolve) => setTimeout(resolve, 300)) // Wait 300ms
+						currentConfirmations = await retryPromise(
+							() =>
+								sourceClient.getTransactionConfirmations({
+									hash: order.transactionHash!,
+								}),
+							{
+								maxRetries: 3,
+								backoffMs: 250,
+								logMessage: "Failed to get transaction confirmations",
+							},
+						)
+						this.logger.debug({ orderId: order.id, currentConfirmations }, "Order confirmation progress")
+					}
+
+					this.logger.info({ orderId: order.id, currentConfirmations }, "Order confirmed on source chain")
 				}
 
-				this.logger.info({ orderId: order.id, currentConfirmations }, "Order confirmed on source chain")
+				// Run confirmation and evaluation in parallel
+				const [, evaluationResult] = await Promise.all([
+					waitForConfirmations(),
+					this.evaluateOrder(order),
+				])
 
-				this.evaluateAndExecuteOrder(order, solverSelectionActive)
+				// Execute immediately 
+				if (evaluationResult) {
+					this.executeOrder(order, evaluationResult.strategy, solverSelectionActive)
+				}
 			} catch (error) {
 				this.logger.error({ orderId: order.id, err: error }, "Error processing order")
 			}
 		})
 	}
 
-	private evaluateAndExecuteOrder(order: OrderV2, solverSelectionActive: boolean): void {
-		this.globalQueue.add(async () => {
+	private async evaluateOrder(
+		order: OrderV2,
+	): Promise<{ strategy: FillerStrategy; profitability: number } | null> {
+		// Check if watch-only mode is enabled for the destination chain
+		const destChainId = getChainId(order.destination)
+		const isWatchOnly =
+			destChainId !== undefined &&
+			this.config.watchOnly !== undefined &&
+			typeof this.config.watchOnly === "object" &&
+			this.config.watchOnly[destChainId] === true
+
+		if (isWatchOnly) {
+			this.logger.info(
+				{
+					orderId: order.id,
+					sourceChain: order.source,
+					destChain: order.destination,
+					destChainId,
+					user: order.user,
+					inputs: order.inputs,
+					outputs: order.output.assets,
+					watchOnly: true,
+				},
+				"Order detected in watch-only mode (execution skipped)",
+			)
+			this.monitor.emit("orderDetected", { orderId: order.id, order, watchOnly: true })
+			return null
+		}
+
+		const eligibleStrategies = await Promise.all(
+			this.strategies.map(async (strategy) => {
+				const canFill = await strategy.canFill(order)
+				if (!canFill) return null
+
+				const profitability = await strategy.calculateProfitability(order)
+				return { strategy, profitability }
+			}),
+		)
+
+		const validStrategies = eligibleStrategies
+			.filter((s): s is NonNullable<typeof s> => s !== null && s.profitability > 0)
+			.sort((a, b) => b.profitability - a.profitability)
+
+		if (validStrategies.length === 0) {
+			this.logger.warn({ orderId: order.id }, "No profitable strategy found for order")
+			return null
+		}
+
+		this.logger.info(
+			{ orderId: order.id, strategy: validStrategies[0].strategy.name, profitability: validStrategies[0].profitability.toString() },
+			"Order evaluation complete - profitable strategy found",
+		)
+
+		return validStrategies[0]
+	}
+
+	private executeOrder(
+		order: OrderV2,
+		bestStrategy: FillerStrategy,
+		solverSelectionActive: boolean,
+	): void {
+		// Get the chain-specific queue
+		const chainQueue = this.chainQueues.get(getChainId(order.destination)!)
+		if (!chainQueue) {
+			this.logger.error({ chain: order.destination }, "No queue configured for chain")
+			return
+		}
+
+		// Execute with the most profitable strategy using the chain-specific queue
+		// This ensures transactions for the same chain are processed sequentially
+		chainQueue.add(async () => {
+			this.logger.info(
+				{ orderId: order.id, strategy: bestStrategy.name, chain: order.destination },
+				"Executing order",
+			)
+
 			try {
-				// Check if watch-only mode is enabled for the destination chain
-				const destChainId = getChainId(order.destination)
-				const isWatchOnly =
-					destChainId !== undefined &&
-					this.config.watchOnly !== undefined &&
-					typeof this.config.watchOnly === "object" &&
-					this.config.watchOnly[destChainId] === true
-
-				if (isWatchOnly) {
-					this.logger.info(
-						{
-							orderId: order.id,
-							sourceChain: order.source,
-							destChain: order.destination,
-							destChainId,
-							user: order.user,
-							inputs: order.inputs,
-							outputs: order.output.assets,
-							watchOnly: true,
-						},
-						"Order detected in watch-only mode (execution skipped)",
-					)
-					this.monitor.emit("orderDetected", { orderId: order.id, order, watchOnly: true })
-					return
+				const hyperbridgeService = solverSelectionActive ? await this.hyperbridge : undefined
+				const result = await bestStrategy.executeOrder(order, hyperbridgeService)
+				this.logger.info({ orderId: order.id, result }, "Order execution completed")
+				if (result.success) {
+					this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
 				}
-
-				const eligibleStrategies = await Promise.all(
-					this.strategies.map(async (strategy) => {
-						const canFill = await strategy.canFill(order)
-						if (!canFill) return null
-
-						const profitability = await strategy.calculateProfitability(order)
-						return { strategy, profitability }
-					}),
-				)
-
-				const validStrategies = eligibleStrategies
-					.filter((s): s is NonNullable<typeof s> => s !== null && s.profitability > 0n)
-					.sort((a, b) => Number(b.profitability) - Number(a.profitability))
-
-				if (validStrategies.length === 0) {
-					this.logger.warn({ orderId: order.id }, "No profitable strategy found for order")
-					return
-				}
-
-				// Get the chain-specific queue
-				const chainQueue = this.chainQueues.get(getChainId(order.destination)!)
-				if (!chainQueue) {
-					this.logger.error({ chain: order.destination }, "No queue configured for chain")
-					return
-				}
-
-				// Execute with the most profitable strategy using the chain-specific queue
-				// This ensures transactions for the same chain are processed sequentially
-				chainQueue.add(async () => {
-					const bestStrategy = validStrategies[0].strategy
-					this.logger.info(
-						{ orderId: order.id, strategy: bestStrategy.name, chain: order.destination },
-						"Executing order",
-					)
-
-					try {
-						const hyperbridgeService = solverSelectionActive ? await this.hyperbridge : undefined
-						const result = await bestStrategy.executeOrder(order, hyperbridgeService)
-						this.logger.info({ orderId: order.id, result }, "Order execution completed")
-						if (result.success) {
-							this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
-						}
-						return result
-					} catch (error) {
-						this.logger.error({ orderId: order.id, err: error }, "Order execution failed")
-						throw error
-					}
-				})
+				return result
 			} catch (error) {
-				this.logger.error({ orderId: order.id, err: error }, "Error processing order")
+				this.logger.error({ orderId: order.id, err: error }, "Order execution failed")
+				throw error
 			}
 		})
 	}
