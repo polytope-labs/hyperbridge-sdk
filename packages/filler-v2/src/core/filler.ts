@@ -126,7 +126,11 @@ export class IntentFiller {
 			this.logger.info({ orderId: order.id }, "New order detected")
 			try {
 				// Early check: if solver selection is active, ensure hyperbridge is configured
-				const solverSelectionActive = await this.contractService.isSolverSelectionActive(order.destination)
+				const solverSelectionActive = this.contractService.getCache().getSolverSelection(order.destination)
+				if (solverSelectionActive == null) {
+					this.logger.error({ orderId: order.id }, "Shared cache is not initialized")
+					return
+				}
 				if (solverSelectionActive && !this.hyperbridge) {
 					this.logger.error(
 						{ orderId: order.id },

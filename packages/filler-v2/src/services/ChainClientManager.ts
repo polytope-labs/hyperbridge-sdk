@@ -6,7 +6,7 @@ import { FillerConfigService } from "./FillerConfigService"
 /**
  * Factory for creating and managing Viem clients
  */
-export class ViemClientFactory {
+class ViemClientFactoryImpl {
 	private publicClients: Map<number, PublicClient> = new Map()
 	private walletClients: Map<number, WalletClient> = new Map()
 
@@ -52,7 +52,7 @@ export class ViemClientFactory {
 }
 
 // Create a singleton instance of the factory
-export const viemClientFactory = new ViemClientFactory()
+export const ViemClientFactory = new ViemClientFactoryImpl()
 
 /**
  * Manages chain clients for different operations
@@ -60,12 +60,12 @@ export const viemClientFactory = new ViemClientFactory()
 export class ChainClientManager {
 	private privateKey: HexString
 	private configService: FillerConfigService
-	private clientFactory: ViemClientFactory
+	private clientFactory: ViemClientFactoryImpl
 
 	constructor(configService: FillerConfigService, privateKey?: HexString) {
 		this.privateKey = privateKey || generatePrivateKey()
 		this.configService = configService
-		this.clientFactory = viemClientFactory
+		this.clientFactory = ViemClientFactory
 	}
 
 	getPublicClient(chain: string): PublicClient {

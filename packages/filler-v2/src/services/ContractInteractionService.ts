@@ -36,6 +36,7 @@ export class ContractInteractionService {
 	public cacheService: CacheService
 	private logger = getLogger("contract-service")
 	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
+	private solverAccountAddress: HexString
 
 	constructor(
 		private clientManager: ChainClientManager,
@@ -45,6 +46,7 @@ export class ContractInteractionService {
 	) {
 		this.configService = configService
 		this.cacheService = sharedCacheService || new CacheService()
+		this.solverAccountAddress = privateKeyToAddress(this.privateKey)
 		this.initCache()
 	}
 
@@ -117,6 +119,10 @@ export class ContractInteractionService {
 				}
 			}
 		}
+	}
+
+	getCache(): CacheService {
+		return this.cacheService
 	}
 
 	/**
@@ -261,7 +267,7 @@ export class ContractInteractionService {
 			const sdkHelper = await this.getSdkHelper(order.source, order.destination)
 			const estimate = await sdkHelper.estimateFillOrderV2({
 				order,
-				solverAccountAddress: privateKeyToAddress(this.privateKey),
+				solverAccountAddress: this.solverAccountAddress,
 			})
 			// Cache the full estimate including gas parameters for bid preparation
 			this.cacheService.setGasEstimate(

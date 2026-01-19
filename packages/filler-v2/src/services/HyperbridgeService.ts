@@ -71,7 +71,7 @@ export class HyperbridgeService {
 
 		return new Promise<BidSubmissionResult>((resolve) => {
 			extrinsic
-				.signAndSend(keyPair, { nonce: -1 }, (status) => {
+				.signAndSend(keyPair,  (status) => {
 					if (status.isInBlock || status.isFinalized) {
 						HyperbridgeService.logger.info(
 							{
