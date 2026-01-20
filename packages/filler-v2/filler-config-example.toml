@@ -55,6 +55,11 @@ recheckDelayMs = 30000  # 30 seconds
 # All strategies use the filler.privateKey from above
 [[strategies]]
 type = "basic"
+# Filler's basis points (bps) for profit margin
+# This is the minimum profit margin the filler expects from each order
+# E.g., 50 = 0.5%, meaning if user sends 100 USDC, filler expects to keep at least 0.5 USDC
+# The filler will only fill orders where the output amount >= input amount * (1 - fillerBps/10000)
+fillerBps = 50
 
 
 # Chain configuration - RPC URLs are required

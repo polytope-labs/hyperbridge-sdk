@@ -31,7 +31,7 @@ import {
 	ERC20Method,
 	retryPromise,
 	fetchPrice,
-	adjustFeeDecimals,
+	adjustDecimals,
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
 	getRecordedStorageSlot,
@@ -193,7 +193,7 @@ export class IntentGatewayV2 {
 			"source",
 			params.order.source,
 		)
-		let postRequestFeeInDestFeeToken = adjustFeeDecimals(
+		let postRequestFeeInDestFeeToken = adjustDecimals(
 			postRequestFeeInSourceFeeToken,
 			sourceFeeToken.decimals,
 			destFeeToken.decimals,

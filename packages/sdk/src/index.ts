@@ -16,7 +16,7 @@ export {
 	getStorageSlot,
 	ERC20Method,
 	fetchPrice,
-	adjustFeeDecimals,
+	adjustDecimals,
 	DEFAULT_GRAFFITI,
 	maxBigInt,
 	getGasPriceFromEtherscan,

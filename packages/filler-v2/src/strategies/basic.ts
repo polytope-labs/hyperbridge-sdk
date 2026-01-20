@@ -7,14 +7,17 @@ import {
 	FillOptionsV2,
 	ADDRESS_ZERO,
 	TokenInfoV2,
+	adjustDecimals,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService, HyperbridgeService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
-import { compareDecimalValues } from "@/utils"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
+
+/** Supported token types for same-token execution */
+type SupportedTokenType = "USDT" | "USDC"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -23,6 +26,7 @@ export class BasicFiller implements FillerStrategy {
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
 	private bidStorage?: BidStorageService
+	private fillerBps: bigint
 	private logger = getLogger("basic-filler")
 
 	constructor(
@@ -30,6 +34,7 @@ export class BasicFiller implements FillerStrategy {
 		configService: FillerConfigService,
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
+		fillerBps: number,
 		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
@@ -37,17 +42,48 @@ export class BasicFiller implements FillerStrategy {
 		this.clientManager = clientManager
 		this.contractService = contractService
 		this.bidStorage = bidStorage
+		this.fillerBps = BigInt(fillerBps)
 	}
 
 	/**
-	 * Determines if this strategy can fill the given order
+	 * Determines if this strategy can fill the given order.
+	 * Validates that the order has supported token pairs (same-token swaps only).
 	 * @param order The order to check
-	 * @param config The filler configuration
 	 * @returns True if the strategy can fill the order
 	 */
 	async canFill(order: OrderV2): Promise<boolean> {
 		try {
-			return await this.validateOrderInputsOutputs(order)
+			// Validate basic structure
+			if (order.inputs.length === 0 || order.inputs.length !== order.output.assets.length) {
+				this.logger.debug(
+					{ inputs: order.inputs.length, outputs: order.output.assets.length },
+					"Order input/output length mismatch or empty",
+				)
+				return false
+			}
+
+			// Validate all token pairs are supported (same-token swaps: USDC→USDC, USDT→USDT)
+			for (let i = 0; i < order.inputs.length; i++) {
+				const inputType = this.getTokenType(order.inputs[i].token, order.source)
+				const outputType = this.getTokenType(order.output.assets[i].token, order.destination)
+
+				if (!inputType) {
+					this.logger.debug({ index: i, token: order.inputs[i].token }, "Unsupported input token")
+					return false
+				}
+
+				if (!outputType) {
+					this.logger.debug({ index: i, token: order.output.assets[i].token }, "Unsupported output token")
+					return false
+				}
+
+				if (inputType !== outputType) {
+					this.logger.debug({ index: i, inputType, outputType }, "Token type mismatch (must be same-token swap)")
+					return false
+				}
+			}
+
+			return true
 		} catch (error) {
 			this.logger.error({ err: error }, "Error in canFill")
 			return false
@@ -55,37 +91,152 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
+	 * Gets the supported token type for a given token address on a chain.
+	 * @param tokenAddress The token address (bytes32 format)
+	 * @param chain The chain identifier
+	 * @returns The token type or null if unsupported
+	 */
+	private getTokenType(tokenAddress: string, chain: string): SupportedTokenType | null {
+		const normalizedAddress = bytes32ToBytes20(tokenAddress).toLowerCase()
+		const supportedAssets: Record<SupportedTokenType, string> = {
+			USDT: this.configService.getUsdtAsset(chain).toLowerCase(),
+			USDC: this.configService.getUsdcAsset(chain).toLowerCase(),
+		}
+
+		for (const [tokenType, address] of Object.entries(supportedAssets)) {
+			if (address === normalizedAddress) {
+				return tokenType as SupportedTokenType
+			}
+		}
+
+		return null
+	}
+
+	/**
 	 * Calculates the USD value of the order's inputs, outputs, fees and compares
-	 * what will the filler receive and what will the filler pay
+	 * what will the filler receive and what will the filler pay.
+	 * Also validates that the order output amounts meet the filler's minimum requirements
+	 * based on the configured bps (basis points).
 	 * @param order The order to calculate the USD value for
-	 * @returns The profit in USD (Number)
+	 * @returns The profit in USD (Number), or 0 if not profitable or output amounts don't meet minimum
 	 */
 	async calculateProfitability(order: OrderV2): Promise<number> {
 		try {
-			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
-			const { decimals: sourceFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
-				order.source,
-			)
 			const { decimals: destFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
 				order.destination,
 			)
 
-			const profit = totalCostInSourceFeeToken > order.fees ? totalCostInSourceFeeToken - order.fees : 0n
+			// Validate that order outputs meet filler's minimum bps requirements
+			// and calculate profit from slippage (normalized to dest fee token decimals)
+			const { isValid, profitFromSlippage } = await this.calculateSlippageProfit(order, destFeeTokenDecimals)
+			if (!isValid) {
+				this.logger.info(
+					{ orderId: order.id, fillerBps: this.fillerBps.toString() },
+					"Order outputs do not meet minimum filler bps requirements",
+				)
+				return 0
+			}
+
+			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
+			const { decimals: sourceFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
+				order.source,
+			)
+
+			// Profit from fees: order.fees - gas costs
+			const feeProfit = order.fees > totalCostInSourceFeeToken ? order.fees - totalCostInSourceFeeToken : 0n
+
+			// Total profit = fee profit + profit from slippage (both normalized to dest fee token decimals)
+			const feeProfitInDestDecimals = adjustDecimals(feeProfit, sourceFeeTokenDecimals, destFeeTokenDecimals)
+			const totalProfit = feeProfitInDestDecimals + profitFromSlippage
 
 			this.logger.info(
 				{
 					orderFeesUSD: formatUnits(order.fees, destFeeTokenDecimals),
-					totalCostInSourceFeeTokenUSD: formatUnits(totalCostInSourceFeeToken, destFeeTokenDecimals),
-					profitable: profit > 0,
-					profitUSD: formatUnits(profit, sourceFeeTokenDecimals),
+					totalCostInSourceFeeTokenUSD: formatUnits(totalCostInSourceFeeToken, sourceFeeTokenDecimals),
+					feeProfitUSD: formatUnits(feeProfitInDestDecimals, destFeeTokenDecimals),
+					slippageProfitUSD: formatUnits(profitFromSlippage, destFeeTokenDecimals),
+					totalProfitUSD: formatUnits(totalProfit, destFeeTokenDecimals),
+					profitable: totalProfit > 0n,
 				},
 				"Profitability evaluation",
 			)
-			return parseFloat(formatUnits(profit, destFeeTokenDecimals))
+			return parseFloat(formatUnits(totalProfit, destFeeTokenDecimals))
 		} catch (error) {
 			this.logger.error({ err: error }, "Error calculating profitability")
 			return 0
 		}
+	}
+
+	/**
+	 * Validates that the order's output amounts meet the filler's minimum requirements
+	 * based on the configured bps (basis points), and calculates the profit from slippage.
+	 *
+	 * The logic:
+	 * - For each input/output pair (same token type, e.g., USDC to USDC)
+	 * - Convert input amount to output decimals
+	 * - Subtract the filler's bps from the converted amount to get minimum acceptable output
+	 * - Check if the order's output amount >= minimum acceptable output
+	 * - Calculate profit as: convertedInputAmount - outputAmount (what filler keeps)
+	 *
+	 * Example: User sends 100 USDC, filler has 50 bps (0.5%), order output is 99.6 USDC
+	 * - Minimum output = 100 * (10000 - 50) / 10000 = 99.5 USDC
+	 * - Order output (99.6) >= minimum (99.5) → valid
+	 * - Profit = 100 - 99.6 = 0.4 USDC
+	 *
+	 * @param order The order to validate (assumed to have passed canFill validation)
+	 * @param normalizeToDecimals The decimal precision to normalize the profit to (e.g., dest fee token decimals)
+	 * @returns Object with isValid boolean and profitFromSlippage (normalized to specified decimals)
+	 */
+	private async calculateSlippageProfit(
+		order: OrderV2,
+		normalizeToDecimals: number,
+	): Promise<{ isValid: boolean; profitFromSlippage: bigint }> {
+		const basisPoints = 10000n
+		let totalProfitNormalized = 0n
+
+		for (let i = 0; i < order.inputs.length; i++) {
+			const input = order.inputs[i]
+			const output = order.output.assets[i]
+
+			// Get token decimals for both chains
+			const [inputDecimals, outputDecimals] = await Promise.all([
+				this.contractService.getTokenDecimals(input.token, order.source),
+				this.contractService.getTokenDecimals(output.token, order.destination),
+			])
+
+			// Convert input amount to output decimals
+			const convertedInputAmount = adjustDecimals(input.amount, inputDecimals, outputDecimals)
+
+			// Calculate minimum acceptable output after deducting filler's bps
+			// Formula: convertedAmount * (10000 - fillerBps) / 10000
+			const minimumOutputAmount = (convertedInputAmount * (basisPoints - this.fillerBps)) / basisPoints
+
+			// Check if the order's output amount meets the filler's minimum requirement
+			if (output.amount < minimumOutputAmount) {
+				this.logger.debug(
+					{
+						index: i,
+						inputAmount: input.amount.toString(),
+						inputDecimals,
+						outputAmount: output.amount.toString(),
+						outputDecimals,
+						minimumOutputAmount: minimumOutputAmount.toString(),
+						fillerBps: this.fillerBps.toString(),
+					},
+					"Order output amount below minimum after bps deduction",
+				)
+				return { isValid: false, profitFromSlippage: 0n }
+			}
+
+			// Calculate profit: what filler receives (input) - what filler pays out (output)
+			const profitInOutputDecimals = convertedInputAmount - output.amount
+
+			// Normalize profit to the target decimals for summing across different tokens
+			const profitNormalized = adjustDecimals(profitInOutputDecimals, outputDecimals, normalizeToDecimals)
+			totalProfitNormalized += profitNormalized
+		}
+
+		return { isValid: true, profitFromSlippage: totalProfitNormalized }
 	}
 
 	/**
@@ -267,81 +418,5 @@ export class BasicFiller implements FillerStrategy {
 		}
 	}
 
-	/**
-	 * Validates that order inputs and outputs are valid for filling
-	 * @param order The order to validate
-	 * @returns True if the order inputs and outputs are valid
-	 */
-	async validateOrderInputsOutputs(order: OrderV2): Promise<boolean> {
-		try {
-			// Note: The inputs and output lengths may not match when running a solver
-			// Todo: Revisit this
-			if (order.inputs.length !== order.output.assets.length) {
-				this.logger.debug(
-					{ inputs: order.inputs.length, outputs: order.output.assets.length },
-					"Order length mismatch",
-				)
-				return false
-			}
 
-			const getTokenType = (tokenAddress: string, chain: string): string | null => {
-				tokenAddress = bytes32ToBytes20(tokenAddress).toLowerCase()
-				const assets = {
-					USDT: this.configService.getUsdtAsset(chain).toLowerCase(),
-					USDC: this.configService.getUsdcAsset(chain).toLowerCase(),
-				}
-				const result =
-					Object.keys(assets).find((type) => assets[type as keyof typeof assets] === tokenAddress) || null
-
-				return result
-			}
-
-			for (let i = 0; i < order.inputs.length; i++) {
-				const input = order.inputs[i]
-				const output = order.output.assets[i]
-
-				const inputType = getTokenType(input.token, order.source)
-				const outputType = getTokenType(output.token, order.destination)
-
-				if (!inputType) {
-					this.logger.debug({ index: i, token: input.token }, "Unsupported input token")
-					return false
-				}
-
-				if (!outputType) {
-					this.logger.debug({ index: i, token: output.token }, "Unsupported output token")
-					return false
-				}
-
-				if (inputType !== outputType) {
-					this.logger.debug({ index: i, inputType, outputType }, "Token mismatch")
-					return false
-				}
-
-				const [inputDecimals, outputDecimals] = await Promise.all([
-					this.contractService.getTokenDecimals(input.token, order.source),
-					this.contractService.getTokenDecimals(output.token, order.destination),
-				])
-
-				if (!compareDecimalValues(input.amount, inputDecimals, output.amount, outputDecimals)) {
-					this.logger.debug(
-						{
-							index: i,
-							inputAmount: input.amount.toString(),
-							inputDecimals,
-							outputAmount: output.amount.toString(),
-							outputDecimals,
-						},
-						"Amount mismatch",
-					)
-					return false
-				}
-			}
-
-			return true
-		} catch (error) {
-			this.logger.error({ err: error }, "Order validation failed")
-			return false
-		}
-	}
 }

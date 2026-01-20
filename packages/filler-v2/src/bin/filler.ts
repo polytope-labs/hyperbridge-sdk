@@ -40,7 +40,9 @@ const packageJsonPath = resolve(__dirname, "../../package.json")
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
 interface StrategyConfig {
-	type: "basic" | "stable-swap"
+	type: "basic"
+	/** Filler's basis points (bps) for profit margin. E.g., 50 = 0.5% */
+	fillerBps: number
 }
 
 interface ChainConfirmationPolicy {
@@ -199,7 +201,9 @@ program
 							configService,
 							chainClientManager,
 							contractService,
+							strategyConfig.fillerBps,
 							bidStorageService,
+							
 						)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
@@ -310,7 +314,7 @@ function validateConfig(config: FillerTomlConfig): void {
 			throw new Error("Strategy type is required")
 		}
 
-		if (!["basic", "stable-swap"].includes(strategy.type)) {
+		if (!["basic"].includes(strategy.type)) {
 			throw new Error(`Invalid strategy type: ${strategy.type}`)
 		}
 	}

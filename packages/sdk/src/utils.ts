@@ -881,7 +881,7 @@ export function getRecordedStorageSlot(
  * @param toDecimals - The target decimal precision
  * @returns The adjusted fee amount with the target decimal precision
  */
-export function adjustFeeDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
+export function adjustDecimals(feeInFeeToken: bigint, fromDecimals: number, toDecimals: number): bigint {
 	if (fromDecimals === toDecimals) return feeInFeeToken
 	if (fromDecimals < toDecimals) {
 		const scaleFactor = BigInt(10 ** (toDecimals - fromDecimals))
