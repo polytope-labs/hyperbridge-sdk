@@ -132,7 +132,7 @@ export class BasicFiller implements FillerStrategy {
 			if (!isValid) {
 				this.logger.info(
 					{ orderId: order.id, fillerBps: this.fillerBps.toString() },
-					"Order outputs do not meet minimum filler bps requirements",
+					"User expects more output than filler can provide based on bps",
 				)
 				return 0
 			}
@@ -168,20 +168,20 @@ export class BasicFiller implements FillerStrategy {
 	}
 
 	/**
-	 * Validates that the order's output amounts meet the filler's minimum requirements
+	 * Validates that the filler can meet the user's minimum output requirements
 	 * based on the configured bps (basis points), and calculates the profit from slippage.
 	 *
 	 * The logic:
-	 * - For each input/output pair (same token type, e.g., USDC to USDC)
-	 * - Convert input amount to output decimals
-	 * - Subtract the filler's bps from the converted amount to get minimum acceptable output
-	 * - Check if the order's output amount >= minimum acceptable output
-	 * - Calculate profit as: convertedInputAmount - outputAmount (what filler keeps)
+	 * - User sends X tokens and expects minimum Y tokens (order.output.amount)
+	 * - Filler calculates max they will provide: X * (10000 - fillerBps) / 10000
+	 * - If filler can provide >= user's minimum → valid, proceed
+	 * - Filler pays out their max (to be competitive), not just user's minimum
+	 * - Profit = X - fillerMaxOutput (filler keeps their bps)
 	 *
-	 * Example: User sends 100 USDC, filler has 50 bps (0.5%), order output is 99.6 USDC
-	 * - Minimum output = 100 * (10000 - 50) / 10000 = 99.5 USDC
-	 * - Order output (99.6) >= minimum (99.5) → valid
-	 * - Profit = 100 - 99.6 = 0.4 USDC
+	 * Example: User sends 100 USDC, expects minimum 99.4 USDC, filler has 50 bps (0.5%)
+	 * - Filler will provide: 100 * (10000 - 50) / 10000 = 99.5 USDC
+	 * - User expects 99.4 USDC, filler provides 99.5 → valid (99.5 >= 99.4)
+	 * - Profit = 100 - 99.5 = 0.5 USDC (filler receives 100, pays out 99.5)
 	 *
 	 * @param order The order to validate (assumed to have passed canFill validation)
 	 * @param normalizeToDecimals The decimal precision to normalize the profit to (e.g., dest fee token decimals)
@@ -207,29 +207,30 @@ export class BasicFiller implements FillerStrategy {
 			// Convert input amount to output decimals
 			const convertedInputAmount = adjustDecimals(input.amount, inputDecimals, outputDecimals)
 
-			// Calculate minimum acceptable output after deducting filler's bps
-			// Formula: convertedAmount * (10000 - fillerBps) / 10000
-			const minimumOutputAmount = (convertedInputAmount * (basisPoints - this.fillerBps)) / basisPoints
+			// Calculate max output filler will provide based on their bps
+			// Formula: inputAmount * (10000 - fillerBps) / 10000
+			const fillerMaxOutput = (convertedInputAmount * (basisPoints - this.fillerBps)) / basisPoints
 
-			// Check if the order's output amount meets the filler's minimum requirement
-			if (output.amount < minimumOutputAmount) {
+			// Reject if user expects more than filler can provide
+			if (output.amount > fillerMaxOutput) {
 				this.logger.debug(
 					{
 						index: i,
 						inputAmount: input.amount.toString(),
 						inputDecimals,
-						outputAmount: output.amount.toString(),
+						userExpects: output.amount.toString(),
+						fillerWillProvide: fillerMaxOutput.toString(),
 						outputDecimals,
-						minimumOutputAmount: minimumOutputAmount.toString(),
 						fillerBps: this.fillerBps.toString(),
 					},
-					"Order output amount below minimum after bps deduction",
+					"User expects more than filler can provide based on bps",
 				)
 				return { isValid: false, profitFromSlippage: 0n }
 			}
 
-			// Calculate profit: what filler receives (input) - what filler pays out (output)
-			const profitInOutputDecimals = convertedInputAmount - output.amount
+			// Calculate profit: filler receives input, pays out their max (to be competitive)
+			// Profit = input - fillerMaxOutput (filler keeps their bps as profit)
+			const profitInOutputDecimals = convertedInputAmount - fillerMaxOutput
 
 			// Normalize profit to the target decimals for summing across different tokens
 			const profitNormalized = adjustDecimals(profitInOutputDecimals, outputDecimals, normalizeToDecimals)
