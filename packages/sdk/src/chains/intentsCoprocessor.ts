@@ -4,8 +4,7 @@ import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
 import { decodeAddress } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
 import { decodeAbiParameters } from "viem"
-import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@hyperbridge/sdk"
-import { getLogger } from "./Logger"
+import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@/types"
 
 /** SCALE codec for Bid { filler: AccountId, user_op: Vec<u8> } */
 const BidCodec = Struct({ filler: Bytes(32), user_op: Vector(u8) })
@@ -14,45 +13,39 @@ const BidCodec = Struct({ filler: Bytes(32), user_op: Vector(u8) })
 const OFFCHAIN_BID_PREFIX = new TextEncoder().encode("intents::bid::")
 
 /**
- * Service for interacting with Hyperbridge via Polkadot.js
- * Handles bid submission to the pallet-intents coprocessor.
+ * Service for interacting with Hyperbridge's pallet-intents coprocessor.
+ * Handles bid submission and retrieval for the IntentGatewayV2 protocol.
  * Maintains a persistent WebSocket connection for efficiency.
  *
  * Use the static `create()` method to instantiate.
  */
-export class HyperbridgeService {
-	private static logger = getLogger("hyperbridge-service")
-
+export class IntentsCoprocessor {
 	/**
-	 * Creates a new HyperbridgeService with an established connection.
+	 * Creates a new IntentsCoprocessor with an established connection.
 	 * WsProvider handles auto-reconnect internally.
 	 *
 	 * @param wsUrl - WebSocket URL for Hyperbridge
-	 * @param substratePrivateKey - Private key for signing extrinsics
+	 * @param substratePrivateKey - Private key for signing extrinsics (optional for read-only operations)
 	 */
-	static async create(wsUrl: string, substratePrivateKey: string): Promise<HyperbridgeService> {
-		this.logger.debug({ wsUrl }, "Connecting to Hyperbridge")
+	static async create(wsUrl: string, substratePrivateKey?: string): Promise<IntentsCoprocessor> {
 		const provider = new WsProvider(wsUrl)
 		const api = await ApiPromise.create({ provider })
 		await api.isReady
-		this.logger.info("Connected to Hyperbridge")
 
-		return new HyperbridgeService(api, substratePrivateKey)
+		return new IntentsCoprocessor(api, substratePrivateKey)
 	}
 
 	private constructor(
 		private api: ApiPromise,
-		private substratePrivateKey: string,
+		private substratePrivateKey?: string,
 	) {}
 
 	/**
 	 * Disconnects from Hyperbridge.
-	 * Should be called when the filler is stopping.
+	 * Should be called when done using the coprocessor.
 	 */
 	async disconnect(): Promise<void> {
-		HyperbridgeService.logger.debug("Disconnecting from Hyperbridge")
 		await this.api.disconnect()
-		HyperbridgeService.logger.debug("Disconnected from Hyperbridge")
 	}
 
 	/**
@@ -60,6 +53,10 @@ export class HyperbridgeService {
 	 * Supports both hex seed (without 0x prefix) and mnemonic phrases
 	 */
 	private getKeyPair() {
+		if (!this.substratePrivateKey) {
+			throw new Error("SubstratePrivateKeyRequired")
+		}
+
 		const keyring = new Keyring({ type: "sr25519" })
 
 		if (this.substratePrivateKey.includes(" ")) {
@@ -72,31 +69,19 @@ export class HyperbridgeService {
 	/**
 	 * Signs and sends an extrinsic, handling status updates and errors
 	 */
-	private async signAndSendExtrinsic(
-		extrinsic: SubmittableExtrinsic<"promise">,
-		successMessage: string,
-		errorMessage: string,
-	): Promise<BidSubmissionResult> {
+	private async signAndSendExtrinsic(extrinsic: SubmittableExtrinsic<"promise">): Promise<BidSubmissionResult> {
 		const keyPair = this.getKeyPair()
 
 		return new Promise<BidSubmissionResult>((resolve) => {
 			extrinsic
-				.signAndSend(keyPair,  (status) => {
+				.signAndSend(keyPair, (status) => {
 					if (status.isInBlock || status.isFinalized) {
-						HyperbridgeService.logger.info(
-							{
-								blockHash: status.status.asInBlock.toHex(),
-								extrinsicHash: extrinsic.hash.toHex(),
-							},
-							successMessage,
-						)
 						resolve({
 							success: true,
 							blockHash: status.status.asInBlock.toHex() as HexString,
 							extrinsicHash: extrinsic.hash.toHex() as HexString,
 						})
 					} else if (status.isError) {
-						HyperbridgeService.logger.error({ status: status.toHuman() }, errorMessage)
 						resolve({
 							success: false,
 							error: `Extrinsic failed: ${status.status.toString()}`,
@@ -104,7 +89,6 @@ export class HyperbridgeService {
 					}
 				})
 				.catch((err: Error) => {
-					HyperbridgeService.logger.error({ err }, errorMessage)
 					resolve({
 						success: false,
 						error: err.message,
@@ -122,15 +106,9 @@ export class HyperbridgeService {
 	 */
 	async submitBid(commitment: HexString, userOp: HexString): Promise<BidSubmissionResult> {
 		try {
-			HyperbridgeService.logger.info(
-				{ commitment, userOpLength: userOp.length, signer: this.getKeyPair().address },
-				"Submitting bid to Hyperbridge",
-			)
-
 			const extrinsic = this.api.tx.intents.placeBid(commitment, userOp)
-			return await this.signAndSendExtrinsic(extrinsic, "Bid included in block", "Bid submission failed")
+			return await this.signAndSendExtrinsic(extrinsic)
 		} catch (error) {
-			HyperbridgeService.logger.error({ err: error }, "Error submitting bid to Hyperbridge")
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",
@@ -148,19 +126,9 @@ export class HyperbridgeService {
 	 */
 	async retractBid(commitment: HexString): Promise<BidSubmissionResult> {
 		try {
-			HyperbridgeService.logger.info(
-				{ commitment, signer: this.getKeyPair().address },
-				"Retracting bid from Hyperbridge",
-			)
-
 			const extrinsic = this.api.tx.intents.retractBid(commitment)
-			return await this.signAndSendExtrinsic(
-				extrinsic,
-				"Bid retracted, deposit refunded",
-				"Bid retraction failed",
-			)
+			return await this.signAndSendExtrinsic(extrinsic)
 		} catch (error) {
-			HyperbridgeService.logger.error({ err: error }, "Error retracting bid from Hyperbridge")
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : "Unknown error",
@@ -176,8 +144,6 @@ export class HyperbridgeService {
 	 * @returns Array of BidStorageEntry objects
 	 */
 	async getBidStorageEntries(commitment: HexString): Promise<BidStorageEntry[]> {
-		HyperbridgeService.logger.debug({ commitment }, "Fetching bid storage entries")
-
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const entries = await (this.api.query.intents.bids as any).entries(commitment)
 
@@ -195,64 +161,43 @@ export class HyperbridgeService {
 	 * @returns Array of FillerBid objects containing filler address, userOp, and deposit
 	 */
 	async getBidsForOrder(commitment: HexString): Promise<FillerBid[]> {
-		HyperbridgeService.logger.debug({ commitment }, "Fetching bids for order commitment")
+		const storageEntries = await this.getBidStorageEntries(commitment)
 
-		try {
-	
-			const storageEntries = await this.getBidStorageEntries(commitment)
-
-			if (storageEntries.length === 0) {
-				HyperbridgeService.logger.debug({ commitment }, "No bids found for order")
-				return []
-			}
-
-			HyperbridgeService.logger.debug({ fillerCount: storageEntries.length }, "Found fillers with bids")
-
-			const bids: FillerBid[] = []
-
-			for (const entry of storageEntries) {
-				try {
-					const { filler, deposit } = entry
-
-					const offchainKey = this.buildOffchainBidKey(commitment, filler)
-					const offchainKeyHex = u8aToHex(offchainKey)
-
-					// Fetch from offchain storage using PERSISTENT kind
-					const offchainResult = await this.api.rpc.offchain.localStorageGet("PERSISTENT", offchainKeyHex)
-
-					if (!offchainResult || offchainResult.isNone) {
-						HyperbridgeService.logger.warn(
-							{ filler, commitment },
-							"Bid exists on-chain but offchain data not found",
-						)
-						continue
-					}
-
-					const bidData = offchainResult.unwrap().toHex() as HexString
-					const decoded = this.decodeBid(bidData)
-
-					bids.push({
-						filler: decoded.filler,
-						userOp: decoded.userOp,
-						deposit,
-					})
-
-					HyperbridgeService.logger.debug(
-						{ filler: decoded.filler, userOpSender: decoded.userOp.sender, deposit: deposit.toString() },
-						"Decoded bid",
-					)
-				} catch (err) {
-					HyperbridgeService.logger.warn({ err, filler: entry.filler }, "Failed to decode bid, skipping")
-				}
-			}
-
-			HyperbridgeService.logger.info({ commitment, bidCount: bids.length }, "Fetched bids for order")
-
-			return bids
-		} catch (error) {
-			HyperbridgeService.logger.error({ err: error, commitment }, "Error fetching bids for order")
-			throw error
+		if (storageEntries.length === 0) {
+			return []
 		}
+
+		const bids: FillerBid[] = []
+
+		for (const entry of storageEntries) {
+			try {
+				const { filler, deposit } = entry
+
+				const offchainKey = this.buildOffchainBidKey(commitment, filler)
+				const offchainKeyHex = u8aToHex(offchainKey)
+
+				// Fetch from offchain storage using PERSISTENT kind
+				const offchainResult = await this.api.rpc.offchain.localStorageGet("PERSISTENT", offchainKeyHex)
+
+				if (!offchainResult || offchainResult.isNone) {
+					continue
+				}
+
+				const bidData = offchainResult.unwrap().toHex() as HexString
+				const decoded = this.decodeBid(bidData)
+
+				bids.push({
+					filler: decoded.filler,
+					userOp: decoded.userOp,
+					deposit,
+				})
+			} catch {
+				// Skip bids that fail to decode
+				continue
+			}
+		}
+
+		return bids
 	}
 
 	/** Decodes SCALE-encoded Bid struct and ABI-encoded PackedUserOperation */
@@ -261,21 +206,43 @@ export class HyperbridgeService {
 		const filler = new Keyring({ type: "sr25519" }).encodeAddress(new Uint8Array(decoded.filler))
 		const userOpHex = u8aToHex(new Uint8Array(decoded.user_op)) as HexString
 
-		const [sender, nonce, initCode, callData, accountGasLimits, preVerificationGas, gasFees, paymasterAndData, signature] =
-			decodeAbiParameters(
-				[
-					{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "bytes" },
-					{ type: "bytes32" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes" }, { type: "bytes" },
-				],
-				userOpHex,
-			)
+		const [
+			sender,
+			nonce,
+			initCode,
+			callData,
+			accountGasLimits,
+			preVerificationGas,
+			gasFees,
+			paymasterAndData,
+			signature,
+		] = decodeAbiParameters(
+			[
+				{ type: "address" },
+				{ type: "uint256" },
+				{ type: "bytes" },
+				{ type: "bytes" },
+				{ type: "bytes32" },
+				{ type: "uint256" },
+				{ type: "bytes32" },
+				{ type: "bytes" },
+				{ type: "bytes" },
+			],
+			userOpHex,
+		)
 
 		return {
 			filler,
 			userOp: {
-				sender: sender as HexString, nonce, initCode: initCode as HexString, callData: callData as HexString,
-				accountGasLimits: accountGasLimits as HexString, preVerificationGas, gasFees: gasFees as HexString,
-				paymasterAndData: paymasterAndData as HexString, signature: signature as HexString,
+				sender: sender as HexString,
+				nonce,
+				initCode: initCode as HexString,
+				callData: callData as HexString,
+				accountGasLimits: accountGasLimits as HexString,
+				preVerificationGas,
+				gasFees: gasFees as HexString,
+				paymasterAndData: paymasterAndData as HexString,
+				signature: signature as HexString,
 			},
 		}
 	}

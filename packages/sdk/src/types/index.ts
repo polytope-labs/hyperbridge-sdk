@@ -1376,3 +1376,15 @@ export interface FillerBid {
 	/** The deposit amount stored on-chain (in plancks) */
 	deposit: bigint
 }
+
+/**
+ * Options for selecting a solver in IntentGatewayV2
+ */
+export interface SelectOptions {
+	/** The order commitment hash (bytes32) */
+	commitment: HexString
+	/** The solver address to select */
+	solver: HexString
+	/** The EIP-712 signature from the session key */
+	signature: HexString
+}
