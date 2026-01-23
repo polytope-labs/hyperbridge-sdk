@@ -1,22 +1,17 @@
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api"
 import type { SubmittableExtrinsic } from "@polkadot/api/types"
-import { hexToU8a, u8aToHex } from "@polkadot/util"
+import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
 import { decodeAddress } from "@polkadot/util-crypto"
+import { Bytes, Struct, u8, Vector } from "scale-ts"
 import { decodeAbiParameters } from "viem"
 import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@hyperbridge/sdk"
-import { getLogger } from "./Logger"	
-import { Bytes, Struct, u8, Vector } from "scale-ts"
+import { getLogger } from "./Logger"
 
+/** SCALE codec for Bid { filler: AccountId, user_op: Vec<u8> } */
+const BidCodec = Struct({ filler: Bytes(32), user_op: Vector(u8) })
 
-
-/**
- * SCALE codec for the Bid struct from pallet-intents
- * Matches: Bid<AccountId> { filler: AccountId, user_op: Vec<u8> }
- */
-const BidCodec = Struct({
-	filler: Bytes(32),    // AccountId = [u8; 32] (fixed 32 bytes)
-	user_op: Vector(u8),  // Vec<u8> with compact length prefix
-})
+/** Offchain storage key prefix for bids */
+const OFFCHAIN_BID_PREFIX = new TextEncoder().encode("intents::bid::")
 
 /**
  * Service for interacting with Hyperbridge via Polkadot.js
@@ -260,89 +255,33 @@ export class HyperbridgeService {
 		}
 	}
 
-	/**
-	 * Decodes a SCALE-encoded Bid struct using scale-ts
-	 * Bid { filler: AccountId (32 bytes), user_op: Vec<u8> }
-	 */
+	/** Decodes SCALE-encoded Bid struct and ABI-encoded PackedUserOperation */
 	private decodeBid(hex: HexString): { filler: string; userOp: PackedUserOperation } {
-		const bytes = hexToU8a(hex)
+		const decoded = BidCodec.dec(hexToU8a(hex))
+		const filler = new Keyring({ type: "sr25519" }).encodeAddress(new Uint8Array(decoded.filler))
+		const userOpHex = u8aToHex(new Uint8Array(decoded.user_op)) as HexString
 
-
-		const decoded = BidCodec.dec(bytes)
-
-		const keyring = new Keyring({ type: "sr25519" })
-		const filler = keyring.encodeAddress(new Uint8Array(decoded.filler))
-
-		// Decode ABI-encoded PackedUserOperation from user_op bytes
-		const userOpBytes = u8aToHex(new Uint8Array(decoded.user_op)) as HexString
-		const userOp = this.decodePackedUserOperation(userOpBytes)
-
-		return { filler, userOp }
-	}
-
-	/**
-	 * Decodes an ABI-encoded PackedUserOperation
-	 */
-	private decodePackedUserOperation(hex: HexString): PackedUserOperation {
 		const [sender, nonce, initCode, callData, accountGasLimits, preVerificationGas, gasFees, paymasterAndData, signature] =
 			decodeAbiParameters(
 				[
-					{ type: "address", name: "sender" },
-					{ type: "uint256", name: "nonce" },
-					{ type: "bytes", name: "initCode" },
-					{ type: "bytes", name: "callData" },
-					{ type: "bytes32", name: "accountGasLimits" },
-					{ type: "uint256", name: "preVerificationGas" },
-					{ type: "bytes32", name: "gasFees" },
-					{ type: "bytes", name: "paymasterAndData" },
-					{ type: "bytes", name: "signature" },
+					{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "bytes" },
+					{ type: "bytes32" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes" }, { type: "bytes" },
 				],
-				hex,
+				userOpHex,
 			)
 
 		return {
-			sender: sender as HexString,
-			nonce,
-			initCode: initCode as HexString,
-			callData: callData as HexString,
-			accountGasLimits: accountGasLimits as HexString,
-			preVerificationGas,
-			gasFees: gasFees as HexString,
-			paymasterAndData: paymasterAndData as HexString,
-			signature: signature as HexString,
+			filler,
+			userOp: {
+				sender: sender as HexString, nonce, initCode: initCode as HexString, callData: callData as HexString,
+				accountGasLimits: accountGasLimits as HexString, preVerificationGas, gasFees: gasFees as HexString,
+				paymasterAndData: paymasterAndData as HexString, signature: signature as HexString,
+			},
 		}
 	}
 
-	/**
-	 * Builds the offchain storage key for a bid.
-	 *
-	 * @param commitment - The order commitment hash (H256)
-	 * @param filler - The filler's SS58 address
-	 * @returns The offchain storage key as Uint8Array
-	 */
+	/** Builds offchain storage key: "intents::bid::" + commitment + filler */
 	private buildOffchainBidKey(commitment: HexString, filler: string): Uint8Array {
-		// Prefix: "intents::bid::"
-		const prefix = new TextEncoder().encode("intents::bid::")
-
-		// Commitment: H256 as raw bytes (32 bytes)
-		const commitmentBytes = hexToU8a(commitment)
-
-		// Filler: AccountId is [u8; 32] in Rust
-		// SCALE encoding of fixed-size array = raw bytes (no length prefix)
-		// decodeAddress converts SS58 address to raw 32-byte public key
-		const fillerBytes = decodeAddress(filler)
-
-		return this.u8aConcat(prefix, commitmentBytes, fillerBytes)
-	}
-
-	private u8aConcat(...arrays: Uint8Array[]): Uint8Array {
-		const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0)
-		const result = new Uint8Array(totalLength)
-		let offset = 0
-		for (const arr of arrays) {
-			result.set(arr, offset)
-			offset += arr.length
-		}
-		return result
+		return u8aConcat(OFFCHAIN_BID_PREFIX, hexToU8a(commitment), decodeAddress(filler))
 	}
 }
