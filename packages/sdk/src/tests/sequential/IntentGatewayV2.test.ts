@@ -17,7 +17,7 @@ import {
 	type PackedUserOperation,
 	type FillOptionsV2,
 	type SubmitBidOptions,
-} from "@hyperbridge/sdk"
+} from "@/index"
 import { ChainConfigService } from "@/configs/ChainConfigService"
 import { SessionKeyData } from "@/storage"
 
