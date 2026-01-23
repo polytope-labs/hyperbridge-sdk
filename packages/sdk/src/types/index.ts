@@ -3,6 +3,7 @@ import type { GraphQLClient } from "graphql-request"
 import type { ContractFunctionArgs, Hex, Log, PublicClient } from "viem"
 import type HandlerV1 from "@/abis/handler"
 import type { IChain } from "@/chain"
+import { Struct, Vector, Bytes, u8 } from "scale-ts"
 
 export type EstimateGasCallData = ContractFunctionArgs<
 	typeof HandlerV1.ABI,
@@ -1347,4 +1348,31 @@ export interface BidSubmissionResult {
 	 * Error message if submission failed
 	 */
 	error?: string
+}
+
+
+/**
+ * Represents a storage entry from pallet-intents Bids storage
+ * StorageDoubleMap<_, Blake2_128Concat, H256, Blake2_128Concat, AccountId, Balance>
+ */
+export interface BidStorageEntry {
+	/** The order commitment hash (H256) */
+	commitment: HexString
+	/** The filler's Substrate account ID (SS58 encoded) */
+	filler: string
+	/** The deposit amount stored on-chain (BalanceOf<T> = u128) */
+	deposit: bigint
+}
+
+/**
+ * Represents a bid placed by a filler for an order
+ * Matches the Rust struct: Bid<AccountId> { filler: AccountId, user_op: Vec<u8> }
+ */
+export interface FillerBid {
+	/** The filler's Substrate account ID (SS58 encoded) */
+	filler: string
+	/** The decoded PackedUserOperation */
+	userOp: PackedUserOperation
+	/** The deposit amount stored on-chain (in plancks) */
+	deposit: bigint
 }
