@@ -1,5 +1,6 @@
 import {
 	encodeFunctionData,
+	decodeFunctionData,
 	keccak256,
 	toHex,
 	encodeAbiParameters,
@@ -22,6 +23,9 @@ import type {
 	FillOrderEstimateV2,
 	IPostRequest,
 	DispatchPost,
+	FillOptionsV2,
+	SelectOptions,
+	FillerBid,
 } from "@/types"
 import type { SessionKeyStorageOptions } from "@/storage/types"
 import {
@@ -39,6 +43,7 @@ import {
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
 import { EvmChain } from "@/chains/evm"
+import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
 
@@ -56,10 +61,12 @@ export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
 	private readonly swap: Swap = new Swap()
 	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
+
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
 		storageOptions?: SessionKeyStorageOptions,
+		public readonly intentsCoprocessor?: IntentsCoprocessor,
 	) {
 		this.storage = createSessionKeyStorage(storageOptions)
 		this.initFeeTokenCache()
@@ -156,6 +163,201 @@ export class IntentGatewayV2 {
 		const signature = concat([commitment, solverSignature as Hex]) as HexString
 
 		return { ...userOp, signature }
+	}
+
+	/**
+	 * Selects the best bid from Hyperbridge, validates it via simulation, and returns a fully signed UserOp.
+	 *
+	 * This function:
+	 * 1. Fetches all bids for the order from Hyperbridge
+	 * 2. Validates each bid's outputs meet the order's minimum requirements
+	 * 3. Simulates select + fillOrder to verify the user receives promised tokens
+	 * 4. Appends the session signature to create the final 162-byte signature
+	 *
+	 * @param order - The order to select a bid for
+	 * @returns The fully signed PackedUserOperation ready for bundler submission
+	 * @throws Error with short message
+	 */
+	async selectBid(order: OrderV2): Promise<PackedUserOperation> {
+		
+		if (!this.intentsCoprocessor) {
+			throw new Error("IntentsCoprocessor required")
+		}
+
+	
+		const commitment = orderV2Commitment(order)
+		const sessionKeyData = await this.storage.getSessionKey(commitment)
+		if (!sessionKeyData) {
+			throw new Error("SessionKey not found")
+		}
+
+
+		const bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
+		if (bids.length === 0) {
+			throw new Error("No bids found")
+		}
+
+
+		const bidWithOptions = this.findValidBid(bids, order)
+		if (!bidWithOptions) {
+			throw new Error("No valid bids found")
+		}
+
+		
+		const solverAddress = bidWithOptions.bid.userOp.sender
+
+	
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+		const domainSeparator = await this.dest.client.readContract({
+			address: intentGatewayV2Address,
+			abi: IntentGatewayV2ABI.ABI,
+			functionName: "DOMAIN_SEPARATOR",
+		}) as HexString
+
+		
+		const sessionSignature = await this.signSolverSelection(
+			commitment,
+			solverAddress,
+			domainSeparator,
+			sessionKeyData,
+		)
+		if (!sessionSignature) {
+			throw new Error("Session signature not found")
+		}
+
+
+	
+		const selectOptions: SelectOptions = {
+			commitment,
+			solver: solverAddress,
+			signature: sessionSignature,
+		}
+
+		// Simulate the full execution: select → fillOrder 
+		await this.simulateAndValidate(order, selectOptions, bidWithOptions.options, solverAddress, intentGatewayV2Address)
+
+		// Append session signature to create final 162-byte signature
+		// Original signature: commitment (32) + solverSignature (65) = 97 bytes
+		// Final signature: commitment (32) + solverSignature (65) + sessionSignature (65) = 162 bytes
+		const finalSignature = concat([
+			bidWithOptions.bid.userOp.signature as Hex,
+			sessionSignature as Hex,
+		]) as HexString
+
+		return {
+			...bidWithOptions.bid.userOp,
+			signature: finalSignature,
+		}
+	}
+
+	/**
+	 * Finds the first bid that meets the minimum output requirements.
+	 * A bid is valid if fillOptions.outputs[i].amount >= order.output.assets[i].amount for all i.
+	 */
+	private findValidBid(bids: FillerBid[], order: OrderV2): {bid: FillerBid, options: FillOptionsV2} | null {
+		for (const bid of bids) {
+			try {
+				// Decode the fillOrder calldata to get fillOptions
+				const decoded = decodeFunctionData({
+					abi: IntentGatewayV2ABI.ABI,
+					data: bid.userOp.callData,
+				})
+
+				if (decoded?.functionName !== "fillOrder" || !decoded.args || decoded.args.length < 2) {
+					continue
+				}
+
+				const fillOptions = decoded.args?.[1] as FillOptionsV2
+
+				const bidOutputs = fillOptions?.outputs
+				if (!bidOutputs) {
+					continue
+				}
+
+				// Check if all outputs meet minimum requirements
+				let isValid = true
+				for (let i = 0; i < order.output.assets.length; i++) {
+					const requiredAmount = order.output.assets[i].amount
+					const bidAmount = bidOutputs[i]?.amount ?? 0n
+
+					if (bidAmount < requiredAmount) {
+						isValid = false
+						break
+					}
+				}
+
+				// TODO: Instead of returning the first valid bid, check the USD value
+				// of the order.outputs, and select the one with the highest USD value.
+				if (isValid) {
+					return { bid, options: fillOptions }
+				}
+			} catch {
+				// Skip bids that fail to decode
+				continue
+			}
+		}
+
+		return null
+	}
+
+	/**
+	 * Simulates select + fillOrder to verify the execution will succeed.
+	 * No state overrides are used - the solver should already have tokens and approvals.
+	 * The contract validates that outputs >= order.output.assets, so we just need to check execution succeeds.
+	 */
+	private async simulateAndValidate(
+		order: OrderV2,
+		selectOptions: SelectOptions,
+		fillOptions: FillOptionsV2,
+		solverAddress: HexString,
+		intentGatewayV2Address: HexString,
+	): Promise<void> {
+		
+		const nativeOutputValue = order.output.assets
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
+
+	
+		const calls: { to: HexString; data: HexString; value: bigint }[] = [
+			// 1. select() call
+			{
+				to: intentGatewayV2Address,
+				data: encodeFunctionData({
+					abi: IntentGatewayV2ABI.ABI,
+					functionName: "select",
+					args: [selectOptions],
+				}) as HexString,
+				value: 0n,
+			},
+			// 2. fillOrder() call
+			{
+				to: intentGatewayV2Address,
+				data: encodeFunctionData({
+					abi: IntentGatewayV2ABI.ABI,
+					functionName: "fillOrder",
+					args: [order, fillOptions],
+				}) as HexString,
+				value: totalNativeValue,
+			},
+		]
+
+		// Run simulation from the solver account (no state overrides needed)
+		const simulationResult = await this.dest.client.simulateCalls({
+			account: solverAddress,
+			calls,
+		})
+
+		// Check select() succeeded
+		if (simulationResult.results[0].status !== "success") {
+			throw new Error("SimulationFailed")
+		}
+
+		// Check fillOrder() succeeded
+		// The contract validates outputs >= order.output.assets internally
+		if (simulationResult.results[1].status !== "success") {
+			throw new Error("SimulationFailed")
+		}
 	}
 
 	/** Estimates gas costs for fillOrder execution via ERC-4337 */

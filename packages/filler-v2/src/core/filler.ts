@@ -1,9 +1,8 @@
-import { getChainId, retryPromise, type HexString } from "@hyperbridge/sdk"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
-import { OrderV2, FillerConfig, ChainConfig } from "@hyperbridge/sdk"
+import { OrderV2, FillerConfig, ChainConfig, getChainId, retryPromise, type HexString, IntentsCoprocessor  } from "@hyperbridge/sdk"
 import pQueue from "p-queue"
-import { ChainClientManager, ContractInteractionService, DelegationService, HyperbridgeService } from "@/services"
+import { ChainClientManager, ContractInteractionService, DelegationService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
 
@@ -15,7 +14,7 @@ export class IntentFiller {
 	private chainClientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private delegationService?: DelegationService
-	private hyperbridge: Promise<HyperbridgeService> | undefined = undefined
+	private hyperbridge: Promise<IntentsCoprocessor> | undefined = undefined
 	private config: FillerConfig
 	private configService: FillerConfigService
 	private privateKey: HexString
@@ -51,7 +50,7 @@ export class IntentFiller {
 		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
 		const substrateKey = configService.getSubstratePrivateKey()
 		if (hyperbridgeWsUrl && substrateKey) {
-			this.hyperbridge = HyperbridgeService.create(hyperbridgeWsUrl, substrateKey)
+			this.hyperbridge = IntentsCoprocessor.create(hyperbridgeWsUrl, substrateKey)
 		}
 
 		// Set up event handlers
