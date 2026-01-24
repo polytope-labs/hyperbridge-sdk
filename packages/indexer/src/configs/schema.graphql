@@ -1873,3 +1873,38 @@ type DustSwept @entity {
 	"""
 	lastUpdated: Date! @index
 }
+
+"""
+Collator rewards indexed from treasury transfers to block authors
+"""
+type HyperbridgeCollatorReward @entity {
+	"""
+	Unique identifier for the collator reward entry (collator address)
+	"""
+	id: ID!
+
+	"""
+	The total amount of rewards this collator has ever received
+	"""
+	totalRewardAmount: BigInt
+
+	"""
+	Total number of blocks authored by this collator
+	"""
+	totalBlocksAuthored: BigInt
+
+	"""
+	Timestamp of the last reward received
+	"""
+	lastRewardedAt: Date
+}
+
+"""
+Record of daily collator rewards paid out by the treasury
+"""
+type DailyTreasuryCollatorReward @entity {
+	id: ID! # ID is: {YYYY-MM-DD}
+	date: Date!
+	dailyRewardAmount: BigInt!
+}
+
