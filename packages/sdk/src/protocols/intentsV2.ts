@@ -173,27 +173,14 @@ export class IntentGatewayV2 {
 	}
 
 	/**
-	 * Selects the best bid from Hyperbridge, validates it, and submits to the bundler.
+	 * Selects the best bid from Hyperbridge and submits to the bundler.
 	 *
-	 * This function:
-	 * 1. Fetches all bids for the order from Hyperbridge
-	 * 2. Validates each bid's outputs meet the order's minimum requirements
-	 * 3. Simulates select + fillOrder to verify the user receives promised tokens
-	 * 4. Appends the session signature to create the final 162-byte signature
-	 * 5. Submits the signed UserOperation to the bundler
+	 * 1. Fetches bids from Hyperbridge
+	 * 2. Validates and sorts bids by USD value (WETH price fetched via swap, USDC/USDT at $1)
+	 * 3. Tries each bid (best to worst) until one passes simulation
+	 * 4. Signs and submits the winning bid to the bundler
 	 *
-	 * Requires `bundlerUrl` to be set in the constructor.
-	 *
-	 * @param order - The order to select a bid for
-	 * @returns Result containing the signed UserOp, userOpHash, solver address, and commitment
-	 * @throws Error if bundlerUrl is not configured or submission fails
-	 *
-	 * @example
-	 * ```typescript
-	 * const gateway = new IntentGatewayV2(source, dest, storage, coprocessor, "https://bundler.example.com")
-	 * const result = await gateway.selectBid(order)
-	 * console.log(`UserOp submitted: ${result.userOpHash}`)
-	 * ```
+	 * Requires `bundlerUrl` and `intentsCoprocessor` to be set in the constructor.
 	 */
 	async selectBid(order: OrderV2): Promise<SelectBidResult> {
 		if (!this.bundlerUrl) {
@@ -326,39 +313,26 @@ export class IntentGatewayV2 {
 	/**
 	 * Generator function that orchestrates the full intent order execution flow.
 	 *
-	 * This function ties together all steps of the intent order lifecycle:
-	 * 1. Waits for the order transaction to be confirmed on the source chain
-	 * 2. Waits for solver bids on Hyperbridge
-	 * 3. Selects the winning bid based on output amounts
-	 * 4. Returns the fully signed UserOperation ready for bundler submission
+	 * Flow: ORDER_SUBMITTED → ORDER_CONFIRMED → AWAITING_BIDS → BIDS_RECEIVED → BID_SELECTED → USEROP_SUBMITTED
 	 *
-	 * Note: The frontend should first call `preparePlaceOrder()` to get the calldata,
-	 * submit the transaction, and then pass the transaction hash to this function.
-	 *
-	 * @param options - Configuration for the intent order execution
-	 * @yields {IntentOrderStatusUpdate} Status updates at each stage of execution
+	 * Requires `intentsCoprocessor` and `bundlerUrl` to be set in the constructor.
 	 *
 	 * @example
 	 * ```typescript
-	 * const gateway = new IntentGatewayV2(sourceChain, destChain, storageOpts, coprocessor)
+	 * const gateway = new IntentGatewayV2(source, dest, storage, coprocessor, bundlerUrl)
 	 *
-	 * // Step 1: Prepare the order calldata
+	 * // 1. Prepare order calldata
 	 * const calldata = await gateway.preparePlaceOrder(order)
-	 * const gatewayAddress = sourceChain.configService.getIntentGatewayV2Address(order.source)
 	 *
-	 * // Step 2: Frontend submits the transaction
-	 * const txHash = await walletClient.sendTransaction({ to: gatewayAddress, data: calldata })
+	 * // 2. Submit the transaction
+	 * const txHash = await walletClient.sendTransaction({
+	 *   to: source.configService.getIntentGatewayV2Address(order.source),
+	 *   data: calldata,
+	 * })
 	 *
-	 * // Step 3: Track the order execution flow
-	 * for await (const status of gateway.executeIntentOrder({
-	 *   order,
-	 *   orderTxHash: txHash,
-	 * })) {
-	 *   console.log(`Status: ${status.status}`)
-	 *
-	 *   if (status.status === "USEROP_SUBMITTED") {
-	 *     console.log(`UserOp hash: ${status.metadata.userOpHash}`)
-	 *   }
+	 * // 3. Track execution
+	 * for await (const status of gateway.executeIntentOrder({ order, orderTxHash: txHash })) {
+	 *   console.log(status.status, status.metadata)
 	 * }
 	 * ```
 	 */
