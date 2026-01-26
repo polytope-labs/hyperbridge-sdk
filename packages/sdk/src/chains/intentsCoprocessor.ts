@@ -1,8 +1,8 @@
-import { ApiPromise, Keyring } from "@polkadot/api"
+import { ApiPromise, Keyring, WsProvider } from "@polkadot/api"
 import type { SubmittableExtrinsic } from "@polkadot/api/types"
 import type { KeyringPair } from "@polkadot/keyring/types"
 import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
-import { decodeAddress } from "@polkadot/util-crypto"
+import { decodeAddress, keccakAsU8a } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
 import { decodeAbiParameters } from "viem"
 import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@/types"
@@ -22,6 +22,26 @@ const OFFCHAIN_BID_PREFIX = new TextEncoder().encode("intents::bid::")
  */
 export class IntentsCoprocessor {
 	/**
+	 * Creates and connects an IntentsCoprocessor to a Hyperbridge node.
+	 * This creates and manages its own API connection.
+	 *
+	 * @param wsUrl - WebSocket URL of the Hyperbridge node
+	 * @param substratePrivateKey - Private key for signing extrinsics (optional for read-only operations)
+	 * @returns Promise resolving to a connected IntentsCoprocessor
+	 */
+	static async connect(wsUrl: string, substratePrivateKey?: string): Promise<IntentsCoprocessor> {
+		const api = await ApiPromise.create({
+			provider: new WsProvider(wsUrl),
+			typesBundle: {
+				spec: {
+					gargantua: { hasher: keccakAsU8a },
+				},
+			},
+		})
+		return new IntentsCoprocessor(api, substratePrivateKey, true)
+	}
+
+	/**
 	 * Creates an IntentsCoprocessor from an existing SubstrateChain instance.
 	 * This shares the connection - the SubstrateChain must already be connected.
 	 *
@@ -32,7 +52,7 @@ export class IntentsCoprocessor {
 		if (!chain.api) {
 			throw new Error("SubstrateChain must be connected before creating IntentsCoprocessor")
 		}
-		return new IntentsCoprocessor(chain.api, substratePrivateKey)
+		return new IntentsCoprocessor(chain.api, substratePrivateKey, false)
 	}
 
 	/**
@@ -42,13 +62,24 @@ export class IntentsCoprocessor {
 	 * @param substratePrivateKey - Private key for signing extrinsics (optional for read-only operations)
 	 */
 	static fromApi(api: ApiPromise, substratePrivateKey?: string): IntentsCoprocessor {
-		return new IntentsCoprocessor(api, substratePrivateKey)
+		return new IntentsCoprocessor(api, substratePrivateKey, false)
 	}
 
 	private constructor(
 		private api: ApiPromise,
 		private substratePrivateKey?: string,
+		private ownsConnection: boolean = false,
 	) {}
+
+	/**
+	 * Disconnects the underlying API connection if this instance owns it.
+	 * Only disconnects if created via `connect()`, not when using shared connections.
+	 */
+	async disconnect(): Promise<void> {
+		if (this.ownsConnection) {
+			await this.api.disconnect()
+		}
+	}
 
 	/**
 	 * Creates a Substrate keypair from the configured private key

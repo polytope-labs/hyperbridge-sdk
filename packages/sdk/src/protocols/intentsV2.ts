@@ -31,7 +31,6 @@ import {
 	type SelectBidResult,
 	type ExecuteIntentOrderOptions,
 } from "@/types"
-import type { SessionKeyStorageOptions } from "@/storage/types"
 import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
@@ -71,11 +70,10 @@ export class IntentGatewayV2 {
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
-		storageOptions?: SessionKeyStorageOptions,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
 		public readonly bundlerUrl?: string,
 	) {
-		this.storage = createSessionKeyStorage(storageOptions)
+		this.storage = createSessionKeyStorage()
 		this.initFeeTokenCache()
 	}
 
@@ -317,11 +315,14 @@ export class IntentGatewayV2 {
 	 *
 	 * Requires `intentsCoprocessor` and `bundlerUrl` to be set in the constructor.
 	 *
+	 * Session keys are automatically managed internally with environment-appropriate storage
+	 * (Node.js filesystem, browser localStorage/IndexedDB, or in-memory fallback).
+	 *
 	 * @example
 	 * ```typescript
-	 * const gateway = new IntentGatewayV2(source, dest, storage, coprocessor, bundlerUrl)
+	 * const gateway = new IntentGatewayV2(source, dest, coprocessor, bundlerUrl)
 	 *
-	 * // 1. Prepare order calldata
+	 * // 1. Prepare order calldata (generates and stores session key internally)
 	 * const calldata = await gateway.preparePlaceOrder(order)
 	 *
 	 * // 2. Submit the transaction
@@ -330,7 +331,7 @@ export class IntentGatewayV2 {
 	 *   data: calldata,
 	 * })
 	 *
-	 * // 3. Track execution
+	 * // 3. Track execution (session key is retrieved automatically for bid selection)
 	 * for await (const status of gateway.executeIntentOrder({ order, orderTxHash: txHash })) {
 	 *   console.log(status.status, status.metadata)
 	 * }
