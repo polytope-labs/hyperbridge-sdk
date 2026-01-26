@@ -1,5 +1,6 @@
 import { ApiPromise, Keyring } from "@polkadot/api"
 import type { SubmittableExtrinsic } from "@polkadot/api/types"
+import type { KeyringPair } from "@polkadot/keyring/types"
 import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
 import { decodeAddress } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
@@ -53,7 +54,7 @@ export class IntentsCoprocessor {
 	 * Creates a Substrate keypair from the configured private key
 	 * Supports both hex seed (without 0x prefix) and mnemonic phrases
 	 */
-	public getKeyPair() {
+	public getKeyPair(): KeyringPair {
 		if (!this.substratePrivateKey) {
 			throw new Error("Substrate PrivateKey Required")
 		}
