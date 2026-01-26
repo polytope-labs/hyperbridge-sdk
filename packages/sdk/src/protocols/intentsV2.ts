@@ -1,8 +1,10 @@
 import {
 	encodeFunctionData,
+	decodeFunctionData,
 	keccak256,
 	toHex,
 	encodeAbiParameters,
+	decodeAbiParameters,
 	concat,
 	pad,
 	maxUint256,
@@ -13,17 +15,22 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import IntentGatewayV2ABI from "@/abis/IntentGatewayV2"
 import { createSessionKeyStorage, type SessionKeyData } from "@/storage"
-import type {
-	HexString,
-	OrderV2,
-	PackedUserOperation,
-	SubmitBidOptions,
-	EstimateFillOrderV2Params,
-	FillOrderEstimateV2,
-	IPostRequest,
-	DispatchPost,
+import {
+	type HexString,
+	type OrderV2,
+	type PackedUserOperation,
+	type SubmitBidOptions,
+	type EstimateFillOrderV2Params,
+	type FillOrderEstimateV2,
+	type IPostRequest,
+	type DispatchPost,
+	type FillOptionsV2,
+	type SelectOptions,
+	type FillerBid,
+	type IntentOrderStatusUpdate,
+	type SelectBidResult,
+	type ExecuteIntentOrderOptions,
 } from "@/types"
-import type { SessionKeyStorageOptions } from "@/storage/types"
 import {
 	ADDRESS_ZERO,
 	bytes32ToBytes20,
@@ -35,18 +42,28 @@ import {
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
 	getRecordedStorageSlot,
+	sleep,
+	DEFAULT_POLL_INTERVAL,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
 import { EvmChain } from "@/chains/evm"
+import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
+import ERC7821ABI from "@/abis/erc7281"
+import { type ERC7821Call } from "@/types"
 
 /** EIP-712 type hash for SelectSolver message */
 export const SELECT_SOLVER_TYPEHASH = keccak256(toHex("SelectSolver(bytes32 commitment,address solver)"))
 
 /** Default graffiti value (bytes32 zero) */
 export const DEFAULT_GRAFFITI = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
+
+/**
+ * ERC-7821 single batch execution mode.
+ */
+export const ERC7821_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
  * IntentGatewayV2 utilities for placing orders and submitting bids.
@@ -56,12 +73,14 @@ export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
 	private readonly swap: Swap = new Swap()
 	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
+
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
-		storageOptions?: SessionKeyStorageOptions,
+		public readonly intentsCoprocessor?: IntentsCoprocessor,
+		public readonly bundlerUrl?: string,
 	) {
-		this.storage = createSessionKeyStorage(storageOptions)
+		this.storage = createSessionKeyStorage()
 		this.initFeeTokenCache()
 	}
 
@@ -101,7 +120,16 @@ export class IntentGatewayV2 {
 		}) as HexString
 	}
 
-	/** Prepares a bid UserOperation for submitting to Hyperbridge (used by fillers/solvers) */
+	/**
+	 * Prepares a bid UserOperation for submitting to Hyperbridge (used by fillers/solvers).
+	 *
+	 * The callData is encoded using ERC-7821 batch executor format since SolverAccount
+	 * extends ERC7821. The format is: execute(bytes32 mode, bytes executionData)
+	 * where executionData contains the fillOrder call to IntentGatewayV2.
+	 *
+	 * @param options - Bid submission options including order, fillOptions, and gas parameters
+	 * @returns PackedUserOperation ready for submission to Hyperbridge
+	 */
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
 		const {
 			order,
@@ -121,11 +149,29 @@ export class IntentGatewayV2 {
 			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
 		)
 
-		const callData = encodeFunctionData({
+		// Encode the inner fillOrder call to IntentGatewayV2
+		const fillOrderCalldata = encodeFunctionData({
 			abi: IntentGatewayV2ABI.ABI,
 			functionName: "fillOrder",
 			args: [order, fillOptions],
 		}) as HexString
+
+		// Calculate the native value needed for fillOrder (native outputs + dispatch fee)
+		const nativeOutputValue = order.output.assets
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
+
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+
+		const callData = this.encodeERC7821Execute([
+			{
+				target: intentGatewayV2Address,
+				value: totalNativeValue,
+				data: fillOrderCalldata,
+			},
+		])
+
 		const commitment = orderV2Commitment(order)
 		const accountGasLimits = this.packGasLimits(verificationGasLimit, callGasLimit)
 		const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
@@ -156,6 +202,495 @@ export class IntentGatewayV2 {
 		const signature = concat([commitment, solverSignature as Hex]) as HexString
 
 		return { ...userOp, signature }
+	}
+
+	/**
+	 * Selects the best bid from Hyperbridge and submits to the bundler.
+	 *
+	 * 1. Fetches bids from Hyperbridge
+	 * 2. Validates and sorts bids by USD value (WETH price fetched via swap, USDC/USDT at $1)
+	 * 3. Tries each bid (best to worst) until one passes simulation
+	 * 4. Signs and submits the winning bid to the bundler
+	 *
+	 * Requires `bundlerUrl` and `intentsCoprocessor` to be set in the constructor.
+	 */
+	async selectBid(order: OrderV2): Promise<SelectBidResult> {
+		if (!this.bundlerUrl) {
+			throw new Error("Bundler URL not configured")
+		}
+
+		if (!this.intentsCoprocessor) {
+			throw new Error("IntentsCoprocessor required")
+		}
+
+		const commitment = orderV2Commitment(order)
+		const sessionKeyData = await this.storage.getSessionKey(commitment)
+		if (!sessionKeyData) {
+			throw new Error("SessionKey not found")
+		}
+
+		const bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
+		if (bids.length === 0) {
+			throw new Error("No bids found")
+		}
+
+		// Validate and sort bids by USD value (best to worst)
+		const sortedBids = await this.validateAndSortBids(bids, order)
+		if (sortedBids.length === 0) {
+			throw new Error("No valid bids found")
+		}
+
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+		const domainSeparator = (await this.dest.client.readContract({
+			address: intentGatewayV2Address,
+			abi: IntentGatewayV2ABI.ABI,
+			functionName: "DOMAIN_SEPARATOR",
+		})) as HexString
+
+		// Try each bid in order (best to worst) until one passes simulation
+		let selectedBid: { bid: FillerBid; options: FillOptionsV2 } | null = null
+		let sessionSignature: HexString | null = null
+
+		for (const bidWithOptions of sortedBids) {
+			const solverAddress = bidWithOptions.bid.userOp.sender
+
+			// Sign for this solver (must re-sign for each different solver)
+			const signature = await this.signSolverSelection(commitment, solverAddress, domainSeparator, sessionKeyData)
+			if (!signature) {
+				continue
+			}
+
+			const selectOptions: SelectOptions = {
+				commitment,
+				solver: solverAddress,
+				signature,
+			}
+
+			// Try simulation
+			try {
+				await this.simulateAndValidate(
+					order,
+					selectOptions,
+					bidWithOptions.options,
+					solverAddress,
+					intentGatewayV2Address,
+				)
+				// Simulation succeeded, use this bid
+				selectedBid = bidWithOptions
+				sessionSignature = signature
+				break
+			} catch {
+				// Simulation failed, try next bid
+				continue
+			}
+		}
+
+		if (!selectedBid || !sessionSignature) {
+			throw new Error("No bids passed simulation")
+		}
+
+		const solverAddress = selectedBid.bid.userOp.sender
+
+		const finalSignature = concat([selectedBid.bid.userOp.signature as Hex, sessionSignature as Hex]) as HexString
+
+		const signedUserOp: PackedUserOperation = {
+			...selectedBid.bid.userOp,
+			signature: finalSignature,
+		}
+
+		const entryPointAddress = this.dest.configService.getEntryPointV08Address(order.destination)
+		const chainId = BigInt(
+			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
+		)
+		const userOpHash = this.computeUserOpHash(signedUserOp, entryPointAddress, chainId)
+
+		const bundlerResponse = await fetch(this.bundlerUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "eth_sendUserOperation",
+				params: [
+					{
+						sender: signedUserOp.sender,
+						nonce: toHex(signedUserOp.nonce),
+						initCode: signedUserOp.initCode,
+						callData: signedUserOp.callData,
+						accountGasLimits: signedUserOp.accountGasLimits,
+						preVerificationGas: toHex(signedUserOp.preVerificationGas),
+						gasFees: signedUserOp.gasFees,
+						paymasterAndData: signedUserOp.paymasterAndData,
+						signature: signedUserOp.signature,
+					},
+					entryPointAddress,
+				],
+			}),
+		})
+
+		const bundlerResult = await bundlerResponse.json()
+
+		if (bundlerResult.error) {
+			throw new Error(`Bundler error: ${bundlerResult.error.message || JSON.stringify(bundlerResult.error)}`)
+		}
+
+		return {
+			userOp: signedUserOp,
+			userOpHash: (bundlerResult.result || userOpHash) as HexString,
+			solverAddress,
+			commitment,
+		}
+	}
+
+	/**
+	 * Generator function that orchestrates the full intent order execution flow.
+	 *
+	 * Flow: ORDER_SUBMITTED → ORDER_CONFIRMED → AWAITING_BIDS → BIDS_RECEIVED → BID_SELECTED → USEROP_SUBMITTED
+	 *
+	 * Requires `intentsCoprocessor` and `bundlerUrl` to be set in the constructor.
+	 *
+	 * Session keys are automatically managed internally with environment-appropriate storage
+	 * (Node.js filesystem, browser localStorage/IndexedDB, or in-memory fallback).
+	 *
+	 * @example
+	 * ```typescript
+	 * const gateway = new IntentGatewayV2(source, dest, coprocessor, bundlerUrl)
+	 *
+	 * // 1. Prepare order calldata (generates and stores session key internally)
+	 * const calldata = await gateway.preparePlaceOrder(order)
+	 *
+	 * // 2. Submit the transaction
+	 * const txHash = await walletClient.sendTransaction({
+	 *   to: source.configService.getIntentGatewayV2Address(order.source),
+	 *   data: calldata,
+	 * })
+	 *
+	 * // 3. Track execution (session key is retrieved automatically for bid selection)
+	 * for await (const status of gateway.executeIntentOrder({ order, orderTxHash: txHash })) {
+	 *   console.log(status.status, status.metadata)
+	 * }
+	 * ```
+	 */
+	async *executeIntentOrder(options: ExecuteIntentOrderOptions): AsyncGenerator<IntentOrderStatusUpdate, void> {
+		const {
+			order,
+			orderTxHash,
+			minBids = 1,
+			bidTimeoutMs = 60_000,
+			pollIntervalMs = DEFAULT_POLL_INTERVAL,
+		} = options
+
+		if (!this.intentsCoprocessor) {
+			yield {
+				status: "FAILED",
+				metadata: { error: "IntentsCoprocessor required for order execution" },
+			}
+			return
+		}
+
+		if (!this.bundlerUrl) {
+			yield {
+				status: "FAILED",
+				metadata: { error: "Bundler URL not configured" },
+			}
+			return
+		}
+
+		const commitment = orderV2Commitment(order)
+
+		try {
+			yield {
+				status: "ORDER_SUBMITTED",
+				metadata: { commitment, transactionHash: orderTxHash },
+			}
+
+			try {
+				const receipt = await this.source.client.waitForTransactionReceipt({ hash: orderTxHash })
+
+				if (receipt.status === "reverted") {
+					yield {
+						status: "FAILED",
+						metadata: {
+							commitment,
+							transactionHash: orderTxHash,
+							error: "Order transaction reverted",
+						},
+					}
+					return
+				}
+
+				yield {
+					status: "ORDER_CONFIRMED",
+					metadata: {
+						commitment,
+						transactionHash: orderTxHash,
+						blockHash: receipt.blockHash,
+						blockNumber: Number(receipt.blockNumber),
+					},
+				}
+			} catch (err) {
+				yield {
+					status: "FAILED",
+					metadata: {
+						commitment,
+						transactionHash: orderTxHash,
+						error: `Failed to confirm order transaction: ${err instanceof Error ? err.message : String(err)}`,
+					},
+				}
+				return
+			}
+
+			yield {
+				status: "AWAITING_BIDS",
+				metadata: { commitment },
+			}
+
+			const startTime = Date.now()
+			let bids: FillerBid[] = []
+
+			while (Date.now() - startTime < bidTimeoutMs) {
+				try {
+					bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
+
+					if (bids.length >= minBids) {
+						break
+					}
+				} catch {
+					// Continue polling on errors
+				}
+
+				await sleep(pollIntervalMs)
+			}
+
+			if (bids.length === 0) {
+				yield {
+					status: "FAILED",
+					metadata: {
+						commitment,
+						error: `No bids received within ${bidTimeoutMs}ms timeout`,
+					},
+				}
+				return
+			}
+
+			yield {
+				status: "BIDS_RECEIVED",
+				metadata: {
+					commitment,
+					bidCount: bids.length,
+					bids,
+				},
+			}
+
+			try {
+				const result = await this.selectBid(order)
+
+				yield {
+					status: "BID_SELECTED",
+					metadata: {
+						commitment,
+						selectedSolver: result.solverAddress,
+						userOpHash: result.userOpHash,
+						userOp: result.userOp,
+					},
+				}
+
+				yield {
+					status: "USEROP_SUBMITTED",
+					metadata: {
+						commitment,
+						userOpHash: result.userOpHash,
+						selectedSolver: result.solverAddress,
+					},
+				}
+			} catch (err) {
+				yield {
+					status: "FAILED",
+					metadata: {
+						commitment,
+						error: `Failed to select bid and submit: ${err instanceof Error ? err.message : String(err)}`,
+					},
+				}
+				return
+			}
+		} catch (err) {
+			yield {
+				status: "FAILED",
+				metadata: {
+					commitment,
+					error: `Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+				},
+			}
+		}
+	}
+
+	/**
+	 * Validates bids and sorts them by USD value (best to worst).
+	 * A bid is valid if fillOptions.outputs[i].amount >= order.output.assets[i].amount for all i.
+	 * USD value is calculated using USDC/USDT at $1 and WETH price fetched via swap.
+	 */
+	private async validateAndSortBids(
+		bids: FillerBid[],
+		order: OrderV2,
+	): Promise<{ bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[]> {
+		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
+
+		const destChain = order.destination
+		const wethAddress = this.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset.toLowerCase()
+		const usdcAddress = this.dest.configService.getUsdcAsset(destChain).toLowerCase()
+		const usdtAddress = this.dest.configService.getUsdtAsset(destChain).toLowerCase()
+		const usdcDecimals = this.dest.configService.getUsdcDecimals(destChain)
+		const usdtDecimals = this.dest.configService.getUsdtDecimals(destChain)
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(destChain).toLowerCase()
+
+		let wethPriceUsd = new Decimal(0)
+		try {
+			const oneWeth = 10n ** 18n
+			const { amountOut } = await this.swap.findBestProtocolWithAmountIn(
+				this.dest.client,
+				this.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset,
+				this.dest.configService.getUsdcAsset(destChain),
+				oneWeth,
+				destChain,
+				{ selectedProtocol: "v2" },
+			)
+			wethPriceUsd = new Decimal(formatUnits(amountOut, usdcDecimals))
+		} catch {
+			throw new Error("Failed to fetch WETH price")
+		}
+
+		for (const bid of bids) {
+			try {
+				const innerCalls = this.decodeERC7821Execute(bid.userOp.callData)
+				if (!innerCalls || innerCalls.length === 0) {
+					continue
+				}
+
+				let fillOptions: FillOptionsV2 | null = null
+				for (const call of innerCalls) {
+					try {
+						const decoded = decodeFunctionData({
+							abi: IntentGatewayV2ABI.ABI,
+							data: call.data,
+						})
+
+						if (decoded?.functionName === "fillOrder" && decoded.args && decoded.args.length >= 2) {
+							fillOptions = decoded.args[1] as FillOptionsV2
+							break
+						}
+					} catch {
+						continue
+					}
+				}
+
+				if (!fillOptions) {
+					throw new Error("Could not find fillOptions in calldata")
+				}
+
+				const bidOutputs = fillOptions.outputs
+				if (!bidOutputs) {
+					continue
+				}
+
+				let isValid = true
+				for (let i = 0; i < order.output.assets.length; i++) {
+					const requiredAmount = order.output.assets[i].amount
+					const bidAmount = bidOutputs[i]?.amount ?? 0n
+
+					if (bidAmount < requiredAmount) {
+						isValid = false
+						break
+					}
+				}
+
+				if (!isValid) {
+					continue
+				}
+
+				// Calculate USD value of bid outputs
+				let totalUsdValue = new Decimal(0)
+				for (let i = 0; i < bidOutputs.length; i++) {
+					const tokenAddress = bytes32ToBytes20(order.output.assets[i].token).toLowerCase()
+					const amount = bidOutputs[i].amount
+
+					if (tokenAddress === usdcAddress) {
+						totalUsdValue = totalUsdValue.plus(new Decimal(formatUnits(amount, usdcDecimals)))
+					} else if (tokenAddress === usdtAddress) {
+						totalUsdValue = totalUsdValue.plus(new Decimal(formatUnits(amount, usdtDecimals)))
+					} else if (tokenAddress === wethAddress) {
+						const wethAmount = new Decimal(formatUnits(amount, 18))
+						totalUsdValue = totalUsdValue.plus(wethAmount.times(wethPriceUsd))
+					}
+				}
+
+				validBids.push({ bid, options: fillOptions, usdValue: totalUsdValue })
+			} catch {
+				continue
+			}
+		}
+
+		// Sort by USD value (highest first)
+		validBids.sort((a, b) => b.usdValue.minus(a.usdValue).toNumber())
+
+		return validBids
+	}
+
+	/**
+	 * Simulates select + fillOrder to verify the execution will succeed.
+	 * No state overrides are used - the solver should already have tokens and approvals.
+	 * The contract validates that outputs >= order.output.assets, so we just need to check execution succeeds.
+	 */
+	private async simulateAndValidate(
+		order: OrderV2,
+		selectOptions: SelectOptions,
+		fillOptions: FillOptionsV2,
+		solverAddress: HexString,
+		intentGatewayV2Address: HexString,
+	): Promise<void> {
+		const nativeOutputValue = order.output.assets
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
+
+		const calls: { to: HexString; data: HexString; value: bigint }[] = [
+			// 1. select() call
+			{
+				to: intentGatewayV2Address,
+				data: encodeFunctionData({
+					abi: IntentGatewayV2ABI.ABI,
+					functionName: "select",
+					args: [selectOptions],
+				}) as HexString,
+				value: 0n,
+			},
+			// 2. fillOrder() call
+			{
+				to: intentGatewayV2Address,
+				data: encodeFunctionData({
+					abi: IntentGatewayV2ABI.ABI,
+					functionName: "fillOrder",
+					args: [order, fillOptions],
+				}) as HexString,
+				value: totalNativeValue,
+			},
+		]
+
+		// Run simulation from the solver account (no state overrides needed)
+		const simulationResult = await this.dest.client.simulateCalls({
+			account: solverAddress,
+			calls,
+		})
+
+		// Check select() succeeded
+		if (simulationResult.results[0].status !== "success") {
+			throw new Error("SimulationFailed")
+		}
+
+		// Check fillOrder() succeeded
+		// The contract validates outputs >= order.output.assets internally
+		if (simulationResult.results[1].status !== "success") {
+			throw new Error("SimulationFailed")
+		}
 	}
 
 	/** Estimates gas costs for fillOrder execution via ERC-4337 */
@@ -285,7 +820,7 @@ export class IntentGatewayV2 {
 		domainSeparator: HexString,
 		sessionKeyData?: SessionKeyData,
 	): Promise<HexString | null> {
-		const sessionKeyData_ = sessionKeyData ?? await this.storage.getSessionKey(commitment)
+		const sessionKeyData_ = sessionKeyData ?? (await this.storage.getSessionKey(commitment))
 		if (!sessionKeyData_) {
 			return null
 		}
@@ -356,6 +891,65 @@ export class IntentGatewayV2 {
 		const priorityFeeHex = pad(toHex(maxPriorityFeePerGas), { size: 16 })
 		const maxFeeHex = pad(toHex(maxFeePerGas), { size: 16 })
 		return concat([priorityFeeHex, maxFeeHex]) as HexString
+	}
+
+	// =========================================================================
+	// ERC-7821 Batch Executor Utilities
+	// =========================================================================
+
+	/**
+	 * Encodes calls into ERC-7821 execute function calldata.
+	 * Format: execute(bytes32 mode, bytes executionData)
+	 * Where executionData = abi.encode(calls) and calls = (address target, uint256 value, bytes data)[]
+	 *
+	 * @param calls - Array of calls to encode
+	 * @returns Encoded calldata for execute function
+	 */
+	encodeERC7821Execute(calls: ERC7821Call[]): HexString {
+		const executionData = encodeAbiParameters(
+			[{ type: "tuple[]", components: ERC7821ABI.ABI[1].components }],
+			[calls.map((call) => ({ target: call.target, value: call.value, data: call.data }))],
+		) as HexString
+
+		return encodeFunctionData({
+			abi: ERC7821ABI.ABI,
+			functionName: "execute",
+			args: [ERC7821_BATCH_MODE, executionData],
+		}) as HexString
+	}
+
+	/**
+	 * Decodes ERC-7821 execute function calldata back into individual calls.
+	 *
+	 * @param callData - The execute function calldata to decode
+	 * @returns Array of decoded calls, or null if decoding fails
+	 */
+	decodeERC7821Execute(callData: HexString): ERC7821Call[] | null {
+		try {
+			const decoded = decodeFunctionData({
+				abi: ERC7821ABI.ABI,
+				data: callData,
+			})
+
+			if (decoded?.functionName !== "execute" || !decoded.args || decoded.args.length < 2) {
+				return null
+			}
+
+			const executionData = decoded.args[1] as HexString
+
+			const [calls] = decodeAbiParameters(
+				[{ type: "tuple[]", components: ERC7821ABI.ABI[1].components }],
+				executionData,
+			) as [ERC7821Call[]]
+
+			return calls.map((call) => ({
+				target: call.target as HexString,
+				value: call.value,
+				data: call.data as HexString,
+			}))
+		} catch {
+			return null
+		}
 	}
 
 	// =========================================================================
