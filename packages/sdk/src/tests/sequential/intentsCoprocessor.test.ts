@@ -1,10 +1,12 @@
 import "log-timestamp"
 import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
+import { SubstrateChain } from "@/chains/substrate"
 import type { HexString, PackedUserOperation } from "@/types"
 import { keccak256, toHex, encodeAbiParameters } from "viem"
 import fixtureData from "@/tests/fixtures/intent-gateway-v2.json"
 
 describe.sequential("IntentsCoprocessor", () => {
+	let hyperbridge: SubstrateChain
 	let coprocessor: IntentsCoprocessor
 
 	const testCommitment = keccak256(toHex(`test-${Date.now()}-${Math.random()}`)) as HexString
@@ -25,17 +27,24 @@ describe.sequential("IntentsCoprocessor", () => {
 	const encodedUserOp = encodeUserOp(testUserOp)
 
 	beforeAll(async () => {
-		const wsUrl = process.env.HYPERBRIDGE_GARGANTUA!
-		const privateKey = process.env.SECRET_PHRASE!
+		hyperbridge = new SubstrateChain({
+			wsUrl: process.env.HYPERBRIDGE_GARGANTUA!,
+			hasher: "Keccak",
+			stateMachineId: "KUSAMA-4009",
+			consensusStateId: "PAS0",
+		})
+		await hyperbridge.connect()
+		console.log("Connected to Hyperbridge")
 
-		coprocessor = await IntentsCoprocessor.create(wsUrl, privateKey)
-		console.log("Connected to IntentsCoprocessor")
+		const privateKey = process.env.SECRET_PHRASE!
+		coprocessor = IntentsCoprocessor.fromSubstrateChain(hyperbridge, privateKey)
+
 		console.log("Test commitment:", testCommitment)
 		console.log("Test userOp sender:", testUserOp.sender)
 	})
 
 	afterAll(async () => {
-		await coprocessor.disconnect()
+		await hyperbridge.disconnect()
 		console.log("Disconnected")
 	})
 

@@ -1,10 +1,11 @@
-import { ApiPromise, WsProvider, Keyring } from "@polkadot/api"
+import { ApiPromise, Keyring } from "@polkadot/api"
 import type { SubmittableExtrinsic } from "@polkadot/api/types"
 import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
-import { decodeAddress, keccakAsU8a } from "@polkadot/util-crypto"
+import { decodeAddress } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
 import { decodeAbiParameters } from "viem"
 import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@/types"
+import type { SubstrateChain } from "./substrate"
 
 /** SCALE codec for Bid { filler: AccountId, user_op: Vec<u8> } */
 const BidCodec = Struct({ filler: Bytes(32), user_op: Vector(u8) })
@@ -15,31 +16,31 @@ const OFFCHAIN_BID_PREFIX = new TextEncoder().encode("intents::bid::")
 /**
  * Service for interacting with Hyperbridge's pallet-intents coprocessor.
  * Handles bid submission and retrieval for the IntentGatewayV2 protocol.
- * Maintains a persistent WebSocket connection for efficiency.
  *
- * Use the static `create()` method to instantiate.
+ * Can be created from an existing SubstrateChain instance to share the connection.
  */
 export class IntentsCoprocessor {
 	/**
-	 * Creates a new IntentsCoprocessor with an established connection.
-	 * WsProvider handles auto-reconnect internally.
+	 * Creates an IntentsCoprocessor from an existing SubstrateChain instance.
+	 * This shares the connection - the SubstrateChain must already be connected.
 	 *
-	 * @param wsUrl - WebSocket URL for Hyperbridge
+	 * @param chain - Connected SubstrateChain instance (typically Hyperbridge)
 	 * @param substratePrivateKey - Private key for signing extrinsics (optional for read-only operations)
 	 */
-	static async create(wsUrl: string, substratePrivateKey?: string): Promise<IntentsCoprocessor> {
-		const provider = new WsProvider(wsUrl)
-		const api = await ApiPromise.create({
-			provider,
-			typesBundle: {
-				spec: {
-					gargantua: { hasher: keccakAsU8a },
-					nexus: { hasher: keccakAsU8a },
-				},
-			},
-		})
-		await api.isReady
+	static fromSubstrateChain(chain: SubstrateChain, substratePrivateKey?: string): IntentsCoprocessor {
+		if (!chain.api) {
+			throw new Error("SubstrateChain must be connected before creating IntentsCoprocessor")
+		}
+		return new IntentsCoprocessor(chain.api, substratePrivateKey)
+	}
 
+	/**
+	 * Creates an IntentsCoprocessor from an existing ApiPromise instance.
+	 *
+	 * @param api - Connected ApiPromise instance
+	 * @param substratePrivateKey - Private key for signing extrinsics (optional for read-only operations)
+	 */
+	static fromApi(api: ApiPromise, substratePrivateKey?: string): IntentsCoprocessor {
 		return new IntentsCoprocessor(api, substratePrivateKey)
 	}
 
@@ -47,14 +48,6 @@ export class IntentsCoprocessor {
 		private api: ApiPromise,
 		private substratePrivateKey?: string,
 	) {}
-
-	/**
-	 * Disconnects from Hyperbridge.
-	 * Should be called when done using the coprocessor.
-	 */
-	async disconnect(): Promise<void> {
-		await this.api.disconnect()
-	}
 
 	/**
 	 * Creates a Substrate keypair from the configured private key
