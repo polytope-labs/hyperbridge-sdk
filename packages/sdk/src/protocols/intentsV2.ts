@@ -4,6 +4,7 @@ import {
 	keccak256,
 	toHex,
 	encodeAbiParameters,
+	decodeAbiParameters,
 	concat,
 	pad,
 	maxUint256,
@@ -15,7 +16,6 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import IntentGatewayV2ABI from "@/abis/IntentGatewayV2"
 import { createSessionKeyStorage, type SessionKeyData } from "@/storage"
 import {
-	IntentOrderStatus,
 	type HexString,
 	type OrderV2,
 	type PackedUserOperation,
@@ -51,12 +51,19 @@ import { EvmChain } from "@/chains/evm"
 import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
+import ERC7821ABI from "@/abis/erc7281"
+import { type ERC7821Call } from "@/types"
 
 /** EIP-712 type hash for SelectSolver message */
 export const SELECT_SOLVER_TYPEHASH = keccak256(toHex("SelectSolver(bytes32 commitment,address solver)"))
 
 /** Default graffiti value (bytes32 zero) */
 export const DEFAULT_GRAFFITI = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
+
+/**
+ * ERC-7821 single batch execution mode.
+ */
+export const ERC7821_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
  * IntentGatewayV2 utilities for placing orders and submitting bids.
@@ -113,7 +120,16 @@ export class IntentGatewayV2 {
 		}) as HexString
 	}
 
-	/** Prepares a bid UserOperation for submitting to Hyperbridge (used by fillers/solvers) */
+	/**
+	 * Prepares a bid UserOperation for submitting to Hyperbridge (used by fillers/solvers).
+	 *
+	 * The callData is encoded using ERC-7821 batch executor format since SolverAccount
+	 * extends ERC7821. The format is: execute(bytes32 mode, bytes executionData)
+	 * where executionData contains the fillOrder call to IntentGatewayV2.
+	 *
+	 * @param options - Bid submission options including order, fillOptions, and gas parameters
+	 * @returns PackedUserOperation ready for submission to Hyperbridge
+	 */
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
 		const {
 			order,
@@ -133,11 +149,29 @@ export class IntentGatewayV2 {
 			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
 		)
 
-		const callData = encodeFunctionData({
+		// Encode the inner fillOrder call to IntentGatewayV2
+		const fillOrderCalldata = encodeFunctionData({
 			abi: IntentGatewayV2ABI.ABI,
 			functionName: "fillOrder",
 			args: [order, fillOptions],
 		}) as HexString
+
+		// Calculate the native value needed for fillOrder (native outputs + dispatch fee)
+		const nativeOutputValue = order.output.assets
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
+
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+
+		const callData = this.encodeERC7821Execute([
+			{
+				target: intentGatewayV2Address,
+				value: totalNativeValue,
+				data: fillOrderCalldata,
+			},
+		])
+
 		const commitment = orderV2Commitment(order)
 		const accountGasLimits = this.packGasLimits(verificationGasLimit, callGasLimit)
 		const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
@@ -507,6 +541,7 @@ export class IntentGatewayV2 {
 		const usdtAddress = this.dest.configService.getUsdtAsset(destChain).toLowerCase()
 		const usdcDecimals = this.dest.configService.getUsdcDecimals(destChain)
 		const usdtDecimals = this.dest.configService.getUsdtDecimals(destChain)
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(destChain).toLowerCase()
 
 		let wethPriceUsd = new Decimal(0)
 		try {
@@ -526,22 +561,37 @@ export class IntentGatewayV2 {
 
 		for (const bid of bids) {
 			try {
-				const decoded = decodeFunctionData({
-					abi: IntentGatewayV2ABI.ABI,
-					data: bid.userOp.callData,
-				})
-
-				if (decoded?.functionName !== "fillOrder" || !decoded.args || decoded.args.length < 2) {
+				const innerCalls = this.decodeERC7821Execute(bid.userOp.callData)
+				if (!innerCalls || innerCalls.length === 0) {
 					continue
 				}
 
-				const fillOptions = decoded.args?.[1] as FillOptionsV2
-				const bidOutputs = fillOptions?.outputs
+				let fillOptions: FillOptionsV2 | null = null
+				for (const call of innerCalls) {
+					try {
+						const decoded = decodeFunctionData({
+							abi: IntentGatewayV2ABI.ABI,
+							data: call.data,
+						})
+
+						if (decoded?.functionName === "fillOrder" && decoded.args && decoded.args.length >= 2) {
+							fillOptions = decoded.args[1] as FillOptionsV2
+							break
+						}
+					} catch {
+						continue
+					}
+				}
+
+				if (!fillOptions) {
+					throw new Error("Could not find fillOptions in calldata")
+				}
+
+				const bidOutputs = fillOptions.outputs
 				if (!bidOutputs) {
 					continue
 				}
 
-				// Check if all outputs meet minimum requirements
 				let isValid = true
 				for (let i = 0; i < order.output.assets.length; i++) {
 					const requiredAmount = order.output.assets[i].amount
@@ -841,6 +891,65 @@ export class IntentGatewayV2 {
 		const priorityFeeHex = pad(toHex(maxPriorityFeePerGas), { size: 16 })
 		const maxFeeHex = pad(toHex(maxFeePerGas), { size: 16 })
 		return concat([priorityFeeHex, maxFeeHex]) as HexString
+	}
+
+	// =========================================================================
+	// ERC-7821 Batch Executor Utilities
+	// =========================================================================
+
+	/**
+	 * Encodes calls into ERC-7821 execute function calldata.
+	 * Format: execute(bytes32 mode, bytes executionData)
+	 * Where executionData = abi.encode(calls) and calls = (address target, uint256 value, bytes data)[]
+	 *
+	 * @param calls - Array of calls to encode
+	 * @returns Encoded calldata for execute function
+	 */
+	encodeERC7821Execute(calls: ERC7821Call[]): HexString {
+		const executionData = encodeAbiParameters(
+			[{ type: "tuple[]", components: ERC7821ABI.ABI[1].components }],
+			[calls.map((call) => ({ target: call.target, value: call.value, data: call.data }))],
+		) as HexString
+
+		return encodeFunctionData({
+			abi: ERC7821ABI.ABI,
+			functionName: "execute",
+			args: [ERC7821_BATCH_MODE, executionData],
+		}) as HexString
+	}
+
+	/**
+	 * Decodes ERC-7821 execute function calldata back into individual calls.
+	 *
+	 * @param callData - The execute function calldata to decode
+	 * @returns Array of decoded calls, or null if decoding fails
+	 */
+	decodeERC7821Execute(callData: HexString): ERC7821Call[] | null {
+		try {
+			const decoded = decodeFunctionData({
+				abi: ERC7821ABI.ABI,
+				data: callData,
+			})
+
+			if (decoded?.functionName !== "execute" || !decoded.args || decoded.args.length < 2) {
+				return null
+			}
+
+			const executionData = decoded.args[1] as HexString
+
+			const [calls] = decodeAbiParameters(
+				[{ type: "tuple[]", components: ERC7821ABI.ABI[1].components }],
+				executionData,
+			) as [ERC7821Call[]]
+
+			return calls.map((call) => ({
+				target: call.target as HexString,
+				value: call.value,
+				data: call.data as HexString,
+			}))
+		} catch {
+			return null
+		}
 	}
 
 	// =========================================================================

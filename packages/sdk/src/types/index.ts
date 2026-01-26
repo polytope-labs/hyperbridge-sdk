@@ -1442,3 +1442,10 @@ export interface ExecuteIntentOrderOptions {
 	bidTimeoutMs?: number
 	pollIntervalMs?: number
 }
+
+/** Type for ERC-7821 Call struct */
+export type ERC7821Call = {
+	target: `0x${string}`
+	value: bigint
+	data: `0x${string}`
+}
