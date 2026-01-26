@@ -1350,7 +1350,6 @@ export interface BidSubmissionResult {
 	error?: string
 }
 
-
 /**
  * Represents a storage entry from pallet-intents Bids storage
  * StorageDoubleMap<_, Blake2_128Concat, H256, Blake2_128Concat, AccountId, Balance>
@@ -1387,4 +1386,59 @@ export interface SelectOptions {
 	solver: HexString
 	/** The EIP-712 signature from the session key */
 	signature: HexString
+}
+
+// =============================================================================
+// Intent Order Flow Types
+// =============================================================================
+
+/** Status stages for the intent order execution flow */
+export const IntentOrderStatus = Object.freeze({
+	ORDER_SUBMITTED: "ORDER_SUBMITTED",
+	ORDER_CONFIRMED: "ORDER_CONFIRMED",
+	AWAITING_BIDS: "AWAITING_BIDS",
+	BIDS_RECEIVED: "BIDS_RECEIVED",
+	BID_SELECTED: "BID_SELECTED",
+	USEROP_SUBMITTED: "USEROP_SUBMITTED",
+	FAILED: "FAILED",
+})
+
+export type IntentOrderStatus = typeof IntentOrderStatus
+export type IntentOrderStatusKey = keyof typeof IntentOrderStatus
+
+/** Metadata for intent order status updates */
+export interface IntentOrderStatusMetadata {
+	commitment?: HexString
+	transactionHash?: HexString
+	blockHash?: HexString
+	blockNumber?: number
+	bidCount?: number
+	bids?: FillerBid[]
+	selectedSolver?: HexString
+	userOpHash?: HexString
+	userOp?: PackedUserOperation
+	error?: string
+}
+
+/** Status update yielded by the intent order stream */
+export interface IntentOrderStatusUpdate {
+	status: IntentOrderStatusKey
+	metadata: IntentOrderStatusMetadata
+}
+
+/** Result of selecting a bid and submitting to the bundler */
+export interface SelectBidResult {
+	userOp: PackedUserOperation
+	userOpHash: HexString
+	solverAddress: HexString
+	commitment: HexString
+}
+
+/** Options for executing an intent order */
+export interface ExecuteIntentOrderOptions {
+	order: OrderV2
+	orderTxHash: HexString
+	minBids?: number
+	bidTimeoutMs?: number
+	pollIntervalMs?: number
 }

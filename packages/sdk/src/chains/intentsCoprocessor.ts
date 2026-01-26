@@ -55,7 +55,7 @@ export class IntentsCoprocessor {
 	 */
 	public getKeyPair() {
 		if (!this.substratePrivateKey) {
-			throw new Error("SubstratePrivateKeyRequired")
+			throw new Error("Substrate PrivateKey Required")
 		}
 
 		const keyring = new Keyring({ type: "sr25519" })
