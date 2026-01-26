@@ -1,7 +1,7 @@
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api"
 import type { SubmittableExtrinsic } from "@polkadot/api/types"
 import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
-import { decodeAddress } from "@polkadot/util-crypto"
+import { decodeAddress, keccakAsU8a } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
 import { decodeAbiParameters } from "viem"
 import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@/types"
@@ -29,7 +29,15 @@ export class IntentsCoprocessor {
 	 */
 	static async create(wsUrl: string, substratePrivateKey?: string): Promise<IntentsCoprocessor> {
 		const provider = new WsProvider(wsUrl)
-		const api = await ApiPromise.create({ provider })
+		const api = await ApiPromise.create({
+			provider,
+			typesBundle: {
+				spec: {
+					gargantua: { hasher: keccakAsU8a },
+					nexus: { hasher: keccakAsU8a },
+				},
+			},
+		})
 		await api.isReady
 
 		return new IntentsCoprocessor(api, substratePrivateKey)
@@ -52,7 +60,7 @@ export class IntentsCoprocessor {
 	 * Creates a Substrate keypair from the configured private key
 	 * Supports both hex seed (without 0x prefix) and mnemonic phrases
 	 */
-	private getKeyPair() {
+	public getKeyPair() {
 		if (!this.substratePrivateKey) {
 			throw new Error("SubstratePrivateKeyRequired")
 		}
@@ -74,25 +82,22 @@ export class IntentsCoprocessor {
 
 		return new Promise<BidSubmissionResult>((resolve) => {
 			extrinsic
-				.signAndSend(keyPair, (status) => {
-					if (status.isInBlock || status.isFinalized) {
+				.signAndSend(keyPair, (result) => {
+					if (result.status.isInBlock) {
 						resolve({
 							success: true,
-							blockHash: status.status.asInBlock.toHex() as HexString,
+							blockHash: result.status.asInBlock.toHex() as HexString,
 							extrinsicHash: extrinsic.hash.toHex() as HexString,
 						})
-					} else if (status.isError) {
+					} else if (result.dispatchError) {
 						resolve({
 							success: false,
-							error: `Extrinsic failed: ${status.status.toString()}`,
+							error: `Dispatch error: ${result.dispatchError.toString()}`,
 						})
 					}
 				})
 				.catch((err: Error) => {
-					resolve({
-						success: false,
-						error: err.message,
-					})
+					resolve({ success: false, error: err.message })
 				})
 		})
 	}
@@ -106,7 +111,7 @@ export class IntentsCoprocessor {
 	 */
 	async submitBid(commitment: HexString, userOp: HexString): Promise<BidSubmissionResult> {
 		try {
-			const extrinsic = this.api.tx.intents.placeBid(commitment, userOp)
+			const extrinsic = this.api.tx.intentsCoprocessor.placeBid(commitment, userOp)
 			return await this.signAndSendExtrinsic(extrinsic)
 		} catch (error) {
 			return {
@@ -126,7 +131,7 @@ export class IntentsCoprocessor {
 	 */
 	async retractBid(commitment: HexString): Promise<BidSubmissionResult> {
 		try {
-			const extrinsic = this.api.tx.intents.retractBid(commitment)
+			const extrinsic = this.api.tx.intentsCoprocessor.retractBid(commitment)
 			return await this.signAndSendExtrinsic(extrinsic)
 		} catch (error) {
 			return {
@@ -145,7 +150,7 @@ export class IntentsCoprocessor {
 	 */
 	async getBidStorageEntries(commitment: HexString): Promise<BidStorageEntry[]> {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const entries = await (this.api.query.intents.bids as any).entries(commitment)
+		const entries = await (this.api.query.intentsCoprocessor.bids as any).entries(commitment)
 
 		return entries.map(([storageKey, depositValue]: [any, any]) => ({
 			commitment,
