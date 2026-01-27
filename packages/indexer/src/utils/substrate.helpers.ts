@@ -109,7 +109,7 @@ export function getHostStateMachine(chainId: string): StateMachineId {
 }
 
 export function isHyperbridge(host: StateMachineId): boolean {
-	return host === HYPERBRIDGE.mainnet || host === HYPERBRIDGE.testnet
+	return host === HYPERBRIDGE.mainnet || host === HYPERBRIDGE.testnet || host === HYPERBRIDGE.local
 }
 
 /**
