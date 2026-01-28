@@ -93,10 +93,10 @@ export class IntentFiller {
 				{ chains: chainsWithSolverSelection },
 				"Setting up EIP-7702 delegation on chains with solver selection",
 			)
-			const result = await this.delegationService.setupDelegationOnChains(chainsWithSolverSelection)
-			if (!result.success) {
-				this.logger.warn({ results: result.results }, "Some chains failed EIP-7702 delegation setup")
-			}
+			// const result = await this.delegationService.setupDelegationOnChains(chainsWithSolverSelection)
+			// if (!result.success) {
+			// 	this.logger.warn({ results: result.results }, "Some chains failed EIP-7702 delegation setup")
+			// }
 		}
 	}
 

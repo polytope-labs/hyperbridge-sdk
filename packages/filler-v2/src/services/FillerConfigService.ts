@@ -163,8 +163,10 @@ export class FillerConfigService {
 		return this.fillerConfig?.substratePrivateKey
 	}
 
-	getEntryPointAddress(): HexString | undefined {
-		return this.fillerConfig?.entryPointAddress as HexString | undefined
+	getEntryPointAddress(chainId?: string): HexString | undefined {
+		// Use provided chainId or default to the destination chain from context
+		const chain = chainId ?? "EVM-97"
+		return this.chainConfigService.getEntryPointV08Address(chain) as HexString | undefined
 	}
 
 	getSolverAccountContractAddress(): HexString | undefined {

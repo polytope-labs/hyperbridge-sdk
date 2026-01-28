@@ -8,7 +8,8 @@ import {
 	ADDRESS_ZERO,
 	TokenInfoV2,
 	adjustDecimals,
-	IntentsCoprocessor
+	IntentsCoprocessor,
+	hexToString,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
@@ -280,10 +281,14 @@ export class BasicFiller implements FillerStrategy {
 		startTime: number,
 		intentsCoprocessor: IntentsCoprocessor,
 	): Promise<ExecutionResult> {
-		const entryPointAddress = this.configService.getEntryPointAddress()
+		// Decode destination chain ID (may be hex-encoded like "0x45564d2d3830303032" or plain "EVM-80002")
+		const destChainId = order.destination.startsWith("0x") 
+			? hexToString(order.destination) 
+			: order.destination
+		const entryPointAddress = this.configService.getEntryPointAddress(destChainId)
 
 		if (!entryPointAddress) {
-			const errorMsg = "Solver selection is active but entryPointAddress is not configured."
+			const errorMsg = `Solver selection is active but entryPointAddress is not configured for chain ${destChainId}.`
 			this.logger.error(errorMsg)
 			return {
 				success: false,

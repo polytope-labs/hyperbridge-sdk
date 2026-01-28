@@ -4,15 +4,118 @@ import type { KeyringPair } from "@polkadot/keyring/types"
 import { hexToU8a, u8aToHex, u8aConcat } from "@polkadot/util"
 import { decodeAddress, keccakAsU8a } from "@polkadot/util-crypto"
 import { Bytes, Struct, u8, Vector } from "scale-ts"
-import { decodeAbiParameters } from "viem"
 import type { BidSubmissionResult, HexString, PackedUserOperation, BidStorageEntry, FillerBid } from "@/types"
 import type { SubstrateChain } from "./substrate"
 
 /** SCALE codec for Bid { filler: AccountId, user_op: Vec<u8> } */
 const BidCodec = Struct({ filler: Bytes(32), user_op: Vector(u8) })
 
+/**
+ * SCALE codec for PackedUserOperation
+ * Uses Vec<u8> for all fields to handle hex strings uniformly
+ */
+const PackedUserOperationCodec = Struct({
+	sender: Bytes(20), // address is 20 bytes
+	nonce: Bytes(32), // uint256 as 32 bytes
+	initCode: Vector(u8), // variable length bytes
+	callData: Vector(u8), // variable length bytes
+	accountGasLimits: Bytes(32), // bytes32
+	preVerificationGas: Bytes(32), // uint256 as 32 bytes
+	gasFees: Bytes(32), // bytes32
+	paymasterAndData: Vector(u8), // variable length bytes
+	signature: Vector(u8), // variable length bytes
+})
+
 /** Offchain storage key prefix for bids */
 const OFFCHAIN_BID_PREFIX = new TextEncoder().encode("intents::bid::")
+
+/** Helper to convert bigint to 32-byte big-endian Uint8Array */
+function bigintToBytes32(value: bigint): Uint8Array {
+	const bytes = new Uint8Array(32)
+	let remaining = value
+	for (let i = 31; i >= 0; i--) {
+		bytes[i] = Number(remaining & 0xffn)
+		remaining = remaining >> 8n
+	}
+	return bytes
+}
+
+/** Helper to convert 32-byte big-endian Uint8Array to bigint */
+function bytes32ToBigint(bytes: Uint8Array): bigint {
+	let result = 0n
+	for (let i = 0; i < bytes.length; i++) {
+		result = (result << 8n) | BigInt(bytes[i])
+	}
+	return result
+}
+
+/**
+ * Encodes a PackedUserOperation using SCALE codec for submission to Hyperbridge.
+ * This is the recommended way to encode UserOps for the intents coprocessor.
+ *
+ * @param userOp - The PackedUserOperation to encode
+ * @returns Hex-encoded SCALE bytes
+ */
+export function encodeUserOpScale(userOp: PackedUserOperation): HexString {
+	// Convert address (remove 0x, get 20 bytes)
+	const senderBytes = hexToU8a(userOp.sender)
+
+	// Convert nonce (bigint to 32 bytes)
+	const nonceBytes = bigintToBytes32(userOp.nonce)
+
+	// Convert variable-length bytes fields
+	const initCodeBytes = hexToU8a(userOp.initCode)
+	const callDataBytes = hexToU8a(userOp.callData)
+
+	// Convert fixed-size bytes32 fields
+	const accountGasLimitsBytes = hexToU8a(userOp.accountGasLimits)
+
+	// Convert preVerificationGas (bigint to 32 bytes)
+	const preVerificationGasBytes = bigintToBytes32(userOp.preVerificationGas)
+
+	// Convert gasFees (bytes32)
+	const gasFeesBytes = hexToU8a(userOp.gasFees)
+
+	// Convert variable-length bytes fields
+	const paymasterAndDataBytes = hexToU8a(userOp.paymasterAndData)
+	const signatureBytes = hexToU8a(userOp.signature)
+
+	const encoded = PackedUserOperationCodec.enc({
+		sender: senderBytes,
+		nonce: nonceBytes,
+		initCode: Array.from(initCodeBytes),
+		callData: Array.from(callDataBytes),
+		accountGasLimits: accountGasLimitsBytes,
+		preVerificationGas: preVerificationGasBytes,
+		gasFees: gasFeesBytes,
+		paymasterAndData: Array.from(paymasterAndDataBytes),
+		signature: Array.from(signatureBytes),
+	})
+
+	return u8aToHex(encoded) as HexString
+}
+
+/**
+ * Decodes a SCALE-encoded PackedUserOperation.
+ *
+ * @param hex - The hex-encoded SCALE bytes
+ * @returns The decoded PackedUserOperation
+ */
+export function decodeUserOpScale(hex: HexString): PackedUserOperation {
+	const decoded = PackedUserOperationCodec.dec(hexToU8a(hex))
+
+	return {
+		sender: u8aToHex(new Uint8Array(decoded.sender)) as HexString,
+		nonce: bytes32ToBigint(new Uint8Array(decoded.nonce)),
+		initCode: u8aToHex(new Uint8Array(decoded.initCode)) as HexString,
+		callData: u8aToHex(new Uint8Array(decoded.callData)) as HexString,
+		accountGasLimits: u8aToHex(new Uint8Array(decoded.accountGasLimits)) as HexString,
+		preVerificationGas: bytes32ToBigint(new Uint8Array(decoded.preVerificationGas)),
+		gasFees: u8aToHex(new Uint8Array(decoded.gasFees)) as HexString,
+		paymasterAndData: u8aToHex(new Uint8Array(decoded.paymasterAndData)) as HexString,
+		signature: u8aToHex(new Uint8Array(decoded.signature)) as HexString,
+	}
+}
 
 /**
  * Service for interacting with Hyperbridge's pallet-intents coprocessor.
@@ -104,10 +207,11 @@ export class IntentsCoprocessor {
 	 */
 	private async signAndSendExtrinsic(extrinsic: SubmittableExtrinsic<"promise">): Promise<BidSubmissionResult> {
 		const keyPair = this.getKeyPair()
+		const tip = 1_000_000_007n // 1 GWEI tip to increase priority
 
 		return new Promise<BidSubmissionResult>((resolve) => {
 			extrinsic
-				.signAndSend(keyPair, (result) => {
+				.signAndSend(keyPair, { tip }, (result) => {
 					if (result.status.isInBlock) {
 						resolve({
 							success: true,
@@ -230,51 +334,16 @@ export class IntentsCoprocessor {
 		return bids
 	}
 
-	/** Decodes SCALE-encoded Bid struct and ABI-encoded PackedUserOperation */
+	/** Decodes SCALE-encoded Bid struct and SCALE-encoded PackedUserOperation */
 	private decodeBid(hex: HexString): { filler: string; userOp: PackedUserOperation } {
 		const decoded = BidCodec.dec(hexToU8a(hex))
 		const filler = new Keyring({ type: "sr25519" }).encodeAddress(new Uint8Array(decoded.filler))
 		const userOpHex = u8aToHex(new Uint8Array(decoded.user_op)) as HexString
 
-		const [
-			sender,
-			nonce,
-			initCode,
-			callData,
-			accountGasLimits,
-			preVerificationGas,
-			gasFees,
-			paymasterAndData,
-			signature,
-		] = decodeAbiParameters(
-			[
-				{ type: "address" },
-				{ type: "uint256" },
-				{ type: "bytes" },
-				{ type: "bytes" },
-				{ type: "bytes32" },
-				{ type: "uint256" },
-				{ type: "bytes32" },
-				{ type: "bytes" },
-				{ type: "bytes" },
-			],
-			userOpHex,
-		)
+		// Decode UserOp using SCALE codec
+		const userOp = decodeUserOpScale(userOpHex)
 
-		return {
-			filler,
-			userOp: {
-				sender: sender as HexString,
-				nonce,
-				initCode: initCode as HexString,
-				callData: callData as HexString,
-				accountGasLimits: accountGasLimits as HexString,
-				preVerificationGas,
-				gasFees: gasFees as HexString,
-				paymasterAndData: paymasterAndData as HexString,
-				signature: signature as HexString,
-			},
-		}
+		return { filler, userOp }
 	}
 
 	/** Builds offchain storage key: "intents::bid::" + commitment + filler */

@@ -1,8 +1,8 @@
 import "log-timestamp"
-import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
+import { IntentsCoprocessor, encodeUserOpScale } from "@/chains/intentsCoprocessor"
 import { SubstrateChain } from "@/chains/substrate"
 import type { HexString, PackedUserOperation } from "@/types"
-import { keccak256, toHex, encodeAbiParameters } from "viem"
+import { keccak256, toHex } from "viem"
 import fixtureData from "@/tests/fixtures/intent-gateway-v2.json"
 
 describe.sequential("IntentsCoprocessor", () => {
@@ -136,29 +136,7 @@ describe.sequential("IntentsCoprocessor", () => {
 	}, 300_000)
 })
 
+/** Encode UserOp using SCALE codec for Hyperbridge submission */
 function encodeUserOp(userOp: PackedUserOperation): HexString {
-	return encodeAbiParameters(
-		[
-			{ type: "address" },
-			{ type: "uint256" },
-			{ type: "bytes" },
-			{ type: "bytes" },
-			{ type: "bytes32" },
-			{ type: "uint256" },
-			{ type: "bytes32" },
-			{ type: "bytes" },
-			{ type: "bytes" },
-		],
-		[
-			userOp.sender,
-			userOp.nonce,
-			userOp.initCode,
-			userOp.callData,
-			userOp.accountGasLimits as `0x${string}`,
-			userOp.preVerificationGas,
-			userOp.gasFees as `0x${string}`,
-			userOp.paymasterAndData,
-			userOp.signature,
-		],
-	) as HexString
+	return encodeUserOpScale(userOp)
 }

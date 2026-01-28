@@ -79,11 +79,11 @@ export class DelegationService {
 			return false
 		}
 
-		// Check if already delegated
-		if (await this.isDelegated(chain)) {
-			this.logger.info({ chain }, "EOA already delegated to SolverAccount")
-			return true
-		}
+		// // Check if already delegated
+		// if (await this.isDelegated(chain)) {
+		// 	this.logger.info({ chain }, "EOA already delegated to SolverAccount")
+		// 	return true
+		// }
 
 		const account = privateKeyToAccount(this.privateKey)
 		const walletClient = this.clientManager.getWalletClient(chain)
@@ -93,10 +93,12 @@ export class DelegationService {
 			this.logger.info({ chain, eoa: account.address, solverAccountContract }, "Setting up EIP-7702 delegation")
 
 			// Sign the authorization to delegate to SolverAccount
-			// viem's experimental EIP-7702 support
+			// IMPORTANT: When the EOA is self-executing (signing authorization AND sending tx),
+			// we must pass executor: 'self' so the authorization.nonce is incremented by 1 over tx.nonce
 			const authorization = await walletClient.signAuthorization({
 				account,
 				contractAddress: solverAccountContract,
+				executor: "self", // Required when EOA signs authorization and also sends the transaction
 			})
 
 			// Send a transaction with the authorization list to establish delegation
@@ -169,9 +171,11 @@ export class DelegationService {
 			this.logger.info({ chain, eoa: account.address }, "Revoking EIP-7702 delegation")
 
 			// Delegate to zero address to revoke
+			// IMPORTANT: executor: 'self' required when EOA signs and sends the transaction
 			const authorization = await walletClient.signAuthorization({
 				account,
 				contractAddress: "0x0000000000000000000000000000000000000000",
+				executor: "self",
 			})
 
 			const hash = await walletClient.sendTransaction({

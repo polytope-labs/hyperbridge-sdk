@@ -1,4 +1,4 @@
-import { toHex, maxUint256, formatUnits, encodeAbiParameters } from "viem"
+import { toHex, maxUint256, formatUnits } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -12,6 +12,7 @@ import {
 	EvmChain,
 	getChainId,
 	orderV2Commitment,
+	encodeUserOpScale,
 	type PackedUserOperation,
 	type FillOptionsV2,
 } from "@hyperbridge/sdk"
@@ -76,6 +77,7 @@ export class ContractInteractionService {
 		})
 
 		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain)
+		await helper.ensureInitialized()
 		this.sdkHelperCache.set(cacheKey, helper)
 
 		this.logger.debug({ source, destination }, "Created and cached new IntentGatewayV2 instance")
@@ -270,6 +272,8 @@ export class ContractInteractionService {
 				solverAccountAddress: this.solverAccountAddress,
 			})
 			// Cache the full estimate including gas parameters for bid preparation
+			this.logger.info({ orderId: order.id }, "Caching gas estimate")
+			this.logger.info({ estimate }, "Estimate")
 			this.cacheService.setGasEstimate(
 				order.id!,
 				estimate.totalGasInFeeToken,
@@ -288,9 +292,48 @@ export class ContractInteractionService {
 				callGasLimit: estimate.callGasLimit,
 			}
 		} catch (error) {
-			this.logger.error({ err: error }, "Error estimating gas")
-			// Return a conservative estimate if we can't calculate precisely
-			return { totalCostInSourceFeeToken: 6000000n, dispatchFee: 0n, nativeDispatchFee: 0n, callGasLimit: 0n }
+			this.logger.error({ err: error }, "Error estimating gas, using generous fallback values")
+
+			// Generous fallback values based on SDK estimates (with buffers):
+			// - callGasLimit: 500_000n (SDK fallback) + 50% buffer = 750_000n
+			// - verificationGasLimit: 200_000n (EIP-7702 delegated accounts need more gas for validation)
+			// - preVerificationGas: 50_000n (bundler overhead)
+			// - relayerFee: ~400_000 gas worth in fee token → 50_000_000_000_000_000n (0.05 tokens, 18 decimals)
+			// - nativeDispatchFee: generous estimate for cross-chain dispatch
+			// - maxFeePerGas: 100 gwei (reasonable for most chains)
+			// - maxPriorityFeePerGas: 35 gwei (Pimlico requires at least 30 gwei)
+			const fallbackEstimate = {
+				totalCostInSourceFeeToken: 100_000_000_000_000_000n, // 0.1 tokens (18 decimals) - generous
+				dispatchFee: 50_000_000_000_000_000n, // 0.05 tokens (18 decimals)
+				nativeDispatchFee: 10_000_000_000_000_000n, // 0.01 native tokens
+				callGasLimit: 750_000n,
+				verificationGasLimit: 200_000n, // EIP-7702 needs higher verification gas
+				preVerificationGas: 100_000n,
+				maxFeePerGas: 100_000_000_000n, // 100 gwei
+				maxPriorityFeePerGas: 35_000_000_000n, // 35 gwei (Pimlico requires at least 30 gwei)
+			}
+
+			// Cache the fallback estimate so bid preparation can use it
+			if (order.id) {
+				this.cacheService.setGasEstimate(
+					order.id,
+					fallbackEstimate.totalCostInSourceFeeToken,
+					fallbackEstimate.dispatchFee,
+					fallbackEstimate.nativeDispatchFee,
+					fallbackEstimate.callGasLimit,
+					fallbackEstimate.verificationGasLimit,
+					fallbackEstimate.preVerificationGas,
+					fallbackEstimate.maxFeePerGas,
+					fallbackEstimate.maxPriorityFeePerGas,
+				)
+			}
+
+			return {
+				totalCostInSourceFeeToken: fallbackEstimate.totalCostInSourceFeeToken,
+				dispatchFee: fallbackEstimate.dispatchFee,
+				nativeDispatchFee: fallbackEstimate.nativeDispatchFee,
+				callGasLimit: fallbackEstimate.callGasLimit,
+			}
 		}
 	}
 
@@ -349,10 +392,10 @@ export class ContractInteractionService {
 		const inputs = order.inputs
 
 		// Restrict to only USDC and USDT on both sides; otherwise throw error
-		const destUsdc = this.configService.getUsdcAsset(order.destination)
-		const destUsdt = this.configService.getUsdtAsset(order.destination)
-		const sourceUsdc = this.configService.getUsdcAsset(order.source)
-		const sourceUsdt = this.configService.getUsdtAsset(order.source)
+		const destUsdc = this.configService.getUsdcAsset(order.destination).toLowerCase()
+		const destUsdt = this.configService.getUsdtAsset(order.destination).toLowerCase()
+		const sourceUsdc = this.configService.getUsdcAsset(order.source).toLowerCase()
+		const sourceUsdt = this.configService.getUsdtAsset(order.source).toLowerCase()
 
 		const outputsAreStableOnly = outputs.every((o) => {
 			const addr = bytes32ToBytes20(o.token).toLowerCase()
@@ -441,9 +484,29 @@ export class ContractInteractionService {
 			outputs: order.output.assets,
 		}
 
-		// TODO: Get the solver account nonce (this would typically come from the EntryPoint)
-		// For now, using 0n as placeholder
-		const nonce = 0n
+		// Fetch the current nonce from EntryPoint
+		// ERC-4337 v0.7+ uses 2D nonce: getNonce(address sender, uint192 key)
+		// Using key=0 for simple sequential nonces
+		const destClient = this.clientManager.getPublicClient(order.destination)
+		const nonce = await destClient.readContract({
+			address: entryPointAddress,
+			abi: [
+				{
+					inputs: [
+						{ name: "sender", type: "address" },
+						{ name: "key", type: "uint192" },
+					],
+					name: "getNonce",
+					outputs: [{ name: "nonce", type: "uint256" }],
+					stateMutability: "view",
+					type: "function",
+				},
+			],
+			functionName: "getNonce",
+			args: [solverAccountAddress, 0n],
+		})
+
+		console.log(`prepareBidUserOp: fetched nonce from EntryPoint = ${nonce}`)
 
 		const userOp = await sdkHelper.prepareSubmitBid({
 			order,
@@ -464,6 +527,11 @@ export class ContractInteractionService {
 		// Encode the UserOp as bytes for submission to Hyperbridge
 		const encodedUserOp = this.encodePackedUserOperation(userOp)
 
+		// Debug logging to compare with working test
+		console.log("prepareBidUserOp: encodedUserOp length", encodedUserOp.length)
+		console.log("prepareBidUserOp: encodedUserOp starts with 0x?", encodedUserOp.startsWith("0x"))
+		console.log("prepareBidUserOp: encodedUserOp (first 200 chars)", encodedUserOp.substring(0, 200))
+
 		this.logger.info(
 			{
 				commitment,
@@ -479,35 +547,12 @@ export class ContractInteractionService {
 
 	/**
 	 * Encodes a PackedUserOperation into bytes for submission to Hyperbridge
+	 * Uses SCALE codec for consistent encoding/decoding with the pallet
 	 *
 	 * @param userOp - The PackedUserOperation to encode
-	 * @returns Hex-encoded bytes
+	 * @returns Hex-encoded SCALE bytes
 	 */
 	private encodePackedUserOperation(userOp: PackedUserOperation): HexString {
-		// Encode the UserOp struct as ABI-encoded bytes
-		return encodeAbiParameters(
-			[
-				{ type: "address", name: "sender" },
-				{ type: "uint256", name: "nonce" },
-				{ type: "bytes", name: "initCode" },
-				{ type: "bytes", name: "callData" },
-				{ type: "bytes32", name: "accountGasLimits" },
-				{ type: "uint256", name: "preVerificationGas" },
-				{ type: "bytes32", name: "gasFees" },
-				{ type: "bytes", name: "paymasterAndData" },
-				{ type: "bytes", name: "signature" },
-			],
-			[
-				userOp.sender,
-				userOp.nonce,
-				userOp.initCode,
-				userOp.callData,
-				userOp.accountGasLimits as HexString,
-				userOp.preVerificationGas,
-				userOp.gasFees as HexString,
-				userOp.paymasterAndData,
-				userOp.signature,
-			],
-		) as HexString
+		return encodeUserOpScale(userOp)
 	}
 }

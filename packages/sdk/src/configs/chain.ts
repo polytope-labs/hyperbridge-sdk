@@ -1,4 +1,16 @@
-import { Chain, bscTestnet, gnosisChiado, sepolia, mainnet, bsc, base, arbitrum, polygon, unichain } from "viem/chains"
+import {
+	Chain,
+	bscTestnet,
+	gnosisChiado,
+	sepolia,
+	mainnet,
+	bsc,
+	base,
+	arbitrum,
+	polygon,
+	unichain,
+	polygonAmoy,
+} from "viem/chains"
 
 export enum Chains {
 	BSC_CHAPEL = "EVM-97",
@@ -11,6 +23,7 @@ export enum Chains {
 	BASE_MAINNET = "EVM-8453",
 	POLYGON_MAINNET = "EVM-137",
 	UNICHAIN_MAINNET = "EVM-130",
+	POLYGON_AMOY = "EVM-80002",
 }
 
 export interface ChainConfigData {
@@ -76,6 +89,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
+			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
 			TokenGateway: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6",
 			Host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
 			UniswapRouter02: "0x9639379819420704457B07A0C33B678D9E0F8Df0",
@@ -439,6 +453,35 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0x9151434b16b9763660705744891fa906f660ecc5",
 			"0x0000000000000000000000000000000000000000",
 		],
+	},
+
+	80002: {
+		chainId: 80002,
+		stateMachineId: Chains.POLYGON_AMOY,
+		viemChain: polygonAmoy,
+		wrappedNativeDecimals: 18,
+		assets: {
+			WETH: "0x360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9", //wmatic, change it to wpol
+			DAI: "0x0000000000000000000000000000000000000000",
+			USDC: "0x693B854D6965ffEAaE21C74049deA644b56FCaCB", // Is actually fee token
+			USDT: "0x0000000000000000000000000000000000000000",
+		},
+		tokenDecimals: {
+			USDC: 18,
+			USDT: 18,
+		},
+		addresses: {
+			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
+			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
+			Host: "0x9a2840D050e64Db89c90Ac5857536E4ec66641DE",
+			Calldispatcher: "0x876F1891982E260026630c233A4897160A281Fb8",
+			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x0000000071727de22e5e9d8baf0edac6f37da032",
+		},
+		rpcEnvKey: "POLYGON_AMOY",
+		defaultRpcUrl: "https://rpc-amoy.polygon.technology",
+		consensusStateId: "ETH0",
+		coingeckoId: "ethereum",
 	},
 }
 
