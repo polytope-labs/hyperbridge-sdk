@@ -949,7 +949,7 @@ export class IntentGatewayV2 {
 	}
 
 	/**
-	 * Converts a PackedUserOperation to bundler-compatible v0.7 format.
+	 * Converts a PackedUserOperation to bundler-compatible v0.7/v0.8 format.
 	 * Unpacks gas limits and fees, extracts factory/paymaster data from packed fields.
 	 *
 	 * @param userOp - The packed user operation to convert
