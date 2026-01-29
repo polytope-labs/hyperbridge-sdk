@@ -1,5 +1,5 @@
 import { SubstrateEvent } from "@subql/types"
-import { HyperbridgeCollatorReward, DailyTreasuryCollatorReward } from "@/configs/src/types"
+import { HyperbridgeCollatorReward, DailyTreasuryCollatorReward, HyperbridgeCollatorRewardTransaction } from "@/configs/src/types"
 import { wrap } from "@/utils/event.utils"
 import { Balance } from "@polkadot/types/interfaces"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
@@ -40,7 +40,20 @@ export const handleCollatorRewardedEvent = wrap(async (event: SubstrateEvent): P
 		const blockTimestamp = await getBlockTimestamp(block.block.header.hash.toString(), hyperbridgeChain)
 		await updateDailyCollatorReward(blockTimestamp, rewardAmount)
 
-		logger.info(`Collator reward indexed: ${collatorAddress} received ${rewardAmount.toString()}`)
+		const blockNumber = block.block.header.number.toBigInt()
+		const transactionId = `${collatorAddress}-${blockNumber}`
+
+		const rewardTransaction = HyperbridgeCollatorRewardTransaction.create({
+			id: transactionId,
+			collator: collatorAddress,
+			amount: rewardAmount,
+			blockNumber,
+			blockTimestamp,
+			createdAt: timestampToDate(blockTimestamp),
+		})
+		await rewardTransaction.save()
+
+		logger.info(`Collator reward indexed: ${collatorAddress} received ${rewardAmount.toString()}, transaction: ${transactionId}`)
 	} catch (e) {
 		const errorMessage = e instanceof Error ? e.message : String(e)
 		logger.error(`Failed to handle collator reward event: ${errorMessage}`)

@@ -7,6 +7,7 @@ import {
 	TokenGatewayAssetTeleported,
 	ProtocolParticipantType,
 	PointsActivityType,
+	Request,
 } from "@/configs/src/types"
 import { timestampToDate } from "@/utils/date.helpers"
 import { PointsService } from "./points.service"
@@ -77,6 +78,8 @@ export class TokenGatewayService {
 		const { amountValueInUSD } = PriceHelper.getAmountValueInUSD(teleportParams.amount, decimals, price)
 
 		if (!teleport) {
+			const request = await Request.get(teleportParams.commitment)
+
 			teleport = TokenGatewayAssetTeleported.create({
 				id: teleportParams.commitment,
 				from: teleportParams.from,
@@ -93,6 +96,7 @@ export class TokenGatewayService {
 				blockNumber: BigInt(blockNumber),
 				blockTimestamp: timestamp,
 				transactionHash,
+				requestId: request?.id,
 			})
 			await teleport.save()
 

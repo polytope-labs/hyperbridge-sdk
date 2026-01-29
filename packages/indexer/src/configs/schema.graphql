@@ -137,9 +137,9 @@ type HyperBridgeChainStats @entity {
 """
 Hyperbridge Stats for a specific Relayer on a specific chain
 """
-type RelayerStatsPerChain @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
+type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
 	"""
-	Unique identifier of the RelayerChainMetrics entry.
+	Unique identifier of the RelayerChainStats entry.
 	"""
 	id: ID!
 
@@ -211,7 +211,7 @@ type Relayer @entity {
 	"""
 	A list of important stats for the Relayer on every network that they support
 	"""
-	perChainStats: [RelayerStatsPerChain]! @derivedFrom(field: "relayer")
+	perChainStats: [RelayerChainStats]! @derivedFrom(field: "relayer")
 
 	"""
 	Latest activity for this relayer
@@ -626,6 +626,11 @@ type AssetTeleported @entity {
 	The block in which the event occurred
 	"""
 	blockNumber: Int!
+
+	"""
+	The associated request for this teleport (linked via commitment)
+	"""
+	request: Request
 }
 
 """
@@ -1325,6 +1330,11 @@ type TokenGatewayAssetTeleported @entity {
 	Hash of the transaction that initiated the teleport
 	"""
 	transactionHash: String!
+
+	"""
+	The associated request for this teleport (linked via commitment)
+	"""
+	request: Request
 }
 
 """
@@ -1906,5 +1916,101 @@ type DailyTreasuryCollatorReward @entity {
 	id: ID! # ID is: {YYYY-MM-DD}
 	date: Date!
 	dailyRewardAmount: BigInt!
+}
+
+"""
+Types of relayer rewards
+"""
+enum RelayerRewardType {
+	CONSENSUS_REWARD
+	MESSAGING_REWARD
+	FEE_REWARD
+}
+
+"""
+Per-transaction record of relayer rewards
+Enables querying individual reward transactions for specific relayers
+"""
+type RelayerRewardTransaction @entity @compositeIndexes(fields: [["relayer", "chain"], ["rewardType", "chain"]]) {
+	"""
+	Unique identifier: {relayerAddress}-{blockNumber}-{extrinsicIndex}
+	"""
+	id: ID!
+
+	"""
+	The relayer address that received the reward
+	"""
+	relayer: String! @index
+
+	"""
+	The chain on which the reward was issued
+	"""
+	chain: String! @index
+
+	"""
+	The amount of the reward
+	"""
+	amount: BigInt! @index
+
+	"""
+	The type of reward (consensus, messaging, or fee)
+	"""
+	rewardType: RelayerRewardType! @index
+
+	"""
+	Block number where the reward was issued
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block
+	"""
+	blockTimestamp: BigInt!
+
+	"""
+	Hash of the extrinsic that triggered the reward
+	"""
+	extrinsicHash: String
+
+	"""
+	Timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}
+
+"""
+Per-transaction record of collator rewards on Hyperbridge
+Enables querying individual reward transactions for specific collators
+"""
+type HyperbridgeCollatorRewardTransaction @entity {
+	"""
+	Unique identifier: {collatorAddress}-{blockNumber}
+	"""
+	id: ID!
+
+	"""
+	The collator address that received the reward
+	"""
+	collator: String! @index
+
+	"""
+	The amount of the reward
+	"""
+	amount: BigInt! @index
+
+	"""
+	Block number where the reward was issued (also the block authored by this collator)
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block
+	"""
+	blockTimestamp: BigInt!
+
+	"""
+	Timestamp when this record was created
+	"""
+	createdAt: Date! @index
 }
 
