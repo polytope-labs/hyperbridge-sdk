@@ -59,3 +59,6 @@ export { handleFeeRewardedEvent } from "@/handlers/events/incentives/feeRewarded
 export { handleTreasuryTransferEvent } from "@/handlers/events/treasury/treasuryTransfer.event.handler"
 export { handleAccumulateFeesEvent } from "@/handlers/events/fees/accumulatedFees.event.handler"
 export { handleCollatorRewardedEvent } from "@/handlers/events/collators/collatorRewarded.event.handler"
+
+// Migration Handlers
+export { handleRelayerStatsMigration } from "@/handlers/events/migrations/relayerStatsMigration.handler"

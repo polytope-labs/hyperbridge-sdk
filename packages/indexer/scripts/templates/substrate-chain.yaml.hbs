@@ -46,6 +46,10 @@ dataSources:
           kind: substrate/BlockHandler
           filter:
             modulo: 3600 # Indexings 1 block every 6 hours (6 seconds per block indexing).
+        - handler: handleRelayerStatsMigration
+          kind: substrate/BlockHandler
+          filter:
+            modulo: 1 # Run every block until migration is complete
 {{/if}}
 {{#if enablePriceIndexing}}
         - handler: handlePriceIndexing

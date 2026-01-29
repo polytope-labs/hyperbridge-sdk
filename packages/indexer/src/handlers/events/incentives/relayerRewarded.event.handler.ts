@@ -32,7 +32,6 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 
 		record.totalConsensusRewardAmount = (record.totalConsensusRewardAmount ?? BigInt(0)) + rewardAmount
 		record.totalRewardAmount = (record.totalRewardAmount ?? BigInt(0)) + rewardAmount
-		record.reputationAssetBalance = await DailyTreasuryRewardService.getReputationAssetBalance(relayerAddress)
 
 		await record.save()
 

@@ -27,7 +27,6 @@ export async function handleFeeRewardedEvent(event: SubstrateEvent): Promise<voi
 
 		record.totalMessagingRewardAmount = (record.totalMessagingRewardAmount ?? BigInt(0)) + rewardAmount
 		record.totalRewardAmount = (record.totalRewardAmount ?? BigInt(0)) + rewardAmount
-		record.reputationAssetBalance = await DailyTreasuryRewardService.getReputationAssetBalance(relayerAddress)
 
 		await record.save()
 
