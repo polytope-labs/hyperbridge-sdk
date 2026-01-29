@@ -73,7 +73,7 @@ export class RelayerService {
 
 		if (transaction) {
 			const receipt = await transaction.receipt()
-			const { status, gasUsed, effectiveGasPrice } = receipt
+			const { gasUsed, effectiveGasPrice } = receipt
 
 			const nativeCurrencyPrice = await PriceHelper.getNativeCurrencyPrice(chain)
 			let gasFee = BigInt(effectiveGasPrice) * BigInt(gasUsed)
@@ -86,31 +86,19 @@ export class RelayerService {
 
 			const usdFee = (gasFee * nativeCurrencyPrice) / 10n ** 18n
 
-			let pointsToAward = 50
-			let description = "Points awarded for successful message delivered"
-
-			if (status === true) {
-				relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
-				relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed)
-				relayer_chain_stats.gasFeeForSuccessfulMessages += gasFee
-				relayer_chain_stats.usdGasFeeForSuccessfulMessages += usdFee
-			} else {
-				relayer_chain_stats.numberOfFailedMessagesDelivered += BigInt(1)
-				relayer_chain_stats.gasUsedForFailedMessages += BigInt(gasUsed)
-				relayer_chain_stats.gasFeeForFailedMessages += gasFee
-				relayer_chain_stats.usdGasFeeForFailedMessages += usdFee
-				pointsToAward = pointsToAward / 2
-				description = "Points awarded for failed message delivery"
-			}
+			relayer_chain_stats.numberOfSuccessfulMessagesDelivered += BigInt(1)
+			relayer_chain_stats.gasUsedForSuccessfulMessages += BigInt(gasUsed)
+			relayer_chain_stats.gasFeeForSuccessfulMessages += gasFee
+			relayer_chain_stats.usdGasFeeForSuccessfulMessages += usdFee
 
 			await PointsService.awardPoints(
 				relayer_id,
 				chain,
-				BigInt(pointsToAward),
+				BigInt(50),
 				ProtocolParticipantType.RELAYER,
 				PointsActivityType.REWARD_POINTS_EARNED,
 				transaction.hash,
-				description,
+				"Points awarded for successful message delivered",
 				timestamp,
 			)
 		} else {

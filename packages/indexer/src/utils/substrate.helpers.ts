@@ -3,6 +3,7 @@ import { CHAIN_IDS_BY_GENESIS, HYPERBRIDGE } from "@/constants"
 import { StateMachineId } from "@/types/network.types"
 import { hexToU8a, u8aToHex } from "@polkadot/util"
 import { encodeAddress } from "@polkadot/util-crypto"
+import { Bytes, Enum, Struct } from "scale-ts"
 
 /**
  * Get the StateMachineID parsing the stringified object which substrate provides
@@ -211,17 +212,24 @@ export interface Get {
 }
 
 /**
+ * SCALE-encoded Signature enum definition using scale-ts
+ * Variants:
+ * - Evm { address: Vec<u8>, signature: Vec<u8> }
+ * - Sr25519 { public_key: Vec<u8>, signature: Vec<u8> }
+ * - Ed25519 { public_key: Vec<u8>, signature: Vec<u8> }
+ */
+const Signature = Enum({
+	Evm: Struct({ address: Bytes(), signature: Bytes() }),
+	Sr25519: Struct({ public_key: Bytes(), signature: Bytes() }),
+	Ed25519: Struct({ public_key: Bytes(), signature: Bytes() }),
+})
+
+/**
  * Decodes a relayer address from potentially SCALE-encoded Signature bytes.
  *
  * The relayer field in Substrate events can be either:
  * 1. A raw 32-byte public key/address (for direct submissions)
- * 2. A SCALE-encoded Signature enum (when signed by relayer):
- *    - Evm { address: Vec<u8>, signature: Vec<u8> }      (variant 0)
- *    - Sr25519 { public_key: Vec<u8>, signature: Vec<u8> } (variant 1)
- *    - Ed25519 { public_key: Vec<u8>, signature: Vec<u8> } (variant 2)
- *
- * If the bytes are > 32 in length, it's a Signature that needs decoding.
- * The signer() method returns: address for Evm, public_key for Sr25519/Ed25519.
+ * 2. A SCALE-encoded Signature enum (signed by relayers)
  *
  * @param relayerHex The hex-encoded relayer bytes from the event
  * @returns The decoded relayer address (SS58 for Substrate, hex for EVM)
@@ -234,40 +242,14 @@ export function decodeRelayerAddress(relayerHex: string): string {
 		return encodeAddress(relayerHex)
 	}
 
-	// SCALE-encoded Signature enum
-	// First byte: variant index (0=Evm, 1=Sr25519, 2=Ed25519)
-	const variantIndex = bytes[0]
+	// Decode SCALE-encoded Signature enum
+	const decoded = Signature.dec(bytes)
 
-	// Next byte(s): SCALE compact-encoded length of address/public_key
-	let offset = 1
-	const compactByte = bytes[offset]
-	let fieldLength: number
-
-	// SCALE compact encoding:
-	// - If lower 2 bits are 00: single-byte mode, length = byte >> 2
-	// - If lower 2 bits are 01: two-byte mode, length = ((byte2 << 6) | (byte1 >> 2))
-	// - If lower 2 bits are 10: four-byte mode
-	// - If lower 2 bits are 11: big-integer mode
-	if ((compactByte & 0b11) === 0b00) {
-		// Single-byte compact: length = byte >> 2
-		fieldLength = compactByte >> 2
-		offset += 1
-	} else if ((compactByte & 0b11) === 0b01) {
-		// Two-byte compact
-		fieldLength = ((bytes[offset + 1] << 6) | (compactByte >> 2))
-		offset += 2
+	if (decoded.tag === "Evm") {
+		// Evm variant - return as hex address
+		return u8aToHex(decoded.value.address)
 	} else {
-		// For larger lengths (unlikely for addresses)
-		throw new Error(`Unsupported compact encoding in relayer signature: ${compactByte}`)
-	}
-
-	const signerBytes = bytes.slice(offset, offset + fieldLength)
-
-	if (variantIndex === 0) {
-		// Evm variant - return as hex address (typically 20 bytes)
-		return u8aToHex(signerBytes)
-	} else {
-		// Sr25519 (1) or Ed25519 (2) - encode as SS58 address
-		return encodeAddress(signerBytes)
+		// Sr25519 or Ed25519 - encode as SS58 address
+		return encodeAddress(decoded.value.public_key)
 	}
 }

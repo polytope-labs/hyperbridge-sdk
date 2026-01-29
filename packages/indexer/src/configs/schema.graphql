@@ -1924,7 +1924,6 @@ Types of relayer rewards
 enum RelayerRewardType {
 	CONSENSUS_REWARD
 	MESSAGING_REWARD
-	FEE_REWARD
 }
 
 """
