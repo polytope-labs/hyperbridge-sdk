@@ -11,9 +11,13 @@ import {
 	type Hex,
 	formatUnits,
 	parseUnits,
+	parseAbiParameters,
+	encodePacked,
+	WalletClient,
+	parseEventLogs,
 } from "viem"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
-import IntentGatewayV2ABI from "@/abis/IntentGatewayV2"
+import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import { createSessionKeyStorage, type SessionKeyData } from "@/storage"
 import {
 	type HexString,
@@ -30,6 +34,7 @@ import {
 	type IntentOrderStatusUpdate,
 	type SelectBidResult,
 	type ExecuteIntentOrderOptions,
+	type DecodedOrderV2PlacedLog,
 } from "@/types"
 import {
 	ADDRESS_ZERO,
@@ -44,6 +49,7 @@ import {
 	getRecordedStorageSlot,
 	sleep,
 	DEFAULT_POLL_INTERVAL,
+	hexToString,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
@@ -56,6 +62,18 @@ import { type ERC7821Call } from "@/types"
 
 /** EIP-712 type hash for SelectSolver message */
 export const SELECT_SOLVER_TYPEHASH = keccak256(toHex("SelectSolver(bytes32 commitment,address solver)"))
+
+/** EIP-712 type hash for PackedUserOperation */
+export const PACKED_USEROP_TYPEHASH = keccak256(
+	toHex(
+		"PackedUserOperation(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData)",
+	),
+)
+
+/** EIP-712 type hash for EIP712Domain */
+export const DOMAIN_TYPEHASH = keccak256(
+	toHex("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+)
 
 /** Default graffiti value (bytes32 zero) */
 export const DEFAULT_GRAFFITI = "0x0000000000000000000000000000000000000000000000000000000000000000" as HexString
@@ -73,6 +91,8 @@ export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
 	private readonly swap: Swap = new Swap()
 	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
+	private readonly domainSeparatorCache: Map<HexString, HexString> = new Map()
+	private initPromise: Promise<void> | null = null
 
 	constructor(
 		public readonly source: EvmChain,
@@ -81,7 +101,17 @@ export class IntentGatewayV2 {
 		public readonly bundlerUrl?: string,
 	) {
 		this.storage = createSessionKeyStorage()
-		this.initFeeTokenCache()
+		this.initPromise = this.initFeeTokenCache()
+	}
+
+	/**
+	 * Ensures the fee token cache is initialized before use.
+	 * This is called automatically by methods that need the cache.
+	 */
+	async ensureInitialized(): Promise<void> {
+		if (this.initPromise) {
+			await this.initPromise
+		}
 	}
 
 	private async initFeeTokenCache(): Promise<void> {
@@ -91,33 +121,82 @@ export class IntentGatewayV2 {
 		this.feeTokenCache.set(this.dest.config.stateMachineId, destFeeToken)
 	}
 
+	/**
+	 * Gets the domain separator for an IntentGatewayV2 contract, with caching.
+	 * @param gatewayAddress - The address of the IntentGatewayV2 contract
+	 * @returns The domain separator
+	 */
+	async getDomainSeparator(gatewayAddress: HexString): Promise<HexString> {
+		const cached = this.domainSeparatorCache.get(gatewayAddress)
+		if (cached) {
+			return cached
+		}
+
+		const domainSeparator = (await this.dest.client.readContract({
+			address: gatewayAddress,
+			abi: IntentGatewayV2ABI,
+			functionName: "DOMAIN_SEPARATOR",
+		})) as HexString
+
+		this.domainSeparatorCache.set(gatewayAddress, domainSeparator)
+		return domainSeparator
+	}
+
 	// =========================================================================
 	// Main Entry Points
 	// =========================================================================
 
-	/** Generates a session key, stores it, and returns encoded placeOrder calldata */
-	async preparePlaceOrder(order: OrderV2, graffiti: HexString = DEFAULT_GRAFFITI): Promise<HexString> {
+	/** Places an order on the source chain and returns the transaction hash and the final order */
+	async placeOrder(
+		order: OrderV2,
+		graffiti: HexString = DEFAULT_GRAFFITI,
+		walletClient: WalletClient,
+	): Promise<{ txHash: HexString; order: OrderV2; sessionPrivateKey: HexString }> {
 		const privateKey = generatePrivateKey()
 		const account = privateKeyToAccount(privateKey)
 		const sessionKeyAddress = account.address as HexString
 
 		order.session = sessionKeyAddress
 
-		const commitment = orderV2Commitment(order)
+		const hash = await walletClient.writeContract({
+			abi: IntentGatewayV2ABI,
+			address: this.source.configService.getIntentGatewayV2Address(hexToString(order.destination)),
+			functionName: "placeOrder",
+			args: [this.transformOrderForContract(order), graffiti],
+			account: walletClient.account!,
+			chain: walletClient.chain,
+		})
+
+		const receipt = await this.source.client.waitForTransactionReceipt({ hash, confirmations: 1 })
+
+		const orderPlacedEvent = parseEventLogs({
+			abi: IntentGatewayV2ABI,
+			logs: receipt.logs,
+			eventName: "OrderPlaced",
+		})[0] as unknown as DecodedOrderV2PlacedLog | undefined
+
+		if (!orderPlacedEvent) {
+			throw new Error("OrderPlaced event not found in transaction logs")
+		}
+
+		order.nonce = orderPlacedEvent.args.nonce
+		order.inputs = orderPlacedEvent.args.inputs
+		order.output.assets = orderPlacedEvent.args.outputs.map((output) => ({
+			token: output.token,
+			amount: output.amount,
+		}))
+		order.id = orderV2Commitment(order)
 
 		const sessionKeyData: SessionKeyData = {
 			privateKey: privateKey as HexString,
 			address: sessionKeyAddress,
-			commitment,
+			commitment: order.id as HexString,
 			createdAt: Date.now(),
 		}
-		await this.storage.setSessionKey(commitment, sessionKeyData)
 
-		return encodeFunctionData({
-			abi: IntentGatewayV2ABI.ABI,
-			functionName: "placeOrder",
-			args: [order, graffiti],
-		}) as HexString
+		await this.storage.setSessionKey(order.id as HexString, sessionKeyData)
+
+		return { txHash: hash, order: order, sessionPrivateKey: privateKey as HexString }
 	}
 
 	/**
@@ -151,9 +230,9 @@ export class IntentGatewayV2 {
 
 		// Encode the inner fillOrder call to IntentGatewayV2
 		const fillOrderCalldata = encodeFunctionData({
-			abi: IntentGatewayV2ABI.ABI,
+			abi: IntentGatewayV2ABI,
 			functionName: "fillOrder",
-			args: [order, fillOptions],
+			args: [this.transformOrderForContract(order), fillOptions],
 		}) as HexString
 
 		// Calculate the native value needed for fillOrder (native outputs + dispatch fee)
@@ -172,7 +251,6 @@ export class IntentGatewayV2 {
 			},
 		])
 
-		const commitment = orderV2Commitment(order)
 		const accountGasLimits = this.packGasLimits(verificationGasLimit, callGasLimit)
 		const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
 
@@ -193,13 +271,13 @@ export class IntentGatewayV2 {
 
 		// Sign: keccak256(abi.encodePacked(userOpHash, commitment, sessionKey))
 		// sessionKey is address (20 bytes), not padded to 32
-		const messageHash = keccak256(concat([userOpHash, commitment, sessionKey as Hex]))
+		const messageHash = keccak256(concat([userOpHash, order.id as HexString, sessionKey as Hex]))
 
 		const solverAccount_ = privateKeyToAccount(solverPrivateKey as Hex)
 		const solverSignature = await solverAccount_.signMessage({ message: { raw: messageHash } })
 
 		// Signature: commitment (32 bytes) + solverSignature (65 bytes)
-		const signature = concat([commitment, solverSignature as Hex]) as HexString
+		const signature = concat([order.id as HexString, solverSignature as Hex]) as HexString
 
 		return { ...userOp, signature }
 	}
@@ -214,7 +292,15 @@ export class IntentGatewayV2 {
 	 *
 	 * Requires `bundlerUrl` and `intentsCoprocessor` to be set in the constructor.
 	 */
-	async selectBid(order: OrderV2): Promise<SelectBidResult> {
+	async selectBid(order: OrderV2, bids: FillerBid[], sessionPrivateKey?: HexString): Promise<SelectBidResult> {
+		const commitment = order.id as HexString
+		const sessionKeyData = sessionPrivateKey
+			? { privateKey: sessionPrivateKey as HexString }
+			: await this.storage.getSessionKey(commitment)
+		if (!sessionKeyData) {
+			throw new Error("SessionKey not found for commitment: " + commitment)
+		}
+
 		if (!this.bundlerUrl) {
 			throw new Error("Bundler URL not configured")
 		}
@@ -223,29 +309,15 @@ export class IntentGatewayV2 {
 			throw new Error("IntentsCoprocessor required")
 		}
 
-		const commitment = orderV2Commitment(order)
-		const sessionKeyData = await this.storage.getSessionKey(commitment)
-		if (!sessionKeyData) {
-			throw new Error("SessionKey not found")
-		}
-
-		const bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
-		if (bids.length === 0) {
-			throw new Error("No bids found")
-		}
-
 		// Validate and sort bids by USD value (best to worst)
 		const sortedBids = await this.validateAndSortBids(bids, order)
 		if (sortedBids.length === 0) {
 			throw new Error("No valid bids found")
 		}
 
-		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
-		const domainSeparator = (await this.dest.client.readContract({
-			address: intentGatewayV2Address,
-			abi: IntentGatewayV2ABI.ABI,
-			functionName: "DOMAIN_SEPARATOR",
-		})) as HexString
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(hexToString(order.destination))
+
+		const domainSeparator = await this.getDomainSeparator(intentGatewayV2Address)
 
 		// Try each bid in order (best to worst) until one passes simulation
 		let selectedBid: { bid: FillerBid; options: FillOptionsV2 } | null = null
@@ -255,8 +327,14 @@ export class IntentGatewayV2 {
 			const solverAddress = bidWithOptions.bid.userOp.sender
 
 			// Sign for this solver (must re-sign for each different solver)
-			const signature = await this.signSolverSelection(commitment, solverAddress, domainSeparator, sessionKeyData)
+			const signature = await this.signSolverSelection(
+				commitment,
+				solverAddress,
+				domainSeparator,
+				sessionKeyData.privateKey,
+			)
 			if (!signature) {
+				console.log("Signature is null")
 				continue
 			}
 
@@ -298,7 +376,7 @@ export class IntentGatewayV2 {
 			signature: finalSignature,
 		}
 
-		const entryPointAddress = this.dest.configService.getEntryPointV08Address(order.destination)
+		const entryPointAddress = this.dest.configService.getEntryPointV08Address(hexToString(order.destination))
 		const chainId = BigInt(
 			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
 		)
@@ -311,20 +389,7 @@ export class IntentGatewayV2 {
 				jsonrpc: "2.0",
 				id: 1,
 				method: "eth_sendUserOperation",
-				params: [
-					{
-						sender: signedUserOp.sender,
-						nonce: toHex(signedUserOp.nonce),
-						initCode: signedUserOp.initCode,
-						callData: signedUserOp.callData,
-						accountGasLimits: signedUserOp.accountGasLimits,
-						preVerificationGas: toHex(signedUserOp.preVerificationGas),
-						gasFees: signedUserOp.gasFees,
-						paymasterAndData: signedUserOp.paymasterAndData,
-						signature: signedUserOp.signature,
-					},
-					entryPointAddress,
-				],
+				params: [this.prepareBundlerCall(signedUserOp), entryPointAddress],
 			}),
 		})
 
@@ -374,11 +439,13 @@ export class IntentGatewayV2 {
 	async *executeIntentOrder(options: ExecuteIntentOrderOptions): AsyncGenerator<IntentOrderStatusUpdate, void> {
 		const {
 			order,
-			orderTxHash,
+			sessionPrivateKey,
 			minBids = 1,
 			bidTimeoutMs = 60_000,
 			pollIntervalMs = DEFAULT_POLL_INTERVAL,
 		} = options
+
+		const commitment = order.id as HexString
 
 		if (!this.intentsCoprocessor) {
 			yield {
@@ -396,50 +463,7 @@ export class IntentGatewayV2 {
 			return
 		}
 
-		const commitment = orderV2Commitment(order)
-
 		try {
-			yield {
-				status: "ORDER_SUBMITTED",
-				metadata: { commitment, transactionHash: orderTxHash },
-			}
-
-			try {
-				const receipt = await this.source.client.waitForTransactionReceipt({ hash: orderTxHash })
-
-				if (receipt.status === "reverted") {
-					yield {
-						status: "FAILED",
-						metadata: {
-							commitment,
-							transactionHash: orderTxHash,
-							error: "Order transaction reverted",
-						},
-					}
-					return
-				}
-
-				yield {
-					status: "ORDER_CONFIRMED",
-					metadata: {
-						commitment,
-						transactionHash: orderTxHash,
-						blockHash: receipt.blockHash,
-						blockNumber: Number(receipt.blockNumber),
-					},
-				}
-			} catch (err) {
-				yield {
-					status: "FAILED",
-					metadata: {
-						commitment,
-						transactionHash: orderTxHash,
-						error: `Failed to confirm order transaction: ${err instanceof Error ? err.message : String(err)}`,
-					},
-				}
-				return
-			}
-
 			yield {
 				status: "AWAITING_BIDS",
 				metadata: { commitment },
@@ -483,7 +507,7 @@ export class IntentGatewayV2 {
 			}
 
 			try {
-				const result = await this.selectBid(order)
+				const result = await this.selectBid(order, bids, sessionPrivateKey)
 
 				yield {
 					status: "BID_SELECTED",
@@ -535,21 +559,21 @@ export class IntentGatewayV2 {
 	): Promise<{ bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[]> {
 		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
 
-		const destChain = order.destination
+		const destChain = hexToString(order.destination)
+
 		const wethAddress = this.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset.toLowerCase()
 		const usdcAddress = this.dest.configService.getUsdcAsset(destChain).toLowerCase()
 		const usdtAddress = this.dest.configService.getUsdtAsset(destChain).toLowerCase()
 		const usdcDecimals = this.dest.configService.getUsdcDecimals(destChain)
 		const usdtDecimals = this.dest.configService.getUsdtDecimals(destChain)
-		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(destChain).toLowerCase()
 
 		let wethPriceUsd = new Decimal(0)
 		try {
 			const oneWeth = 10n ** 18n
 			const { amountOut } = await this.swap.findBestProtocolWithAmountIn(
 				this.dest.client,
-				this.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset,
-				this.dest.configService.getUsdcAsset(destChain),
+				wethAddress as HexString,
+				usdcAddress as HexString,
 				oneWeth,
 				destChain,
 				{ selectedProtocol: "v2" },
@@ -570,7 +594,7 @@ export class IntentGatewayV2 {
 				for (const call of innerCalls) {
 					try {
 						const decoded = decodeFunctionData({
-							abi: IntentGatewayV2ABI.ABI,
+							abi: IntentGatewayV2ABI,
 							data: call.data,
 						})
 
@@ -652,49 +676,49 @@ export class IntentGatewayV2 {
 			.reduce((sum, asset) => sum + asset.amount, 0n)
 		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
 
-		const calls: { to: HexString; data: HexString; value: bigint }[] = [
-			// 1. select() call
+		const selectCalldata = encodeFunctionData({
+			abi: IntentGatewayV2ABI,
+			functionName: "select",
+			args: [selectOptions],
+		}) as HexString
+
+		const fillOrderCalldata = encodeFunctionData({
+			abi: IntentGatewayV2ABI,
+			functionName: "fillOrder",
+			args: [this.transformOrderForContract(order), fillOptions],
+		}) as HexString
+
+		// Batch calls through ERC7821 execute to ensure transient storage persists
+		// This simulates exactly what happens on-chain: SolverAccount.execute([select, fillOrder])
+		const batchedCalldata = this.encodeERC7821Execute([
 			{
-				to: intentGatewayV2Address,
-				data: encodeFunctionData({
-					abi: IntentGatewayV2ABI.ABI,
-					functionName: "select",
-					args: [selectOptions],
-				}) as HexString,
+				target: intentGatewayV2Address,
 				value: 0n,
+				data: selectCalldata,
 			},
-			// 2. fillOrder() call
 			{
-				to: intentGatewayV2Address,
-				data: encodeFunctionData({
-					abi: IntentGatewayV2ABI.ABI,
-					functionName: "fillOrder",
-					args: [order, fillOptions],
-				}) as HexString,
+				target: intentGatewayV2Address,
 				value: totalNativeValue,
+				data: fillOrderCalldata,
 			},
-		]
+		])
 
-		// Run simulation from the solver account (no state overrides needed)
-		const simulationResult = await this.dest.client.simulateCalls({
-			account: solverAddress,
-			calls,
-		})
-
-		// Check select() succeeded
-		if (simulationResult.results[0].status !== "success") {
-			throw new Error("SimulationFailed")
-		}
-
-		// Check fillOrder() succeeded
-		// The contract validates outputs >= order.output.assets internally
-		if (simulationResult.results[1].status !== "success") {
-			throw new Error("SimulationFailed")
+		try {
+			await this.dest.client.call({
+				account: solverAddress,
+				to: solverAddress, // SolverAccount (the delegated EOA)
+				data: batchedCalldata,
+				value: totalNativeValue,
+			})
+		} catch (e: unknown) {
+			throw new Error(`Simulation failed: ${e instanceof Error ? e.message : String(e)}`)
 		}
 	}
 
 	/** Estimates gas costs for fillOrder execution via ERC-4337 */
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
+		await this.ensureInitialized()
+
 		const { order, solverAccountAddress } = params
 
 		const totalEthValue = order.output.assets
@@ -703,11 +727,24 @@ export class IntentGatewayV2 {
 
 		const testValue = toHex(maxUint256 / 2n)
 		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+		const sourceFeeToken = this.feeTokenCache.get(this.source.config.stateMachineId)!
+		const destFeeToken = this.feeTokenCache.get(this.dest.config.stateMachineId)!
+
+		// Build assets array for state overrides, including fee token if not already present
+		const assetsForOverrides = [...order.output.assets]
+		const feeTokenAsBytes32 = bytes20ToBytes32(destFeeToken.address)
+		const feeTokenAlreadyInOutputs = assetsForOverrides.some(
+			(asset) => asset.token.toLowerCase() === feeTokenAsBytes32.toLowerCase(),
+		)
+		if (!feeTokenAlreadyInOutputs) {
+			assetsForOverrides.push({ token: feeTokenAsBytes32, amount: 0n })
+		}
+
 		const stateOverrides = this.buildTokenStateOverrides(
 			this.dest.config.stateMachineId,
-			order.output.assets,
+			assetsForOverrides,
 			solverAccountAddress,
-			this.dest.configService.getIntentGatewayAddress(order.destination),
+			this.dest.configService.getIntentGatewayV2Address(order.destination),
 			testValue,
 			intentGatewayV2Address,
 		)
@@ -721,8 +758,6 @@ export class IntentGatewayV2 {
 		// Estimate fillOrder gas (callGasLimit)
 		let callGasLimit: bigint
 		const postRequestGas = 400_000n
-		const sourceFeeToken = this.feeTokenCache.get(this.source.config.stateMachineId)!
-		const destFeeToken = this.feeTokenCache.get(this.dest.config.stateMachineId)!
 		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
 			postRequestGas as bigint,
 			"source",
@@ -743,8 +778,8 @@ export class IntentGatewayV2 {
 			),
 			timeoutTimestamp: 0n,
 			nonce: await this.source.getHostNonce(),
-			from: this.source.configService.getIntentGatewayAddress(params.order.destination),
-			to: this.source.configService.getIntentGatewayAddress(params.order.source),
+			from: this.source.configService.getIntentGatewayV2Address(params.order.destination),
+			to: this.source.configService.getIntentGatewayV2Address(params.order.source),
 		}
 
 		let protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
@@ -762,12 +797,13 @@ export class IntentGatewayV2 {
 				outputs: order.output.assets,
 			}
 		}
+
 		try {
 			callGasLimit = await this.dest.client.estimateContractGas({
-				abi: IntentGatewayV2ABI.ABI,
+				abi: IntentGatewayV2ABI,
 				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
-				args: [order, params.fillOptions],
+				args: [this.transformOrderForContract(order), params.fillOptions],
 				account: solverAccountAddress,
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
@@ -781,15 +817,23 @@ export class IntentGatewayV2 {
 		callGasLimit = callGasLimit + (callGasLimit * 5n) / 100n
 
 		// Estimate verificationGasLimit for SolverAccount.validateUserOp
-		const verificationGasLimit = 16_313n
+		// EIP-7702 delegated accounts have additional overhead for authorization verification
+		const verificationGasLimit = 200_000n
 
 		// Pre-verification gas (bundler overhead for calldata, etc.)
-		const preVerificationGas = 21_000n
+		const preVerificationGas = 100_000n
 
-		// Get current gas prices
+		// Pimlico requires at least 40 gwei maxPriorityFeePerGas,
+		// can use pimlico_getUserOperationGasPrice in future
+
+		const MIN_PRIORITY_FEE = 40_000_000_000n // 40 gwei
 		const gasPrice = await this.dest.client.getGasPrice()
-		const maxFeePerGas = gasPrice + (gasPrice * 20n) / 100n
-		const maxPriorityFeePerGas = gasPrice / 10n
+		const calculatedPriorityFee = gasPrice / 10n
+		const maxPriorityFeePerGas = calculatedPriorityFee > MIN_PRIORITY_FEE ? calculatedPriorityFee : MIN_PRIORITY_FEE
+
+		const calculatedMaxFee = gasPrice + (gasPrice * 20n) / 100n
+		const maxFeePerGas =
+			calculatedMaxFee > maxPriorityFeePerGas ? calculatedMaxFee : maxPriorityFeePerGas + gasPrice
 
 		// Calculate total gas cost in wei
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
@@ -818,14 +862,9 @@ export class IntentGatewayV2 {
 		commitment: HexString,
 		solverAddress: HexString,
 		domainSeparator: HexString,
-		sessionKeyData?: SessionKeyData,
+		privateKey: HexString,
 	): Promise<HexString | null> {
-		const sessionKeyData_ = sessionKeyData ?? (await this.storage.getSessionKey(commitment))
-		if (!sessionKeyData_) {
-			return null
-		}
-
-		const account = privateKeyToAccount(sessionKeyData_.privateKey as Hex)
+		const account = privateKeyToAccount(privateKey as Hex)
 
 		const structHash = keccak256(
 			encodeAbiParameters(
@@ -840,39 +879,37 @@ export class IntentGatewayV2 {
 		return signature as HexString
 	}
 
-	/** Computes the userOpHash for ERC-4337 v0.7 PackedUserOperation */
-	computeUserOpHash(userOp: PackedUserOperation, entryPoint: HexString, chainId: bigint): HexString {
-		const packedUserOp = encodeAbiParameters(
-			[
-				{ type: "address" },
-				{ type: "uint256" },
-				{ type: "bytes32" },
-				{ type: "bytes32" },
-				{ type: "bytes32" },
-				{ type: "uint256" },
-				{ type: "bytes32" },
-				{ type: "bytes32" },
-			],
-			[
-				userOp.sender,
-				userOp.nonce,
-				keccak256(userOp.initCode),
-				keccak256(userOp.callData),
-				userOp.accountGasLimits as Hex,
-				userOp.preVerificationGas,
-				userOp.gasFees as Hex,
-				keccak256(userOp.paymasterAndData),
-			],
+	computeUserOpHash(userOp: PackedUserOperation, entryPoint: Hex, chainId: bigint): Hex {
+		const structHash = keccak256(
+			encodeAbiParameters(
+				parseAbiParameters("bytes32, address, uint256, bytes32, bytes32, bytes32, uint256, bytes32, bytes32"),
+				[
+					PACKED_USEROP_TYPEHASH,
+					userOp.sender,
+					userOp.nonce,
+					keccak256(userOp.initCode),
+					keccak256(userOp.callData),
+					userOp.accountGasLimits as Hex,
+					userOp.preVerificationGas,
+					userOp.gasFees as Hex,
+					keccak256(userOp.paymasterAndData),
+				],
+			),
 		)
 
-		const userOpHashInner = keccak256(packedUserOp)
-
-		const outerEncoded = encodeAbiParameters(
-			[{ type: "bytes32" }, { type: "address" }, { type: "uint256" }],
-			[userOpHashInner, entryPoint, chainId],
+		const domainSeparator = keccak256(
+			encodeAbiParameters(parseAbiParameters("bytes32, bytes32, bytes32, uint256, address"), [
+				DOMAIN_TYPEHASH,
+				keccak256(toHex("ERC4337")),
+				keccak256(toHex("1")),
+				chainId,
+				entryPoint,
+			]),
 		)
 
-		return keccak256(outerEncoded)
+		return keccak256(
+			encodePacked(["bytes1", "bytes1", "bytes32", "bytes32"], ["0x19", "0x01", domainSeparator, structHash]),
+		)
 	}
 
 	// =========================================================================
@@ -891,6 +928,75 @@ export class IntentGatewayV2 {
 		const priorityFeeHex = pad(toHex(maxPriorityFeePerGas), { size: 16 })
 		const maxFeeHex = pad(toHex(maxFeePerGas), { size: 16 })
 		return concat([priorityFeeHex, maxFeeHex]) as HexString
+	}
+
+	/** Unpacks accountGasLimits (bytes32) into verificationGasLimit and callGasLimit */
+	unpackGasLimits(accountGasLimits: HexString): { verificationGasLimit: bigint; callGasLimit: bigint } {
+		// accountGasLimits = verificationGasLimit (16 bytes) || callGasLimit (16 bytes)
+		const hex = accountGasLimits.slice(2) // remove 0x
+		const verificationGasLimit = BigInt(`0x${hex.slice(0, 32)}`)
+		const callGasLimit = BigInt(`0x${hex.slice(32, 64)}`)
+		return { verificationGasLimit, callGasLimit }
+	}
+
+	/** Unpacks gasFees (bytes32) into maxPriorityFeePerGas and maxFeePerGas */
+	unpackGasFees(gasFees: HexString): { maxPriorityFeePerGas: bigint; maxFeePerGas: bigint } {
+		// gasFees = maxPriorityFeePerGas (16 bytes) || maxFeePerGas (16 bytes)
+		const hex = gasFees.slice(2) // remove 0x
+		const maxPriorityFeePerGas = BigInt(`0x${hex.slice(0, 32)}`)
+		const maxFeePerGas = BigInt(`0x${hex.slice(32, 64)}`)
+		return { maxPriorityFeePerGas, maxFeePerGas }
+	}
+
+	/**
+	 * Converts a PackedUserOperation to bundler-compatible v0.7 format.
+	 * Unpacks gas limits and fees, extracts factory/paymaster data from packed fields.
+	 *
+	 * @param userOp - The packed user operation to convert
+	 * @returns Bundler-compatible user operation object
+	 */
+	prepareBundlerCall(userOp: PackedUserOperation): Record<string, unknown> {
+		const { verificationGasLimit, callGasLimit } = this.unpackGasLimits(userOp.accountGasLimits)
+		const { maxPriorityFeePerGas, maxFeePerGas } = this.unpackGasFees(userOp.gasFees)
+
+		// Convert initCode to factory/factoryData
+		const hasFactory = userOp.initCode && userOp.initCode !== "0x" && userOp.initCode.length > 2
+		const factory = hasFactory ? (`0x${userOp.initCode.slice(2, 42)}` as HexString) : undefined
+		const factoryData = hasFactory ? (`0x${userOp.initCode.slice(42)}` as HexString) : undefined
+
+		const hasPaymaster =
+			userOp.paymasterAndData && userOp.paymasterAndData !== "0x" && userOp.paymasterAndData.length > 2
+		const paymaster = hasPaymaster ? (`0x${userOp.paymasterAndData.slice(2, 42)}` as HexString) : undefined
+		const paymasterData = hasPaymaster ? (`0x${userOp.paymasterAndData.slice(42)}` as HexString) : undefined
+
+		// Build bundler-compatible userOp (only include defined fields)
+		const userOpBundler: Record<string, unknown> = {
+			sender: userOp.sender,
+			nonce: toHex(userOp.nonce),
+			callData: userOp.callData,
+			callGasLimit: toHex(callGasLimit),
+			verificationGasLimit: toHex(verificationGasLimit),
+			preVerificationGas: toHex(userOp.preVerificationGas),
+			maxFeePerGas: toHex(maxFeePerGas),
+			maxPriorityFeePerGas: toHex(maxPriorityFeePerGas),
+			signature: userOp.signature,
+		}
+
+		// Only add factory fields if present
+		if (factory) {
+			userOpBundler.factory = factory
+			userOpBundler.factoryData = factoryData || "0x"
+		}
+
+		// Only add paymaster fields if present
+		if (paymaster) {
+			userOpBundler.paymaster = paymaster
+			userOpBundler.paymasterData = paymasterData || "0x"
+			userOpBundler.paymasterVerificationGasLimit = toHex(50_000n)
+			userOpBundler.paymasterPostOpGasLimit = toHex(50_000n)
+		}
+
+		return userOpBundler
 	}
 
 	// =========================================================================
@@ -1079,7 +1185,8 @@ export class IntentGatewayV2 {
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = Number.parseInt(evmChainID.split("-")[1])
 			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
-			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
+			console.log("nativeCurrency?.symbol!", nativeCurrency?.symbol!)
+			const tokenPriceUsd = await fetchPrice("pol", chainId)
 			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 			const feeTokenPriceUsd = new Decimal(1) // stable coin
 			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
@@ -1112,5 +1219,19 @@ export class IntentGatewayV2 {
 		})
 
 		return quoteNative
+	}
+
+	/**
+	 * Transforms an OrderV2 (SDK type) to the Order struct expected by the contract.
+	 * - Removes SDK-specific fields (id, transactionHash)
+	 * - Converts source/destination to hex if not already
+	 */
+	private transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | "transactionHash"> {
+		const { id: _id, transactionHash: _txHash, ...contractOrder } = order
+		return {
+			...contractOrder,
+			source: order.source.startsWith("0x") ? order.source : toHex(order.source),
+			destination: order.destination.startsWith("0x") ? order.destination : toHex(order.destination),
+		}
 	}
 }

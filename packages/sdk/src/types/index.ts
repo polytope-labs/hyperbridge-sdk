@@ -1437,7 +1437,7 @@ export interface SelectBidResult {
 /** Options for executing an intent order */
 export interface ExecuteIntentOrderOptions {
 	order: OrderV2
-	orderTxHash: HexString
+	sessionPrivateKey?: HexString
 	minBids?: number
 	bidTimeoutMs?: number
 	pollIntervalMs?: number

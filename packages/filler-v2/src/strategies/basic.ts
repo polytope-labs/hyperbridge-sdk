@@ -8,7 +8,8 @@ import {
 	ADDRESS_ZERO,
 	TokenInfoV2,
 	adjustDecimals,
-	IntentsCoprocessor
+	IntentsCoprocessor,
+	hexToString,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
@@ -79,7 +80,10 @@ export class BasicFiller implements FillerStrategy {
 				}
 
 				if (inputType !== outputType) {
-					this.logger.debug({ index: i, inputType, outputType }, "Token type mismatch (must be same-token swap)")
+					this.logger.debug(
+						{ index: i, inputType, outputType },
+						"Token type mismatch (must be same-token swap)",
+					)
 					return false
 				}
 			}
@@ -280,10 +284,10 @@ export class BasicFiller implements FillerStrategy {
 		startTime: number,
 		intentsCoprocessor: IntentsCoprocessor,
 	): Promise<ExecutionResult> {
-		const entryPointAddress = this.configService.getEntryPointAddress()
+		const entryPointAddress = this.configService.getEntryPointAddress(order.destination)
 
 		if (!entryPointAddress) {
-			const errorMsg = "Solver selection is active but entryPointAddress is not configured."
+			const errorMsg = `Solver selection is active but entryPointAddress is not configured for chain ${order.destination}.`
 			this.logger.error(errorMsg)
 			return {
 				success: false,
@@ -419,6 +423,4 @@ export class BasicFiller implements FillerStrategy {
 			processingTimeMs,
 		}
 	}
-
-
 }
