@@ -1,7 +1,7 @@
 import { SubstrateEvent } from "@subql/types"
 import { RequestService } from "@/services/request.service"
 import { Status } from "@/configs/src/types"
-import { getHostStateMachine, isHyperbridge } from "@/utils/substrate.helpers"
+import { getHostStateMachine, isHyperbridge, decodeRelayerAddress } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
 import { Request } from "@/configs/src/types/models"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
@@ -27,7 +27,7 @@ export const handleSubstratePostRequestHandledEvent = wrap(async (event: Substra
 	} = event
 
 	const eventData = event.event.data[0] as unknown as EventData
-	const relayer_id = eventData.relayer.toString()
+	const relayer_id = decodeRelayerAddress(eventData.relayer.toString())
 
 	logger.info(`Handling ISMP PostRequestHandled Event Data: ${stringify({ eventData })}`)
 
