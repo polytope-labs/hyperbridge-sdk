@@ -170,7 +170,7 @@ export class IntentsCoprocessor {
 		timeoutMs: number = 30_000,
 	): Promise<BidSubmissionResult> {
 		const keyPair = this.getKeyPair()
-		let baseTip = 1_000_000_00n // 1 GWEI tip to increase priority
+		let baseTip = 500_000_000_000 // 0.5 BRIDGE tip to increase priority
 		let attempt = 0
 
 		while (attempt < maxRetries) {
