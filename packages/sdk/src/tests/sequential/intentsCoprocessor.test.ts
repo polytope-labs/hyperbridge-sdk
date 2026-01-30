@@ -103,7 +103,7 @@ describe.sequential("IntentsCoprocessor", () => {
 
 		expect(bids.length).toBeGreaterThan(0)
 		// Verify the decoded userOp matches what we submitted
-		const ourBid = bids.find((b) => b.userOp.sender === testUserOp.sender)
+		const ourBid = bids.find((b) => b.userOp.sender.toLowerCase() === testUserOp.sender.toLowerCase())
 		expect(ourBid).toBeDefined()
 		expect(ourBid?.userOp.nonce).toBe(testUserOp.nonce)
 	}, 300_000)
