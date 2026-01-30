@@ -18,7 +18,8 @@ import {
 } from "viem"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
-import { createSessionKeyStorage, type SessionKeyData } from "@/storage"
+import EVM_HOST from "@/abis/evmHost"
+import { createSessionKeyStorage, createCancellationStorage, STORAGE_KEYS, type SessionKeyData } from "@/storage"
 import {
 	type HexString,
 	type OrderV2,
@@ -27,6 +28,7 @@ import {
 	type EstimateFillOrderV2Params,
 	type FillOrderEstimateV2,
 	type IPostRequest,
+	type IGetRequest,
 	type DispatchPost,
 	type FillOptionsV2,
 	type SelectOptions,
@@ -35,6 +37,9 @@ import {
 	type SelectBidResult,
 	type ExecuteIntentOrderOptions,
 	type DecodedOrderV2PlacedLog,
+	type TokenInfoV2,
+	RequestStatus,
+	type RequestStatusWithMetadata,
 } from "@/types"
 import {
 	ADDRESS_ZERO,
@@ -50,11 +55,16 @@ import {
 	sleep,
 	DEFAULT_POLL_INTERVAL,
 	hexToString,
+	getRequestCommitment,
+	parseStateMachineId,
+	waitForChallengePeriod,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
-import { EvmChain } from "@/chains/evm"
+import { EvmChain, requestCommitmentKey } from "@/chains/evm"
 import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
+import { type IGetRequestMessage, type IProof, type SubstrateChain } from "@/chain"
+import type { IndexerClient } from "@/client"
 import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
 import ERC7821ABI from "@/abis/erc7281"
@@ -84,24 +94,72 @@ export const DEFAULT_GRAFFITI = "0x000000000000000000000000000000000000000000000
 export const ERC7821_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as HexString
 
 /**
+ * Bundler RPC method names
+ */
+export const BundlerMethod = {
+	/** Submit a user operation to the bundler */
+	ETH_SEND_USER_OPERATION: "eth_sendUserOperation",
+	/** Get the receipt of a user operation */
+	ETH_GET_USER_OPERATION_RECEIPT: "eth_getUserOperationReceipt",
+	/** Get gas price estimates from Pimlico */
+	PIMLICO_GET_USER_OPERATION_GAS_PRICE: "pimlico_getUserOperationGasPrice",
+} as const
+
+export type BundlerMethod = (typeof BundlerMethod)[keyof typeof BundlerMethod]
+
+export interface CancelEventMap {
+	DESTINATION_FINALIZED: { proof: IProof }
+	AWAITING_GET_REQUEST: undefined
+	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
+	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata
+	HYPERBRIDGE_FINALIZED: RequestStatusWithMetadata
+	SOURCE_PROOF_RECEIVED: IProof
+}
+
+export type CancelEvent = {
+	[K in keyof CancelEventMap]: { status: K; data: CancelEventMap[K] }
+}[keyof CancelEventMap]
+
+/** IntentGatewayV2 contract params struct */
+export interface IntentGatewayV2Params {
+	host: HexString
+	dispatcher: HexString
+	solverSelection: boolean
+	surplusShareBps: bigint
+	protocolFeeBps: bigint
+	priceOracle: HexString
+}
+
+/**
  * IntentGatewayV2 utilities for placing orders and submitting bids.
  * Automatically manages session keys for solver selection.
  */
 export class IntentGatewayV2 {
 	private readonly storage: ReturnType<typeof createSessionKeyStorage>
+	private readonly cancellationStorage = createCancellationStorage()
 	private readonly swap: Swap = new Swap()
 	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
 	private readonly domainSeparatorCache: Map<HexString, HexString> = new Map()
+	private readonly protocolFeeBpsCache: Map<string, bigint> = new Map()
 	private initPromise: Promise<void> | null = null
+	/**
+	 * Optional custom IntentGatewayV2 address for the destination chain.
+	 * If set, this address will be used when fetching destination proofs in `cancelOrder`.
+	 * If not set, uses the default address from the chain configuration.
+	 * This allows using different IntentGatewayV2 contract versions (e.g., old vs new contracts).
+	 */
+	public destIntentGatewayV2Address?: HexString
 
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
 		public readonly bundlerUrl?: string,
+		destIntentGatewayV2Address?: HexString,
 	) {
 		this.storage = createSessionKeyStorage()
 		this.initPromise = this.initFeeTokenCache()
+		this.destIntentGatewayV2Address = destIntentGatewayV2Address
 	}
 
 	/**
@@ -119,6 +177,25 @@ export class IntentGatewayV2 {
 		this.feeTokenCache.set(this.source.config.stateMachineId, sourceFeeToken)
 		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
 		this.feeTokenCache.set(this.dest.config.stateMachineId, destFeeToken)
+
+		const sourceGatewayAddress = this.source.configService.getIntentGatewayV2Address(
+			this.source.config.stateMachineId,
+		)
+		const sourceParams = (await this.source.client.readContract({
+			address: sourceGatewayAddress,
+			abi: IntentGatewayV2ABI,
+			functionName: "params",
+		})) as IntentGatewayV2Params
+		this.protocolFeeBpsCache.set(this.source.config.stateMachineId, sourceParams.protocolFeeBps)
+
+		const destGatewayAddress = this.dest.configService.getIntentGatewayV2Address(this.dest.config.stateMachineId)
+		const destParams = (await this.dest.client.readContract({
+			address: destGatewayAddress,
+			abi: IntentGatewayV2ABI,
+			functionName: "params",
+		})) as IntentGatewayV2Params
+
+		this.protocolFeeBpsCache.set(this.dest.config.stateMachineId, destParams.protocolFeeBps)
 	}
 
 	/**
@@ -146,46 +223,58 @@ export class IntentGatewayV2 {
 	// Main Entry Points
 	// =========================================================================
 
-	/** Places an order on the source chain and returns the transaction hash and the final order */
-	async placeOrder(
+	/**
+	 * Prepares an order for placement by:
+	 * 1. Generating a session key
+	 * 2. Reading the current nonce from the contract
+	 * 3. Calculating reduced input amounts after protocol fee deduction
+	 * 4. Computing the order commitment
+	 *
+	 * This mirrors the contract's placeOrder logic where protocolFeeBps is deducted
+	 * from input amounts before computing the commitment.
+	 *
+	 * @param order - The order to prepare
+	 * @returns The prepared order with nonce, session, reduced inputs, and commitment set, plus the session private key
+	 */
+	async preparePlaceOrder(
 		order: OrderV2,
-		graffiti: HexString = DEFAULT_GRAFFITI,
-		walletClient: WalletClient,
-	): Promise<{ txHash: HexString; order: OrderV2; sessionPrivateKey: HexString }> {
+	): Promise<{ order: OrderV2; calldata: HexString; sessionPrivateKey: HexString }> {
+		await this.ensureInitialized()
+
 		const privateKey = generatePrivateKey()
 		const account = privateKeyToAccount(privateKey)
 		const sessionKeyAddress = account.address as HexString
 
-		order.session = sessionKeyAddress
-
-		const hash = await walletClient.writeContract({
-			abi: IntentGatewayV2ABI,
+		const currentNonceHex = await this.source.client.getStorageAt({
 			address: this.source.configService.getIntentGatewayV2Address(hexToString(order.destination)),
-			functionName: "placeOrder",
-			args: [this.transformOrderForContract(order), graffiti],
-			account: walletClient.account!,
-			chain: walletClient.chain,
+			slot: "0x0000000000000000000000000000000000000000000000000000000000000003",
 		})
 
-		const receipt = await this.source.client.waitForTransactionReceipt({ hash, confirmations: 1 })
+		order.session = sessionKeyAddress
+		order.nonce = BigInt(currentNonceHex as HexString)
 
-		const orderPlacedEvent = parseEventLogs({
-			abi: IntentGatewayV2ABI,
-			logs: receipt.logs,
-			eventName: "OrderPlaced",
-		})[0] as unknown as DecodedOrderV2PlacedLog | undefined
+		const protocolFeeBps = this.protocolFeeBpsCache.get(this.source.config.stateMachineId) ?? 0n
 
-		if (!orderPlacedEvent) {
-			throw new Error("OrderPlaced event not found in transaction logs")
+		if (protocolFeeBps > 0n) {
+			const reducedInputs: TokenInfoV2[] = order.inputs.map((input) => {
+				const originalAmount = input.amount
+				const protocolFee = (originalAmount * protocolFeeBps) / 10_000n
+				const reducedAmount = originalAmount - protocolFee
+				return {
+					token: input.token,
+					amount: reducedAmount,
+				}
+			})
+			order.inputs = reducedInputs
 		}
 
-		order.nonce = orderPlacedEvent.args.nonce
-		order.inputs = orderPlacedEvent.args.inputs
-		order.output.assets = orderPlacedEvent.args.outputs.map((output) => ({
-			token: output.token,
-			amount: output.amount,
-		}))
 		order.id = orderV2Commitment(order)
+
+		const calldata = encodeFunctionData({
+			abi: IntentGatewayV2ABI,
+			functionName: "placeOrder",
+			args: [this.transformOrderForContract(order), DEFAULT_GRAFFITI],
+		}) as HexString
 
 		const sessionKeyData: SessionKeyData = {
 			privateKey: privateKey as HexString,
@@ -196,7 +285,7 @@ export class IntentGatewayV2 {
 
 		await this.storage.setSessionKey(order.id as HexString, sessionKeyData)
 
-		return { txHash: hash, order: order, sessionPrivateKey: privateKey as HexString }
+		return { order, calldata, sessionPrivateKey: privateKey as HexString }
 	}
 
 	/**
@@ -382,28 +471,40 @@ export class IntentGatewayV2 {
 		)
 		const userOpHash = this.computeUserOpHash(signedUserOp, entryPointAddress, chainId)
 
-		const bundlerResponse = await fetch(this.bundlerUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				jsonrpc: "2.0",
-				id: 1,
-				method: "eth_sendUserOperation",
-				params: [this.prepareBundlerCall(signedUserOp), entryPointAddress],
-			}),
-		})
+		const bundlerResult = await this.sendBundler<HexString>(BundlerMethod.ETH_SEND_USER_OPERATION, [
+			this.prepareBundlerCall(signedUserOp),
+			entryPointAddress,
+		])
 
-		const bundlerResult = await bundlerResponse.json()
+		const finalUserOpHash = bundlerResult || userOpHash
 
-		if (bundlerResult.error) {
-			throw new Error(`Bundler error: ${bundlerResult.error.message || JSON.stringify(bundlerResult.error)}`)
+		// Poll for receipt to get txnHash
+		let txnHash: HexString | undefined
+		try {
+			const receipt = await retryPromise(
+				async () => {
+					const result = await this.sendBundler<{ receipt: { transactionHash: HexString } } | null>(
+						BundlerMethod.ETH_GET_USER_OPERATION_RECEIPT,
+						[finalUserOpHash],
+					)
+					if (!result?.receipt?.transactionHash) {
+						throw new Error("Receipt not available yet")
+					}
+					return result
+				},
+				{ maxRetries: 5, backoffMs: 2000, logMessage: "Fetching user operation receipt" },
+			)
+			txnHash = receipt.receipt.transactionHash
+		} catch {
+			// Receipt may not be available after retries, txnHash will be undefined
 		}
 
 		return {
 			userOp: signedUserOp,
-			userOpHash: (bundlerResult.result || userOpHash) as HexString,
+			userOpHash: finalUserOpHash,
 			solverAddress,
 			commitment,
+			txnHash,
 		}
 	}
 
@@ -525,6 +626,7 @@ export class IntentGatewayV2 {
 						commitment,
 						userOpHash: result.userOpHash,
 						selectedSolver: result.solverAddress,
+						transactionHash: result.txnHash,
 					},
 				}
 			} catch (err) {
@@ -854,7 +956,7 @@ export class IntentGatewayV2 {
 	}
 
 	// =========================================================================
-	// Signature & Hash Utilities
+	// Hash and Bundle User Operations Utilities
 	// =========================================================================
 
 	/** Signs a solver selection message using the stored session key (EIP-712) */
@@ -911,10 +1013,6 @@ export class IntentGatewayV2 {
 			encodePacked(["bytes1", "bytes1", "bytes32", "bytes32"], ["0x19", "0x01", domainSeparator, structHash]),
 		)
 	}
-
-	// =========================================================================
-	// Gas Packing Utilities
-	// =========================================================================
 
 	/** Packs verificationGasLimit and callGasLimit into bytes32) */
 	packGasLimits(verificationGasLimit: bigint, callGasLimit: bigint): HexString {
@@ -997,6 +1095,33 @@ export class IntentGatewayV2 {
 		}
 
 		return userOpBundler
+	}
+
+	/**
+	 * Sends a JSON-RPC request to the bundler endpoint.
+	 *
+	 * @param method - The bundler method to call
+	 * @param params - Parameters array for the RPC call
+	 * @returns The result from the bundler
+	 */
+	async sendBundler<T = unknown>(method: BundlerMethod, params: unknown[] = []): Promise<T> {
+		if (!this.bundlerUrl) {
+			throw new Error("Bundler URL not configured")
+		}
+
+		const response = await fetch(this.bundlerUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+		})
+
+		const result = await response.json()
+
+		if (result.error) {
+			throw new Error(`Bundler error: ${result.error.message || JSON.stringify(result.error)}`)
+		}
+
+		return result.result
 	}
 
 	// =========================================================================
@@ -1233,5 +1358,268 @@ export class IntentGatewayV2 {
 			source: order.source.startsWith("0x") ? order.source : toHex(order.source),
 			destination: order.destination.startsWith("0x") ? order.destination : toHex(order.destination),
 		}
+	}
+
+	// =========================================================================
+	// Order Cancellation
+	// =========================================================================
+
+	/**
+	 * Generator function that handles the full order cancellation flow for IntentGatewayV2.
+	 * This allows users to cancel their orders when they haven't been filled by the deadline.
+	 *
+	 * The cancellation process involves:
+	 * 1. Fetching a proof that the order wasn't filled on the destination chain
+	 * 2. Submitting a GET request to read the unfilled order state
+	 * 3. Waiting for the GET request to be processed through Hyperbridge
+	 * 4. Finalizing the cancellation on Hyperbridge
+	 *
+	 * @param order - The order to cancel
+	 * @param indexerClient - Client for querying the indexer
+	 * @yields CancelEventV2 status updates throughout the cancellation process
+	 *
+	 * @example
+	 * ```typescript
+	 * const gateway = new IntentGatewayV2(source, dest)
+	 * const cancelStream = gateway.cancelOrder(order, indexerClient)
+	 *
+	 * for await (const event of cancelStream) {
+	 *   switch (event.status) {
+	 *     case 'DESTINATION_FINALIZED':
+	 *       console.log('Got destination proof');
+	 *       break;
+	 *     case 'AWAITING_GET_REQUEST':
+	 *       // Submit the cancel transaction and send back the tx hash
+	 *       const txHash = await submitCancelTx();
+	 *       cancelStream.next(txHash);
+	 *       break;
+	 *     case 'SOURCE_FINALIZED':
+	 *       console.log('Source finalized');
+	 *       break;
+	 *     case 'HYPERBRIDGE_DELIVERED':
+	 *       console.log('Delivered to Hyperbridge');
+	 *       break;
+	 *     case 'HYPERBRIDGE_FINALIZED':
+	 *       console.log('Cancellation complete');
+	 *       break;
+	 *   }
+	 * }
+	 * ```
+	 */
+	async *cancelOrder(order: OrderV2, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
+		const orderId = order.id!
+
+		const hyperbridge = indexerClient.hyperbridge as SubstrateChain
+		const sourceStateMachine = hexToString(order.source as HexString)
+		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
+
+		let destIProof: IProof | null = await this.cancellationStorage.getItem(STORAGE_KEYS.destProof(orderId))
+		if (!destIProof) {
+			destIProof = yield* this.fetchDestinationProof(order, indexerClient)
+			await this.cancellationStorage.setItem(STORAGE_KEYS.destProof(orderId), destIProof)
+		} else {
+			yield { status: "DESTINATION_FINALIZED", data: { proof: destIProof } }
+		}
+
+		let getRequest: IGetRequest | null = await this.cancellationStorage.getItem(STORAGE_KEYS.getRequest(orderId))
+		if (!getRequest) {
+			const transactionHash = yield {
+				status: "AWAITING_GET_REQUEST",
+				data: undefined,
+			}
+			const receipt = await this.source.client.getTransactionReceipt({
+				hash: transactionHash,
+			})
+
+			const events = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })
+			const request = events.find((e) => e.eventName === "GetRequestEvent")
+			if (!request) throw new Error("GetRequest missing")
+			getRequest = request.args as unknown as IGetRequest
+
+			await this.cancellationStorage.setItem(STORAGE_KEYS.getRequest(orderId), getRequest)
+		}
+
+		const commitment = getRequestCommitment({
+			...getRequest,
+			keys: [...getRequest.keys],
+		})
+		const sourceStatusStream = indexerClient.getRequestStatusStream(commitment)
+
+		for await (const statusUpdate of sourceStatusStream) {
+			if (statusUpdate.status === RequestStatus.SOURCE_FINALIZED) {
+				yield {
+					status: "SOURCE_FINALIZED",
+					data: { metadata: statusUpdate.metadata },
+				}
+
+				const sourceHeight = BigInt(statusUpdate.metadata.blockNumber)
+				let sourceIProof: IProof | null = await this.cancellationStorage.getItem(
+					STORAGE_KEYS.sourceProof(orderId),
+				)
+				if (!sourceIProof) {
+					sourceIProof = await fetchSourceProof(
+						commitment,
+						this.source,
+						sourceStateMachine,
+						sourceConsensusStateId,
+						sourceHeight,
+					)
+					await this.cancellationStorage.setItem(STORAGE_KEYS.sourceProof(orderId), sourceIProof)
+				}
+
+				await waitForChallengePeriod(hyperbridge, {
+					height: sourceIProof.height,
+					id: {
+						stateId: parseStateMachineId(sourceStateMachine).stateId,
+						consensusStateId: sourceConsensusStateId,
+					},
+				})
+
+				const getRequestMessage: IGetRequestMessage = {
+					kind: "GetRequest",
+					requests: [getRequest],
+					source: sourceIProof,
+					response: destIProof,
+					signer: pad("0x"),
+				}
+
+				await this.submitAndConfirmReceipt(hyperbridge, commitment, getRequestMessage)
+				continue
+			}
+
+			if (statusUpdate.status === RequestStatus.HYPERBRIDGE_DELIVERED) {
+				yield {
+					status: "HYPERBRIDGE_DELIVERED",
+					data: statusUpdate as RequestStatusWithMetadata,
+				}
+				continue
+			}
+
+			if (statusUpdate.status === RequestStatus.HYPERBRIDGE_FINALIZED) {
+				yield {
+					status: "HYPERBRIDGE_FINALIZED",
+					data: statusUpdate as RequestStatusWithMetadata,
+				}
+				await this.cancellationStorage.removeItem(STORAGE_KEYS.destProof(orderId))
+				await this.cancellationStorage.removeItem(STORAGE_KEYS.getRequest(orderId))
+				await this.cancellationStorage.removeItem(STORAGE_KEYS.sourceProof(orderId))
+				return
+			}
+		}
+	}
+
+	/**
+	 * Fetches proof for the destination chain that the order hasn't been filled.
+	 * @param order - The order to fetch proof for
+	 * @param indexerClient - Client for querying the indexer
+	 */
+	private async *fetchDestinationProof(
+		order: OrderV2,
+		indexerClient: IndexerClient,
+	): AsyncGenerator<CancelEvent, IProof, void> {
+		let latestHeight = 0n
+		let lastFailedHeight: bigint | null = null
+
+		while (true) {
+			const height = await indexerClient.queryLatestStateMachineHeight({
+				statemachineId: this.dest.config.stateMachineId,
+				chain: indexerClient.hyperbridge.config.stateMachineId,
+			})
+
+			latestHeight = height ?? 0n
+			const shouldFetch =
+				lastFailedHeight === null ? latestHeight > order.deadline : latestHeight > lastFailedHeight
+
+			if (!shouldFetch) {
+				await sleep(10000)
+				continue
+			}
+
+			try {
+				const intentGatewayV2Address =
+					this.destIntentGatewayV2Address ??
+					this.dest.configService.getIntentGatewayV2Address(this.dest.config.stateMachineId)
+				const orderId = order.id!
+				const slotHash = (await this.dest.client.readContract({
+					abi: IntentGatewayV2ABI,
+					address: intentGatewayV2Address,
+					functionName: "calculateCommitmentSlotHash",
+					args: [orderId],
+				})) as HexString
+
+				const proofHex = await this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayV2Address)
+
+				const proof: IProof = {
+					consensusStateId: this.dest.config.consensusStateId,
+					height: latestHeight,
+					proof: proofHex,
+					stateMachine: this.dest.config.stateMachineId,
+				}
+
+				yield { status: "DESTINATION_FINALIZED", data: { proof } }
+				return proof
+			} catch (e) {
+				lastFailedHeight = latestHeight
+				await sleep(10000)
+			}
+		}
+	}
+
+	/**
+	 * Submits a GET request message to Hyperbridge and confirms receipt.
+	 * @param hyperbridge - The Hyperbridge chain instance
+	 * @param commitment - The request commitment hash
+	 * @param message - The GET request message to submit
+	 */
+	private async submitAndConfirmReceipt(
+		hyperbridge: SubstrateChain,
+		commitment: HexString,
+		message: IGetRequestMessage,
+	) {
+		let storageValue = await hyperbridge.queryRequestReceipt(commitment)
+
+		if (!storageValue) {
+			console.log("No receipt found. Attempting to submit...")
+			try {
+				await hyperbridge.submitUnsigned(message)
+			} catch {
+				console.warn("Submission failed. Awaiting network confirmation...")
+			}
+
+			console.log("Waiting for network state update...")
+			await sleep(30000)
+
+			storageValue = await retryPromise(
+				async () => {
+					const value = await hyperbridge.queryRequestReceipt(commitment)
+					if (!value) throw new Error("Receipt not found")
+					return value
+				},
+				{ maxRetries: 10, backoffMs: 5000, logMessage: "Checking for receipt" },
+			)
+		}
+
+		console.log("Hyperbridge Receipt confirmed.")
+	}
+}
+
+/**
+ * Fetches proof for the source chain.
+ */
+async function fetchSourceProof(
+	commitment: HexString,
+	source: EvmChain,
+	sourceStateMachine: string,
+	sourceConsensusStateId: string,
+	sourceHeight: bigint,
+): Promise<IProof> {
+	const { slot1, slot2 } = requestCommitmentKey(commitment)
+	const proofHex = await source.queryStateProof(sourceHeight, [slot1, slot2])
+
+	return {
+		height: sourceHeight,
+		stateMachine: sourceStateMachine,
+		consensusStateId: sourceConsensusStateId,
+		proof: proofHex,
 	}
 }

@@ -1432,6 +1432,7 @@ export interface SelectBidResult {
 	userOpHash: HexString
 	solverAddress: HexString
 	commitment: HexString
+	txnHash?: HexString
 }
 
 /** Options for executing an intent order */

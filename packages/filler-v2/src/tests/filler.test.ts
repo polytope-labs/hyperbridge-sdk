@@ -145,16 +145,23 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 
 		// Prepare order (generates session key and stores it)
 		const {
-			txHash,
 			order: finalOrder,
+			calldata,
 			// We are still using returned sessionPrivateKey from here because the storage is getting erased for user
 			// since we are using multiple sdk helper instances. The FE may not need this return.
 			sessionPrivateKey,
-		} = await userSdkHelper.placeOrder(order, undefined, bscWalletClient as any)
+		} = await userSdkHelper.preparePlaceOrder(order)
 
 		order = finalOrder
 
-		console.log("Order placed on BSC Chapel, tx:", txHash)
+		const txHash = await bscWalletClient.sendTransaction({
+			to: bscIntentGatewayV2.address,
+			data: calldata,
+			account: bscWalletClient.account!,
+			chain: bscWalletClient.chain,
+		})
+
+		await bscPublicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 })
 
 		console.log("Starting executeIntentOrder flow (waiting for bids from filler)...")
 
