@@ -229,7 +229,7 @@ export class IntentsCoprocessor {
 				.signAndSend(keyPair, { tip }, (result) => {
 					if (resolved) return
 
-					if (result.status.isInBlock) {
+					if (result.status.isInBlock || result.status.isFinalized) {
 						resolved = true
 						clearTimeout(timeoutId)
 						resolve({
