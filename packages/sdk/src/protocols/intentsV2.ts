@@ -6,6 +6,7 @@ import {
 	encodeAbiParameters,
 	decodeAbiParameters,
 	concat,
+	concatHex,
 	pad,
 	maxUint256,
 	type Hex,
@@ -1363,6 +1364,69 @@ export class IntentGatewayV2 {
 	// =========================================================================
 	// Order Cancellation
 	// =========================================================================
+
+	/**
+	 * Returns the native token amount required to dispatch a cancellation GET request for the given order.
+	 * Internally constructs the IGetRequest and calls quoteNative.
+	 *
+	 * @param order - The order to get the cancellation quote for
+	 * @returns The native token amount required for the cancellation GET request
+	 */
+	async quoteCancelNative(order: OrderV2): Promise<bigint> {
+		const height = order.deadline + 1n
+
+		const destIntentGateway = this.dest.configService.getIntentGatewayV2Address(
+			hexToString(order.destination as HexString),
+		)
+		const slotHash = await this.dest.client.readContract({
+			abi: IntentGatewayV2ABI,
+			address: destIntentGateway,
+			functionName: "calculateCommitmentSlotHash",
+			args: [order.id as HexString],
+		})
+		const key = concatHex([destIntentGateway as HexString, slotHash as HexString]) as HexString
+
+		const context = encodeAbiParameters(
+			[
+				{
+					name: "requestBody",
+					type: "tuple",
+					components: [
+						{ name: "commitment", type: "bytes32" },
+						{ name: "beneficiary", type: "bytes32" },
+						{
+							name: "tokens",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+					],
+				},
+			],
+			[
+				{
+					commitment: order.id as HexString,
+					beneficiary: order.user as HexString,
+					tokens: order.inputs,
+				},
+			],
+		) as HexString
+
+		const getRequest: IGetRequest = {
+			source: order.source.startsWith("0x") ? hexToString(order.source as HexString) : order.source,
+			dest: order.destination.startsWith("0x") ? hexToString(order.destination as HexString) : order.destination,
+			from: this.source.configService.getIntentGatewayV2Address(hexToString(order.destination as HexString)),
+			nonce: await this.source.getHostNonce(),
+			height,
+			keys: [key],
+			timeoutTimestamp: 0n,
+			context,
+		}
+
+		return await this.source.quoteNative(getRequest, 0n)
+	}
 
 	/**
 	 * Generator function that handles the full order cancellation flow for IntentGatewayV2.
