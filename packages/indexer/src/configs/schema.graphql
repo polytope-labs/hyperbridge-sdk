@@ -135,25 +135,6 @@ type HyperBridgeChainStats @entity {
 }
 
 """
-[DEPRECATED - Migration Source] Old relayer stats entity for migration purposes
-Will be removed after migration is complete
-"""
-type RelayerStatsPerChain @entity {
-	id: ID!
-	relayer: Relayer!
-	chain: String! @index
-	numberOfSuccessfulMessagesDelivered: BigInt!
-	numberOfFailedMessagesDelivered: BigInt!
-	gasUsedForSuccessfulMessages: BigInt!
-	gasUsedForFailedMessages: BigInt!
-	gasFeeForSuccessfulMessages: BigInt!
-	gasFeeForFailedMessages: BigInt!
-	usdGasFeeForSuccessfulMessages: BigInt!
-	usdGasFeeForFailedMessages: BigInt!
-	feesEarned: BigInt! @index
-}
-
-"""
 Hyperbridge Stats for a specific Relayer on a specific chain
 """
 type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
@@ -1944,45 +1925,5 @@ type HyperbridgeCollatorRewardTransaction @entity {
 	Timestamp when this record was created
 	"""
 	createdAt: Date! @index
-}
-
-"""
-Migration state tracking for data migrations
-"""
-type MigrationState @entity {
-	"""
-	Unique identifier for the migration (e.g., "relayer-stats-migration")
-	"""
-	id: ID!
-
-	"""
-	Number of items migrated so far (EVM records only)
-	"""
-	migratedCount: Int!
-
-	"""
-	Total number of items processed (including skipped non-EVM records)
-	"""
-	processedCount: Int!
-
-	"""
-	Total number of items to migrate
-	"""
-	totalCount: Int!
-
-	"""
-	Whether the migration is complete
-	"""
-	isComplete: Boolean!
-
-	"""
-	Last block number where migration ran
-	"""
-	lastBlockNumber: BigInt!
-
-	"""
-	Timestamp when migration was last updated
-	"""
-	lastUpdatedAt: Date!
 }
 
