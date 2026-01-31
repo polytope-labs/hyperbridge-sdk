@@ -8,10 +8,12 @@ import {
 	ADDRESS_ZERO,
 	TokenInfoV2,
 	adjustDecimals,
+	IntentsCoprocessor,
+	transformOrderForContract,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService, HyperbridgeService, BidStorageService } from "@/services"
+import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
@@ -78,7 +80,10 @@ export class BasicFiller implements FillerStrategy {
 				}
 
 				if (inputType !== outputType) {
-					this.logger.debug({ index: i, inputType, outputType }, "Token type mismatch (must be same-token swap)")
+					this.logger.debug(
+						{ index: i, inputType, outputType },
+						"Token type mismatch (must be same-token swap)",
+					)
 					return false
 				}
 			}
@@ -249,15 +254,15 @@ export class BasicFiller implements FillerStrategy {
 	 * @param hyperbridge HyperbridgeService for bid submission (provided when solver selection is active)
 	 * @returns The execution result
 	 */
-	async executeOrder(order: OrderV2, hyperbridge?: HyperbridgeService): Promise<ExecutionResult> {
+	async executeOrder(order: OrderV2, intentsCoprocessor?: IntentsCoprocessor): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
 		// Ensure tokens are approved before submitting bid or direct fill
 		await this.contractService.approveTokensIfNeeded(order)
 
 		try {
-			if (hyperbridge) {
-				return await this.submitBidToHyperbridge(order, startTime, hyperbridge)
+			if (intentsCoprocessor) {
+				return await this.submitBidToHyperbridge(order, startTime, intentsCoprocessor)
 			}
 			return await this.fillOrder(order, startTime)
 		} catch (error) {
@@ -277,12 +282,12 @@ export class BasicFiller implements FillerStrategy {
 	private async submitBidToHyperbridge(
 		order: OrderV2,
 		startTime: number,
-		hyperbridgeService: HyperbridgeService,
+		intentsCoprocessor: IntentsCoprocessor,
 	): Promise<ExecutionResult> {
-		const entryPointAddress = this.configService.getEntryPointAddress()
+		const entryPointAddress = this.configService.getEntryPointAddress(order.destination)
 
 		if (!entryPointAddress) {
-			const errorMsg = "Solver selection is active but entryPointAddress is not configured."
+			const errorMsg = `Solver selection is active but entryPointAddress is not configured for chain ${order.destination}.`
 			this.logger.error(errorMsg)
 			return {
 				success: false,
@@ -303,7 +308,7 @@ export class BasicFiller implements FillerStrategy {
 		)
 
 		// Submit the bid to Hyperbridge
-		const bidResult = await hyperbridgeService.submitBid(commitment, userOp)
+		const bidResult = await intentsCoprocessor.submitBid(commitment, userOp)
 
 		const endTime = Date.now()
 		const processingTimeMs = endTime - startTime
@@ -376,7 +381,7 @@ export class BasicFiller implements FillerStrategy {
 				abi: INTENT_GATEWAY_V2_ABI,
 				address: this.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+				args: [transformOrderForContract(order) as any, fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
 				value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
 				chain: walletClient.chain,
@@ -387,7 +392,7 @@ export class BasicFiller implements FillerStrategy {
 					abi: INTENT_GATEWAY_V2_ABI,
 					address: this.configService.getIntentGatewayV2Address(order.destination),
 					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+					args: [transformOrderForContract(order) as any, fillOptions as any],
 					account: privateKeyToAccount(this.privateKey),
 					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
 					chain: walletClient.chain,
@@ -418,6 +423,4 @@ export class BasicFiller implements FillerStrategy {
 			processingTimeMs,
 		}
 	}
-
-
 }
