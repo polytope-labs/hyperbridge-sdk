@@ -9,7 +9,7 @@ import {
 	TokenInfoV2,
 	adjustDecimals,
 	IntentsCoprocessor,
-	hexToString,
+	transformOrderForContract,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
@@ -381,7 +381,7 @@ export class BasicFiller implements FillerStrategy {
 				abi: INTENT_GATEWAY_V2_ABI,
 				address: this.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+				args: [transformOrderForContract(order) as any, fillOptions as any],
 				account: privateKeyToAccount(this.privateKey),
 				value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
 				chain: walletClient.chain,
@@ -392,7 +392,7 @@ export class BasicFiller implements FillerStrategy {
 					abi: INTENT_GATEWAY_V2_ABI,
 					address: this.configService.getIntentGatewayV2Address(order.destination),
 					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
+					args: [transformOrderForContract(order) as any, fillOptions as any],
 					account: privateKeyToAccount(this.privateKey),
 					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
 					chain: walletClient.chain,

@@ -143,16 +143,13 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 
 		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		// Prepare order (generates session key and stores it)
-		const {
-			order: finalOrder,
-			calldata,
-			// We are still using returned sessionPrivateKey from here because the storage is getting erased for user
-			// since we are using multiple sdk helper instances. The FE may not need this return.
-			sessionPrivateKey,
-		} = await userSdkHelper.preparePlaceOrder(order)
+		const generator = userSdkHelper.preparePlaceOrder(order)
 
-		order = finalOrder
+		const firstResult = await generator.next()
+		const { calldata, sessionPrivateKey } = firstResult.value as {
+			calldata: HexString
+			sessionPrivateKey: HexString
+		}
 
 		const txHash = await bscWalletClient.sendTransaction({
 			to: bscIntentGatewayV2.address,
@@ -163,6 +160,9 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 
 		await bscPublicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 })
 
+		const secondResult = await generator.next(txHash)
+		order = secondResult.value as OrderV2
+
 		console.log("Starting executeIntentOrder flow (waiting for bids from filler)...")
 
 		let userOpHash: HexString | undefined
@@ -172,7 +172,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			order,
 			sessionPrivateKey,
 			minBids: 1, // Wait for at least 1 bid
-			bidTimeoutMs: 60_000, // 1 minute to wait for bids
+			bidTimeoutMs: 120_000, // 2 minute to wait for bids
 			pollIntervalMs: 5_000, // Poll every 5 seconds
 		})) {
 			console.log(`Status: ${status.status}`, status.metadata)
@@ -190,7 +190,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 					console.log(`Selected solver: ${selectedSolver}`)
 					break
 				case "USEROP_SUBMITTED":
-					console.log(`UserOp submitted to bundler, hash: ${status.metadata.userOpHash}`)
+					console.log(`UserOp submitted to bundler, transaction hash: ${status.metadata.transactionHash}`)
 					break
 				case "FAILED":
 					throw new Error(`Order execution failed: ${status.metadata.error}`)

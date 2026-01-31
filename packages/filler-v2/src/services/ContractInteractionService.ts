@@ -33,7 +33,6 @@ Decimal.config({ precision: 28, rounding: 4 })
  */
 export class ContractInteractionService {
 	private configService: FillerConfigService
-	private api: ApiPromise | null = null
 	public cacheService: CacheService
 	private logger = getLogger("contract-service")
 	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
@@ -222,28 +221,6 @@ export class ContractInteractionService {
 				})
 				this.logger.info({ token: token.address }, "Approved token")
 			}
-		}
-	}
-
-	/**
-	 * Transforms the order object to match the contract's expected format
-	 */
-	transformOrderForContract(order: OrderV2) {
-		return {
-			source: toHex(order.source),
-			destination: toHex(order.destination),
-			deadline: order.deadline,
-			nonce: order.nonce,
-			fees: order.fees,
-			session: order.session,
-			predispatch: order.predispatch,
-			output: {
-				beneficiary: order.output.beneficiary,
-				assets: order.output.assets,
-				call: order.output.call,
-			},
-			inputs: order.inputs,
-			user: order.user,
 		}
 	}
 
