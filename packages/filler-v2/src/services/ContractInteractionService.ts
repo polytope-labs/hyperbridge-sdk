@@ -270,39 +270,7 @@ export class ContractInteractionService {
 			}
 		} catch (error) {
 			this.logger.error({ err: error }, "Error estimating gas, using generous fallback values")
-			// Generous fallback values based on SDK estimates (with buffers):
-			const fallbackEstimate = {
-				totalCostInSourceFeeToken: 100_000_000_000_000_000n,
-				dispatchFee: 50_000_000_000_000_000n,
-				nativeDispatchFee: 10_000_000_000_000_000n,
-				callGasLimit: 750_000n,
-				verificationGasLimit: 200_000n,
-				preVerificationGas: 100_000n,
-				maxFeePerGas: 100_000_000_000n,
-				maxPriorityFeePerGas: 40_000_000_000n,
-			}
-
-			// Cache the fallback estimate so bid preparation can use it
-			if (order.id) {
-				this.cacheService.setGasEstimate(
-					order.id,
-					fallbackEstimate.totalCostInSourceFeeToken,
-					fallbackEstimate.dispatchFee,
-					fallbackEstimate.nativeDispatchFee,
-					fallbackEstimate.callGasLimit,
-					fallbackEstimate.verificationGasLimit,
-					fallbackEstimate.preVerificationGas,
-					fallbackEstimate.maxFeePerGas,
-					fallbackEstimate.maxPriorityFeePerGas,
-				)
-			}
-
-			return {
-				totalCostInSourceFeeToken: fallbackEstimate.totalCostInSourceFeeToken,
-				dispatchFee: fallbackEstimate.dispatchFee,
-				nativeDispatchFee: fallbackEstimate.nativeDispatchFee,
-				callGasLimit: fallbackEstimate.callGasLimit,
-			}
+			throw new Error(`Failed to estimate gas: ${error instanceof Error ? error.message : "Unknown error"}`)
 		}
 	}
 

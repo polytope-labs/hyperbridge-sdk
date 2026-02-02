@@ -1026,7 +1026,7 @@ export class IntentGatewayV2 {
 		// Pimlico requires at least 40 gwei maxPriorityFeePerGas,
 		// can use pimlico_getUserOperationGasPrice in future
 
-		const MIN_PRIORITY_FEE = 40_000_000_000n // 40 gwei
+		const MIN_PRIORITY_FEE = 100_000_000_000n // 100 gwei
 		const gasPrice = await this.dest.client.getGasPrice()
 		const calculatedPriorityFee = gasPrice / 10n
 		const maxPriorityFeePerGas = calculatedPriorityFee > MIN_PRIORITY_FEE ? calculatedPriorityFee : MIN_PRIORITY_FEE
