@@ -116,7 +116,6 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 		source: sourceId,
 		timeoutTimestamp: BigInt(Number(timeoutTimestamp)),
 		to,
-		status: Status.SOURCE,
 		blockNumber: event.block.block.header.number.toString(),
 		blockHash: event.block.block.header.hash.toString(),
 		transactionHash: event.extrinsic?.extrinsic.hash.toString() || "",

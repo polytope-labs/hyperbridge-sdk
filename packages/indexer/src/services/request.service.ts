@@ -15,7 +15,6 @@ export interface ICreateRequestArgs {
 	source?: string | undefined
 	timeoutTimestamp?: bigint | undefined
 	to?: string | undefined
-	status: Status
 	blockNumber: string
 	blockHash: string
 	transactionHash: string
@@ -57,7 +56,6 @@ export class RequestService {
 			from,
 			nonce,
 			source,
-			status,
 			timeoutTimestamp,
 			to,
 			blockNumber,
@@ -71,7 +69,6 @@ export class RequestService {
 			`Processing Request: ${JSON.stringify({
 				commitment,
 				transactionHash,
-				status,
 			})}`,
 		)
 
@@ -86,7 +83,6 @@ export class RequestService {
 				from: from || "",
 				nonce: nonce || BigInt(0),
 				source: source || "",
-				status,
 				timeoutTimestamp: timeoutTimestamp || BigInt(0),
 				to: to || "",
 				commitment,
@@ -99,7 +95,6 @@ export class RequestService {
 				`Created new request with details ${JSON.stringify({
 					commitment,
 					transactionHash,
-					status,
 				})}`,
 			)
 		} else {
@@ -119,7 +114,6 @@ export class RequestService {
 				`Updated existing request with details ${JSON.stringify({
 					commitment,
 					transactionHash,
-					status,
 				})}`,
 			)
 		}
@@ -161,9 +155,8 @@ export class RequestService {
 				blockNumber: "",
 				blockHash: "",
 				blockTimestamp: 0n,
-				status,
 				transactionHash: "",
-				createdAt: timestampToDate(0n),
+				createdAt: timestampToDate(Date.now()),
 			})
 
 			logger.info(

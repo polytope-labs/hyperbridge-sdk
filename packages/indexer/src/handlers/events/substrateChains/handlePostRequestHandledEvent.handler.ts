@@ -48,9 +48,7 @@ export const handleSubstratePostRequestHandledEvent = wrap(async (event: Substra
 		status = Status.HYPERBRIDGE_DELIVERED
 	}
 
-	logger.info(`Updating Hyperbridge chain stats for ${host}`)
-	await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host, blockTimestamp)
-
+	// Critical: Update request status - must succeed for data integrity
 	logger.info(
 		`Handling ISMP PostRequestHandled Event: ${stringify({
 			commitment: eventData.commitment.toString(),
@@ -72,4 +70,12 @@ export const handleSubstratePostRequestHandledEvent = wrap(async (event: Substra
 		status,
 		transactionHash: extrinsic?.extrinsic.hash.toString() || "",
 	})
+
+	// Non-critical operations: Update hyperbridge stats
+	try {
+		logger.info(`Updating Hyperbridge chain stats for ${host}`)
+		await HyperBridgeService.handlePostRequestOrResponseHandledEvent(relayer_id, host, blockTimestamp)
+	} catch (error) {
+		logger.error(`Error in non-critical operations for PostRequestHandled: ${stringify(error)}`)
+	}
 })

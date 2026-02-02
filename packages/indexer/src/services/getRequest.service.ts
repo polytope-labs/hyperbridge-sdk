@@ -18,7 +18,6 @@ export interface IGetRequestArgs {
 	blockHash?: string
 	transactionHash?: string
 	blockTimestamp?: bigint
-	status?: Status
 	chain?: string
 	commitment?: string
 }
@@ -50,7 +49,6 @@ export class GetRequestService {
 			blockHash,
 			blockTimestamp,
 			transactionHash,
-			status,
 			chain,
 		} = args
 		let getRequest = await GetRequest.get(id)
@@ -59,7 +57,6 @@ export class GetRequestService {
 			`Processing Get Request: ${JSON.stringify({
 				id,
 				transactionHash,
-				status,
 			})}`,
 		)
 
@@ -79,8 +76,8 @@ export class GetRequestService {
 				blockNumber: blockNumber || "",
 				blockHash: blockHash || "",
 				transactionHash: transactionHash || "",
+				createdAt: timestampToDate(blockTimestamp || BigInt(Date.now())),
 				blockTimestamp: blockTimestamp || BigInt(0),
-				status: status || Status.SOURCE,
 				commitment: id,
 			})
 
@@ -105,7 +102,6 @@ export class GetRequestService {
 			if (blockHash !== undefined) getRequest.blockHash = blockHash
 			if (transactionHash !== undefined) getRequest.transactionHash = transactionHash
 			if (blockTimestamp !== undefined) getRequest.blockTimestamp = blockTimestamp
-			if (status !== undefined) getRequest.status = status
 			if (chain !== undefined) getRequest.chain = chain
 
 			await getRequest.save()
@@ -136,8 +132,7 @@ export class GetRequestService {
 		)
 
 		let getRequest = await this.createOrUpdate({
-			id: commitment,
-			status,
+			id: commitment
 		})
 
 		await getRequest.save()

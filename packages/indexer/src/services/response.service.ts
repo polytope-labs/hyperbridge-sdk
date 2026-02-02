@@ -69,7 +69,6 @@ export class ResponseService {
 				chain,
 				response_message,
 				requestId: request?.id,
-				status,
 				responseTimeoutTimestamp,
 				createdAt: timestampToDate(blockTimestamp),
 			})

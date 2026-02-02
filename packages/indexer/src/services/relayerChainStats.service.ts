@@ -13,13 +13,9 @@ export class RelayerChainStatsService {
 				id,
 				relayerId: relayer_id,
 				chain,
-				numberOfFailedMessagesDelivered: BigInt(0),
 				numberOfSuccessfulMessagesDelivered: BigInt(0),
-				gasUsedForFailedMessages: BigInt(0),
 				gasUsedForSuccessfulMessages: BigInt(0),
-				gasFeeForFailedMessages: BigInt(0),
 				gasFeeForSuccessfulMessages: BigInt(0),
-				usdGasFeeForFailedMessages: BigInt(0),
 				usdGasFeeForSuccessfulMessages: BigInt(0),
 				feesEarned: BigInt(0),
 			})

@@ -159,19 +159,9 @@ type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], 
 	numberOfSuccessfulMessagesDelivered: BigInt!
 
 	"""
-	Total number of failed post requests handled by the Relayer
-	"""
-	numberOfFailedMessagesDelivered: BigInt!
-
-	"""
 	Amount of gas spent on successful messages (Gas Cost)
 	"""
 	gasUsedForSuccessfulMessages: BigInt!
-
-	"""
-	Amount of gas spent on failed messages (Gas Cost)
-	"""
-	gasUsedForFailedMessages: BigInt!
 
 	"""
 	Gas fee spent on successful post requests (Gas Cost * Gas Price)
@@ -179,19 +169,9 @@ type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], 
 	gasFeeForSuccessfulMessages: BigInt!
 
 	"""
-	Gas fee spent on failed post requests (Gas Cost * Gas Price)
-	"""
-	gasFeeForFailedMessages: BigInt!
-
-	"""
 	The USD value of the gas fee spent on successful post requests
 	"""
 	usdGasFeeForSuccessfulMessages: BigInt!
-
-	"""
-	The USD value of the gas fee spent on failed post requests
-	"""
-	usdGasFeeForFailedMessages: BigInt!
 
 	"""
 	Total fees earned by the relayer
@@ -388,11 +368,6 @@ type Request @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	fee: BigInt!
 
 	"""
-	Status of the request
-	"""
-	status: Status!
-
-	"""
 	Metatdata about the request's progression through different statuses
 	"""
 	statusMetadata: [RequestStatusMetadata]! @derivedFrom(field: "request")
@@ -481,11 +456,6 @@ type Response @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	The Timestamp at which this response expires in seconds
 	"""
 	responseTimeoutTimestamp: BigInt
-
-	"""
-	Status of the response
-	"""
-	status: Status!
 
 	"""
 	The request that triggered this response
@@ -695,10 +665,6 @@ type GetRequest @entity {
 	"""
 	blockTimestamp: BigInt!
 	"""
-	Status of the request
-	"""
-	status: Status!
-	"""
 	Metatdata about the request's progression through different statuses
 	"""
 	statusMetadata: [GetRequestStatusMetadata]! @derivedFrom(field: "request")
@@ -710,6 +676,11 @@ type GetRequest @entity {
 	commitment of the request
 	"""
 	commitment: String!
+
+	"""
+	Creation timestamp of this request
+	"""
+	createdAt: Date! @index
 }
 
 """
@@ -1532,46 +1503,6 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 }
 
 """
-Token Registry - Configuration and metadata for supported tokens
-"""
-type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"], ["symbol", "createdAt"]]) {
-	"""
-	Unique identifier: symbol (e.g., ETH, DOT)
-	"""
-	id: ID!
-
-	"""
-	Token name (e.g., Ethereum, Polkadot, USD Coin)
-	"""
-	name: String!
-
-	"""
-	Token symbol (e.g., ETH, DOT, USDC)
-	"""
-	symbol: String! @index
-
-	"""
-	Token contract address (zero address for native tokens)
-	"""
-	address: String
-
-	"""
-	Update frequency in seconds for price feeds
-	"""
-	updateFrequencySeconds: Int!
-
-	"""
-	Timestamp when this token configuration was last updated
-	"""
-	lastUpdatedAt: BigInt! @index
-
-	"""
-	Record creation timestamp
-	"""
-	createdAt: Date! @index
-}
-
-"""
 Bridge token supply tracking for Hyperbridge
 """
 type BridgeTokenSupply @entity {
@@ -1926,4 +1857,3 @@ type HyperbridgeCollatorRewardTransaction @entity {
 	"""
 	createdAt: Date! @index
 }
-
