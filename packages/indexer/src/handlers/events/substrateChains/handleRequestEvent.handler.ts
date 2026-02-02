@@ -1,5 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
+import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
 import { bytesToHex, hexToBytes, toHex } from "viem"
 
 import { RequestService } from "@/services/request.service"
@@ -49,14 +50,17 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 		params: [[{ commitment: commitment.toString() }]],
 	}
 
-	const response = await fetch(replaceWebsocketWithHttp(ENV_CONFIG[sourceId]), {
-		method: "POST",
-		headers: {
-			accept: "application/json",
-			"content-type": "application/json",
-		},
-		body: stringify(method),
-	})
+	const response = await fetchWithRetry(
+		replaceWebsocketWithHttp(ENV_CONFIG[sourceId]),
+		{
+			method: "POST",
+			headers: {
+				accept: "application/json",
+				"content-type": "application/json",
+			},
+			body: stringify(method),
+		}
+	)
 	const data = await response.json()
 
 	if (data.result.length === 0) {
@@ -81,19 +85,22 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 		]),
 	)
 
-	const metadataResponse = await fetch(replaceWebsocketWithHttp(ENV_CONFIG[sourceId]), {
-		method: "POST",
-		headers: {
-			accept: "application/json",
-			"content-type": "application/json",
-		},
-		body: stringify({
-			id: 1,
-			jsonrpc: "2.0",
-			method: "childstate_getStorage",
-			params: [prefix, key],
-		}),
-	})
+	const metadataResponse = await fetchWithRetry(
+		replaceWebsocketWithHttp(ENV_CONFIG[sourceId]),
+		{
+			method: "POST",
+			headers: {
+				accept: "application/json",
+				"content-type": "application/json",
+			},
+			body: stringify({
+				id: 1,
+				jsonrpc: "2.0",
+				method: "childstate_getStorage",
+				params: [prefix, key],
+			}),
+		}
+	)
 	const storageValue = (await metadataResponse.json()).result as `0x${string}` | undefined
 
 	let fee = BigInt(0)
