@@ -1311,7 +1311,6 @@ export interface SubmitBidOptions {
 export interface EstimateFillOrderV2Params {
 	order: OrderV2
 	solverAccountAddress: HexString
-	fillOptions?: FillOptionsV2
 }
 
 export interface FillOrderEstimateV2 {

@@ -413,12 +413,18 @@ export class ContractInteractionService {
 			throw new Error(`No cached gas estimate found for order ${order.id}. Call estimateGasFillPost first.`)
 		}
 
+		// Use cached filler outputs (calculated based on bps) for competitive bidding
+		const cachedFillerOutputs = this.cacheService.getFillerOutputs(order.id!)
+		if (!cachedFillerOutputs) {
+			throw new Error(`No cached filler outputs found for order ${order.id}. Call calculateProfitability first.`)
+		}
+
 		const sdkHelper = await this.getSdkHelper(order.source, order.destination)
 
 		const fillOptions: FillOptionsV2 = {
 			relayerFee: cachedEstimate.dispatchFee,
 			nativeDispatchFee: cachedEstimate.nativeDispatchFee,
-			outputs: order.output.assets,
+			outputs: cachedFillerOutputs,
 		}
 
 		const commitment = orderV2Commitment(order)

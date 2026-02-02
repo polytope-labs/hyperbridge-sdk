@@ -990,12 +990,10 @@ export class IntentGatewayV2 {
 		protocolFeeInNativeToken = (protocolFeeInNativeToken * 1005n) / 1000n
 		postRequestFeeInDestFeeToken = postRequestFeeInDestFeeToken + (postRequestFeeInDestFeeToken * 1005n) / 1000n
 
-		if (!params.fillOptions) {
-			params.fillOptions = {
-				relayerFee: postRequestFeeInDestFeeToken,
-				nativeDispatchFee: protocolFeeInNativeToken,
-				outputs: order.output.assets,
-			}
+		const fillOptions: FillOptionsV2 = {
+			relayerFee: postRequestFeeInDestFeeToken,
+			nativeDispatchFee: protocolFeeInNativeToken,
+			outputs: order.output.assets,
 		}
 
 		try {
@@ -1003,7 +1001,7 @@ export class IntentGatewayV2 {
 				abi: IntentGatewayV2ABI,
 				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
 				functionName: "fillOrder",
-				args: [transformOrderForContract(order), params.fillOptions],
+				args: [transformOrderForContract(order), fillOptions],
 				account: solverAccountAddress,
 				value: totalEthValue + protocolFeeInNativeToken,
 				stateOverride: stateOverrides as any,
@@ -1049,7 +1047,7 @@ export class IntentGatewayV2 {
 			maxPriorityFeePerGas,
 			totalGasCostWei,
 			totalGasInFeeToken,
-			fillOptions: params.fillOptions,
+			fillOptions,
 		}
 	}
 
