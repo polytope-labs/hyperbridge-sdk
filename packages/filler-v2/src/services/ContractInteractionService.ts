@@ -453,9 +453,11 @@ export class ContractInteractionService {
 			outputs: order.output.assets,
 		}
 
+		const commitment = orderV2Commitment(order)
+
 		// Fetch the current nonce from EntryPoint
 		// ERC-4337 v0.7+ uses 2D nonce: getNonce(address sender, uint192 key)
-		// Using key=0 for simple sequential nonces
+		// The key cannot exceed 192 bits (24 bytes)
 		const destClient = this.clientManager.getPublicClient(order.destination)
 		const nonce = await destClient.readContract({
 			address: entryPointAddress,
@@ -472,7 +474,7 @@ export class ContractInteractionService {
 				},
 			],
 			functionName: "getNonce",
-			args: [solverAccountAddress, 0n],
+			args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
 		})
 
 		const userOp = await sdkHelper.prepareSubmitBid({
@@ -488,8 +490,6 @@ export class ContractInteractionService {
 			maxFeePerGas: cachedEstimate.maxFeePerGas,
 			maxPriorityFeePerGas: cachedEstimate.maxPriorityFeePerGas,
 		})
-
-		const commitment = orderV2Commitment(order)
 
 		// Encode the UserOp as bytes for submission to Hyperbridge
 		const encodedUserOp = encodeUserOpScale(userOp)
