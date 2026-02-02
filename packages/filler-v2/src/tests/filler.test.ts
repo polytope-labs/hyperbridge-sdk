@@ -64,6 +64,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			privateKey,
 			chainConfigService,
 			sharedCacheService,
+			process.env.BUNDLER_API_KEY,
 		)
 
 		const strategies = [
@@ -115,13 +116,12 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			output: { beneficiary, assets: outputs, call: "0x" as HexString },
 		}
 
-		// Create SDK helper with IntentsCoprocessor and bundler URL for full solver selection flow
+		// Create SDK helper with IntentsCoprocessor and bundler API key for full solver selection flow
 		const hyperbridgeWsUrl = process.env.HYPERBRIDGE_GARGANTUA!
 		const substrateKey = process.env.SECRET_PHRASE!
 
-		// Note: The bundler url is like 'https://api.pimlico.io/v2/80002/rpc?apikey=YOUR_KEY'
-		// Which includes the chainID, we need to replace the chainID with the actual chainID in our final submission.
-		const bundlerUrl = process.env.BUNDLER_URL
+		// The bundler URL is constructed dynamically from the API key and destination chain ID
+		const bundlerApiKey = process.env.BUNDLER_API_KEY
 
 		const intentsCoprocessor = await IntentsCoprocessor.connect(hyperbridgeWsUrl, substrateKey)
 
@@ -141,7 +141,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, feeToken.address, bscIntentGatewayV2.address)
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
-		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerApiKey)
 
 		const generator = userSdkHelper.preparePlaceOrder(order)
 
@@ -256,6 +256,7 @@ async function setUp() {
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE, // Substrate mnemonic
 		solverAccountContractAddress: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
+		bundlerApiKey: process.env.BUNDLER_API_KEY,
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -300,6 +301,7 @@ async function setUp() {
 		privateKey,
 		chainConfigService,
 		sharedCacheService,
+		chainConfigService.getBundlerApiKey(),
 	)
 
 	// Get clients

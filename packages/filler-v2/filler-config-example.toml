@@ -31,6 +31,10 @@ entryPointAddress = ""
 # This enables the filler to participate in solver selection mode
 solverAccountContractAddress = ""
 
+# Pimlico API key for ERC-4337 bundler operations (gas estimation and submission)
+# Example: "pim_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+bundlerApiKey = ""
+
 # Watch-only mode configuration
 # Option 1: Global watch-only (all chains)
 # watchOnly = true

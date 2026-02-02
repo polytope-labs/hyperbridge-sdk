@@ -70,6 +70,8 @@ interface FillerTomlConfig {
 		solverAccountContractAddress?: string
 		/** Directory for persistent data storage (bids database, etc.) */
 		dataDir?: string
+		/** Pimlico API key for ERC-4337 bundler operations */
+		bundlerApiKey?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
@@ -121,6 +123,7 @@ program
 				entryPointAddress: config.filler.entryPointAddress,
 				solverAccountContractAddress: config.filler.solverAccountContractAddress,
 				dataDir: config.filler.dataDir,
+				bundlerApiKey: config.filler.bundlerApiKey,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
@@ -181,6 +184,7 @@ program
 				privateKey,
 				configService,
 				sharedCacheService,
+				configService.getBundlerApiKey(),
 			)
 
 			// Initialize bid storage service for persistent storage of bid transaction hashes
@@ -203,7 +207,6 @@ program
 							contractService,
 							strategyConfig.fillerBps,
 							bidStorageService,
-							
 						)
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)

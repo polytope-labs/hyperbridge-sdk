@@ -37,16 +37,19 @@ export class ContractInteractionService {
 	private logger = getLogger("contract-service")
 	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
 	private solverAccountAddress: HexString
+	private bundlerApiKey?: string
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 		configService: FillerConfigService,
 		sharedCacheService?: CacheService,
+		bundlerApiKey?: string,
 	) {
 		this.configService = configService
 		this.cacheService = sharedCacheService || new CacheService()
 		this.solverAccountAddress = privateKeyToAddress(this.privateKey)
+		this.bundlerApiKey = bundlerApiKey
 		this.initCache()
 	}
 
@@ -75,11 +78,15 @@ export class ContractInteractionService {
 			rpcUrl: destinationClient.transport.url,
 		})
 
-		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain)
+		// Pass bundlerApiKey to IntentGatewayV2 for accurate gas estimation via eth_estimateUserOperationGas
+		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain, undefined, this.bundlerApiKey)
 		await helper.ensureInitialized()
 		this.sdkHelperCache.set(cacheKey, helper)
 
-		this.logger.debug({ source, destination }, "Created and cached new IntentGatewayV2 instance")
+		this.logger.debug(
+			{ source, destination, bundlerApiKey: this.bundlerApiKey ? "[configured]" : undefined },
+			"Created and cached new IntentGatewayV2 instance",
+		)
 
 		return helper
 	}
@@ -247,8 +254,9 @@ export class ContractInteractionService {
 			const estimate = await sdkHelper.estimateFillOrderV2({
 				order,
 				solverAccountAddress: this.solverAccountAddress,
+				solverPrivateKey: this.privateKey,
 			})
-			// Cache the full estimate including gas parameters for bid preparation
+
 			this.logger.info({ orderId: order.id }, "Caching gas estimate")
 			this.logger.info({ estimate }, "Estimate")
 			this.cacheService.setGasEstimate(

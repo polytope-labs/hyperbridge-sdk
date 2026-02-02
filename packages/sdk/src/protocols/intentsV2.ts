@@ -87,9 +87,31 @@ export const BundlerMethod = {
 	ETH_SEND_USER_OPERATION: "eth_sendUserOperation",
 	/** Get the receipt of a user operation */
 	ETH_GET_USER_OPERATION_RECEIPT: "eth_getUserOperationReceipt",
-	/** Get gas price estimates from Pimlico */
-	PIMLICO_GET_USER_OPERATION_GAS_PRICE: "pimlico_getUserOperationGasPrice",
+	/** Estimate gas for a user operation */
+	ETH_ESTIMATE_USER_OPERATION_GAS: "eth_estimateUserOperationGas",
 } as const
+
+/** Response from bundler's eth_estimateUserOperationGas */
+export interface BundlerGasEstimate {
+	preVerificationGas: HexString
+	verificationGasLimit: HexString
+	callGasLimit: HexString
+	paymasterVerificationGasLimit?: HexString
+	paymasterPostOpGasLimit?: HexString
+}
+
+/** Pimlico bundler base URL */
+export const PIMLICO_BUNDLER_BASE_URL = "https://api.pimlico.io/v2"
+
+/**
+ * Constructs a Pimlico bundler URL for a given chain ID and API key.
+ * @param chainId - The EVM chain ID
+ * @param apiKey - The Pimlico API key
+ * @returns The full bundler URL
+ */
+export function constructBundlerUrl(chainId: number | bigint, apiKey: string): string {
+	return `${PIMLICO_BUNDLER_BASE_URL}/${chainId}/rpc?apikey=${apiKey}`
+}
 
 export type BundlerMethod = (typeof BundlerMethod)[keyof typeof BundlerMethod]
 
@@ -139,7 +161,7 @@ export interface IntentGatewayV2Params {
  *
  * @example
  * ```typescript
- * const gateway = new IntentGatewayV2(sourceChain, destChain, coprocessor, bundlerUrl)
+ * const gateway = new IntentGatewayV2(sourceChain, destChain, coprocessor, bundlerApiKey)
  *
  * // Place an order
  * const gen = gateway.preparePlaceOrder(order)
@@ -193,13 +215,13 @@ export class IntentGatewayV2 {
 	 * @param source - Source chain for order placement
 	 * @param dest - Destination chain for order fulfillment
 	 * @param intentsCoprocessor - Optional coprocessor for bid fetching and order execution
-	 * @param bundlerUrl - Optional ERC-4337 bundler URL for UserOperation submission
+	 * @param bundlerApiKey - Optional Pimlico API key for ERC-4337 bundler operations
 	 */
 	constructor(
 		public readonly source: EvmChain,
 		public readonly dest: EvmChain,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
-		public readonly bundlerUrl?: string,
+		public readonly bundlerApiKey?: string,
 	) {
 		this.initPromise = this.initFeeTokenCache()
 	}
@@ -318,7 +340,7 @@ export class IntentGatewayV2 {
 	 *
 	 * Flow: AWAITING_BIDS → BIDS_RECEIVED → BID_SELECTED → USEROP_SUBMITTED
 	 *
-	 * Requires `intentsCoprocessor` and `bundlerUrl` to be set in the constructor.
+	 * Requires `intentsCoprocessor` and `bundlerApiKey` to be set in the constructor.
 	 *
 	 * @param options - Execution options including the order and optional parameters
 	 * @yields Status updates throughout the execution flow
@@ -362,10 +384,10 @@ export class IntentGatewayV2 {
 			return
 		}
 
-		if (!this.bundlerUrl) {
+		if (!this.bundlerApiKey) {
 			yield {
 				status: "FAILED",
-				metadata: { error: "Bundler URL not configured" },
+				metadata: { error: "Bundler API key not configured" },
 			}
 			return
 		}
@@ -761,7 +783,7 @@ export class IntentGatewayV2 {
 	 * 3. Tries each bid (best to worst) until one passes simulation
 	 * 4. Signs and submits the winning bid to the bundler
 	 *
-	 * Requires `bundlerUrl` and `intentsCoprocessor` to be set in the constructor.
+	 * Requires `bundlerApiKey` and `intentsCoprocessor` to be set in the constructor.
 	 *
 	 * @param order - The order to select a bid for
 	 * @param bids - Array of filler bids to evaluate
@@ -777,8 +799,8 @@ export class IntentGatewayV2 {
 			throw new Error("SessionKey not found for commitment: " + commitment)
 		}
 
-		if (!this.bundlerUrl) {
-			throw new Error("Bundler URL not configured")
+		if (!this.bundlerApiKey) {
+			throw new Error("Bundler API key not configured")
 		}
 
 		if (!this.intentsCoprocessor) {
@@ -908,10 +930,13 @@ export class IntentGatewayV2 {
 	 * Estimates gas costs for fillOrder execution via ERC-4337.
 	 *
 	 * Calculates all gas parameters needed for UserOperation submission:
-	 * - `callGasLimit`: Gas for fillOrder execution (with 5% buffer)
+	 * - `callGasLimit`: Gas for fillOrder execution
 	 * - `verificationGasLimit`: Gas for SolverAccount.validateUserOp
 	 * - `preVerificationGas`: Bundler overhead for calldata
 	 * - Gas prices based on current network conditions
+	 *
+	 * Uses the bundler's eth_estimateUserOperationGas method for accurate gas estimation
+	 * when a bundler URL is configured.
 	 *
 	 * @param params - Estimation parameters including order and solver account
 	 * @returns Complete gas estimate with all ERC-4337 parameters
@@ -955,8 +980,7 @@ export class IntentGatewayV2 {
 			balance: maxUint256,
 		})
 
-		// Estimate fillOrder gas (callGasLimit)
-		let callGasLimit: bigint
+		// Calculate fees for the post request
 		const postRequestGas = 400_000n
 		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
 			postRequestGas as bigint,
@@ -996,34 +1020,7 @@ export class IntentGatewayV2 {
 			outputs: order.output.assets,
 		}
 
-		try {
-			callGasLimit = await this.dest.client.estimateContractGas({
-				abi: IntentGatewayV2ABI,
-				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
-				functionName: "fillOrder",
-				args: [transformOrderForContract(order), fillOptions],
-				account: solverAccountAddress,
-				value: totalEthValue + protocolFeeInNativeToken,
-				stateOverride: stateOverrides as any,
-			})
-		} catch (e) {
-			console.warn("fillOrder gas estimation failed, using fallback:", e)
-			callGasLimit = 500_000n
-		}
-
-		// Add buffer for execution through SolverAccount (5%)
-		callGasLimit = callGasLimit + (callGasLimit * 5n) / 100n
-
-		// Estimate verificationGasLimit for SolverAccount.validateUserOp
-		// EIP-7702 delegated accounts have additional overhead for authorization verification
-		const verificationGasLimit = 200_000n
-
-		// Pre-verification gas (bundler overhead for calldata, etc.)
-		const preVerificationGas = 100_000n
-
-		// Pimlico requires at least 40 gwei maxPriorityFeePerGas,
-		// can use pimlico_getUserOperationGasPrice in future
-
+		// Get gas prices first - needed for UserOperation construction
 		const MIN_PRIORITY_FEE = 100_000_000_000n // 100 gwei
 		const gasPrice = await this.dest.client.getGasPrice()
 		const calculatedPriorityFee = gasPrice / 10n
@@ -1032,6 +1029,156 @@ export class IntentGatewayV2 {
 		const calculatedMaxFee = gasPrice + (gasPrice * 20n) / 100n
 		const maxFeePerGas =
 			calculatedMaxFee > maxPriorityFeePerGas ? calculatedMaxFee : maxPriorityFeePerGas + gasPrice
+
+		// Initialize gas values with fallbacks
+		let callGasLimit: bigint
+		let verificationGasLimit: bigint
+		let preVerificationGas: bigint
+
+		// First, estimate fillOrder gas using state overrides (for initial callGasLimit estimate)
+		let initialCallGasEstimate: bigint
+		try {
+			initialCallGasEstimate = await this.dest.client.estimateContractGas({
+				abi: IntentGatewayV2ABI,
+				address: this.dest.configService.getIntentGatewayV2Address(order.destination),
+				functionName: "fillOrder",
+				args: [transformOrderForContract(order), fillOptions],
+				account: solverAccountAddress,
+				value: totalEthValue + protocolFeeInNativeToken,
+				stateOverride: stateOverrides as any,
+			})
+			// Add 5% buffer for execution through SolverAccount
+			initialCallGasEstimate = initialCallGasEstimate + (initialCallGasEstimate * 5n) / 100n
+		} catch (e) {
+			console.warn("fillOrder gas estimation failed, using fallback:", e)
+			initialCallGasEstimate = 500_000n
+		}
+
+		// If bundler is configured, use eth_estimateUserOperationGas for accurate gas values
+		if (this.bundlerApiKey && params.solverPrivateKey) {
+			try {
+				const entryPointAddress = this.dest.configService.getEntryPointV08Address(order.destination)
+				const chainId = BigInt(
+					this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
+				)
+
+				// For estimation, use the solver's address as the session key
+				// This works because:
+				// 1. The solver has native balance on the destination chain
+				// 2. The solver has deposited funds in the EntryPoint
+				// 3. We can sign with the solver's private key (which we have)
+				const solverAccount = privateKeyToAccount(params.solverPrivateKey as Hex)
+
+				// Create a modified order with the solver's address as session for estimation
+				const orderForEstimation = { ...order, session: solverAccountAddress }
+
+				// Build the fillOrder calldata for ERC-7821 execute (using modified order)
+				const fillOrderCalldata = encodeFunctionData({
+					abi: IntentGatewayV2ABI,
+					functionName: "fillOrder",
+					args: [transformOrderForContract(orderForEstimation), fillOptions],
+				}) as HexString
+
+				const totalNativeValue = totalEthValue + fillOptions.nativeDispatchFee
+
+				const callData = this.encodeERC7821Execute([
+					{
+						target: intentGatewayV2Address,
+						value: totalNativeValue,
+						data: fillOrderCalldata,
+					},
+				])
+
+				const commitment = orderV2Commitment(orderForEstimation)
+
+				// Get nonce from EntryPoint using the commitment as key
+				// ERC-4337 v0.7+ uses 2D nonce: getNonce(address sender, uint192 key)
+				const nonce = await this.dest.client.readContract({
+					address: entryPointAddress,
+					abi: [
+						{
+							inputs: [
+								{ name: "sender", type: "address" },
+								{ name: "key", type: "uint192" },
+							],
+							name: "getNonce",
+							outputs: [{ name: "nonce", type: "uint256" }],
+							stateMutability: "view",
+							type: "function",
+						},
+					],
+					functionName: "getNonce",
+					args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
+				})
+
+				// Pack gas limits and fees for the preliminary UserOp
+				const accountGasLimits = this.packGasLimits(100_000n, initialCallGasEstimate)
+				const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
+
+				// Build preliminary UserOperation (without signature first to compute hash)
+				const preliminaryUserOp: PackedUserOperation = {
+					sender: solverAccountAddress,
+					nonce,
+					initCode: "0x" as HexString,
+					callData,
+					accountGasLimits,
+					preVerificationGas: 100_000n,
+					gasFees,
+					paymasterAndData: "0x" as HexString,
+					signature: "0x" as HexString,
+				}
+
+				const userOpHash = this.computeUserOpHash(preliminaryUserOp, entryPointAddress, chainId)
+				const messageHash = keccak256(
+					concat([userOpHash, commitment as HexString, solverAccountAddress as Hex]),
+				)
+
+				const solverSignature = await solverAccount.signMessage({ message: { raw: messageHash } })
+
+				const solverSig = concat([commitment as HexString, solverSignature as Hex]) as HexString
+
+				const domainSeparator = this.getDomainSeparator("IntentGateway", "2", chainId, intentGatewayV2Address)
+				const sessionSignature = await this.signSolverSelection(
+					commitment as HexString,
+					solverAccountAddress,
+					domainSeparator,
+					params.solverPrivateKey,
+				)
+
+				const finalSignature = concat([solverSig as Hex, sessionSignature as Hex]) as HexString
+				preliminaryUserOp.signature = finalSignature
+
+				const bundlerUserOp = this.prepareBundlerCall(preliminaryUserOp)
+
+				const gasEstimate = await this.sendBundler<BundlerGasEstimate>(
+					BundlerMethod.ETH_ESTIMATE_USER_OPERATION_GAS,
+					[bundlerUserOp, entryPointAddress],
+				)
+
+				console.log("gasEstimate from bundler:", gasEstimate)
+
+				// Parse the returned gas values
+				callGasLimit = BigInt(gasEstimate.callGasLimit)
+				verificationGasLimit = BigInt(gasEstimate.verificationGasLimit)
+				preVerificationGas = BigInt(gasEstimate.preVerificationGas)
+
+				// Add 10% buffer to bundler estimates for safety margin
+				callGasLimit = callGasLimit + (callGasLimit * 10n) / 100n
+				verificationGasLimit = verificationGasLimit + (verificationGasLimit * 10n) / 100n
+				preVerificationGas = preVerificationGas + (preVerificationGas * 10n) / 100n
+			} catch (e) {
+				console.warn("Bundler gas estimation failed, using fallback values:", e)
+				// Fall back to initial estimate + hardcoded values
+				callGasLimit = initialCallGasEstimate
+				verificationGasLimit = 100_000n
+				preVerificationGas = 100_000n
+			}
+		} else {
+			// No bundler configured, use initial estimate + hardcoded values
+			callGasLimit = initialCallGasEstimate
+			verificationGasLimit = 100_000n
+			preVerificationGas = 100_000n
+		}
 
 		// Calculate total gas cost in wei
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
@@ -1239,15 +1386,25 @@ export class IntentGatewayV2 {
 	 *
 	 * @param method - The bundler method to call
 	 * @param params - Parameters array for the RPC call
+	 * @param chainId - The chain ID to construct the bundler URL for
 	 * @returns The result from the bundler
-	 * @throws Error if bundler URL not configured or bundler returns an error
+	 * @throws Error if bundler API key not configured or bundler returns an error
 	 */
-	async sendBundler<T = unknown>(method: BundlerMethod, params: unknown[] = []): Promise<T> {
-		if (!this.bundlerUrl) {
-			throw new Error("Bundler URL not configured")
+	async sendBundler<T = unknown>(
+		method: BundlerMethod,
+		params: unknown[] = [],
+		chainId?: number | bigint,
+	): Promise<T> {
+		if (!this.bundlerApiKey) {
+			throw new Error("Bundler API key not configured")
 		}
 
-		const response = await fetch(this.bundlerUrl, {
+		// Use provided chainId or fall back to destination chain
+		const targetChainId =
+			chainId ?? this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1])
+		const bundlerUrl = constructBundlerUrl(targetChainId, this.bundlerApiKey)
+
+		const response = await fetch(bundlerUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
