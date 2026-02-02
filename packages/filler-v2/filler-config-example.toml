@@ -31,7 +31,7 @@ entryPointAddress = ""
 # This enables the filler to participate in solver selection mode
 solverAccountContractAddress = ""
 
-# Pimlico API key for ERC-4337 bundler operations (gas estimation and submission)
+# Pimlico API key for ERC-4337 bundler operations (gas estimation)
 # Example: "pim_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 bundlerApiKey = ""
 
