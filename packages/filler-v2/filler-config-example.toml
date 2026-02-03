@@ -34,6 +34,14 @@ solverAccountContractAddress = ""
 # ERC-4337 bundler URL for UserOperation gas estimation
 bundlerUrl = ""
 
+# Gas fee bump configuration (optional)
+# These values control how much to bump gas fees for UserOperation submission
+# Both are percentages added ON TOP of the base gasPrice
+# If not provided, defaults will be used (8% for priority fee, 10% for max fee)
+# [filler.gasFeeBump]
+# maxPriorityFeePerGasBumpPercent = 8   # Percentage added to gasPrice for priority fee (default: 8)
+# maxFeePerGasBumpPercent = 10          # Percentage added to gasPrice for max fee (default: 10)
+
 # Watch-only mode configuration
 # Option 1: Global watch-only (all chains)
 # watchOnly = true
