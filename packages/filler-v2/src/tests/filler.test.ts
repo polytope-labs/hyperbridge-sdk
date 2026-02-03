@@ -19,6 +19,10 @@ import {
 	EvmChain,
 	IntentGatewayV2,
 	IntentsCoprocessor,
+	getStorageSlot,
+	calculateBalanceMappingLocation,
+	EvmLanguage,
+	MOCK_ADDRESS,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy } from "@/config/confirmation-policy"
@@ -64,7 +68,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			privateKey,
 			chainConfigService,
 			sharedCacheService,
-			process.env.BUNDLER_API_KEY,
+			process.env.BUNDLER_URL,
 		)
 
 		const strategies = [
@@ -116,12 +120,12 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			output: { beneficiary, assets: outputs, call: "0x" as HexString },
 		}
 
-		// Create SDK helper with IntentsCoprocessor and bundler API key for full solver selection flow
+		// Create SDK helper with IntentsCoprocessor and bundler URL for full solver selection flow
 		const hyperbridgeWsUrl = process.env.HYPERBRIDGE_GARGANTUA!
 		const substrateKey = process.env.SECRET_PHRASE!
 
-		// The bundler URL is constructed dynamically from the API key and destination chain ID
-		const bundlerApiKey = process.env.BUNDLER_API_KEY
+		// The bundler URL for ERC-4337 operations
+		const bundlerUrl = process.env.BUNDLER_URL
 
 		const intentsCoprocessor = await IntentsCoprocessor.connect(hyperbridgeWsUrl, substrateKey)
 
@@ -141,7 +145,7 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, feeToken.address, bscIntentGatewayV2.address)
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
-		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerApiKey)
+		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		const generator = userSdkHelper.preparePlaceOrder(order)
 
@@ -256,7 +260,7 @@ async function setUp() {
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE, // Substrate mnemonic
 		solverAccountContractAddress: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
-		bundlerApiKey: process.env.BUNDLER_API_KEY,
+		bundlerUrl: process.env.BUNDLER_URL,
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -301,7 +305,7 @@ async function setUp() {
 		privateKey,
 		chainConfigService,
 		sharedCacheService,
-		chainConfigService.getBundlerApiKey(),
+		chainConfigService.getBundlerUrl(),
 	)
 
 	// Get clients

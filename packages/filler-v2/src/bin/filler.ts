@@ -70,8 +70,7 @@ interface FillerTomlConfig {
 		solverAccountContractAddress?: string
 		/** Directory for persistent data storage (bids database, etc.) */
 		dataDir?: string
-		/** Pimlico API key for ERC-4337 bundler operations */
-		bundlerApiKey?: string
+		bundlerUrl?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
@@ -123,7 +122,7 @@ program
 				entryPointAddress: config.filler.entryPointAddress,
 				solverAccountContractAddress: config.filler.solverAccountContractAddress,
 				dataDir: config.filler.dataDir,
-				bundlerApiKey: config.filler.bundlerApiKey,
+				bundlerUrl: config.filler.bundlerUrl,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
@@ -184,7 +183,7 @@ program
 				privateKey,
 				configService,
 				sharedCacheService,
-				configService.getBundlerApiKey(),
+				configService.getBundlerUrl(),
 			)
 
 			// Initialize bid storage service for persistent storage of bid transaction hashes

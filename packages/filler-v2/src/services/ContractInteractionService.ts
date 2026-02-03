@@ -37,19 +37,19 @@ export class ContractInteractionService {
 	private logger = getLogger("contract-service")
 	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
 	private solverAccountAddress: HexString
-	private bundlerApiKey?: string
+	private bundlerUrl?: string
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 		configService: FillerConfigService,
 		sharedCacheService?: CacheService,
-		bundlerApiKey?: string,
+		bundlerUrl?: string,
 	) {
 		this.configService = configService
 		this.cacheService = sharedCacheService || new CacheService()
 		this.solverAccountAddress = privateKeyToAddress(this.privateKey)
-		this.bundlerApiKey = bundlerApiKey
+		this.bundlerUrl = bundlerUrl
 		this.initCache()
 	}
 
@@ -78,13 +78,13 @@ export class ContractInteractionService {
 			rpcUrl: destinationClient.transport.url,
 		})
 
-		// Pass bundlerApiKey to IntentGatewayV2 for accurate gas estimation via eth_estimateUserOperationGas
-		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain, undefined, this.bundlerApiKey)
+		// Pass bundlerUrl to IntentGatewayV2 for accurate gas estimation via eth_estimateUserOperationGas
+		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain, undefined, this.bundlerUrl)
 		await helper.ensureInitialized()
 		this.sdkHelperCache.set(cacheKey, helper)
 
 		this.logger.debug(
-			{ source, destination, bundlerApiKey: this.bundlerApiKey ? "[configured]" : undefined },
+			{ source, destination, bundlerUrl: this.bundlerUrl ? "[configured]" : undefined },
 			"Created and cached new IntentGatewayV2 instance",
 		)
 

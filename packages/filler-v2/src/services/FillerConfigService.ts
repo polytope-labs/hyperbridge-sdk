@@ -20,7 +20,7 @@ export interface FillerConfig {
 	entryPointAddress?: string
 	solverAccountContractAddress?: string
 	dataDir?: string
-	bundlerApiKey?: string
+	bundlerUrl?: string
 }
 
 /**
@@ -176,7 +176,7 @@ export class FillerConfigService {
 		return this.fillerConfig?.dataDir
 	}
 
-	getBundlerApiKey(): string | undefined {
-		return this.fillerConfig?.bundlerApiKey
+	getBundlerUrl(): string | undefined {
+		return this.fillerConfig?.bundlerUrl
 	}
 }
