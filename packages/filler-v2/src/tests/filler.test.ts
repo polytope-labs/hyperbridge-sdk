@@ -15,7 +15,6 @@ import {
 	type OrderV2,
 	type TokenInfoV2,
 	bytes20ToBytes32,
-	orderV2Commitment,
 	EvmChain,
 	IntentGatewayV2,
 	IntentsCoprocessor,
@@ -25,7 +24,7 @@ import {
 	MOCK_ADDRESS,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
-import { ConfirmationPolicy } from "@/config/confirmation-policy"
+import { ConfirmationPolicy, FillerBpsPolicy } from "@/config/interpolated-curve"
 import {
 	getContract,
 	maxUint256,
@@ -71,8 +70,15 @@ describe.sequential("Filler V2 - Solver Selection ON", () => {
 			process.env.BUNDLER_URL,
 		)
 
+		const bpsPolicy = new FillerBpsPolicy({
+			points: [
+				{ amount: "1", value: 50 },
+				{ amount: "10000", value: 50 },
+			],
+		})
+
 		const strategies = [
-			new BasicFiller(privateKey, chainConfigService, chainClientManager, localContractService, 50), // 50 bps = 0.5%
+			new BasicFiller(privateKey, chainConfigService, chainClientManager, localContractService, bpsPolicy),
 		]
 
 		const intentFiller = new IntentFiller(
@@ -266,19 +272,19 @@ async function setUp() {
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
 	const chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
-	// Create confirmation policy
+	// Create confirmation policy with coordinate points
 	const confirmationPolicyConfig = {
 		"97": {
-			minAmount: "1",
-			maxAmount: "1000",
-			minConfirmations: 1,
-			maxConfirmations: 5,
+			points: [
+				{ amount: "1", value: 1 },
+				{ amount: "1000", value: 5 },
+			],
 		},
 		"80002": {
-			minAmount: "1",
-			maxAmount: "1000",
-			minConfirmations: 1,
-			maxConfirmations: 5,
+			points: [
+				{ amount: "1", value: 1 },
+				{ amount: "1000", value: 5 },
+			],
 		},
 	}
 

@@ -66,11 +66,29 @@ recheckDelayMs = 30000  # 30 seconds
 # All strategies use the filler.privateKey from above
 [[strategies]]
 type = "basic"
-# Filler's basis points (bps) for profit margin
-# This is the minimum profit margin the filler expects from each order
-# E.g., 50 = 0.5%, meaning if user sends 100 USDC, filler expects to keep at least 0.5 USDC
-# The filler will only fill orders where the output amount >= input amount * (1 - fillerBps/10000)
-fillerBps = 50
+
+# Filler BPS (basis points) curve based on order value
+# Uses polynomial interpolation to create a smooth curve through all points
+# This allows different profit margins for different order sizes:
+# - Small orders: Higher BPS to make filling worthwhile
+# - Large orders: Lower BPS to be more competitive
+#
+# Example: $100 order = 1% margin, $10000 order = 0.25% margin
+[[strategies.bpsCurve]]
+amount = "100"    # $100 orders
+value = 100       # 1% margin (100 bps)
+
+[[strategies.bpsCurve]]
+amount = "1000"   # $1000 orders
+value = 50        # 0.5% margin (50 bps)
+
+[[strategies.bpsCurve]]
+amount = "10000"  # $10000 orders
+value = 25        # 0.25% margin (25 bps)
+
+[[strategies.bpsCurve]]
+amount = "100000" # $100000 orders
+value = 10        # 0.1% margin (10 bps)
 
 
 # Chain configuration - RPC URLs are required
@@ -101,57 +119,95 @@ rpcUrl = ""  # Required: your RPC URL
 
 
 # Confirmation policies per chain
+# Uses polynomial interpolation to create a smooth curve through all points
 # The chain ID should match the numeric ID from the chain configuration
-[confirmationPolicies."97"]  # BSC Testnet
-minAmount = "1"      # 1 USD 
-maxAmount = "1000"   # 1000 USD 
-minConfirmations = 1
-maxConfirmations = 5
 
-[confirmationPolicies."10200"]  # Gnosis Chiado
-minAmount = "1"      # 1 USD 
-maxAmount = "1000"   # 1000 USD 
-minConfirmations = 1
-maxConfirmations = 5
+# BSC Testnet
+[[confirmationPolicies."97".points]]
+amount = "1"
+value = 1
+[[confirmationPolicies."97".points]]
+amount = "1000"
+value = 5
 
-[confirmationPolicies."1"]  # Ethereum Mainnet
-minAmount = "5"      # 5 USD 
-maxAmount = "5000"   # 5000 USD 
-minConfirmations = 3
-maxConfirmations = 12
+# Gnosis Chiado
+[[confirmationPolicies."10200".points]]
+amount = "1"
+value = 1
+[[confirmationPolicies."10200".points]]
+amount = "1000"
+value = 5
 
-[confirmationPolicies."56"]  # BSC Mainnet
-minAmount = "1"      # 1 USD 
-maxAmount = "5000"   # 5000 USD 
-minConfirmations = 3
-maxConfirmations = 15
+# Ethereum Mainnet
+[[confirmationPolicies."1".points]]
+amount = "5"
+value = 3
+[[confirmationPolicies."1".points]]
+amount = "500"
+value = 6
+[[confirmationPolicies."1".points]]
+amount = "5000"
+value = 12
 
-[confirmationPolicies."11155111"]  # Sepolia
-minAmount = "1"      # 1 USD 
-maxAmount = "1000"   # 1000 USD 
-minConfirmations = 1
-maxConfirmations = 5
+# BSC Mainnet
+[[confirmationPolicies."56".points]]
+amount = "1"
+value = 3
+[[confirmationPolicies."56".points]]
+amount = "500"
+value = 6
+[[confirmationPolicies."56".points]]
+amount = "5000"
+value = 15
 
-[confirmationPolicies."42161"]  # Arbitrum Mainnet
-minAmount = "2"      # 2 USD 
-maxAmount = "8000"   # 8000 USD 
-minConfirmations = 2
-maxConfirmations = 10
+# Sepolia
+[[confirmationPolicies."11155111".points]]
+amount = "1"
+value = 1
+[[confirmationPolicies."11155111".points]]
+amount = "1000"
+value = 5
 
-[confirmationPolicies."8453"]  # Base Mainnet
-minAmount = "2"      # 2 USD 
-maxAmount = "8000"   # 8000 USD 
-minConfirmations = 2
-maxConfirmations = 10
+# Arbitrum Mainnet
+[[confirmationPolicies."42161".points]]
+amount = "2"
+value = 2
+[[confirmationPolicies."42161".points]]
+amount = "1000"
+value = 5
+[[confirmationPolicies."42161".points]]
+amount = "8000"
+value = 10
 
-[confirmationPolicies."137"]  # Polygon Mainnet
-minAmount = "2"      # 2 USD 
-maxAmount = "8000"   # 8000 USD 
-minConfirmations = 2
-maxConfirmations = 10
+# Base Mainnet
+[[confirmationPolicies."8453".points]]
+amount = "2"
+value = 2
+[[confirmationPolicies."8453".points]]
+amount = "1000"
+value = 5
+[[confirmationPolicies."8453".points]]
+amount = "8000"
+value = 10
 
-[confirmationPolicies."130"]  # Unichain Mainnet
-minAmount = "2"      # 2 USD 
-maxAmount = "8000"   # 8000 USD 
-minConfirmations = 2
-maxConfirmations = 10
+# Polygon Mainnet
+[[confirmationPolicies."137".points]]
+amount = "2"
+value = 2
+[[confirmationPolicies."137".points]]
+amount = "1000"
+value = 5
+[[confirmationPolicies."137".points]]
+amount = "8000"
+value = 10
+
+# Unichain Mainnet
+[[confirmationPolicies."130".points]]
+amount = "2"
+value = 2
+[[confirmationPolicies."130".points]]
+amount = "1000"
+value = 5
+[[confirmationPolicies."130".points]]
+amount = "8000"
+value = 10
