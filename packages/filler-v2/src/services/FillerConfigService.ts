@@ -213,4 +213,21 @@ export class FillerConfigService {
 	getGasFeeBumpConfig(): GasFeeBumpConfig | undefined {
 		return this.fillerConfig?.gasFeeBump
 	}
+
+	/**
+	 * Get the LayerZero Endpoint ID for the chain
+	 * Used for USDT0 cross-chain transfers via LayerZero OFT
+	 */
+	getLayerZeroEid(chain: string): number | undefined {
+		return this.chainConfigService.getLayerZeroEid(chain)
+	}
+
+	/**
+	 * Get the USDT0 OFT contract address for the chain
+	 * On Ethereum: OFT Adapter (locks/unlocks USDT)
+	 * On other chains: OFT contract (mints/burns USDT0)
+	 */
+	getUsdt0OftAddress(chain: string): HexString | undefined {
+		return this.chainConfigService.getUsdt0OftAddress(chain)
+	}
 }

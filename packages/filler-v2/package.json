@@ -49,6 +49,8 @@
 		"node": ">=18.0.0"
 	},
 	"dependencies": {
+		"@circle-fin/adapter-viem-v2": "1.4.0",
+		"@circle-fin/bridge-kit": "1.5.0",
 		"@hyperbridge/sdk": "workspace:*",
 		"@polkadot/api": "latest",
 		"@polkadot/util": "latest",

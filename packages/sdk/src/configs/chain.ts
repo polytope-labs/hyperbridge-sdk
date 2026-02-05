@@ -62,12 +62,16 @@ export interface ChainConfigData {
 		Permit2?: `0x${string}`
 		/** ERC-4337 v0.8 EntryPoint address (canonical across all EVM chains) */
 		EntryPointV08?: `0x${string}`
+		/** USDT0 OFT contract address (OFT Adapter on Ethereum, OFT on other chains) */
+		Usdt0Oft?: `0x${string}`
 	}
 	rpcEnvKey?: string
 	defaultRpcUrl?: string
 	consensusStateId: string
 	coingeckoId: string
 	popularTokens?: string[]
+	/** LayerZero Endpoint ID for cross-chain messaging */
+	layerZeroEid?: number
 }
 
 // All chain configuration in one place - add new chains here
@@ -215,11 +219,13 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0x6C96dE32CEa08842dcc4058c14d3aaAD7Fa41dee",
 		},
 		rpcEnvKey: "ETH_MAINNET",
 		defaultRpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo",
 		consensusStateId: "ETH0",
 		coingeckoId: "ethereum",
+		layerZeroEid: 30101,
 		popularTokens: [
 			"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
 			"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -310,11 +316,13 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Arbitrum
 		},
 		rpcEnvKey: "ARBITRUM_MAINNET",
 		defaultRpcUrl: "https://arbitrum-one.public.blastapi.io",
 		consensusStateId: "ETH0",
 		coingeckoId: "arbitrum-one",
+		layerZeroEid: 30110,
 		popularTokens: [
 			"0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
 			"0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -356,11 +364,13 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Base
 		},
 		rpcEnvKey: "BASE_MAINNET",
 		defaultRpcUrl: "https://base-mainnet.public.blastapi.io",
 		consensusStateId: "ETH0",
 		coingeckoId: "base",
+		layerZeroEid: 30184,
 		popularTokens: [
 			"0x4200000000000000000000000000000000000006",
 			"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -402,11 +412,13 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Polygon
 		},
 		rpcEnvKey: "POLYGON_MAINNET",
 		defaultRpcUrl: "https://polygon-bor-rpc.publicnode.com",
 		consensusStateId: "POLY",
 		coingeckoId: "polygon-pos",
+		layerZeroEid: 30109,
 		popularTokens: [
 			"0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
 			"0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
