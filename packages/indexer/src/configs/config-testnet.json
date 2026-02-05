@@ -109,5 +109,17 @@
 			"erc6160ext20": "0x693B854D6965ffEAaE21C74049deA644b56FCaCB",
 			"tokenGateway": "0x2efdc11b11cac34697b992a56e1d245c137a05b2"
 		}
-	}
+	},
+	"polkadot-testnet": {
+    "type": "evm",
+    "chainId": "420420417",
+    "startBlock": 4749233,
+    "stateMachineId": "EVM-420420417",
+    "contracts": {
+        "ethereumHost": "0xbb26e04a71e7c12093e82b83ba310163eac186fa",
+        "handlerV1": "0x8b31a195c98ead34cf463a66f52942b6145a68a2",
+        "erc6160ext20": "0x8b31a195c98ead34cf463a66f52942b6145a68a2",
+        "tokenGateway": "0x1c1e5be83df4a54c7a2230c337e4a3e8b7354b1c"
+    }
+}
 }
