@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { ChainClientManager, FillerConfigService, RebalancingService, type UserProvidedChainConfig } from "@/services"
 import type { HexString } from "@hyperbridge/sdk"
-import "./setup"
+import "../setup"
 
 describe("RebalancingService - CCTP", () => {
 	it("Should send 0.1 USDC from Polygon Amoy to Arbitrum Sepolia", async () => {

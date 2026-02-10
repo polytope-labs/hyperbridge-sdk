@@ -75,7 +75,7 @@ export class Usdt0Rebalancer {
 		const account = privateKeyToAccount(this.privateKey as `0x${string}`)
 		const recipient = recipientAddress || account.address
 
-		// Parse amount (USDT0 has 6 decimals)
+		// Parse amount (USDT0 has 6 decimals across all chains)
 		const amountWei = parseUnits(amount, 6)
 
 		// Approve OFT contract to spend tokens (only needed on Ethereum)
