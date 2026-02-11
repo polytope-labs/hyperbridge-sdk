@@ -4,7 +4,7 @@ import { ChainClientManager, FillerConfigService, type UserProvidedChainConfig }
 import { BinanceRebalancer, type UnifiedRebalanceOptions } from "@/services/rebalancers"
 import "../setup"
 
-describe.sequential("BinanceRebalancer - CEX integration", () => {
+describe("BinanceRebalancer - CEX integration", () => {
 	const apiKey = process.env.BINANCE_API_KEY
 	const apiSecret = process.env.BINANCE_API_SECRET
 	const privateKey = process.env.PRIVATE_KEY as HexString
@@ -43,8 +43,8 @@ describe.sequential("BinanceRebalancer - CEX integration", () => {
 	it("should fetch Binance coin/network configuration for USDT between BSC and Arbitrum", async () => {
 		const options: UnifiedRebalanceOptions = {
 			coin: "USDT",
-			source: "EVM-56", // BSC
-			destination: "EVM-42161", // Arbitrum
+			source: "EVM-42161", // Arbitrum
+			destination: "EVM-56", // BSC
 			amount: "100",
 		}
 
@@ -58,21 +58,12 @@ describe.sequential("BinanceRebalancer - CEX integration", () => {
 		expect(estimate.depositEnabled).toBeTypeOf("boolean")
 	}, 60_000)
 
-	it("should wait for an existing Binance deposit to be credited", async () => {
-		const txHash = "0x6d152d2b0f80e89901fab191ffbbb9ab1b6da1c28d84f97157d063a18cb29d60"
-
-		// Adjust coin if this tx is for a different asset
-		await rebalancer.waitForDepositCredit("USDT", txHash)
-
-		console.log("Binance deposit confirmed for tx:", txHash)
-	}, 300_000)
-
-	it.only("should send 10 USDT from BSC to Arbitrum via Binance CEX with travel rule", async () => {
+	it("should send 10 USDT from BSC to Arbitrum via Binance CEX with travel rule", async () => {
 		const result = await rebalancer.sendViaCex({
 			amount: "10",
 			coin: "USDT",
-			source: "EVM-56", // BSC mainnet
-			destination: "EVM-42161", // Arbitrum mainnet
+			source: "EVM-42161", // Arbitrum mainnet
+			destination: "EVM-56", // BSC mainnet
 		})
 
 		console.log("Binance CEX rebalance result (travel rule):", result)

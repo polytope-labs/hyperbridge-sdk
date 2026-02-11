@@ -57,14 +57,13 @@ export interface RebalancingResult {
 }
 
 // Chain IDs where CCTP is supported (Circle native mint/burn)
-const CCTP_CHAINS = new Set([1, 42161, 8453, 10, 137, 130])
+const CCTP_CHAINS = new Set([1, 42161, 8453, 137, 130])
 
 // Chain IDs where USDT0 (LayerZero OFT) is supported
-// Populate this from your FillerConfigService - chains that have OFT address + LZ EID
-const USDT0_CHAINS = new Set([1, 42161, 10, 8453, 137]) // TODO: Update
+const USDT0_CHAINS = new Set([1, 42161, 8453, 137])
 
 // Chain IDs where Binance CEX route is available
-const BINANCE_CHAINS = new Set([1, 56, 137, 42161, 10, 8453, 43114])
+const BINANCE_CHAINS = new Set([1, 56, 137, 42161, 8453])
 
 function selectRoute(coin: "USDC" | "USDT", sourceChainId: number, destChainId: number): RouteDecision {
 	// USDC: prefer CCTP if both chains support it

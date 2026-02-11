@@ -8,46 +8,13 @@ import { getLogger, type Logger } from "../Logger"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { UnifiedRebalanceOptions } from "."
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface BinanceCexConfig {
 	apiKey: string
 	apiSecret: string
-	/** Base URL - defaults to https://api.binance.com */
 	basePath?: string
-	/** Timeout for Binance API requests in ms. Default: 5000 */
 	timeout?: number
-	/** Max time to wait for deposit confirmation (ms). Default: 5 min */
-	depositTimeoutMs?: number
-	/** Polling interval for deposit/withdrawal status (ms). Default: 15s */
 	pollIntervalMs?: number
-	/** Max time to wait for withdrawal completion (ms). Default: 10 min */
-	withdrawTimeoutMs?: number
-	/**
-	 * Travel rule questionnaire for withdrawal, as a JSON-serializable object.
-	 * Required for local entities (UAE, India, Japan, EU, etc.).
-	 *
-	 * For UAE (Dubai), self-transfer to own unhosted wallet:
-	 *   { isAddressOwner: 1, sendTo: 1 }
-	 *
-	 * For UAE, sending to another person's unhosted wallet:
-	 *   { isAddressOwner: 2, bnfType: 0, bnfName: "Name", country: "ae", city: "Dubai", sendTo: 1 }
-	 *   Note: `city` is MANDATORY for UAE when isAddressOwner=2 (unlike India where it's optional)
-	 *
-	 * For UAE, sending to another person (corporate/entity):
-	 *   { isAddressOwner: 2, bnfType: 1, bnfName: "Corp Name", country: "ae", city: "Dubai", sendTo: 1 }
-	 *
-	 * For UAE, sending to a VASP (exchange):
-	 *   { isAddressOwner: 1, sendTo: 2, vasp: "BINANCE" }
-	 *   For non-Binance VASPs: { isAddressOwner: 1, sendTo: 2, vasp: "others", vaspName: "Bybit" }
-	 *
-	 * See: https://developers.binance.com/docs/wallet/travel-rule/withdraw-questionnaire#uae
-	 *
-	 * If not provided, falls back to POST /sapi/v1/capital/withdraw/apply (non-travel-rule).
-	 * Set to null to explicitly disable travel rule.
-	 */
+	/** Optional travel rule questionnaire payload (see Binance docs). */
 	travelRuleQuestionnaire?: Record<string, unknown> | null
 }
 
@@ -67,38 +34,46 @@ export interface CexRebalanceEstimate {
 	minWithdrawal: string
 	withdrawEnabled: boolean
 	depositEnabled: boolean
+	/** Source network info */
+	source: {
+		network: string
+		/** Min block confirmations for deposit credit */
+		minConfirm: number
+		/** Block confirmations before funds are unlocked for withdrawal */
+		unLockConfirm: number
+		/** Binance estimated arrival time in minutes */
+		estimatedArrivalTime: number
+		/** Whether the network is currently congested */
+		busy: boolean
+	}
+	/** Destination network info */
+	destination: {
+		network: string
+		/** Binance estimated arrival time in minutes for withdrawal */
+		estimatedArrivalTime: number
+		busy: boolean
+	}
 }
 
-// ============================================================================
-// Binance deposit history status codes
-// Per GET /sapi/v1/capital/deposit/hisrec docs:
-//   0 = pending, 6 = credited, 1 = success
-// ============================================================================
+type BinanceNetworkInfo = NonNullable<WalletRestAPI.AllCoinsInformationResponse[number]["networkList"]>[number] & {
+	minConfirm?: number | bigint
+	unLockConfirm?: number | bigint
+	estimatedArrivalTime?: number | bigint
+	busy?: boolean
+}
+
+// Binance deposit status codes (GET /sapi/v1/capital/deposit/hisrec)
 const DEPOSIT_STATUS_SUCCESS = 1
 
-// ============================================================================
 // Binance withdrawal status codes
-//
-// For standard withdrawals (GET /sapi/v1/capital/withdraw/history):
-//   0 = Email Sent, 2 = Awaiting Approval, 3 = Rejected,
-//   4 = Processing, 5 = Failure, 6 = Completed
-//
-// For travel rule withdrawals (GET /sapi/v2/localentity/withdraw/history):
-//   withdrawalStatus uses the same codes as above
-//   travelRuleStatus: 0 = pending, 1 = approved, 2 = rejected
-// ============================================================================
 const WITHDRAW_STATUS_COMPLETED = 6
 const WITHDRAW_STATUS_TERMINAL_FAILURES = new Set([1, 3, 5]) // cancelled, rejected, failure
 
-// ============================================================================
-// Chain ID <-> Binance Network Mapping
-// ============================================================================
 const CHAIN_ID_TO_BINANCE_NETWORK: Record<number, string> = {
 	1: "ETH",
 	56: "BSC",
 	137: "MATIC",
 	42161: "ARBITRUM",
-	10: "OPTIMISM",
 	8453: "BASE",
 }
 
@@ -124,51 +99,7 @@ function getBinanceNetwork(stateMachineId: string): string {
 	return network
 }
 
-// ============================================================================
-// BinanceRebalancer
-// ============================================================================
-
-/**
- * Handles cross-chain rebalancing via Binance CEX for chains not supported
- * by CCTP or USDT0 (e.g., BNB Chain).
- *
- * Supports travel rule compliance for local entities (India, Japan, EU, etc.)
- * via POST /sapi/v1/localentity/withdraw/apply when travelRuleQuestionnaire
- * is provided in config.
- *
- * Flow:
- * 1. Fetch deposit address via GET /sapi/v1/capital/deposit/address
- * 2. Transfer tokens on-chain from wallet → Binance deposit address
- * 3. Poll deposit history via GET /sapi/v1/capital/deposit/hisrec
- * 4. Submit withdrawal:
- *    - With travel rule: POST /sapi/v1/localentity/withdraw/apply (+ questionnaire)
- *    - Without travel rule: POST /sapi/v1/capital/withdraw/apply
- * 5. Poll withdrawal history:
- *    - With travel rule: GET /sapi/v2/localentity/withdraw/history
- *    - Without travel rule: GET /sapi/v1/capital/withdraw/history
- *
- * @example
- * ```typescript
- * const rebalancer = new BinanceRebalancer(
- *   chainClientManager,
- *   configService,
- *   privateKey,
- *   {
- *     apiKey: "...",
- *     apiSecret: "...",
- *     // UAE (Dubai): self-transfer to own wallet
- *     travelRuleQuestionnaire: { isAddressOwner: 1, sendTo: 1 },
- *   },
- * )
- *
- * const result = await rebalancer.sendViaCex({
- *   amount: "500.00",
- *   coin: "USDT",
- *   source: "EVM-56",
- *   destination: "EVM-42161",
- * })
- * ```
- */
+/** Handles cross-chain rebalancing via Binance CEX (with optional travel rule support). */
 export class BinanceRebalancer {
 	private readonly walletClient: Wallet
 	private readonly chainClientManager: ChainClientManager
@@ -176,9 +107,7 @@ export class BinanceRebalancer {
 	private readonly privateKey: HexString
 	private readonly config: BinanceCexConfig
 	private readonly logger: Logger
-	private readonly depositTimeoutMs: number
 	private readonly pollIntervalMs: number
-	private readonly withdrawTimeoutMs: number
 	private readonly travelRuleQuestionnaire: Record<string, unknown> | null
 
 	constructor(
@@ -193,9 +122,7 @@ export class BinanceRebalancer {
 		this.config = config
 		this.logger = getLogger("BinanceRebalancer")
 
-		this.depositTimeoutMs = config.depositTimeoutMs ?? 20 * 60 * 1000
 		this.pollIntervalMs = config.pollIntervalMs ?? 15_000
-		this.withdrawTimeoutMs = config.withdrawTimeoutMs ?? 20 * 60 * 1000
 		this.travelRuleQuestionnaire = config.travelRuleQuestionnaire ?? null
 
 		this.walletClient = new Wallet({
@@ -208,18 +135,11 @@ export class BinanceRebalancer {
 		})
 	}
 
-	/** Whether this instance uses travel rule endpoints */
 	private get useTravelRule(): boolean {
 		return this.travelRuleQuestionnaire !== null
 	}
 
-	// ========================================================================
-	// Public API
-	// ========================================================================
-
-	/**
-	 * Full rebalance flow: deposit on-chain → wait for credit → withdraw to dest chain
-	 */
+	/** Full rebalance: on-chain deposit → Binance credit → withdrawal to destination chain. */
 	async sendViaCex(options: UnifiedRebalanceOptions): Promise<CexRebalanceResult> {
 		const startTime = Date.now()
 		const { amount, coin, source, destination } = options
@@ -227,8 +147,47 @@ export class BinanceRebalancer {
 		const sourceNetwork = getBinanceNetwork(source)
 		const destNetwork = getBinanceNetwork(destination)
 
+		const { sourceNetworkInfo, destNetworkInfo } = await this.fetchNetworkInfo(coin, sourceNetwork, destNetwork)
+
+		if (!sourceNetworkInfo.depositEnable) {
+			throw new Error(
+				`Deposits paused for ${coin} on ${sourceNetwork}.` +
+					(sourceNetworkInfo.depositDesc ? ` Reason: ${sourceNetworkInfo.depositDesc}` : ""),
+			)
+		}
+		if (!destNetworkInfo.withdrawEnable) {
+			throw new Error(
+				`Withdrawals paused for ${coin} on ${destNetwork}.` +
+					(destNetworkInfo.withdrawDesc ? ` Reason: ${destNetworkInfo.withdrawDesc}` : ""),
+			)
+		}
+
+		const sourceEta = Number(sourceNetworkInfo.estimatedArrivalTime ?? 20) // minutes
+		const destEta = Number(destNetworkInfo.estimatedArrivalTime ?? 20)
+
+		// Prefer Binance's configured confirmation blocks over plain time-based ETA
+		const sourceMinConfirm = Number(sourceNetworkInfo.minConfirm ?? 0)
+
+		// For deposits, use confirmation blocks as the primary stopping condition.
+		// We still keep a generous global time cap inside waitForDepositCredit as a safety guard.
+		const depositTimeoutBlocks = sourceMinConfirm || 120 // sensible default if Binance doesn't specify
+		const withdrawTimeoutMs = destEta * 60_000 + 30_000 // 30 seconds buffer
+
 		this.logger.info(
-			{ amount, coin, source: sourceNetwork, destination: destNetwork, travelRule: this.useTravelRule },
+			{
+				amount,
+				coin,
+				source: sourceNetwork,
+				destination: destNetwork,
+				travelRule: this.useTravelRule,
+				depositTimeoutMin: sourceEta,
+				withdrawTimeoutMin: destEta,
+				// confirmation / ETA details
+				sourceMinConfirm,
+				sourceUnLockConfirm: Number(sourceNetworkInfo.unLockConfirm ?? 0),
+				sourceEstimatedArrivalTime: sourceEta,
+				destEstimatedArrivalTime: destEta,
+			},
 			"Starting CEX rebalance",
 		)
 
@@ -245,7 +204,7 @@ export class BinanceRebalancer {
 		const depositTxHash = await this.transferOnChain(source, coin, amount, depositAddress)
 		this.logger.info({ depositTxHash }, "On-chain deposit transfer sent")
 
-		await this.waitForDepositCredit(coin, depositTxHash)
+		await this.waitForDepositCredit(coin, depositTxHash, depositTimeoutBlocks)
 		this.logger.info("Deposit credited on Binance")
 
 		const account = privateKeyToAccount(this.privateKey as `0x${string}`)
@@ -257,11 +216,21 @@ export class BinanceRebalancer {
 			withdrawalId = await this.withdrawStandard(coin, account.address, amount, destNetwork)
 		}
 
-		this.logger.info({ withdrawalId, travelRule: this.useTravelRule }, "Withdrawal initiated")
+		this.logger.info(
+			{
+				withdrawalId,
+				travelRule: this.useTravelRule,
+				destNetwork,
+				destEstimatedArrivalTime: destEta,
+				sourceMinConfirm: Number(sourceNetworkInfo.minConfirm ?? 0),
+				sourceUnLockConfirm: Number(sourceNetworkInfo.unLockConfirm ?? 0),
+			},
+			"Withdrawal initiated",
+		)
 
 		const finalWithdrawal = this.useTravelRule
-			? await this.waitForTravelRuleWithdrawalComplete(withdrawalId)
-			: await this.waitForStandardWithdrawalComplete(withdrawalId)
+			? await this.waitForTravelRuleWithdrawalComplete(withdrawalId, withdrawTimeoutMs)
+			: await this.waitForStandardWithdrawalComplete(withdrawalId, withdrawTimeoutMs)
 
 		const elapsedMs = Date.now() - startTime
 		const result: CexRebalanceResult = {
@@ -279,14 +248,40 @@ export class BinanceRebalancer {
 		return result
 	}
 
-	/**
-	 * Estimate costs for a CEX rebalance.
-	 */
+	/** Estimate fees and timing for a CEX rebalance using live Binance network data. */
 	async estimateCexRebalance(options: UnifiedRebalanceOptions): Promise<CexRebalanceEstimate> {
 		const { coin, source, destination } = options
 		const destNetwork = getBinanceNetwork(destination)
 		const sourceNetwork = getBinanceNetwork(source)
 
+		const { sourceNetworkInfo, destNetworkInfo } = await this.fetchNetworkInfo(coin, sourceNetwork, destNetwork)
+
+		return {
+			withdrawalFee: destNetworkInfo.withdrawFee ?? "0",
+			minWithdrawal: destNetworkInfo.withdrawMin ?? "0",
+			withdrawEnabled: destNetworkInfo.withdrawEnable ?? false,
+			depositEnabled: sourceNetworkInfo.depositEnable ?? false,
+			source: {
+				network: sourceNetwork,
+				minConfirm: Number(sourceNetworkInfo.minConfirm ?? 0),
+				unLockConfirm: Number(sourceNetworkInfo.unLockConfirm ?? 0),
+				estimatedArrivalTime: Number(sourceNetworkInfo.estimatedArrivalTime ?? 0),
+				busy: sourceNetworkInfo.busy ?? false,
+			},
+			destination: {
+				network: destNetwork,
+				estimatedArrivalTime: Number(destNetworkInfo.estimatedArrivalTime ?? 0),
+				busy: destNetworkInfo.busy ?? false,
+			},
+		}
+	}
+
+	/** Fetch and validate network config for a coin on source and destination networks. */
+	private async fetchNetworkInfo(
+		coin: string,
+		sourceNetwork: string,
+		destNetwork: string,
+	): Promise<{ sourceNetworkInfo: BinanceNetworkInfo; destNetworkInfo: BinanceNetworkInfo }> {
 		const allCoins: WalletRestAPI.AllCoinsInformationResponse = await this.walletClient.restAPI
 			.allCoinsInformation()
 			.then((res) => res.data())
@@ -296,12 +291,18 @@ export class BinanceRebalancer {
 			throw new Error(`Coin ${coin} not found on Binance`)
 		}
 
-		const destNetworkInfo = coinInfo.networkList?.find((n: any) => n.network === destNetwork)
-		const sourceNetworkInfo = coinInfo.networkList?.find((n: any) => n.network === sourceNetwork)
+		const sourceNetworkInfo = coinInfo.networkList?.find((n) => n.network === sourceNetwork)
+		const destNetworkInfo = coinInfo.networkList?.find((n) => n.network === destNetwork)
+
+		if (!sourceNetworkInfo || !destNetworkInfo) {
+			throw new Error(
+				`Network not found for ${coin} on Binance. ` +
+					`source=${sourceNetwork} (${sourceNetworkInfo ? "found" : "missing"}), ` +
+					`dest=${destNetwork} (${destNetworkInfo ? "found" : "missing"})`,
+			)
+		}
 
 		if (
-			!destNetworkInfo ||
-			!sourceNetworkInfo ||
 			destNetworkInfo.withdrawFee === undefined ||
 			destNetworkInfo.withdrawMin === undefined ||
 			destNetworkInfo.withdrawEnable === undefined ||
@@ -313,22 +314,10 @@ export class BinanceRebalancer {
 			)
 		}
 
-		return {
-			withdrawalFee: destNetworkInfo.withdrawFee,
-			minWithdrawal: destNetworkInfo.withdrawMin,
-			withdrawEnabled: destNetworkInfo.withdrawEnable,
-			depositEnabled: sourceNetworkInfo.depositEnable,
-		}
+		return { sourceNetworkInfo, destNetworkInfo }
 	}
 
-	// ========================================================================
-	// Withdrawal methods
-	// ========================================================================
-
-	/**
-	 * Standard withdrawal via POST /sapi/v1/capital/withdraw/apply
-	 * Response: { id: "7213fea8e94b4a5593d507237e5a555b" }
-	 */
+	/** Standard withdrawal via POST /sapi/v1/capital/withdraw/apply. */
 	private async withdrawStandard(coin: string, address: string, amount: string, network: string): Promise<string> {
 		const resp = await this.walletClient.restAPI
 			.withdraw({
@@ -346,19 +335,7 @@ export class BinanceRebalancer {
 		return id
 	}
 
-	/**
-	 * Travel rule withdrawal via POST /sapi/v1/localentity/withdraw/apply
-	 * using `this.walletClient.restAPI.withdrawTravelRule()`.
-	 *
-	 * Same params as standard withdraw + mandatory `questionnaire` (JSON string).
-	 * The questionnaire must match your local entity (UAE, India, Japan, etc).
-	 *
-	 * Response: { trId: 123456, accpted: true, info: "Withdraw request accepted" }
-	 * Note: "accpted" is Binance's actual spelling, not a typo on our side.
-	 *
-	 * Returns the trId as string for tracking via
-	 * GET /sapi/v2/localentity/withdraw/history
-	 */
+	/** Travel rule withdrawal via POST /sapi/v1/localentity/withdraw/apply. */
 	private async withdrawWithTravelRule(
 		coin: string,
 		address: string,
@@ -381,7 +358,6 @@ export class BinanceRebalancer {
 
 		this.logger.debug({ resp }, "Travel rule withdrawal response")
 
-		// Response: { trId: 123456, accpted: true, info: "..." }
 		if ((resp as any).accpted === false) {
 			throw new Error(`Travel rule withdrawal rejected: ${(resp as any).info || "unknown reason"}`)
 		}
@@ -396,20 +372,14 @@ export class BinanceRebalancer {
 		return String(trId)
 	}
 
-	// ========================================================================
-	// Withdrawal polling methods
-	// ========================================================================
-
-	/**
-	 * Polls GET /sapi/v1/capital/withdraw/history for standard withdrawals.
-	 * Matches by `id` field.
-	 */
+	/** Poll GET /sapi/v1/capital/withdraw/history until a standard withdrawal completes or fails. */
 	private async waitForStandardWithdrawalComplete(
 		withdrawalId: string,
+		timeoutMs: number,
 	): Promise<{ amount: string; transactionFee: string; txId: string }> {
 		const startTime = Date.now()
 
-		while (Date.now() - startTime < this.withdrawTimeoutMs) {
+		while (Date.now() - startTime < timeoutMs) {
 			try {
 				const withdrawals: WalletRestAPI.WithdrawHistoryResponse = await this.walletClient.restAPI
 					.withdrawHistory({})
@@ -450,32 +420,18 @@ export class BinanceRebalancer {
 			await this.sleep(this.pollIntervalMs)
 		}
 
-		throw new Error(`Withdrawal ${withdrawalId} not completed within ${this.withdrawTimeoutMs / 60000} minutes.`)
+		throw new Error(`Withdrawal ${withdrawalId} not completed within ${timeoutMs / 60000} minutes.`)
 	}
 
-	/**
-	 * Polls GET /sapi/v2/localentity/withdraw/history for travel rule withdrawals.
-	 *
-	 * NOTE: The @binance/wallet connector does not expose a method for
-	 * travel rule withdraw history. We use signedRequest() as a fallback
-	 * for this single endpoint. If the connector adds support in the future,
-	 * this should be migrated.
-	 *
-	 * Response uses different field names than standard:
-	 *   - trId: travel rule record ID (what we match on)
-	 *   - withdrawalStatus: same codes as standard (0/2/3/4/5/6)
-	 *   - travelRuleStatus: 0=pending, 1=approved, 2=rejected
-	 *   - amount, transactionFee, txId, coin, network, etc.
-	 *
-	 * Note: Withdrawals made via /sapi/v1/capital/withdraw/apply do NOT appear here.
-	 */
+	/** Poll GET /sapi/v2/localentity/withdraw/history until a travel rule withdrawal completes or fails. */
 	private async waitForTravelRuleWithdrawalComplete(
 		trId: string,
+		timeoutMs: number,
 	): Promise<{ amount: string; transactionFee: string; txId: string }> {
 		const startTime = Date.now()
 		const trIdNum = Number(trId)
 
-		while (Date.now() - startTime < this.withdrawTimeoutMs) {
+		while (Date.now() - startTime < timeoutMs) {
 			try {
 				// GET /sapi/v2/localentity/withdraw/history
 				const withdrawals: any[] = await this.signedRequest("GET", "/sapi/v2/localentity/withdraw/history", {})
@@ -543,14 +499,8 @@ export class BinanceRebalancer {
 			await this.sleep(this.pollIntervalMs)
 		}
 
-		throw new Error(
-			`Travel rule withdrawal trId=${trId} not completed within ${this.withdrawTimeoutMs / 60000} minutes.`,
-		)
+		throw new Error(`Travel rule withdrawal trId=${trId} not completed within ${timeoutMs / 60000} minutes.`)
 	}
-
-	// ========================================================================
-	// On-chain deposit transfer
-	// ========================================================================
 
 	private async transferOnChain(
 		source: string,
@@ -608,18 +558,7 @@ export class BinanceRebalancer {
 		return txHash
 	}
 
-	// ========================================================================
-	// Raw signed request (for travel rule history — not exposed by connector)
-	// ========================================================================
-
-	/**
-	 * Makes a raw HMAC-SHA256 signed request to Binance SAPI.
-	 * Only used for the travel rule withdraw history endpoint which
-	 * @binance/wallet does not expose:
-	 *   - GET /sapi/v2/localentity/withdraw/history
-	 *
-	 * All other endpoints use the connector directly.
-	 */
+	/** Raw HMAC-SHA256 signed request to Binance SAPI (used for travel rule history). */
 	private async signedRequest(
 		method: "GET" | "POST",
 		path: string,
@@ -677,15 +616,15 @@ export class BinanceRebalancer {
 		return response.json()
 	}
 
-	// ========================================================================
-	// Helpers
-	// ========================================================================
-
-	async waitForDepositCredit(coin: string, txHash: string): Promise<void> {
+	/** Wait for a Binance deposit to be credited, using confirmTimes and minConfirm as primary criteria. */
+	async waitForDepositCredit(coin: string, txHash: string, requiredConfirmations: number): Promise<void> {
 		const startTime = Date.now()
 		const normalizedTxHash = txHash.toLowerCase()
 
-		while (Date.now() - startTime < this.depositTimeoutMs) {
+		// Safety guard: do not poll forever even if confirmations never reach the target
+		const maxTimeoutMs = 30 * 60_000 // 30 minutes hard cap
+
+		while (Date.now() - startTime < maxTimeoutMs) {
 			try {
 				const deposits: WalletRestAPI.DepositHistoryResponse = await this.walletClient.restAPI
 					.depositHistory({
@@ -703,13 +642,20 @@ export class BinanceRebalancer {
 				})
 
 				if (match) {
-					if (match.status === DEPOSIT_STATUS_SUCCESS) {
-						this.logger.debug({ confirmTimes: match.confirmTimes }, "Deposit fully confirmed")
+					const confirmTimes = Number(match.confirmTimes ?? 0)
+
+					// Treat either explicit SUCCESS status or reaching the required
+					// confirmation blocks as success.
+					if (match.status === DEPOSIT_STATUS_SUCCESS || confirmTimes >= requiredConfirmations) {
+						this.logger.debug(
+							{ status: match.status, confirmTimes, requiredConfirmations },
+							"Deposit fully confirmed",
+						)
 						return
 					}
 					this.logger.debug(
-						{ status: match.status, confirmTimes: match.confirmTimes },
-						"Deposit found, waiting for confirmation",
+						{ status: match.status, confirmTimes, requiredConfirmations },
+						"Deposit found, waiting for additional confirmations",
 					)
 				} else {
 					this.logger.debug("Deposit not yet visible in Binance history")
@@ -722,7 +668,7 @@ export class BinanceRebalancer {
 		}
 
 		throw new Error(
-			`Deposit not confirmed within ${this.depositTimeoutMs / 60000} minutes. ` +
+			`Deposit not confirmed within ${requiredConfirmations} blocks or ${maxTimeoutMs / 60000} minutes. ` +
 				`txHash: ${txHash}. Check Binance deposit history manually.`,
 		)
 	}

@@ -267,6 +267,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// "Usdt0Oft": Not available on BSC
 		},
 		rpcEnvKey: "BSC_MAINNET",
 		defaultRpcUrl: "https://binance.llamarpc.com",
@@ -316,7 +317,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
-			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Arbitrum
+			Usdt0Oft: "0x14E4A1B13bf7F943c8ff7C51fb60FA964A298D92",
 		},
 		rpcEnvKey: "ARBITRUM_MAINNET",
 		defaultRpcUrl: "https://arbitrum-one.public.blastapi.io",
@@ -364,7 +365,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
-			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Base
+			// Usdt0Oft: Not available on Base
 		},
 		rpcEnvKey: "BASE_MAINNET",
 		defaultRpcUrl: "https://base-mainnet.public.blastapi.io",
@@ -412,7 +413,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
-			// Usdt0Oft: "0x...", // TODO: Add USDT0 OFT address for Polygon
+			Usdt0Oft: "0x6BA10300f0DC58B7a1e4c0e41f5daBb7D7829e13",
 		},
 		rpcEnvKey: "POLYGON_MAINNET",
 		defaultRpcUrl: "https://polygon-bor-rpc.publicnode.com",
@@ -454,6 +455,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0xc07be8994d035631c36fb4a89c918cefb2f03ec3",
 		},
 		rpcEnvKey: "UNICHAIN_MAINNET",
 		defaultRpcUrl: "https://unichain.api.onfinality.io/public",
