@@ -258,9 +258,7 @@ program
 						apiSecret: config.binance.apiSecret,
 						basePath: config.binance.basePath,
 						timeout: config.binance.timeout,
-						depositTimeoutMs: config.binance.depositTimeoutMs,
 						pollIntervalMs: config.binance.pollIntervalMs,
-						withdrawTimeoutMs: config.binance.withdrawTimeoutMs,
 					}
 					logger.info("Binance CEX rebalancing configured")
 				}
