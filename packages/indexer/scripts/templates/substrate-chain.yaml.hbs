@@ -32,6 +32,11 @@ dataSources:
           filter:
            module: relayer
            method: AccumulateFees
+        - handler: handleCollatorRewardedEvent
+          kind: substrate/EventHandler
+          filter:
+            module: collatorManager
+            method: CollatorRewarded
         - handler: handleSubstrateAssetTeleportedEvent
           kind: substrate/EventHandler
           filter:

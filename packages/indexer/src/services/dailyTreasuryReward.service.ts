@@ -6,6 +6,7 @@ import { Struct, u32, u128, bool, _void, Enum, u8, Vector } from "scale-ts"
 import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress, xxhashAsU8a } from "@polkadot/util-crypto"
 import fetch from "node-fetch"
+import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
 import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
 import { getStateId, StateMachine } from "@/utils/state-machine.helper"
@@ -60,16 +61,19 @@ export class DailyTreasuryRewardService {
 				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
 			}
 
-			const response = await fetch(rpcUrl, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					jsonrpc: "2.0",
-					id: 1,
-					method: "state_getStorage",
-					params: [storageKey],
-				}),
-			});
+			const response = await fetchWithRetry(
+				rpcUrl,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						jsonrpc: "2.0",
+						id: 1,
+						method: "state_getStorage",
+						params: [storageKey, null],
+					}),
+				}
+			)
 
 			if (!response.ok) {
 				throw new Error(`RPC request failed with status ${response.status}`);

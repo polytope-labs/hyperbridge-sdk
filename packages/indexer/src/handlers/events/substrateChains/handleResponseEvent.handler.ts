@@ -1,5 +1,6 @@
 import { SubstrateEvent } from "@subql/types"
 import fetch from "node-fetch"
+import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
 import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
 import { Get } from "@/utils/substrate.helpers"
@@ -39,14 +40,17 @@ export const handleSubstrateResponseEvent = wrap(async (event: SubstrateEvent): 
 		params: [[{ commitment: commitment.toString() }]],
 	}
 
-	const response = await fetch(replaceWebsocketWithHttp(ENV_CONFIG[host]), {
-		method: "POST",
-		headers: {
-			accept: "application/json",
-			"content-type": "application/json",
-		},
-		body: stringify(method),
-	})
+	const response = await fetchWithRetry(
+		replaceWebsocketWithHttp(ENV_CONFIG[host]),
+		{
+			method: "POST",
+			headers: {
+				accept: "application/json",
+				"content-type": "application/json",
+			},
+			body: stringify(method),
+		}
+	)
 	const data = await response.json()
 
 	logger.info(`Response from calling ismp_queryResponses: ${stringify(data)}`)

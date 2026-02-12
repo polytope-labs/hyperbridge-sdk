@@ -1,4 +1,4 @@
-import { AssetTeleported } from "@/configs/src/types/models"
+import { AssetTeleported, Request } from "@/configs/src/types/models"
 import { timestampToDate } from "@/utils/date.helpers"
 
 // Arguments for creating AssetTeleported records
@@ -30,6 +30,9 @@ export class AssetTeleportedService {
 
 		// If not found, create a new one
 		if (!assetTeleported) {
+			// Try to find the associated request by commitment
+			const request = await Request.get(commitment)
+
 			assetTeleported = AssetTeleported.create({
 				id,
 				from,
@@ -40,6 +43,7 @@ export class AssetTeleportedService {
 				chain,
 				blockNumber: parseInt(blockNumber),
 				createdAt: timestampToDate(blockTimestamp), // Using block timestamp for createdAt instead of current time
+				requestId: request?.id,
 			})
 		}
 

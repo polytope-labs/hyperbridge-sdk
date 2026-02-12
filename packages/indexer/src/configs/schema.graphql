@@ -137,9 +137,9 @@ type HyperBridgeChainStats @entity {
 """
 Hyperbridge Stats for a specific Relayer on a specific chain
 """
-type RelayerStatsPerChain @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
+type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
 	"""
-	Unique identifier of the RelayerChainMetrics entry.
+	Unique identifier of the RelayerChainStats entry.
 	"""
 	id: ID!
 
@@ -159,19 +159,9 @@ type RelayerStatsPerChain @entity @compositeIndexes(fields: [["relayer", "chain"
 	numberOfSuccessfulMessagesDelivered: BigInt!
 
 	"""
-	Total number of failed post requests handled by the Relayer
-	"""
-	numberOfFailedMessagesDelivered: BigInt!
-
-	"""
 	Amount of gas spent on successful messages (Gas Cost)
 	"""
 	gasUsedForSuccessfulMessages: BigInt!
-
-	"""
-	Amount of gas spent on failed messages (Gas Cost)
-	"""
-	gasUsedForFailedMessages: BigInt!
 
 	"""
 	Gas fee spent on successful post requests (Gas Cost * Gas Price)
@@ -179,19 +169,9 @@ type RelayerStatsPerChain @entity @compositeIndexes(fields: [["relayer", "chain"
 	gasFeeForSuccessfulMessages: BigInt!
 
 	"""
-	Gas fee spent on failed post requests (Gas Cost * Gas Price)
-	"""
-	gasFeeForFailedMessages: BigInt!
-
-	"""
 	The USD value of the gas fee spent on successful post requests
 	"""
 	usdGasFeeForSuccessfulMessages: BigInt!
-
-	"""
-	The USD value of the gas fee spent on failed post requests
-	"""
-	usdGasFeeForFailedMessages: BigInt!
 
 	"""
 	Total fees earned by the relayer
@@ -211,7 +191,7 @@ type Relayer @entity {
 	"""
 	A list of important stats for the Relayer on every network that they support
 	"""
-	perChainStats: [RelayerStatsPerChain]! @derivedFrom(field: "relayer")
+	perChainStats: [RelayerChainStats]! @derivedFrom(field: "relayer")
 
 	"""
 	Latest activity for this relayer
@@ -388,11 +368,6 @@ type Request @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	fee: BigInt!
 
 	"""
-	Status of the request
-	"""
-	status: Status!
-
-	"""
 	Metatdata about the request's progression through different statuses
 	"""
 	statusMetadata: [RequestStatusMetadata]! @derivedFrom(field: "request")
@@ -481,11 +456,6 @@ type Response @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	The Timestamp at which this response expires in seconds
 	"""
 	responseTimeoutTimestamp: BigInt
-
-	"""
-	Status of the response
-	"""
-	status: Status!
 
 	"""
 	The request that triggered this response
@@ -626,6 +596,11 @@ type AssetTeleported @entity {
 	The block in which the event occurred
 	"""
 	blockNumber: Int!
+
+	"""
+	The associated request for this teleport (linked via commitment)
+	"""
+	request: Request
 }
 
 """
@@ -690,10 +665,6 @@ type GetRequest @entity {
 	"""
 	blockTimestamp: BigInt!
 	"""
-	Status of the request
-	"""
-	status: Status!
-	"""
 	Metatdata about the request's progression through different statuses
 	"""
 	statusMetadata: [GetRequestStatusMetadata]! @derivedFrom(field: "request")
@@ -705,6 +676,11 @@ type GetRequest @entity {
 	commitment of the request
 	"""
 	commitment: String!
+
+	"""
+	Creation timestamp of this request
+	"""
+	createdAt: Date! @index
 }
 
 """
@@ -1325,6 +1301,11 @@ type TokenGatewayAssetTeleported @entity {
 	Hash of the transaction that initiated the teleport
 	"""
 	transactionHash: String!
+
+	"""
+	The associated request for this teleport (linked via commitment)
+	"""
+	request: Request
 }
 
 """
@@ -1514,132 +1495,6 @@ type TokenPriceLog @entity @compositeIndexes(fields: [["symbol", "timestamp"], [
 	Timestamp when price was recorded
 	"""
 	timestamp: BigInt! @index
-
-	"""
-	Record creation timestamp
-	"""
-	createdAt: Date! @index
-}
-
-"""
-Token list from CoinGecko OnChain DEX API - stores tokens with their pair information
-"""
-type TokenList @entity @compositeIndexes(fields: [["chainId", "updatedAt"]]) {
-	"""
-	Unique identifier: tokenAddress-chainId (e.g., "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2-1")
-	"""
-	id: ID!
-
-	"""
-	Token contract address (zero address for native tokens)
-	"""
-	tokenAddress: String! @index
-
-	"""
-	Numeric EVM chain id (as string) the token belongs to
-	"""
-	chainId: String! @index
-
-	"""
-	Token name (e.g., "Wrapped Ether", "USD Coin")
-	"""
-	tokenName: String!
-
-	"""
-	Token symbol (e.g., "WETH", "USDC", "USDT")
-	"""
-	tokenSymbol: String!
-
-	"""
-	Token image URI from CoinGecko (nullable if not available)
-	"""
-	tokenURI: String
-
-	"""
-	Array of pair information strings in format: "pairAddress-TokenSymbol-protocolName-fee"
-	Example: "0xe0554a476a092703abdb3ef35c80e0d76d32939f-WETH-uniswap_v3-0.01"
-	"""
-	pairedWith: [String!]!
-
-	"""
-	When the token list was last synced
-	"""
-	updatedAt: Date! @index
-
-	"""
-	When this token entry was first created
-	"""
-	createdAt: Date! @index
-}
-
-"""
-Sync state for CoinGecko Token List pagination - tracks current page number per chain
-"""
-type TokenListSyncState @entity {
-	"""
-	Unique identifier: networkName (e.g., "eth", "polygon_pos", "arbitrum")
-	"""
-	id: ID!
-
-	"""
-	CoinGecko OnChain network name (e.g., "eth", "polygon_pos", "arbitrum")
-	"""
-	networkName: String! @index
-
-	"""
-	Numeric EVM chain id (as string) the sync state belongs to
-	"""
-	chainId: String! @index
-
-	"""
-	Current page number for pagination (starts at 1)
-	"""
-	currentPage: Int!
-
-	"""
-	Timestamp when this sync state was last updated
-	"""
-	lastUpdatedAt: Date! @index
-
-	"""
-	When this sync state entry was first created
-	"""
-	createdAt: Date! @index
-}
-
-"""
-Token Registry - Configuration and metadata for supported tokens
-"""
-type TokenRegistry @entity @compositeIndexes(fields: [["symbol", "lastUpdatedAt"], ["symbol", "createdAt"]]) {
-	"""
-	Unique identifier: symbol (e.g., ETH, DOT)
-	"""
-	id: ID!
-
-	"""
-	Token name (e.g., Ethereum, Polkadot, USD Coin)
-	"""
-	name: String!
-
-	"""
-	Token symbol (e.g., ETH, DOT, USDC)
-	"""
-	symbol: String! @index
-
-	"""
-	Token contract address (zero address for native tokens)
-	"""
-	address: String
-
-	"""
-	Update frequency in seconds for price feeds
-	"""
-	updateFrequencySeconds: Int!
-
-	"""
-	Timestamp when this token configuration was last updated
-	"""
-	lastUpdatedAt: BigInt! @index
 
 	"""
 	Record creation timestamp
@@ -1872,4 +1727,133 @@ type DustSwept @entity {
 	Timestamp when this record was last updated
 	"""
 	lastUpdated: Date! @index
+}
+
+"""
+Collator rewards indexed from treasury transfers to block authors
+"""
+type HyperbridgeCollatorReward @entity {
+	"""
+	Unique identifier for the collator reward entry (collator address)
+	"""
+	id: ID!
+
+	"""
+	The total amount of rewards this collator has ever received
+	"""
+	totalRewardAmount: BigInt
+
+	"""
+	Total number of blocks authored by this collator
+	"""
+	totalBlocksAuthored: BigInt
+
+	"""
+	Timestamp of the last reward received
+	"""
+	lastRewardedAt: Date
+}
+
+"""
+Record of daily collator rewards paid out by the treasury
+"""
+type DailyTreasuryCollatorReward @entity {
+	id: ID! # ID is: {YYYY-MM-DD}
+	date: Date!
+	dailyRewardAmount: BigInt!
+}
+
+"""
+Types of relayer rewards
+"""
+enum RelayerRewardType {
+	CONSENSUS_REWARD
+	MESSAGING_REWARD
+}
+
+"""
+Per-transaction record of relayer rewards
+Enables querying individual reward transactions for specific relayers
+"""
+type RelayerRewardTransaction @entity @compositeIndexes(fields: [["relayer", "chain"], ["rewardType", "chain"]]) {
+	"""
+	Unique identifier: {relayerAddress}-{blockNumber}-{extrinsicIndex}
+	"""
+	id: ID!
+
+	"""
+	The relayer address that received the reward
+	"""
+	relayer: String! @index
+
+	"""
+	The chain on which the reward was issued
+	"""
+	chain: String! @index
+
+	"""
+	The amount of the reward
+	"""
+	amount: BigInt! @index
+
+	"""
+	The type of reward (consensus, messaging, or fee)
+	"""
+	rewardType: RelayerRewardType! @index
+
+	"""
+	Block number where the reward was issued
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block
+	"""
+	blockTimestamp: BigInt!
+
+	"""
+	Hash of the extrinsic that triggered the reward
+	"""
+	extrinsicHash: String
+
+	"""
+	Timestamp when this record was created
+	"""
+	createdAt: Date! @index
+}
+
+"""
+Per-transaction record of collator rewards on Hyperbridge
+Enables querying individual reward transactions for specific collators
+"""
+type HyperbridgeCollatorRewardTransaction @entity {
+	"""
+	Unique identifier: {collatorAddress}-{blockNumber}
+	"""
+	id: ID!
+
+	"""
+	The collator address that received the reward
+	"""
+	collator: String! @index
+
+	"""
+	The amount of the reward
+	"""
+	amount: BigInt! @index
+
+	"""
+	Block number where the reward was issued (also the block authored by this collator)
+	"""
+	blockNumber: BigInt! @index
+
+	"""
+	Timestamp of the block
+	"""
+	blockTimestamp: BigInt!
+
+	"""
+	Timestamp when this record was created
+	"""
+	createdAt: Date! @index
 }

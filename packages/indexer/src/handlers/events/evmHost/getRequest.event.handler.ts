@@ -30,9 +30,6 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 	const chain: string = getHostStateMachine(chainId)
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
-	// Update HyperBridge stats
-	await HyperBridgeService.incrementNumberOfSentMessages(chain)
-
 	logger.info(
 		`Processing GetRequest Event: ${stringify({
 			source,
@@ -81,7 +78,6 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 		blockNumber: blockNumber.toString(),
 		blockHash,
 		blockTimestamp,
-		status: Status.SOURCE,
 		chain,
 	})
 
@@ -99,41 +95,49 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 
 	await getRequestStatusMetadata.save()
 
-	// Process transfer logs associated with the get request
-	for (const [index, log] of safeArray(transaction?.logs).entries()) {
-		if (!isERC20TransferEvent(log)) {
-			continue
-		}
+	// Non-critical operations: stats, transfers, and volumes
+	try {
+		// Update HyperBridge stats
+		await HyperBridgeService.incrementNumberOfSentMessages(chain)
 
-		const value = BigInt(log.data)
-		const transferId = `${log.transactionHash}-index-${index}`
-		const transfer = await Transfer.get(transferId)
-
-		if (!transfer) {
-			const [_, fromTopic, toTopic] = log.topics
-			const logFrom = extractAddressFromTopic(fromTopic)
-			const logTo = extractAddressFromTopic(toTopic)
-
-			// Compute USD value first; skip zero-USD transfers
-			const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, value, blockTimestamp)
-			if (amountValueInUSD === "0") {
+		// Process transfer logs associated with the get request
+		for (const [index, log] of safeArray(transaction?.logs).entries()) {
+			if (!isERC20TransferEvent(log)) {
 				continue
 			}
 
-			await TransferService.storeTransfer({
-				transactionHash: transferId,
-				chain,
-				value,
-				from: logFrom,
-				to: logTo,
-			})
+			const value = BigInt(log.data)
+			const transferId = `${log.transactionHash}-index-${index}`
+			const transfer = await Transfer.get(transferId)
 
-			await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+			if (!transfer) {
+				const [_, fromTopic, toTopic] = log.topics
+				const logFrom = extractAddressFromTopic(fromTopic)
+				const logTo = extractAddressFromTopic(toTopic)
 
-			// Only update contract volume for transfers associated with the request's from address
-			if (logFrom.toLowerCase() === from.toLowerCase() || logTo.toLowerCase() === from.toLowerCase()) {
-				await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+				// Compute USD value first; skip zero-USD transfers
+				const { symbol, amountValueInUSD } = await getPriceDataFromEthereumLog(log.address, value, blockTimestamp)
+				if (amountValueInUSD === "0") {
+					continue
+				}
+
+				await TransferService.storeTransfer({
+					transactionHash: transferId,
+					chain,
+					value,
+					from: logFrom,
+					to: logTo,
+				})
+
+				await VolumeService.updateVolume(`Transfer.${symbol}`, amountValueInUSD, blockTimestamp)
+
+				// Only update contract volume for transfers associated with the request's from address
+				if (logFrom.toLowerCase() === from.toLowerCase() || logTo.toLowerCase() === from.toLowerCase()) {
+					await VolumeService.updateVolume(`Contract.${from}`, amountValueInUSD, blockTimestamp)
+				}
 			}
 		}
+	} catch (error) {
+		logger.error(`Error in non-critical operations for GetRequest: ${stringify(error)}`)
 	}
 })
