@@ -5,9 +5,10 @@ import type { ApiPromise } from "@polkadot/api"
 import { Option as PolkadotOption } from "@polkadot/types"
 import { logger } from "ethers"
 import { TextEncoder } from "util"
-import { CHAINS_BY_ISMP_HOST } from "@/constants"
+import { CHAINS_BY_ISMP_HOST, ENV_CONFIG } from "@/constants"
 import { Codec } from "@polkadot/types/types"
-import { Provider } from "@ethersproject/providers"
+import { safeFetch as fetch } from "@/utils/safeFetch"
+import { replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 
 // Define ConsensusStateId as 4-byte array
 const ConsensusStateId = Vector(u8, 4)
@@ -112,12 +113,11 @@ export async function fetchStateCommitmentsSubstrate(params: {
 }
 
 export async function fetchStateCommitmentsEVM(params: {
-	client: Provider
 	stateMachineId: string
 	consensusStateId: string
 	height: bigint
 }): Promise<StateCommitment | null> {
-	const { client, stateMachineId, consensusStateId, height } = params
+	const { stateMachineId, consensusStateId, height } = params
 
 	const state_machine_height: StateMachineHeight = {
 		id: {
@@ -147,16 +147,20 @@ export async function fetchStateCommitmentsEVM(params: {
 	// Generate keys for timestamp, overlay, and state root
 	const [timestampKey, overlayKey, stateRootKey] = generateStateCommitmentKeys(paraId, height)
 
-	// Query the three storage values
-	const timestampValue = await client.getStorageAt(hostContract, bytesToHex(timestampKey))
+	const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hostContractKey] || "")
+	if (!rpcUrl) {
+		throw new Error(`No RPC URL found for chain ${hostContractKey}`)
+	}
+
+	// Use direct RPC calls with "latest" as the block tag to avoid issues with
+	// SubQuery's api provider forcing a specific block number (which some RPCs like Tron don't support).
+	const timestampValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(timestampKey))
+	const overlayRootValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(overlayKey))
+	const stateRootValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(stateRootKey))
 
 	if (!timestampValue) {
 		return null
 	}
-
-	const overlayRootValue = await client.getStorageAt(hostContract, bytesToHex(overlayKey))
-
-	const stateRootValue = await client.getStorageAt(hostContract, bytesToHex(stateRootKey))
 
 	// Parse timestamp from big-endian bytes to BigInt
 	const timestamp = BigInt(timestampValue) / 1000n
@@ -167,6 +171,31 @@ export async function fetchStateCommitmentsEVM(params: {
 		overlay_root: overlayRootValue ? hexToBytes(overlayRootValue as `0x${string}`) : undefined,
 		state_root: stateRootValue ? hexToBytes(stateRootValue as `0x${string}`) : new Uint8Array(),
 	}
+}
+
+/**
+ * Make a direct eth_getStorageAt JSON-RPC call with "latest" as the block tag,
+ * bypassing SubQuery's api provider which forces a specific block number.
+ */
+async function directGetStorageAt(rpcUrl: string, address: string, slot: string): Promise<string | null> {
+	const response = await fetch(rpcUrl, {
+		method: "POST",
+		headers: { accept: "application/json", "content-type": "application/json" },
+		body: JSON.stringify({
+			id: 1,
+			jsonrpc: "2.0",
+			method: "eth_getStorageAt",
+			params: [address, slot, "latest"],
+		}),
+	})
+
+	const json = await response.json()
+
+	if (json.error) {
+		throw new Error(`eth_getStorageAt RPC error: ${json.error.message || JSON.stringify(json.error)}`)
+	}
+
+	return json.result || null
 }
 
 function generateStateCommitmentKeys(paraId: bigint, height: bigint): [Uint8Array, Uint8Array, Uint8Array] {

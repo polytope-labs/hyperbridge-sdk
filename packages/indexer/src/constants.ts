@@ -54,6 +54,11 @@ export const SONEMIUM = {
 	mainnet: "EVM-1868",
 } as const
 
+export const TRON = {
+	testnet: "EVM-3448148188",
+	mainnet: "EVM-728126428",
+} as const
+
 import ENV_CONFIG from "./env-config.json"
 import { CHAIN_IDS_BY_GENESIS } from "./chain-ids-by-genesis"
 import { CHAINS_BY_ISMP_HOST } from "./chains-by-ismp-host"
