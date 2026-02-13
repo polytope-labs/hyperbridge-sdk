@@ -72,7 +72,7 @@ services:
     #         retries: 10
 
     subquery-node-bsc-chapel-local:
-        image: subquerynetwork/subql-node-ethereum:v5.5.0
+        image: polytopelabs/subql-node-ethereum:v6.3.1
         restart: unless-stopped
         environment:
             DB_USER: ${DB_USER}
@@ -109,7 +109,7 @@ services:
             retries: 10
 
     subquery-node-gnosis-chiado-local:
-        image: subquerynetwork/subql-node-ethereum:v5.5.0
+        image: polytopelabs/subql-node-ethereum:v6.3.1
         restart: unless-stopped
         environment:
             DB_USER: ${DB_USER}
