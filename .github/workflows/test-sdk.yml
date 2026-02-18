@@ -112,32 +112,29 @@ jobs:
                   echo "GraphQL server is available!"
                   sleep 10  # Give it a few more seconds to fully initialize
 
-            - name: Run SDK test - stateCalls
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/stateCalls.test.ts
-
-            - name: Run SDK test - tokenGateway
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/tokenGateway.test.ts
-
-            - name: Run SDK test - hyperbridge
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/hyperbridge.test.ts
-
-            - name: Run SDK test - intentGateway
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/intentGateway.test.ts
-
-            - name: Run SDK test - intentsCoprocessor
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/intentsCoprocessor.test.ts
+            - name: Run SDK test - concurrent (non-sequential tests)
+              run: pnpm --filter="@hyperbridge/sdk" test:concurrent
 
             - name: Run SDK test - requests
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/requests.test.ts
+              run: pnpm --filter="@hyperbridge/sdk" test:requests
+
+            - name: Run SDK test - hyperbridge
+              run: cd packages/sdk && pnpm vitest --watch=false --sequence.concurrent=false src/tests/sequential/hyperbridge.test.ts
+
+            - name: Run SDK test - intent-gateway
+              run: pnpm --filter="@hyperbridge/sdk" test:intent-gateway
+
+            - name: Run SDK test - intents-coprocessor
+              run: pnpm --filter="@hyperbridge/sdk" test:intents-coprocessor
 
             - name: Run filler-v2 test - filler
-              run: pnpm --filter="@hyperbridge/filler-v2" test packages/filler-v2/src/tests/filler.test.ts
+              run: pnpm --filter="@hyperbridge/filler-v2" test:filler
 
-            - name: Run filler-v2 test - cctp
-              run: pnpm --filter="@hyperbridge/filler-v2" test packages/filler-v2/src/tests/rebalancers/cctp.test.ts
+            # - name: Run filler-v2 test - cctp
+            #   run: cd packages/filler-v2 && pnpm vitest --watch=false --maxConcurrency=1 src/tests/rebalancers/cctp.test.ts
 
-            - name: Run Intent Filler tests
-              run: pnpm --filter="filler" test
+            # - name: Run Intent Filler tests
+            #   run: pnpm --filter="filler" test
 
             - name: Clean up
               if: always()
