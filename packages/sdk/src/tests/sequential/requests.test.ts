@@ -12,7 +12,7 @@ import {
 	toHex,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
-import { arbitrumSepolia, bscTestnet, sepolia } from "viem/chains"
+import { arbitrumSepolia, bscTestnet, polygonAmoy, sepolia } from "viem/chains"
 
 import { IndexerClient } from "@/client"
 import { type HexString, RequestStatus, TimeoutStatus } from "@/types"
@@ -76,13 +76,13 @@ describe.sequential("Get and Post Requests", () => {
 	})
 
 	describe.sequential("Post Request", () => {
-		it.skip("should stream and query the timeout status", async () => {
-			const { bscTestnetClient, bscHandler, bscPing, arbitrumSepoliaHost } = await setUp()
+		it("should stream and query the timeout status", async () => {
+			const { bscTestnetClient, bscHandler, bscPing, polygonAmoyHost } = await setUp()
 			console.log("\n\nSending Post Request\n\n")
 
 			const hash = await bscPing.write.ping([
 				{
-					dest: await arbitrumSepoliaHost.read.host(),
+					dest: await polygonAmoyHost.read.host(),
 					count: BigInt(1),
 					fee: BigInt(0),
 					module: process.env.PING_MODULE_ADDRESS! as HexString,
@@ -220,7 +220,8 @@ describe.sequential("Get and Post Requests", () => {
 		})
 
 		it("should successfully stream and query the post request status", async () => {
-			const { bscTestnetClient, arbitrumSepoliaHandler, bscPing, arbitrumSepoliaClient, arbitrumSepoliaHost } = await setUp()
+			const { bscTestnetClient, arbitrumSepoliaHandler, bscPing, arbitrumSepoliaClient, arbitrumSepoliaHost } =
+				await setUp()
 			console.log("\n\nSending Post Request\n\n")
 
 			const hash = await bscPing.write.ping([
@@ -505,6 +506,11 @@ async function setUp() {
 		transport: http(process.env.ARBITRUM_SEPOLIA),
 	})
 
+	const polygonAmoyClient = createPublicClient({
+		chain: polygonAmoy,
+		transport: http(process.env.POLYGON_AMOY),
+	})
+
 	const ethSepoliaClient = createPublicClient({
 		chain: sepolia,
 		transport: http(process.env.SEPOLIA),
@@ -566,6 +572,12 @@ async function setUp() {
 		client: ethSepoliaClient,
 	})
 
+	const polygonAmoyHost = getContract({
+		address: "0x9a2840D050e64Db89c90Ac5857536E4ec66641DE",
+		abi: EVM_HOST.ABI,
+		client: polygonAmoyClient,
+	})
+
 	const arbitrumSepoliaHostParams = await arbitrumSepoliaHost.read.hostParams()
 
 	const arbitrumSepoliaHandler = getContract({
@@ -602,5 +614,6 @@ async function setUp() {
 		arbitrumSepoliaHost,
 		bscIsmpHost,
 		hyperbridge,
+		polygonAmoyHost,
 	}
 }

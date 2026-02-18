@@ -51,17 +51,17 @@
 			"tokenGateway": "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
 		}
 	},
-	"tron-nile": {
+	"polygon-amoy": {
 		"type": "evm",
-		"chainId": "3448148188",
-		"startBlock": 64949902,
-		"stateMachineId": "EVM-3448148188",
+		"chainId": "80002",
+		"startBlock": 24949552,
+		"stateMachineId": "EVM-80002",
+		"unfinalizedBlocks": false,
 		"contracts": {
-			"ethereumHost": "0x8af30d750a0be06fa60a3cc61e1ee3ad5766fe86",
-			"handlerV1": "0xda9aa832cf1024862a23f9fdd47cc2358b7d549c",
-			"erc6160ext20": "0xECa9bC828A3005B9a3b909f2cc5c2a54794DE05F",
-			"tokenGateway": "0x1c1e5be83df4a54c7a2230c337e4a3e8b7354b1c",
-			"intentGatewayV2": "0xbB6BFF5Cf62cf5a091C29D88FAe88b3010F100D1"
+			"ethereumHost": "0x9a2840D050e64Db89c90Ac5857536E4ec66641DE",
+			"handlerV1": "0xf0b4024F15d07912953184840682690C31aD9bcC",
+			"erc6160ext20": "0x693B854D6965ffEAaE21C74049deA644b56FCaCB",
+			"tokenGateway": "0x2efdc11b11cac34697b992a56e1d245c137a05b2"
 		}
 	}
 }

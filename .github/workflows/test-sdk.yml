@@ -60,6 +60,8 @@ jobs:
                   BASE_MAINNET=${{ secrets.BASE_MAINNET }}
                   POLYGON_MAINNET=${{ secrets.POLYGON_MAINNET }}
                   ARBITRUM_MAINNET=${{ secrets.ARBITRUM_MAINNET }}
+                  ARBITRUM_SEPOLIA=${{ secrets.ARBITRUM_SEPOLIA }}
+                  POLYGON_AMOY=${{ secrets.POLYGON_AMOY }}
                   SEPOLIA=${{ secrets.SEPOLIA }}
                   COIN_GECKGO_API_KEY=${{secrets.COINGECKO}}
                   PING_MODULE_ADDRESS: "0xFE9f23F0F2fE83b8B9576d3FC94e9a7458DdDD35"
