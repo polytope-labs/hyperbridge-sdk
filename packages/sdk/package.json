@@ -75,6 +75,7 @@
 		"rpc-websocket-client": "^1.1.4",
 		"scale-ts": "^1.6.1",
 		"std-env": "^3.9.0",
+		"tronweb": "^6.2.0",
 		"ts-pattern": "^5.6.2",
 		"unstorage": "^1.17.2",
 		"viem": "^2.34.0"

@@ -108,7 +108,7 @@ services:
             timeout: 5s
             retries: 10
 
-    subquery-node-gnosis-chiado-local:
+    subquery-node-arbitrum-sepolia-local:
         image: subquerynetwork/subql-node-ethereum:v5.5.0
         restart: unless-stopped
         environment:
@@ -127,7 +127,7 @@ services:
             - ../dist:/app/dist
         command:
             - ${SUB_COMMAND:-}
-            - -f=/app/gnosis-chiado.yaml
+            - -f=/app/arbitrum-sepolia.yaml
             - --db-schema=app
             - --workers=${SUBQL_WORKERS:-6}
             - --batch-size=${SUBQL_BATCH_SIZE:-10}
@@ -140,7 +140,7 @@ services:
             - --store-cache-async=false
             - --store-cache-threshold=1
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://subquery-node-gnosis-chiado-local:3000/ready"]
+            test: ["CMD", "curl", "-f", "http://subquery-node-arbitrum-sepolia-local:3000/ready"]
             interval: 3s
             timeout: 5s
             retries: 10
