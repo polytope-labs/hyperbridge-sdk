@@ -33,6 +33,7 @@ import { getPostRequestEventFromTx } from "@/utils/txEvents"
 import { TokenGateway } from "@/protocols/tokenGateway"
 import { EvmChain } from "@/chains/evm"
 import { SubstrateChain } from "@/chains/substrate"
+import { bigIntReplacer } from "@/helpers/data.helpers"
 
 // private key for testnet transactions
 const secret_key = process.env.SECRET_PHRASE || ""
@@ -288,7 +289,7 @@ describe("teleport function", () => {
 
 		// Stream the teleport status
 		for await (const status of indexer.tokenGatewayAssetTeleportedStatusStream(commitment)) {
-			console.log(JSON.stringify(status, (_, value) => (typeof value === "bigint" ? value.toString() : value), 4))
+			console.log(JSON.stringify(status, bigIntReplacer, 4))
 			switch (status.status) {
 				case "TELEPORTED": {
 					console.log(

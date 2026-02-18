@@ -135,7 +135,7 @@ describe.sequential("Get and Post Requests", () => {
 			const statusStream = timeoutIndexer.postRequestStatusStream(commitment)
 
 			for await (const status of statusStream) {
-				console.log(JSON.stringify(status, null, 4))
+				console.log(JSON.stringify(status, bigIntReplacer, 4))
 
 				if (status.status === TimeoutStatus.PENDING_TIMEOUT) {
 					console.log("Request is now timed out", request.timeoutTimestamp)
@@ -145,7 +145,7 @@ describe.sequential("Get and Post Requests", () => {
 			console.log("Starting timeout stream")
 
 			for await (const timeout of timeoutIndexer.postRequestTimeoutStream(commitment)) {
-				console.log(JSON.stringify(timeout, null, 4))
+				console.log(JSON.stringify(timeout, bigIntReplacer, 4))
 				switch (timeout.status) {
 					case TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT:
 						console.log(
@@ -189,7 +189,7 @@ describe.sequential("Get and Post Requests", () => {
 			}
 
 			const req = await timeoutIndexer.queryRequestWithStatus(commitment)
-			console.log("Full status", JSON.stringify(req, null, 4))
+			console.log("Full status", JSON.stringify(req, bigIntReplacer, 4))
 
 			const hyperbridgeFinalizedStatus = req?.statuses.find(
 				(status) => status.status === TimeoutStatus.HYPERBRIDGE_FINALIZED_TIMEOUT,
@@ -271,7 +271,7 @@ describe.sequential("Get and Post Requests", () => {
 			const commitment = postRequestCommitment(request).commitment
 
 			for await (const status of indexer.postRequestStatusStream(commitment)) {
-				console.log(JSON.stringify(status, null, 4))
+				console.log(JSON.stringify(status, bigIntReplacer, 4))
 				switch (status.status) {
 					case RequestStatus.SOURCE_FINALIZED: {
 						console.log(
