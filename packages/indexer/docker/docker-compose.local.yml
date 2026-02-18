@@ -26,7 +26,6 @@ services:
             - --multi-chain
             - --unsafe
             - --log-level=${LOG_LEVEL:-info}
-            - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
         healthcheck:
@@ -171,9 +170,6 @@ services:
             - --multi-chain
             - --unsafe
             - --log-level=${LOG_LEVEL:-info}
-            - --historical=timestamp
-            - --unfinalized-blocks
-            - --block-confirmations=0
             - --store-cache-async=false
             - --store-cache-threshold=1
         healthcheck:
