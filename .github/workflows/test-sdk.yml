@@ -112,8 +112,32 @@ jobs:
                   echo "GraphQL server is available!"
                   sleep 10  # Give it a few more seconds to fully initialize
 
-            - name: Run SDK tests
-              run: pnpm --filter="@hyperbridge/sdk" test
+            - name: Run SDK test - stateCalls
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/stateCalls.test.ts
+
+            - name: Run SDK test - tokenGateway
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/tokenGateway.test.ts
+
+            - name: Run SDK test - evm-substrate
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/evm-substrate.test.ts
+
+            - name: Run SDK test - hyperbridge
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/hyperbridge.test.ts
+
+            - name: Run SDK test - intentGateway
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/intentGateway.test.ts
+
+            - name: Run SDK test - intentsCoprocessor
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/intentsCoprocessor.test.ts
+
+            - name: Run SDK test - requests
+              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/requests.test.ts
+
+            - name: Run filler-v2 test - filler
+              run: pnpm --filter="@hyperbridge/filler-v2" test packages/filler-v2/src/tests/filler.test.ts
+
+            - name: Run filler-v2 test - cctp
+              run: pnpm --filter="@hyperbridge/filler-v2" test packages/filler-v2/src/tests/rebalancers/cctp.test.ts
 
             - name: Run Intent Filler tests
               run: pnpm --filter="filler" test

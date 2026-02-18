@@ -5,11 +5,9 @@ import type { ApiPromise } from "@polkadot/api"
 import { Option as PolkadotOption } from "@polkadot/types"
 import { logger } from "ethers"
 import { TextEncoder } from "util"
-import { CHAINS_BY_ISMP_HOST, ENV_CONFIG, TRON_CHAIN_IDS } from "@/constants"
+import { CHAINS_BY_ISMP_HOST } from "@/constants"
 import { providers } from "ethers"
 import { Codec } from "@polkadot/types/types"
-import { safeFetch as fetch } from "@/utils/safeFetch"
-import { replaceWebsocketWithHttp } from "@/utils/rpc.helpers"
 
 // Define ConsensusStateId as 4-byte array
 const ConsensusStateId = Vector(u8, 4)
@@ -148,31 +146,12 @@ export async function fetchStateCommitmentsEVM(params: {
 	// Generate keys for timestamp, overlay, and state root
 	const [timestampKey, overlayKey, stateRootKey] = generateStateCommitmentKeys(paraId, height)
 
-	let timestampValue: string | null
-	let overlayRootValue: string | null
-	let stateRootValue: string | null
-
-	if (TRON_CHAIN_IDS.has(chainId)) {
-		// Tron's RPC does not support eth_getStorageAt with a specific block number,
-		// only "latest" as the block tag. Use direct RPC calls to bypass SubQuery's
-		// api provider which forces the current indexed block number.
-		const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hostContractKey] || "")
-		if (!rpcUrl) {
-			throw new Error(`No RPC URL found for chain ${hostContractKey}`)
-		}
-
-		logger.info(`Using directGetStorageAt for Tron chain ${chainId}`)
-		timestampValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(timestampKey))
-		overlayRootValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(overlayKey))
-		stateRootValue = await directGetStorageAt(rpcUrl, hostContract, bytesToHex(stateRootKey))
-	} else {
-		// For all other EVM chains, use SubQuery's api provider which correctly
-		// queries storage at the specific block height being indexed.
-		const provider = api as providers.Provider
-		timestampValue = await provider.getStorageAt(hostContract, bytesToHex(timestampKey))
-		overlayRootValue = await provider.getStorageAt(hostContract, bytesToHex(overlayKey))
-		stateRootValue = await provider.getStorageAt(hostContract, bytesToHex(stateRootKey))
-	}
+	// For all other EVM chains, use SubQuery's api provider which correctly
+	// queries storage at the specific block height being indexed.
+	const provider = api as providers.Provider
+	const timestampValue = await provider.getStorageAt(hostContract, bytesToHex(timestampKey))
+	const overlayRootValue = await provider.getStorageAt(hostContract, bytesToHex(overlayKey))
+	const stateRootValue = await provider.getStorageAt(hostContract, bytesToHex(stateRootKey))
 
 	if (!timestampValue) {
 		return null
@@ -187,31 +166,6 @@ export async function fetchStateCommitmentsEVM(params: {
 		overlay_root: overlayRootValue ? hexToBytes(overlayRootValue as `0x${string}`) : undefined,
 		state_root: stateRootValue ? hexToBytes(stateRootValue as `0x${string}`) : new Uint8Array(),
 	}
-}
-
-/**
- * Make a direct eth_getStorageAt JSON-RPC call with "latest" as the block tag,
- * bypassing SubQuery's api provider which forces a specific block number.
- */
-async function directGetStorageAt(rpcUrl: string, address: string, slot: string): Promise<string | null> {
-	const response = await fetch(rpcUrl, {
-		method: "POST",
-		headers: { accept: "application/json", "content-type": "application/json" },
-		body: JSON.stringify({
-			id: 1,
-			jsonrpc: "2.0",
-			method: "eth_getStorageAt",
-			params: [address, slot, "latest"],
-		}),
-	})
-
-	const json = await response.json()
-
-	if (json.error) {
-		throw new Error(`eth_getStorageAt RPC error: ${json.error.message || JSON.stringify(json.error)}`)
-	}
-
-	return json.result || null
 }
 
 function generateStateCommitmentKeys(paraId: bigint, height: bigint): [Uint8Array, Uint8Array, Uint8Array] {

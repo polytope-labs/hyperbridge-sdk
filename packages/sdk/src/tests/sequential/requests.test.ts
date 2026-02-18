@@ -29,9 +29,10 @@ import { bigIntReplacer } from "@/helpers/data.helpers"
 describe.sequential("Get and Post Requests", () => {
 	let indexer: IndexerClient
 	let hyperbridgeInstance: SubstrateChain
+	let timeoutIndexer: IndexerClient
 
 	beforeAll(async () => {
-		const { arbitrumSepoliaHost, bscIsmpHost, hyperbridge } = await setUp()
+		const { arbitrumSepoliaHost, bscIsmpHost, hyperbridge, polygonAmoyHost } = await setUp()
 
 		const query_client = createQueryClient({
 			url: process.env.INDEXER_URL!,
@@ -52,6 +53,13 @@ describe.sequential("Get and Post Requests", () => {
 			host: arbitrumSepoliaHost.address,
 		})
 
+		const polygonChain = await getChain({
+			consensusStateId: "POLY",
+			rpcUrl: process.env.POLYGON_AMOY!,
+			stateMachineId: "EVM-80002",
+			host: polygonAmoyHost.address,
+		})
+
 		const hyperbridgeChain = await getChain({
 			consensusStateId: "PAS0",
 			stateMachineId: "KUSAMA-4009",
@@ -62,6 +70,14 @@ describe.sequential("Get and Post Requests", () => {
 		indexer = new IndexerClient({
 			source: sourceChain,
 			dest: destChain,
+			hyperbridge: hyperbridgeChain,
+			queryClient: query_client,
+			pollInterval: 1_000,
+		})
+
+	 timeoutIndexer = new IndexerClient({
+			source: sourceChain,
+			dest: polygonChain,
 			hyperbridge: hyperbridgeChain,
 			queryClient: query_client,
 			pollInterval: 1_000,
@@ -78,6 +94,7 @@ describe.sequential("Get and Post Requests", () => {
 	describe.sequential("Post Request", () => {
 		it("should stream and query the timeout status", async () => {
 			const { bscTestnetClient, bscHandler, bscPing, polygonAmoyHost } = await setUp()
+
 			console.log("\n\nSending Post Request\n\n")
 
 			const hash = await bscPing.write.ping([
@@ -115,7 +132,7 @@ describe.sequential("Get and Post Requests", () => {
 			const commitment = postRequestCommitment(request).commitment
 
 			console.log("Post Request Commitment:", commitment)
-			const statusStream = indexer.postRequestStatusStream(commitment)
+			const statusStream = timeoutIndexer.postRequestStatusStream(commitment)
 
 			for await (const status of statusStream) {
 				console.log(JSON.stringify(status, null, 4))
@@ -127,7 +144,7 @@ describe.sequential("Get and Post Requests", () => {
 
 			console.log("Starting timeout stream")
 
-			for await (const timeout of indexer.postRequestTimeoutStream(commitment)) {
+			for await (const timeout of timeoutIndexer.postRequestTimeoutStream(commitment)) {
 				console.log(JSON.stringify(timeout, null, 4))
 				switch (timeout.status) {
 					case TimeoutStatus.DESTINATION_FINALIZED_TIMEOUT:
@@ -171,7 +188,7 @@ describe.sequential("Get and Post Requests", () => {
 				}
 			}
 
-			const req = await indexer.queryRequestWithStatus(commitment)
+			const req = await timeoutIndexer.queryRequestWithStatus(commitment)
 			console.log("Full status", JSON.stringify(req, null, 4))
 
 			const hyperbridgeFinalizedStatus = req?.statuses.find(
