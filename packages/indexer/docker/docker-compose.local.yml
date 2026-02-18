@@ -1,7 +1,7 @@
 services:
     subquery-node-hyperbridge-gargantua-local:
         image: subquerynetwork/subql-node-substrate:v5.9.1
-        restart: unless-stopped
+        restart: always
         network_mode: host
         environment:
             DB_USER: ${DB_USER}
@@ -37,7 +37,7 @@ services:
 
     # subquery-node-cere-local:
     #     image: subquerynetwork/subql-node-substrate:v5.9.1
-    #     restart: unless-stopped
+    #     restart: always
     #     network_mode: host
     #     environment:
     #         DB_USER: ${DB_USER}
@@ -73,7 +73,7 @@ services:
 
     subquery-node-bsc-chapel-local:
         image: polytopelabs/subql-node-ethereum:v6.3.1
-        restart: unless-stopped
+        restart: always
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -110,7 +110,7 @@ services:
 
     subquery-node-arbitrum-sepolia-local:
         image: polytopelabs/subql-node-ethereum:v6.3.1
-        restart: unless-stopped
+        restart: always
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
@@ -147,7 +147,7 @@ services:
 
     subquery-node-polygon-amoy-local:
         image: polytopelabs/subql-node-ethereum:v6.3.1
-        restart: unless-stopped
+        restart: always
         environment:
             DB_USER: ${DB_USER}
             DB_PASS: ${DB_PASS}
