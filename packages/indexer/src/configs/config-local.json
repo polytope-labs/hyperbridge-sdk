@@ -15,7 +15,7 @@
 			"handlerV1": "0xb45A4078A2D0B036C324A0046C2845aD59e769F6",
 			"erc6160ext20": "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
 			"intentGateway": "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
-			"intentGatewayV2": "0x0000000000000000000000000000000000000000",
+			"intentGatewayV2": "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
 			"tokenGateway": "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
 		}
 	},
@@ -49,6 +49,19 @@
 			"handlerV1": "0x84b962657aA916286D7B24D37f458a2D823180dc",
 			"erc6160ext20": "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
 			"tokenGateway": "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6"
+		}
+	},
+	"tron-nile": {
+		"type": "evm",
+		"chainId": "3448148188",
+		"startBlock": 64949902,
+		"stateMachineId": "EVM-3448148188",
+		"contracts": {
+			"ethereumHost": "0x8af30d750a0be06fa60a3cc61e1ee3ad5766fe86",
+			"handlerV1": "0xda9aa832cf1024862a23f9fdd47cc2358b7d549c",
+			"erc6160ext20": "0xECa9bC828A3005B9a3b909f2cc5c2a54794DE05F",
+			"tokenGateway": "0x1c1e5be83df4a54c7a2230c337e4a3e8b7354b1c",
+			"intentGatewayV2": "0xbB6BFF5Cf62cf5a091C29D88FAe88b3010F100D1"
 		}
 	}
 }
