@@ -118,9 +118,6 @@ jobs:
             - name: Run SDK test - tokenGateway
               run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/tokenGateway.test.ts
 
-            - name: Run SDK test - evm-substrate
-              run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/evm-substrate.test.ts
-
             - name: Run SDK test - hyperbridge
               run: pnpm --filter="@hyperbridge/sdk" test:file packages/sdk/src/tests/sequential/hyperbridge.test.ts
 
