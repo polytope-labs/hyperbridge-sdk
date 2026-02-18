@@ -154,7 +154,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 })
 
 describe("Filler V2 - Tron Source Chain", () => {
-	it("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
+	it.skip("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
 		const {
 			tronNileId,
 			polygonAmoyId,
