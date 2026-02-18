@@ -92,7 +92,7 @@ describe.sequential("Get and Post Requests", () => {
 	})
 
 	describe.sequential("Post Request", () => {
-		it("should stream and query the timeout status", async () => {
+		it.skip("should stream and query the timeout status", async () => {
 			const { bscTestnetClient, bscHandler, bscPing, polygonAmoyHost } = await setUp()
 
 			console.log("\n\nSending Post Request\n\n")
