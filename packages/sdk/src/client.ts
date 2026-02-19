@@ -1292,11 +1292,6 @@ export class IndexerClient {
 						return
 					}
 
-					request = await this.waitOrAbort({
-						signal,
-						promise: () => this.queryGetRequest(hash),
-						predicate: (request) => !request || request.statuses.length < 2,
-					})
 					// Get the latest state machine update for hyperbridge on the destination chain
 					const hyperbridgeFinalized = await this.waitOrAbort({
 						signal,
