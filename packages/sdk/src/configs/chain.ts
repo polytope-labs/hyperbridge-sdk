@@ -108,7 +108,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		assets: {
 			WETH: "0xae13d989dac2f0debff460ac112a837c89baa7cd",
 			DAI: "0x1938165569a5463327fb206be06d8d9253aa06b7",
-			USDC: "0xc625ec7d30a4b1aaefb1304610cdacd0d606ac92",
+			USDC: "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
 			USDT: "0xc043f483373072f7f27420d6e7d7ad269c018e18",
 		},
 		tokenDecimals: {
@@ -528,7 +528,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		assets: {
 			WETH: "0x360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9", //wmatic, change it to wpol
 			DAI: "0x0000000000000000000000000000000000000000",
-			USDC: "0x0000000000000000000000000000000000000000",
+			USDC: "0x693b854d6965ffeaae21c74049dea644b56fcacb",
 			USDT: "0x693B854D6965ffEAaE21C74049deA644b56FCaCB",
 		},
 		tokenDecimals: {

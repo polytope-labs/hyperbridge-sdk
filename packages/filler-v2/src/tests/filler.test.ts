@@ -151,6 +151,110 @@ describe("Filler V2 - Solver Selection ON", () => {
 		intentFiller.stop()
 		await intentsCoprocessor.disconnect()
 	}, 600_000)
+
+	it("Should place order only", async () => {
+		const {
+			bscIntentGatewayV2,
+			polygonAmoyPublicClient,
+			bscPublicClient,
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			bscChapelId,
+			polygonAmoyId,
+			bscWalletClient,
+			contractService,
+		} = await setUp()
+
+		const sourceUsdc = chainConfigService.getUsdcAsset(bscChapelId)
+		const destUsdc = chainConfigService.getUsdcAsset(polygonAmoyId)
+
+		const sourceUsdcDecimals = await contractService.getTokenDecimals(sourceUsdc, bscChapelId)
+		const destUsdcDecimals = await contractService.getTokenDecimals(destUsdc, polygonAmoyId)
+		const amount = parseUnits("0.1", sourceUsdcDecimals)
+
+		const inputs: TokenInfoV2[] = [{ token: bytes20ToBytes32(sourceUsdc), amount }]
+		const outputs: TokenInfoV2[] = [
+			{
+				token: bytes20ToBytes32(destUsdc),
+				amount: amount - parseUnits("0.094", destUsdcDecimals),
+			},
+		]
+
+		const privateKey = process.env.PRIVATE_KEY as HexString
+		const beneficiaryAddress = privateKeyToAccount(privateKey).address
+		const beneficiary = bytes20ToBytes32(beneficiaryAddress)
+
+		let order: OrderV2 = {
+			user: bytes20ToBytes32(beneficiaryAddress),
+			source: toHex(bscChapelId),
+			destination: toHex(polygonAmoyId),
+			deadline: 12545151568145n,
+			nonce: 0n,
+			fees: parseUnits("0.005", sourceUsdcDecimals),
+			session: "0x0000000000000000000000000000000000000000" as HexString,
+			predispatch: { assets: [], call: "0x" as HexString },
+			inputs,
+			output: { beneficiary, assets: outputs, call: "0x" as HexString },
+		}
+
+		const intentsCoprocessor = await IntentsCoprocessor.connect(
+			process.env.HYPERBRIDGE_GARGANTUA!,
+			process.env.SECRET_PHRASE!,
+		)
+
+		const bscEvmChain = new EvmChain({
+			chainId: 97,
+			host: chainConfigService.getHostAddress(bscChapelId),
+			rpcUrl: chainConfigService.getRpcUrl(bscChapelId),
+		})
+
+		const polygonAmoyEvmChain = new EvmChain({
+			chainId: 80002,
+			host: chainConfigService.getHostAddress(polygonAmoyId),
+			rpcUrl: chainConfigService.getRpcUrl(polygonAmoyId),
+		})
+
+		const feeToken = await contractService.getFeeTokenWithDecimals(bscChapelId)
+		await approveTokens(bscWalletClient, bscPublicClient, feeToken.address, bscIntentGatewayV2.address)
+		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
+
+		const bundlerUrl = process.env.BUNDLER_URL
+		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+
+		console.log("Preparing to place order...")
+		const generator = userSdkHelper.preparePlaceOrder(order)
+		const firstResult = await generator.next()
+		const { calldata, sessionPrivateKey } = firstResult.value as {
+			calldata: HexString
+			sessionPrivateKey: HexString
+		}
+
+		console.log("Sending place order transaction...")
+		const txHash = await bscWalletClient.sendTransaction({
+			to: bscIntentGatewayV2.address,
+			data: calldata,
+			account: bscWalletClient.account!,
+			chain: bscWalletClient.chain,
+		})
+
+		console.log(`Transaction sent: ${txHash}`)
+		await bscPublicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 })
+
+		console.log("Transaction confirmed, getting order details...")
+		const secondResult = await generator.next(txHash)
+		order = secondResult.value as OrderV2
+
+		console.log(`Order placed successfully with ID: ${order.id}`)
+
+		// Verify the order was placed
+		expect(order.id).toBeDefined()
+		expect(order.user).toBe(bytes20ToBytes32(beneficiaryAddress))
+		expect(order.source).toBe(toHex(bscChapelId))
+		expect(order.destination).toBe(toHex(polygonAmoyId))
+
+		await intentsCoprocessor.disconnect()
+	}, 300_000)
 })
 
 describe("Filler V2 - Tron Source Chain", () => {
