@@ -113,6 +113,12 @@ jobs:
                   echo "GraphQL server is available!"
                   sleep 10  # Give it a few more seconds to fully initialize
 
+            - name: Run SDK test - intents-coprocessor
+              run: pnpm --filter="@hyperbridge/sdk" test:intents-coprocessor
+
+            - name: Run filler-v2 test - filler
+              run: pnpm --filter="@hyperbridge/filler-v2" test:filler
+
             - name: Run SDK test - concurrent (non-sequential tests)
               run: pnpm --filter="@hyperbridge/sdk" test:concurrent
 
@@ -124,12 +130,6 @@ jobs:
 
             - name: Run SDK test - intent-gateway
               run: pnpm --filter="@hyperbridge/sdk" test:intent-gateway
-
-            - name: Run SDK test - intents-coprocessor
-              run: pnpm --filter="@hyperbridge/sdk" test:intents-coprocessor
-
-            - name: Run filler-v2 test - filler
-              run: pnpm --filter="@hyperbridge/filler-v2" test:filler
 
             # - name: Run filler-v2 test - cctp
             #   run: cd packages/filler-v2 && pnpm vitest --watch=false --maxConcurrency=1 src/tests/rebalancers/cctp.test.ts
