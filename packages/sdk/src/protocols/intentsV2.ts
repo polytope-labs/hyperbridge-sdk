@@ -70,6 +70,7 @@ import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
 import ERC7821ABI from "@/abis/erc7281"
 import { type ERC7821Call } from "@/types"
+import { TronWeb } from "tronweb"
 
 // =============================================================================
 // Constants
@@ -151,10 +152,13 @@ export interface IntentGatewayV2Params {
  * const gateway = new IntentGatewayV2(sourceChain, destChain, coprocessor, bundlerUrl)
  *
  * // Place an order
- * const gen = gateway.preparePlaceOrder(order)
+ * const gen = gateway.placeOrder(order)
  * const { value: { calldata } } = await gen.next()
- * const txHash = await wallet.sendTransaction({ to: gatewayAddr, data: calldata })
- * const { value: finalOrder } = await gen.next(txHash)
+ * const preparedTx = await publicClient.prepareTransactionRequest({
+ *   to: gatewayAddr, data: calldata, account: wallet.account, chain: wallet.chain,
+ * })
+ * const signedTx = await wallet.signTransaction(preparedTx)
+ * const { value: finalOrder } = await gen.next(signedTx)
  *
  * // Execute and track
  * for await (const status of gateway.executeIntentOrder({ order: finalOrder })) {
@@ -182,6 +186,14 @@ export class IntentGatewayV2 {
 		toHex("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
 	)
 
+	/** placeOrder function selector */
+	static readonly PLACE_ORDER_SELECTOR =
+		"placeOrder((bytes32,bytes,bytes,uint256,uint256,uint256,address,((bytes32,uint256)[],bytes),(bytes32,uint256)[],(bytes32,(bytes32,uint256)[],bytes)),bytes32)"
+
+	/** placeOrder function parameter type */
+	static readonly ORDER_V2_PARAM_TYPE =
+		"(bytes32,bytes,bytes,uint256,uint256,uint256,address,((bytes32,uint256)[],bytes),(bytes32,uint256)[],(bytes32,(bytes32,uint256)[],bytes))"
+
 	// =========================================================================
 	// Private Instance Fields
 	// =========================================================================
@@ -203,6 +215,7 @@ export class IntentGatewayV2 {
 	 * @param dest - Destination chain for order fulfillment
 	 * @param intentsCoprocessor - Optional coprocessor for bid fetching and order execution
 	 * @param bundlerUrl - Optional ERC-4337 bundler URL for gas estimation and UserOp submission.
+	 * @param tronWeb - Optional TronWeb instance, required when the source chain is Tron.
 	 *
 	 */
 	constructor(
@@ -210,6 +223,7 @@ export class IntentGatewayV2 {
 		public readonly dest: EvmChain,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
 		public readonly bundlerUrl?: string,
+		public readonly tronWeb?: InstanceType<typeof TronWeb>,
 	) {
 		this.initPromise = this.initFeeTokenCache()
 	}
@@ -238,36 +252,58 @@ export class IntentGatewayV2 {
 	 * Flow:
 	 * 1. Generates a session key and sets `order.session`
 	 * 2. Encodes the placeOrder calldata and yields `{ calldata, sessionPrivateKey }`
-	 * 3. Waits for the user/frontend to submit the transaction and provide the txHash via `next(txHash)`
-	 * 4. Fetches the transaction receipt and extracts the OrderPlaced event
-	 * 5. Updates `order.nonce` and `order.inputs` from the actual event data
-	 * 6. Computes the commitment and sets `order.id`
-	 * 7. Stores the session key and returns the finalized order
+	 * 3. Waits for the caller to sign the transaction and provide it via `next(signedTransaction)`
+	 * 4. Broadcasts the signed transaction (via viem for EVM chains, or TronWeb for Tron chains)
+	 * 5. Waits for the transaction receipt and extracts the OrderPlaced event
+	 * 6. Updates `order.nonce` and `order.inputs` from the actual event data
+	 * 7. Computes the commitment and sets `order.id`
+	 * 8. Stores the session key and returns the finalized order
 	 *
 	 * @param order - The order to prepare and place
 	 * @yields `{ calldata, sessionPrivateKey }` - Encoded placeOrder calldata and session private key
 	 * @returns The finalized order with correct nonce, inputs, and commitment from on-chain event
 	 *
-	 * @example
+	 * @remarks TronWeb is only provided when the source chain is Tron. For EVM chains, the signed
+	 * transaction is broadcast via viem's `sendRawTransaction`. For Tron chains, it is broadcast
+	 * via `tronWeb.trx.sendRawTransaction` and confirmed before proceeding.
+	 *
+	 * @example EVM chain
 	 * ```typescript
-	 * const generator = gateway.preparePlaceOrder(order)
+	 * const generator = gateway.placeOrder(order)
 	 *
 	 * // Step 1: Get calldata and private key
 	 * const { value: { calldata, sessionPrivateKey } } = await generator.next()
 	 *
-	 * // Step 2: Submit transaction using the calldata
-	 * const txHash = await walletClient.sendTransaction({
+	 * // Step 2: Prepare and sign the transaction
+	 * const preparedTx = await publicClient.prepareTransactionRequest({
 	 *   to: intentGatewayV2Address,
 	 *   data: calldata,
+	 *   account: walletClient.account,
+	 *   chain: walletClient.chain,
 	 * })
+	 * const signedTx = await walletClient.signTransaction(preparedTx)
 	 *
-	 * // Step 3: Pass txHash back to generator and get finalized order
-	 * const { value: finalizedOrder } = await generator.next(txHash)
+	 * // Step 3: Pass signed transaction back and get finalized order
+	 * const { value: finalizedOrder } = await generator.next(signedTx)
+	 * ```
+	 *
+	 * @example Tron chain
+	 * ```typescript
+	 * const gateway = new IntentGatewayV2(sourceChain, destChain, coprocessor, bundlerUrl, tronWeb)
+	 * const generator = gateway.placeOrder(order)
+	 * const { value: { calldata, sessionPrivateKey } } = await generator.next()
+	 *
+	 * // Build and sign with TronWeb
+	 * const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(...)
+	 * const signedTx = await tronWeb.trx.sign(transaction)
+	 *
+	 * // Pass signed TronWeb transaction object back
+	 * const { value: finalizedOrder } = await generator.next(signedTx)
 	 * ```
 	 */
-	async *preparePlaceOrder(
+	async *placeOrder(
 		order: OrderV2,
-	): AsyncGenerator<{ calldata: HexString; sessionPrivateKey: HexString }, OrderV2, HexString> {
+	): AsyncGenerator<{ calldata: HexString; sessionPrivateKey: HexString }, OrderV2, any> {
 		await this.ensureInitialized()
 
 		const privateKey = generatePrivateKey()
@@ -282,10 +318,36 @@ export class IntentGatewayV2 {
 			args: [transformOrderForContract(order), DEFAULT_GRAFFITI],
 		}) as HexString
 
-		const txHash: HexString = yield { calldata, sessionPrivateKey: privateKey as HexString }
+		const signedTransaction = yield { calldata, sessionPrivateKey: privateKey as HexString }
 
-		const receipt = await this.source.client.getTransactionReceipt({
+		let txHash: HexString
+		if (this.tronWeb) {
+			const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
+			if (!tronReceipt.result) {
+				throw new Error("Tron transaction broadcast failed")
+			}
+			const tronTxId = tronReceipt.transaction.txID
+			const maxAttempts = 5
+			for (let i = 0; i < maxAttempts; i++) {
+				const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
+				if (txInfo?.receipt?.result === "SUCCESS") break
+				if (txInfo?.receipt?.result) throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
+				if (i === maxAttempts - 1)
+					throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
+				await sleep(3_000)
+			}
+			txHash = `0x${tronTxId}` as HexString
+		} else {
+			txHash = await this.source.client.sendRawTransaction({
+				serializedTransaction: signedTransaction as HexString,
+			})
+		}
+
+		console.log("Order placed transaction sent:", txHash)
+
+		const receipt = await this.source.client.waitForTransactionReceipt({
 			hash: txHash,
+			confirmations: 1,
 		})
 
 		const events = parseEventLogs({

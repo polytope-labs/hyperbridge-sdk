@@ -38,13 +38,14 @@ import "./setup"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { Decimal } from "decimal.js"
 import { TronWeb } from "tronweb"
+import { formatAbiItem } from "viem/utils"
 
 // ============================================================================
 // Test Suites
 // ============================================================================
 
 describe("Filler V2 - Solver Selection ON", () => {
-	it.skip("Should place order, filler submits bid, user selects bid, order filled", async () => {
+	it.only("Should place order, filler submits bid, user selects bid, order filled", async () => {
 		const {
 			bscIntentGatewayV2,
 			polygonAmoyPublicClient,
@@ -118,23 +119,23 @@ describe("Filler V2 - Solver Selection ON", () => {
 		const bundlerUrl = process.env.BUNDLER_URL
 		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		const generator = userSdkHelper.preparePlaceOrder(order)
+		const generator = userSdkHelper.placeOrder(order)
 		const firstResult = await generator.next()
 		const { calldata, sessionPrivateKey } = firstResult.value as {
 			calldata: HexString
 			sessionPrivateKey: HexString
 		}
 
-		const txHash = await bscWalletClient.sendTransaction({
-			to: bscIntentGatewayV2.address,
-			data: calldata,
-			account: bscWalletClient.account!,
-			chain: bscWalletClient.chain,
-		})
+		const signedTransaction = await bscWalletClient.signTransaction(
+			(await bscPublicClient.prepareTransactionRequest({
+				to: bscIntentGatewayV2.address,
+				data: calldata,
+				account: bscWalletClient.account!,
+				chain: bscWalletClient.chain,
+			})) as any,
+		)
 
-		await bscPublicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 })
-
-		const secondResult = await generator.next(txHash)
+		const secondResult = await generator.next(signedTransaction as HexString)
 		order = secondResult.value as OrderV2
 
 		const { userOpHash, selectedSolver } = await executeOrderFlow(userSdkHelper, order, sessionPrivateKey)
@@ -223,26 +224,25 @@ describe("Filler V2 - Solver Selection ON", () => {
 		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		console.log("Preparing to place order...")
-		const generator = userSdkHelper.preparePlaceOrder(order)
+		const generator = userSdkHelper.placeOrder(order)
 		const firstResult = await generator.next()
 		const { calldata, sessionPrivateKey } = firstResult.value as {
 			calldata: HexString
 			sessionPrivateKey: HexString
 		}
 
-		console.log("Sending place order transaction...")
-		const txHash = await bscWalletClient.sendTransaction({
+		console.log("Signing place order transaction...")
+		const preparedTx = await bscPublicClient.prepareTransactionRequest({
 			to: bscIntentGatewayV2.address,
 			data: calldata,
 			account: bscWalletClient.account!,
 			chain: bscWalletClient.chain,
 		})
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const signedTransaction = await bscWalletClient.signTransaction(preparedTx as any)
 
-		console.log(`Transaction sent: ${txHash}`)
-		await bscPublicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 })
-
-		console.log("Transaction confirmed, getting order details...")
-		const secondResult = await generator.next(txHash)
+		console.log("Broadcasting signed transaction...")
+		const secondResult = await generator.next(signedTransaction as HexString)
 		order = secondResult.value as OrderV2
 
 		console.log(`Order placed successfully with ID: ${order.id}`)
@@ -257,8 +257,8 @@ describe("Filler V2 - Solver Selection ON", () => {
 	}, 300_000)
 })
 
-describe("Filler V2 - Tron Source Chain", () => {
-	it.skip("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
+describe.skip("Filler V2 - Tron Source Chain", () => {
+	it("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
 		const {
 			tronNileId,
 			polygonAmoyId,
@@ -327,18 +327,24 @@ describe("Filler V2 - Tron Source Chain", () => {
 		await approveTronTokens(tronWeb, sourceUsdt, tronIntentGatewayAddress)
 
 		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = new IntentGatewayV2(tronEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const userSdkHelper = new IntentGatewayV2(
+			tronEvmChain,
+			polygonAmoyEvmChain,
+			intentsCoprocessor,
+			bundlerUrl,
+			tronWeb,
+		)
 
-		const generator = userSdkHelper.preparePlaceOrder(order)
+		const generator = userSdkHelper.placeOrder(order)
 		const firstResult = await generator.next()
 		const { calldata, sessionPrivateKey } = firstResult.value as {
 			calldata: HexString
 			sessionPrivateKey: HexString
 		}
 
-		const txHash = await sendTronTransaction(tronWeb, tronIntentGatewayAddress, calldata)
+		const signedTransaction = await signTronTransaction(tronWeb, tronIntentGatewayAddress, calldata)
 
-		const secondResult = await generator.next(txHash)
+		const secondResult = await generator.next(signedTransaction)
 		order = secondResult.value as OrderV2
 
 		const { userOpHash, selectedSolver } = await executeOrderFlow(userSdkHelper, order, sessionPrivateKey, 240_000)
@@ -608,7 +614,7 @@ async function setUpTron() {
 		privateKey: privateKey.slice(2),
 	})
 
-	const tronIntentGatewayAddress = "TT4CjjHw7QgLbE9wKtYEopid1YqePkbAfb"
+	const tronIntentGatewayAddress = "TMcm6r9RRVKPJNLgyFxcuJknFruQBuPumF"
 
 	return {
 		tronNileId,
@@ -700,49 +706,45 @@ async function checkIfOrderFilled(
 // Tron Transaction Helpers
 // ============================================================================
 
-async function sendTronTransaction(
+async function signTronTransaction(
 	tronWeb: InstanceType<typeof TronWeb>,
 	contractBase58: string,
 	calldata: HexString,
-): Promise<HexString> {
-	const decoded = decodeFunctionData({
-		abi: INTENT_GATEWAY_V2_ABI,
-		data: calldata,
-	})
-
+): Promise<any> {
+	const decoded = decodeFunctionData({ abi: INTENT_GATEWAY_V2_ABI, data: calldata })
 	if (!decoded.args || decoded.args.length < 2) {
 		throw new Error("Failed to decode placeOrder calldata")
 	}
 
-	const [orderObj, graffiti] = decoded.args as [OrderV2, HexString]
+	const [order, graffiti] = decoded.args as [OrderV2, HexString]
 
-	const orderArray = [
-		orderObj.user,
-		orderObj.source,
-		orderObj.destination,
-		orderObj.deadline,
-		orderObj.nonce,
-		orderObj.fees,
-		orderObj.session,
-		[orderObj.predispatch.assets.map((a: any) => [a.token, a.amount]), orderObj.predispatch.call],
-		orderObj.inputs.map((i: any) => [i.token, i.amount]),
-		[
-			orderObj.output.beneficiary,
-			orderObj.output.assets.map((a: any) => [a.token, a.amount]),
-			orderObj.output.call,
-		],
+	const orderTuple = [
+		order.user,
+		order.source,
+		order.destination,
+		order.deadline,
+		order.nonce,
+		order.fees,
+		order.session,
+		[order.predispatch.assets.map((a) => [a.token, a.amount]), order.predispatch.call],
+		order.inputs.map((i) => [i.token, i.amount]),
+		[order.output.beneficiary, order.output.assets.map((a) => [a.token, a.amount]), order.output.call],
 	]
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const contract = tronWeb.contract(INTENT_GATEWAY_V2_ABI as unknown as any[], contractBase58)
-	const txId = await contract.methods.placeOrder(orderArray, graffiti).send({
-		feeLimit: 1_000_000_000,
-	})
+	const { transaction } = await (tronWeb.transactionBuilder as any).triggerSmartContract(
+		TronWeb.address.toHex(contractBase58),
+		IntentGatewayV2.PLACE_ORDER_SELECTOR,
+		{ feeLimit: 1_000_000_000 },
+		[
+			{ type: IntentGatewayV2.ORDER_V2_PARAM_TYPE, value: orderTuple },
+			{ type: "bytes32", value: graffiti },
+		],
+		tronWeb.defaultAddress.hex,
+	)
 
-	console.log("Tron placeOrder tx:", txId)
-	await waitForTronConfirmation(tronWeb, txId)
+	if (!transaction) throw new Error("Failed to build Tron placeOrder transaction")
 
-	return `0x${txId}` as HexString
+	return tronWeb.trx.sign(transaction)
 }
 
 async function waitForTronConfirmation(tronWeb: InstanceType<typeof TronWeb>, txId: string, maxAttempts = 30) {

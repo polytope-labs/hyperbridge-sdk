@@ -509,7 +509,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDT: 6,
 		},
 		addresses: {
-			IntentGatewayV2: tronAddress("TT4CjjHw7QgLbE9wKtYEopid1YqePkbAfb"),
+			IntentGatewayV2: tronAddress("TMcm6r9RRVKPJNLgyFxcuJknFruQBuPumF"),
 			Host: tronAddress("TNduR7v184pMWv2oTamRxxzsmz7oHrKqJc"),
 			Calldispatcher: tronAddress("TA9XyBPuXL9ecXcLpcFV1g778fzstke2Eh"),
 			UniswapRouter02: tronAddress("TLXGSird23Ww5FZrtbTYisrZNARUmjwmcy"),
