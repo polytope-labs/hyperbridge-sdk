@@ -254,7 +254,6 @@ export class ContractInteractionService {
 			const gasFeeBumpConfig = this.configService.getGasFeeBumpConfig()
 			const estimate = await sdkHelper.estimateFillOrderV2({
 				order,
-				solverPrivateKey: this.privateKey,
 				maxPriorityFeePerGasBumpPercent: gasFeeBumpConfig?.maxPriorityFeePerGasBumpPercent,
 				maxFeePerGasBumpPercent: gasFeeBumpConfig?.maxFeePerGasBumpPercent,
 			})

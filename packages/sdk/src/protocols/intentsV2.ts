@@ -932,7 +932,8 @@ export class IntentGatewayV2 {
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
 		await this.ensureInitialized()
 
-		const { order, solverPrivateKey } = params
+		const { order } = params
+		const solverPrivateKey = generatePrivateKey()
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
 		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
 		const entryPointAddress = this.dest.configService.getEntryPointV08Address(order.destination)

@@ -1310,7 +1310,6 @@ export interface SubmitBidOptions {
 
 export interface EstimateFillOrderV2Params {
 	order: OrderV2
-	solverPrivateKey: HexString
 	/**
 	 * Optional percentage to bump maxPriorityFeePerGas.
 	 * This is added on top of the base gasPrice.
