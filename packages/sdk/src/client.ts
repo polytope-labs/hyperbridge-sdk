@@ -36,7 +36,6 @@ import {
 	GET_RESPONSE_BY_REQUEST_ID,
 	LATEST_STATE_MACHINE_UPDATE,
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
-	STATE_MACHINE_UPDATES_BY_HEIGHT_DESC,
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 } from "@/queries"
 import {
@@ -274,42 +273,27 @@ export class IndexerClient {
 		const logger = this.logger.withTag("[queryStateMachineUpdateByHeight]()")
 		const message = `querying StateMachineId(${statemachineId}) update by Height(${height}) in chain Chain(${chain})`
 
-		// Query both ASC (for earliest timestamp) and DESC (for latest state machine height)
-		const [ascResponse, descResponse] = await Promise.all([
-			this.withRetry(
-				() => {
-					return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
-						statemachineId,
-						height,
-						chain,
-					})
-				},
-				{ logger: logger, logMessage: `${message} (ASC)` },
-			),
-			this.withRetry(
-				() => {
-					return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT_DESC, {
-						statemachineId,
-						height,
-						chain,
-					})
-				},
-				{ logger: logger, logMessage: `${message} (DESC)` },
-			),
-		])
+		const ascResponse = await this.withRetry(
+			() => {
+				return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
+					statemachineId,
+					height,
+					chain,
+				})
+			},
+			{ logger: logger, logMessage: message },
+		)
 
 		const ascNode = ascResponse?.stateMachineUpdateEvents?.nodes[0]
-		const descNode = descResponse?.stateMachineUpdateEvents?.nodes[0]
 
 		if (!ascNode) {
 			return undefined
 		}
 
 		const timestamp = Math.floor(dateStringtoTimestamp(ascNode.createdAt) / 1000)
-		const stateMachineHeight = descNode?.height ?? ascNode.height
 
 		const combined: StateMachineUpdate = {
-			height: stateMachineHeight,
+			height: ascNode.height,
 			chain: ascNode.chain,
 			blockHash: ascNode.blockHash,
 			blockNumber: ascNode.blockNumber,

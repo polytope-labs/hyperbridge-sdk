@@ -1,5 +1,11 @@
 # @hyperbridge/sdk
 
+## 1.6.2
+
+### Patch Changes
+
+- Fix error generating mmr proof because of premature height
+
 ## 1.6.1
 
 ### Patch Changes
