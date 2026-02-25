@@ -5,25 +5,19 @@ import {
 	HexString,
 	bytes32ToBytes20,
 	FillOptionsV2,
-	ADDRESS_ZERO,
+	TokenInfoV2,
 	IntentsCoprocessor,
-	transformOrderForContract,
 	adjustDecimals,
-	encodeERC7821ExecuteBatch,
-	Swap,
-	type ERC7821Call,
 } from "@hyperbridge/sdk"
-import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
-import { ERC20_ABI } from "@/config/abis/ERC20"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
-import { encodeFunctionData, formatUnits, maxUint256 } from "viem"
+import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
 import { FillerBpsPolicy } from "@/config/interpolated-curve"
 import { Decimal } from "decimal.js"
+import { SupportedTokenType } from "@/strategies/base"
 
-type StableTokenType = "USDC" | "USDT"
 enum Direction {
 	STABLE_TO_CNGN = "stable_to_cngn",
 	CNGN_TO_STABLE = "cngn_to_stable",
@@ -32,25 +26,26 @@ enum Direction {
 /**
  * Strategy for same-chain swaps between stablecoins (USDC/USDT) and cNGN.
  *
- * The filler holds USDC/USDT. When a user places a same-chain order wanting cNGN
- * in exchange for USDC/USDT (or vice versa), this strategy:
- * 1. Swaps the filler's stablecoins to the required output token via DEX
+ * The filler holds both USDC/USDT and cNGN. When a user places a same-chain
+ * order wanting cNGN in exchange for USDC/USDT (or vice versa), this strategy:
+ * 1. Evaluates profitability using the filler's known cNGN price
  * 2. Calls fillOrder to deliver output tokens to the user
  * 3. Receives the user's escrowed input tokens from the contract
  *
- * cNGN token addresses and decimals are resolved from ChainConfigService
- * (configured per chain in the SDK's chain config).
+ * The filler manages their own internal rebalancing/swaps outside of order execution.
  */
-export class SameChainSwapFiller implements FillerStrategy {
-	name = "fx"
+export class FXFiller implements FillerStrategy {
+	name = "FXFiller"
 	private privateKey: HexString
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
 	private bidStorage?: BidStorageService
 	private bpsPolicy: FillerBpsPolicy
-	private swap: Swap
-	private logger = getLogger("fx")
+	/** cNGN price in USD (e.g. 0.00062 means 1 cNGN = $0.00062) */
+	private cNgnPriceUsd: Decimal
+	private cNgnDecimals: number
+	private logger = getLogger("fx-filler")
 
 	constructor(
 		privateKey: HexString,
@@ -58,6 +53,8 @@ export class SameChainSwapFiller implements FillerStrategy {
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
 		bpsPolicy: FillerBpsPolicy,
+		cNgnPriceUsd: number,
+		cNgnDecimals: number,
 		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
@@ -66,7 +63,8 @@ export class SameChainSwapFiller implements FillerStrategy {
 		this.contractService = contractService
 		this.bidStorage = bidStorage
 		this.bpsPolicy = bpsPolicy
-		this.swap = new Swap()
+		this.cNgnPriceUsd = new Decimal(cNgnPriceUsd)
+		this.cNgnDecimals = cNgnDecimals
 	}
 
 	async canFill(order: OrderV2): Promise<boolean> {
@@ -103,15 +101,11 @@ export class SameChainSwapFiller implements FillerStrategy {
 	async calculateProfitability(order: OrderV2): Promise<number> {
 		try {
 			const chain = order.source
-			const client = this.clientManager.getPublicClient(chain)
 			const { decimals: feeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(chain)
 
 			const basisPoints = 10000n
-			let totalProfitInStable = 0n
-			let stableDecimals = 0
 
 			// Compute USD value from the stable side (for BPS lookup).
-			// STABLE→cNGN: stable is on the input side. cNGN→STABLE: stable is on the output side.
 			let stableUsdValue = new Decimal(0)
 			for (let i = 0; i < order.inputs.length; i++) {
 				const pair = this.classifyPair(order.inputs[i].token, order.output.assets[i].token, chain)!
@@ -129,101 +123,122 @@ export class SameChainSwapFiller implements FillerStrategy {
 
 			const fillerBps = this.bpsPolicy.getBps(stableUsdValue)
 
+			let totalProfitNormalized = 0n
+			const fillerOutputs: TokenInfoV2[] = []
+
 			for (let i = 0; i < order.inputs.length; i++) {
 				const input = order.inputs[i]
 				const output = order.output.assets[i]
 				const pair = this.classifyPair(input.token, output.token, chain)!
 
-				const stableAddress = bytes32ToBytes20(pair.stableToken) as HexString
-				const cNgnAddress = bytes32ToBytes20(pair.cNgnToken) as HexString
-				stableDecimals =
+				const stableDecimals =
 					pair.stableType === "USDC"
 						? this.configService.getUsdcDecimals(chain)
 						: this.configService.getUsdtDecimals(chain)
 
+				let fillerMaxOutput: bigint
+
 				if (pair.direction === Direction.STABLE_TO_CNGN) {
 					// User sends stables, wants cNGN.
-					// Filler buys output.amount of cNGN on DEX, delivers to user,
-					// then receives input.amount stables from escrow.
-					const { amountIn } = await this.swap.findBestProtocolWithAmountOut(
-						client as any,
-						stableAddress,
-						cNgnAddress,
-						output.amount,
-						chain,
+					// Filler receives input.amount stables (1:1 USD).
+					// Filler calculates how much cNGN that buys at their price, minus BPS cut.
+					// stableUsd = input.amount (in stable decimals, 1:1 USD)
+					// cNgnFromInput = stableUsd / cNgnPriceUsd (converted to cNGN decimals)
+					// fillerMaxOutput = cNgnFromInput * (10000 - fillerBps) / 10000
+					const inputUsd = new Decimal(formatUnits(input.amount, stableDecimals))
+					const cNgnFromInput = inputUsd.div(this.cNgnPriceUsd)
+					const cNgnFromInputRaw = BigInt(
+						cNgnFromInput.mul(new Decimal(10).pow(this.cNgnDecimals)).floor().toFixed(0),
 					)
-					if (amountIn === 0n) {
-						this.logger.warn({ orderId: order.id }, "No DEX liquidity for stable → cNGN")
-						return 0
-					}
-					const swapProfit = input.amount - amountIn
-					const minProfit = (input.amount * fillerBps) / basisPoints
-					if (swapProfit < minProfit) {
+					fillerMaxOutput = (cNgnFromInputRaw * (basisPoints - fillerBps)) / basisPoints
+
+					if (output.amount > fillerMaxOutput) {
 						this.logger.info(
 							{
 								orderId: order.id,
-								swapProfit: swapProfit.toString(),
-								minProfit: minProfit.toString(),
+								userExpects: output.amount.toString(),
+								fillerWillProvide: fillerMaxOutput.toString(),
 								fillerBps: fillerBps.toString(),
 							},
-							"Swap profit below BPS minimum threshold (stable → cNGN)",
+							"User expects more cNGN than filler can provide (stable → cNGN)",
 						)
 						return 0
 					}
-					totalProfitInStable += swapProfit
+
+					// Profit in USD: what filler receives minus what they pay out
+					// profitUsd = inputUsd - (fillerMaxOutput * cNgnPriceUsd)
+					const fillerMaxOutputUsd = this.cNgnPriceUsd.mul(
+						new Decimal(formatUnits(fillerMaxOutput, this.cNgnDecimals)),
+					)
+					const profitUsd = inputUsd.minus(fillerMaxOutputUsd)
+					const profitInFeeToken = BigInt(
+						profitUsd.mul(new Decimal(10).pow(feeTokenDecimals)).floor().toFixed(0),
+					)
+					totalProfitNormalized += profitInFeeToken
 				} else {
 					// User sends cNGN, wants stables.
-					// Filler delivers output.amount stables from its own balance,
-					// receives input.amount cNGN from escrow, then sells cNGN on DEX.
-					const { amountOut } = await this.swap.findBestProtocolWithAmountIn(
-						client as any,
-						cNgnAddress,
-						stableAddress,
-						input.amount,
-						chain,
+					// Filler receives input.amount cNGN, delivers stables.
+					// cNgnUsd = input.amount * cNgnPriceUsd
+					// stableFromCNgn = cNgnUsd (converted to stable decimals, 1:1 USD)
+					// fillerMaxOutput = stableFromCNgn * (10000 - fillerBps) / 10000
+					const cNgnUsd = this.cNgnPriceUsd.mul(new Decimal(formatUnits(input.amount, this.cNgnDecimals)))
+					const stableFromCNgnRaw = BigInt(
+						cNgnUsd.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0),
 					)
-					if (amountOut === 0n) {
-						this.logger.warn({ orderId: order.id }, "No DEX liquidity for cNGN → stable")
-						return 0
-					}
-					const swapProfit = amountOut - output.amount
-					const minProfit = (output.amount * fillerBps) / basisPoints
-					if (swapProfit < minProfit) {
+					fillerMaxOutput = (stableFromCNgnRaw * (basisPoints - fillerBps)) / basisPoints
+
+					if (output.amount > fillerMaxOutput) {
 						this.logger.info(
 							{
 								orderId: order.id,
-								swapProfit: swapProfit.toString(),
-								minProfit: minProfit.toString(),
+								userExpects: output.amount.toString(),
+								fillerWillProvide: fillerMaxOutput.toString(),
 								fillerBps: fillerBps.toString(),
 							},
-							"Swap profit below BPS minimum threshold (cNGN → stable)",
+							"User expects more stables than filler can provide (cNGN → stable)",
 						)
 						return 0
 					}
-					totalProfitInStable += swapProfit
+
+					// Profit in USD: cNGN value received minus stables paid out
+					const fillerMaxOutputUsd = new Decimal(formatUnits(fillerMaxOutput, stableDecimals))
+					const profitUsd = cNgnUsd.minus(fillerMaxOutputUsd)
+					const profitInFeeToken = BigInt(
+						profitUsd.mul(new Decimal(10).pow(feeTokenDecimals)).floor().toFixed(0),
+					)
+					totalProfitNormalized += profitInFeeToken
 				}
+
+				fillerOutputs.push({
+					token: output.token,
+					amount: fillerMaxOutput,
+				})
 			}
 
-			// Cache filler outputs — deliver exactly what the order specifies
-			this.contractService.cacheService.setFillerOutputs(order.id!, [...order.output.assets])
+			// Cache competitive filler outputs for use during order execution
+			this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
+			this.logger.debug(
+				{
+					orderId: order.id,
+					fillerOutputs: fillerOutputs.map((o) => ({ token: o.token, amount: o.amount.toString() })),
+				},
+				"Cached filler outputs for order",
+			)
 
-			// Factor in gas costs vs order fees (same chain → single fee token)
+			// Factor in gas costs vs order fees
 			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
-
 			const feeProfit = order.fees > totalCostInSourceFeeToken ? order.fees - totalCostInSourceFeeToken : 0n
-
-			// Normalize swap profit from stableDecimals to feeTokenDecimals before summing
-			const swapProfitNormalized = adjustDecimals(totalProfitInStable, stableDecimals, feeTokenDecimals)
-			const totalProfit = swapProfitNormalized + feeProfit
+			const feeProfitNormalized = adjustDecimals(feeProfit, feeTokenDecimals, feeTokenDecimals)
+			const totalProfit = totalProfitNormalized + feeProfitNormalized
 
 			this.logger.info(
 				{
 					orderId: order.id,
 					orderValueUsd: stableUsdValue.toString(),
+					cNgnPriceUsd: this.cNgnPriceUsd.toString(),
 					fillerBps: fillerBps.toString(),
-					swapProfit: formatUnits(totalProfitInStable, stableDecimals),
-					swapProfitNormalized: formatUnits(swapProfitNormalized, feeTokenDecimals),
-					feeProfit: formatUnits(feeProfit, feeTokenDecimals),
+					fxProfit: formatUnits(totalProfitNormalized, feeTokenDecimals),
+					feeProfit: formatUnits(feeProfitNormalized, feeTokenDecimals),
 					totalProfit: formatUnits(totalProfit, feeTokenDecimals),
 					profitable: totalProfit > 0n,
 				},
@@ -244,10 +259,14 @@ export class SameChainSwapFiller implements FillerStrategy {
 			if (!intentsCoprocessor) {
 				return {
 					success: false,
-					error: "SameChainSwapFiller requires the UserOp/Hyperbridge path (intentsCoprocessor must be provided)",
+					error: "FXFiller requires the UserOp/Hyperbridge path (intentsCoprocessor must be provided)",
 				}
 			}
-			return await this.submitBidWithSwap(order, startTime, intentsCoprocessor)
+
+			// Ensure tokens are approved before submitting bid
+			await this.contractService.approveTokensIfNeeded(order)
+
+			return await this.submitBid(order, startTime, intentsCoprocessor)
 		} catch (error) {
 			this.logger.error({ err: error }, "Error executing same-chain swap order")
 			return {
@@ -262,11 +281,11 @@ export class SameChainSwapFiller implements FillerStrategy {
 	// =========================================================================
 
 	/**
-	 * Builds the full ERC-7821 batch calldata (swap + fillOrder) and submits
-	 * it as a UserOp bid to Hyperbridge. The batch executes atomically on-chain
-	 * via the filler's EIP-7702 delegated SolverAccount.
+	 * Prepares and submits a bid UserOp to Hyperbridge.
+	 * Since the filler holds both tokens, no custom batch calldata is needed —
+	 * the standard fillOrder flow handles token delivery and escrow release.
 	 */
-	private async submitBidWithSwap(
+	private async submitBid(
 		order: OrderV2,
 		startTime: number,
 		intentsCoprocessor: IntentsCoprocessor,
@@ -279,41 +298,17 @@ export class SameChainSwapFiller implements FillerStrategy {
 			}
 		}
 
-		const chain = order.source
-		const client = this.clientManager.getPublicClient(chain)
 		const solverAccountAddress = privateKeyToAccount(this.privateKey).address as HexString
-		const intentGateway = this.configService.getIntentGatewayV2Address(chain)
 
 		const cachedFillerOutputs = this.contractService.cacheService.getFillerOutputs(order.id!)
 		if (!cachedFillerOutputs) {
 			throw new Error(`No cached filler outputs for order ${order.id}. Call calculateProfitability first.`)
 		}
 
-		const { dispatchFee, nativeDispatchFee } = await this.contractService.estimateGasFillPost(order)
-
-		const fillOptions: FillOptionsV2 = {
-			relayerFee: dispatchFee,
-			nativeDispatchFee,
-			outputs: cachedFillerOutputs,
-		}
-
-		// Build the ERC-7821 batch calldata
-		const batchCallData = await this.buildBatchCallData(
-			order,
-			fillOptions,
-			intentGateway,
-			solverAccountAddress,
-			client,
-		)
-
-		this.logger.info({ orderId: order.id }, "Built ERC-7821 batch calldata for swap+fill")
-
-		// Submit bid with the custom batch callData
 		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
 			order,
 			entryPointAddress,
 			solverAccountAddress,
-			batchCallData,
 		)
 
 		const bidResult = await intentsCoprocessor.submitBid(commitment, userOp)
@@ -340,132 +335,6 @@ export class SameChainSwapFiller implements FillerStrategy {
 		return { success: false, error: bidResult.error }
 	}
 
-	/**
-	 * Builds the ERC-7821 batch calldata containing swap + fillOrder calls
-	 * in the correct order based on direction.
-	 *
-	 * cNGN → STABLE: [fillOrder, swap cNGN→stable]
-	 * STABLE → cNGN: [swap stable→cNGN, approve cNGN→gateway, fillOrder]
-	 */
-	private async buildBatchCallData(
-		order: OrderV2,
-		fillOptions: FillOptionsV2,
-		intentGateway: HexString,
-		recipient: HexString,
-		client: any,
-	): Promise<HexString> {
-		const chain = order.source
-		const pair = this.classifyPair(order.inputs[0].token, order.output.assets[0].token, chain)!
-		const stableAddress = bytes32ToBytes20(pair.stableToken) as HexString
-		const cNgnAddress = bytes32ToBytes20(pair.cNgnToken) as HexString
-
-		// Encode fillOrder calldata
-		const fillOrderCalldata = encodeFunctionData({
-			abi: INTENT_GATEWAY_V2_ABI,
-			functionName: "fillOrder",
-			args: [transformOrderForContract(order) as any, fillOptions as any],
-		}) as HexString
-
-		const nativeOutputValue = order.output.assets
-			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
-			.reduce((sum, asset) => sum + asset.amount, 0n)
-		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
-
-		const fillOrderCall: ERC7821Call = {
-			target: intentGateway,
-			value: totalNativeValue,
-			data: fillOrderCalldata,
-		}
-
-		const calls: ERC7821Call[] = []
-
-		if (pair.direction === Direction.CNGN_TO_STABLE) {
-			// cNGN → STABLE: fillOrder first (deliver stables, receive cNGN), then swap cNGN → stables
-			calls.push(fillOrderCall)
-
-			// Generate swap calldata: sell order.input.amount of cNGN for stables
-			const { transactions: swapTxs } = await this.swap.findBestProtocolWithAmountIn(
-				client,
-				cNgnAddress,
-				stableAddress,
-				order.inputs[0].amount,
-				chain,
-				{ generateCalldata: true, recipient },
-			)
-			if (!swapTxs || swapTxs.length === 0) {
-				throw new Error("Failed to generate swap calldata for cNGN → stable")
-			}
-
-			// Approve cNGN to DEX router before swap
-			const approveCall: ERC7821Call = {
-				target: cNgnAddress,
-				value: 0n,
-				data: encodeFunctionData({
-					abi: ERC20_ABI,
-					functionName: "approve",
-					args: [swapTxs[0].to as HexString, maxUint256],
-				}) as HexString,
-			}
-			calls.push(approveCall)
-
-			for (const swapTx of swapTxs) {
-				calls.push({
-					target: swapTx.to as HexString,
-					value: swapTx.value ?? 0n,
-					data: swapTx.data as HexString,
-				})
-			}
-		} else {
-			// STABLE → cNGN: swap stables → cNGN first, then approve cNGN, then fillOrder
-
-			// Generate swap calldata: buy order.output.amount of cNGN with stables
-			const { transactions: swapTxs } = await this.swap.findBestProtocolWithAmountOut(
-				client,
-				stableAddress,
-				cNgnAddress,
-				order.output.assets[0].amount,
-				chain,
-				{ generateCalldata: true, recipient },
-			)
-			if (!swapTxs || swapTxs.length === 0) {
-				throw new Error("Failed to generate swap calldata for stable → cNGN")
-			}
-
-			for (const swapTx of swapTxs) {
-				calls.push({
-					target: swapTx.to as HexString,
-					value: swapTx.value ?? 0n,
-					data: swapTx.data as HexString,
-				})
-			}
-
-			// Approve cNGN to IntentGateway for fillOrder's safeTransferFrom
-			const approveCall: ERC7821Call = {
-				target: cNgnAddress,
-				value: 0n,
-				data: encodeFunctionData({
-					abi: ERC20_ABI,
-					functionName: "approve",
-					args: [intentGateway, maxUint256],
-				}) as HexString,
-			}
-			calls.push(approveCall)
-
-			calls.push(fillOrderCall)
-		}
-
-		this.logger.debug(
-			{
-				orderId: order.id,
-				direction: pair.direction,
-				callCount: calls.length,
-			},
-			"ERC-7821 batch calls constructed",
-		)
-
-		return encodeERC7821ExecuteBatch(calls)
-	}
-
 	// =========================================================================
 	// Private — Helpers
 	// =========================================================================
@@ -476,7 +345,7 @@ export class SameChainSwapFiller implements FillerStrategy {
 		chain: string,
 	): {
 		direction: Direction
-		stableType: StableTokenType
+		stableType: SupportedTokenType
 		stableToken: string
 		cNgnToken: string
 	} | null {
@@ -513,7 +382,7 @@ export class SameChainSwapFiller implements FillerStrategy {
 		return null
 	}
 
-	private getStableType(normalizedAddress: string, chain: string): StableTokenType | null {
+	private getStableType(normalizedAddress: string, chain: string): SupportedTokenType | null {
 		if (normalizedAddress === this.configService.getUsdcAsset(chain).toLowerCase()) return "USDC"
 		if (normalizedAddress === this.configService.getUsdtAsset(chain).toLowerCase()) return "USDT"
 		return null
