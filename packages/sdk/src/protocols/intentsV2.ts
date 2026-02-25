@@ -136,6 +136,7 @@ export interface CancelEventMap {
 	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata
 	HYPERBRIDGE_FINALIZED: RequestStatusWithMetadata
 	SOURCE_PROOF_RECEIVED: IProof
+	CANCELLATION_COMPLETE: { metadata: { blockNumber: number } }
 }
 
 export type CancelEvent = {
@@ -686,7 +687,7 @@ export class IntentGatewayV2 {
 			}
 
 			yield {
-				status: "SOURCE_FINALIZED",
+				status: "CANCELLATION_COMPLETE",
 				data: { metadata: { blockNumber: Number(receipt.blockNumber) } },
 			}
 			return
