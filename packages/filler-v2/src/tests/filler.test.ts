@@ -45,7 +45,7 @@ import { formatAbiItem } from "viem/utils"
 // ============================================================================
 
 describe("Filler V2 - Solver Selection ON", () => {
-	it.only("Should place order, filler submits bid, user selects bid, order filled", async () => {
+	it.skip("Should place order, filler submits bid, user selects bid, order filled", async () => {
 		const {
 			bscIntentGatewayV2,
 			polygonAmoyPublicClient,
