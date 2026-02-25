@@ -66,6 +66,14 @@ export class ChainConfigService {
 		return this.getConfig(chain)?.tokenDecimals?.USDT!
 	}
 
+	getCNgnAsset(chain: string): HexString | undefined {
+		return this.getConfig(chain)?.assets?.cNGN as HexString | undefined
+	}
+
+	getCNgnDecimals(chain: string): number | undefined {
+		return this.getConfig(chain)?.tokenDecimals?.cNGN
+	}
+
 	getChainId(chain: string): number {
 		return this.getConfig(chain)?.chainId ?? 0
 	}

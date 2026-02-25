@@ -98,6 +98,14 @@ export class FillerConfigService {
 		return this.chainConfigService.getUsdcAsset(chain)
 	}
 
+	getUsdcDecimals(chain: string): number {
+		return this.chainConfigService.getUsdcDecimals(chain)
+	}
+
+	getUsdtDecimals(chain: string): number {
+		return this.chainConfigService.getUsdtDecimals(chain)
+	}
+
 	getChainId(chain: string): number {
 		return this.chainConfigService.getChainId(chain)
 	}
@@ -161,6 +169,14 @@ export class FillerConfigService {
 
 	getCoingeckoId(chain: string): string | undefined {
 		return this.chainConfigService.getCoingeckoId(chain)
+	}
+
+	getCNgnAsset(chain: string): HexString | undefined {
+		return this.chainConfigService.getCNgnAsset(chain)
+	}
+
+	getCNgnDecimals(chain: string): number | undefined {
+		return this.chainConfigService.getCNgnDecimals(chain)
 	}
 
 	getConfiguredChainIds(): number[] {

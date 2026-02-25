@@ -60,10 +60,12 @@ export interface ChainConfigData {
 		DAI: string
 		USDC: string
 		USDT: string
+		cNGN?: string
 	}
 	tokenDecimals?: {
 		USDC: number
 		USDT: number
+		cNGN?: number
 	}
 	tokenStorageSlots?: {
 		USDT?: { balanceSlot: number; allowanceSlot: number }

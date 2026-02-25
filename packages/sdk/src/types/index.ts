@@ -1306,6 +1306,8 @@ export interface SubmitBidOptions {
 	maxFeePerGas: bigint
 	// Priority fee (tip)
 	maxPriorityFeePerGas: bigint
+	/** Pre-built ERC-7821 calldata. If provided, overrides the default fillOrder-only encoding. */
+	callData?: HexString
 }
 
 export interface EstimateFillOrderV2Params {

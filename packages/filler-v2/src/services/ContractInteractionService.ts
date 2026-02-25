@@ -105,6 +105,8 @@ export class ContractInteractionService {
 			await this.getTokenDecimals(usdc, destChain)
 			await this.getTokenDecimals(usdt, destChain)
 			for (const sourceChain of chainNames) {
+				// Same-chain intents don't dispatch cross-chain messages, so perByteFee is not needed.
+				// The SDK's estimateFillOrderV2 skips quoteNative for same-chain orders.
 				if (sourceChain === destChain) continue
 				// Check cache before making RPC call to avoid duplicate requests when cache is shared
 				const cachedPerByteFee = this.cacheService.getPerByteFee(destChain, sourceChain)
@@ -416,6 +418,7 @@ export class ContractInteractionService {
 		order: OrderV2,
 		entryPointAddress: HexString,
 		solverAccountAddress: HexString,
+		callData?: HexString,
 	): Promise<{ commitment: HexString; userOp: HexString }> {
 		// Use cached estimate from prior profitability check
 		const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -451,6 +454,7 @@ export class ContractInteractionService {
 			preVerificationGas: cachedEstimate.preVerificationGas,
 			maxFeePerGas: cachedEstimate.maxFeePerGas,
 			maxPriorityFeePerGas: cachedEstimate.maxPriorityFeePerGas,
+			callData,
 		})
 
 		// Encode the UserOp as bytes for submission to Hyperbridge

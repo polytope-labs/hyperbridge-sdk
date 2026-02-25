@@ -82,6 +82,27 @@ export const DEFAULT_GRAFFITI = "0x000000000000000000000000000000000000000000000
 /** ERC-7821 single batch execution mode */
 export const ERC7821_BATCH_MODE = "0x0100000000000000000000000000000000000000000000000000000000000000" as HexString
 
+/**
+ * Standalone utility to encode calls into ERC-7821 execute function calldata.
+ * Can be used outside of the IntentGatewayV2 class (e.g., by filler strategies
+ * that need to build custom batch calldata for swap+fill operations).
+ *
+ * Format: `execute(bytes32 mode, bytes executionData)`
+ * Where executionData = abi.encode(calls) and calls = (address target, uint256 value, bytes data)[]
+ */
+export function encodeERC7821ExecuteBatch(calls: ERC7821Call[]): HexString {
+	const executionData = encodeAbiParameters(
+		[{ type: "tuple[]", components: ERC7821ABI.ABI[1].components }],
+		[calls.map((call) => ({ target: call.target, value: call.value, data: call.data }))],
+	) as HexString
+
+	return encodeFunctionData({
+		abi: ERC7821ABI.ABI,
+		functionName: "execute",
+		args: [ERC7821_BATCH_MODE, executionData],
+	}) as HexString
+}
+
 /** Bundler RPC method names for ERC-4337 operations */
 export const BundlerMethod = {
 	/** Submit a user operation to the bundler */
@@ -539,6 +560,9 @@ export class IntentGatewayV2 {
 	 * @returns Native token amount required for the cancellation GET request
 	 */
 	async quoteCancelNative(order: OrderV2): Promise<bigint> {
+		// Same-chain: cancel is a direct on-chain call with no cross-chain dispatch
+		if (order.source === order.destination) return 0n
+
 		const height = order.deadline + 1n
 
 		const destIntentGateway = this.dest.configService.getIntentGatewayV2Address(
@@ -637,7 +661,38 @@ export class IntentGatewayV2 {
 	 */
 	async *cancelOrder(order: OrderV2, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
 		const orderId = order.id!
+		const isSameChain = order.source === order.destination
 
+		if (isSameChain) {
+			// Same-chain: the contract validates locally and refunds atomically.
+			// Yield so the caller can submit the cancelOrder tx and pass back the hash.
+			const transactionHash = yield {
+				status: "AWAITING_GET_REQUEST",
+				data: undefined,
+			}
+
+			const receipt = await this.source.client.waitForTransactionReceipt({
+				hash: transactionHash,
+				confirmations: 1,
+			})
+
+			const refundEvents = parseEventLogs({
+				abi: IntentGatewayV2ABI,
+				logs: receipt.logs,
+				eventName: "EscrowRefunded",
+			})
+			if (refundEvents.length === 0) {
+				throw new Error("EscrowRefunded event not found in cancel transaction receipt")
+			}
+
+			yield {
+				status: "SOURCE_FINALIZED",
+				data: { metadata: { blockNumber: Number(receipt.blockNumber) } },
+			}
+			return
+		}
+
+		// Cross-chain cancellation flow
 		const hyperbridge = indexerClient.hyperbridge as SubstrateChain
 		const sourceStateMachine = hexToString(order.source as HexString)
 		const sourceConsensusStateId = this.source.configService.getConsensusStateId(sourceStateMachine)
@@ -770,28 +825,33 @@ export class IntentGatewayV2 {
 			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
 		)
 
-		// Encode the inner fillOrder call to IntentGatewayV2
-		const fillOrderCalldata = encodeFunctionData({
-			abi: IntentGatewayV2ABI,
-			functionName: "fillOrder",
-			args: [transformOrderForContract(order), fillOptions],
-		}) as HexString
+		// Use pre-built callData if provided (e.g., batch swap+fill),
+		// otherwise encode the default fillOrder-only call.
+		let callData: HexString
+		if (options.callData) {
+			callData = options.callData
+		} else {
+			const fillOrderCalldata = encodeFunctionData({
+				abi: IntentGatewayV2ABI,
+				functionName: "fillOrder",
+				args: [transformOrderForContract(order), fillOptions],
+			}) as HexString
 
-		// Calculate the native value needed for fillOrder (native outputs + dispatch fee)
-		const nativeOutputValue = order.output.assets
-			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
-			.reduce((sum, asset) => sum + asset.amount, 0n)
-		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
+			const nativeOutputValue = order.output.assets
+				.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+				.reduce((sum, asset) => sum + asset.amount, 0n)
+			const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
 
-		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
+			const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
 
-		const callData = this.encodeERC7821Execute([
-			{
-				target: intentGatewayV2Address,
-				value: totalNativeValue,
-				data: fillOrderCalldata,
-			},
-		])
+			callData = this.encodeERC7821Execute([
+				{
+					target: intentGatewayV2Address,
+					value: totalNativeValue,
+					data: fillOrderCalldata,
+				},
+			])
+		}
 
 		const accountGasLimits = this.packGasLimits(verificationGasLimit, callGasLimit)
 		const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
@@ -995,6 +1055,8 @@ export class IntentGatewayV2 {
 		await this.ensureInitialized()
 
 		const { order } = params
+		// TODO: Errors with account does not exist, so use a mainnet account and delegate to solver account across all chains
+		// and then replace with that private key
 		const solverPrivateKey = generatePrivateKey()
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
 		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
@@ -1027,32 +1089,42 @@ export class IntentGatewayV2 {
 			entryPointAddress,
 		})
 
-		// Calculate protocol fees for the post request
-		const postRequestGas = 400_000n
-		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(postRequestGas, "source", order.source)
-		let postRequestFeeInDestFeeToken = adjustDecimals(
-			postRequestFeeInSourceFeeToken,
-			sourceFeeToken.decimals,
-			destFeeToken.decimals,
-		)
+		const isSameChain = order.source === order.destination
+		let postRequestFeeInDestFeeToken = 0n
+		let protocolFeeInNativeToken = 0n
 
-		const postRequest: IPostRequest = {
-			source: order.destination,
-			dest: order.source,
-			body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
-			timeoutTimestamp: 0n,
-			nonce: await this.source.getHostNonce(),
-			from: this.source.configService.getIntentGatewayV2Address(order.destination),
-			to: this.source.configService.getIntentGatewayV2Address(order.source),
+		if (!isSameChain) {
+			// Cross-chain: calculate dispatch fees for the settlement POST from dest → source
+			const postRequestGas = 400_000n
+			const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
+				postRequestGas,
+				"source",
+				order.source,
+			)
+			postRequestFeeInDestFeeToken = adjustDecimals(
+				postRequestFeeInSourceFeeToken,
+				sourceFeeToken.decimals,
+				destFeeToken.decimals,
+			)
+
+			const postRequest: IPostRequest = {
+				source: order.destination,
+				dest: order.source,
+				body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
+				timeoutTimestamp: 0n,
+				nonce: await this.source.getHostNonce(),
+				from: this.source.configService.getIntentGatewayV2Address(order.destination),
+				to: this.source.configService.getIntentGatewayV2Address(order.source),
+			}
+
+			protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
+				this.dest.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() => 0n),
+			)
+
+			// Add 0.5% buffer to fees
+			protocolFeeInNativeToken = (protocolFeeInNativeToken * 1005n) / 1000n
+			postRequestFeeInDestFeeToken = (postRequestFeeInDestFeeToken * 1005n) / 1000n
 		}
-
-		let protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
-			this.dest.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() => 0n),
-		)
-
-		// Add 0.5% buffer to fees
-		protocolFeeInNativeToken = (protocolFeeInNativeToken * 1005n) / 1000n
-		postRequestFeeInDestFeeToken = (postRequestFeeInDestFeeToken * 1005n) / 1000n
 
 		const fillOptions: FillOptionsV2 = {
 			relayerFee: postRequestFeeInDestFeeToken,
