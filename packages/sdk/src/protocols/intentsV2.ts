@@ -132,6 +132,7 @@ export type BundlerMethod = (typeof BundlerMethod)[keyof typeof BundlerMethod]
 export interface CancelEventMap {
 	DESTINATION_FINALIZED: { proof: IProof }
 	AWAITING_GET_REQUEST: undefined
+	AWAITING_CANCEL_TRANSACTION: { calldata: HexString; to: HexString }
 	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
 	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata
 	HYPERBRIDGE_FINALIZED: RequestStatusWithMetadata
@@ -349,7 +350,7 @@ export class IntentGatewayV2 {
 				throw new Error("Tron transaction broadcast failed")
 			}
 			const tronTxId = tronReceipt.transaction.txID
-			const maxAttempts = 5
+			const maxAttempts = 10
 			for (let i = 0; i < maxAttempts; i++) {
 				const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
 				if (txInfo?.receipt?.result === "SUCCESS") break
@@ -665,15 +666,46 @@ export class IntentGatewayV2 {
 		const isSameChain = order.source === order.destination
 
 		if (isSameChain) {
-			// Same-chain: the contract validates locally and refunds atomically.
-			// Yield so the caller can submit the cancelOrder tx and pass back the hash.
-			const transactionHash = yield {
-				status: "AWAITING_GET_REQUEST",
-				data: undefined,
+			const intentGatewayAddress = this.source.configService.getIntentGatewayV2Address(
+				hexToString(order.source as HexString),
+			)
+
+			const calldata = encodeFunctionData({
+				abi: IntentGatewayV2ABI,
+				functionName: "cancelOrder",
+				args: [transformOrderForContract(order), { relayerFee: 0n, height: 0n }],
+			}) as HexString
+
+			const signedTransaction = yield {
+				status: "AWAITING_CANCEL_TRANSACTION",
+				data: { calldata, to: intentGatewayAddress },
+			}
+
+			let txHash: HexString
+			if (this.tronWeb) {
+				const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
+				if (!tronReceipt.result) {
+					throw new Error("Tron cancel transaction broadcast failed")
+				}
+				const tronTxId = tronReceipt.transaction.txID
+				const maxAttempts = 10
+				for (let i = 0; i < maxAttempts; i++) {
+					const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
+					if (txInfo?.receipt?.result === "SUCCESS") break
+					if (txInfo?.receipt?.result) throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
+					if (i === maxAttempts - 1)
+						throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
+					await sleep(3_000)
+				}
+				txHash = `0x${tronTxId}` as HexString
+			} else {
+				txHash = await this.source.client.sendRawTransaction({
+					serializedTransaction: signedTransaction as HexString,
+				})
 			}
 
 			const receipt = await this.source.client.waitForTransactionReceipt({
-				hash: transactionHash,
+				hash: txHash,
 				confirmations: 1,
 			})
 
