@@ -215,6 +215,7 @@ export class IntentGatewayV2 {
 	private readonly cancellationStorage = createCancellationStorage()
 	private readonly swap: Swap = new Swap()
 	private readonly feeTokenCache: Map<string, { address: HexString; decimals: number }> = new Map()
+	private readonly solverCodeCache: Map<string, string> = new Map()
 	private initPromise: Promise<void> | null = null
 
 	// =========================================================================
@@ -238,7 +239,7 @@ export class IntentGatewayV2 {
 		public readonly bundlerUrl?: string,
 		public readonly tronWeb?: InstanceType<typeof TronWeb>,
 	) {
-		this.initPromise = this.initFeeTokenCache()
+		this.initPromise = this.initCache()
 	}
 
 	// =========================================================================
@@ -1564,12 +1565,25 @@ export class IntentGatewayV2 {
 	// Private Methods - Initialization
 	// =========================================================================
 
-	/** Initializes the fee token cache for source and destination chains */
-	private async initFeeTokenCache(): Promise<void> {
+	/** Initializes the cache for source and destination chains */
+	private async initCache(): Promise<void> {
 		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
 		this.feeTokenCache.set(this.source.config.stateMachineId, sourceFeeToken)
 		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
 		this.feeTokenCache.set(this.dest.config.stateMachineId, destFeeToken)
+
+		// Pre-fetch and cache SolverAccount code for the destination chain (if configured)
+		const solverAccountContract = this.dest.configService.getSolverAccountAddress(this.dest.config.stateMachineId)
+		if (solverAccountContract) {
+			try {
+				const solverCode = await this.dest.client.getCode({ address: solverAccountContract })
+				if (solverCode && solverCode !== "0x") {
+					this.solverCodeCache.set(solverAccountContract.toLowerCase(), solverCode)
+				}
+			} catch {
+				// Ignore failures; code will be lazily fetched later if needed
+			}
+		}
 	}
 
 	// =========================================================================
@@ -1878,17 +1892,25 @@ export class IntentGatewayV2 {
 		const solverAccountContract = this.dest.configService.getSolverAccountAddress(chain)
 		if (solverAccountContract) {
 			try {
-				const solverCode = await this.dest.client.getCode({ address: solverAccountContract })
+				const cacheKey = solverAccountContract.toLowerCase()
+				let solverCode = this.solverCodeCache.get(cacheKey)
+
+				if (!solverCode) {
+					solverCode = await this.dest.client.getCode({ address: solverAccountContract })
+					if (solverCode && solverCode !== "0x") {
+						this.solverCodeCache.set(cacheKey, solverCode)
+					}
+				}
+
 				if (solverCode && solverCode !== "0x") {
 					if (!bundlerOverrides[accountAddress]) {
 						bundlerOverrides[accountAddress] = {}
 					}
 
-					console.log("solverCode", solverCode)
 					bundlerOverrides[accountAddress].code = solverCode
 				}
 			} catch {
-				console.warn("Failed to get SolverAccount code")
+				// If we can't fetch or cache solver code, continue without code override
 			}
 		}
 
