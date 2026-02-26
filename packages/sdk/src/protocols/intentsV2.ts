@@ -144,16 +144,6 @@ export type CancelEvent = {
 	[K in keyof CancelEventMap]: { status: K; data: CancelEventMap[K] }
 }[keyof CancelEventMap]
 
-/** IntentGatewayV2 contract initialization parameters */
-export interface IntentGatewayV2Params {
-	host: HexString
-	dispatcher: HexString
-	solverSelection: boolean
-	surplusShareBps: bigint
-	protocolFeeBps: bigint
-	priceOracle: HexString
-}
-
 // =============================================================================
 // IntentGatewayV2 Class
 // =============================================================================
@@ -350,7 +340,7 @@ export class IntentGatewayV2 {
 				throw new Error("Tron transaction broadcast failed")
 			}
 			const tronTxId = tronReceipt.transaction.txID
-			const maxAttempts = 10
+			const maxAttempts = 30
 			for (let i = 0; i < maxAttempts; i++) {
 				const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
 				if (txInfo?.receipt?.result === "SUCCESS") break
@@ -688,7 +678,7 @@ export class IntentGatewayV2 {
 					throw new Error("Tron cancel transaction broadcast failed")
 				}
 				const tronTxId = tronReceipt.transaction.txID
-				const maxAttempts = 10
+				const maxAttempts = 30
 				for (let i = 0; i < maxAttempts; i++) {
 					const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
 					if (txInfo?.receipt?.result === "SUCCESS") break
@@ -1088,8 +1078,6 @@ export class IntentGatewayV2 {
 		await this.ensureInitialized()
 
 		const { order } = params
-		// TODO: Errors with account does not exist, so use a mainnet account and delegate to solver account across all chains
-		// and then replace with that private key
 		const solverPrivateKey = generatePrivateKey()
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
 		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
@@ -1113,7 +1101,7 @@ export class IntentGatewayV2 {
 		}
 
 		// Build state overrides once - used for both viem and bundler estimation
-		const { viem: stateOverrides, bundler: bundlerStateOverrides } = this.buildStateOverride({
+		const { viem: stateOverrides, bundler: bundlerStateOverrides } = await this.buildStateOverride({
 			accountAddress: solverAccountAddress,
 			chain: order.destination,
 			outputAssets: assetsForOverrides,
@@ -1210,13 +1198,12 @@ export class IntentGatewayV2 {
 		let preVerificationGas: bigint = 100_000n
 
 		// Estimate gas using bundler if configured, otherwise use direct estimation
-		if (this.bundlerUrl && solverPrivateKey) {
+		if (this.bundlerUrl) {
 			try {
 				const callData = this.encodeERC7821Execute([
 					{ target: intentGatewayV2Address, value: totalNativeValue, data: fillOrderCalldata },
 				])
 
-				const solverAccount = privateKeyToAccount(solverPrivateKey as Hex)
 				const accountGasLimits = this.packGasLimits(100_000n, callGasLimit)
 				const gasFees = this.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
 
@@ -1238,7 +1225,9 @@ export class IntentGatewayV2 {
 				const messageHash = keccak256(
 					concat([userOpHash, commitment as HexString, solverAccountAddress as Hex]),
 				)
-				const solverSignature = await solverAccount.signMessage({ message: { raw: messageHash } })
+				const solverSignature = await privateKeyToAccount(solverPrivateKey).signMessage({
+					message: { raw: messageHash },
+				})
 				const solverSig = concat([commitment as HexString, solverSignature as Hex]) as HexString
 
 				const domainSeparator = this.getDomainSeparator("IntentGateway", "2", chainId, intentGatewayV2Address)
@@ -1774,17 +1763,17 @@ export class IntentGatewayV2 {
 	 * @param params - Configuration for state overrides
 	 * @returns Object with both viem and bundler format state overrides
 	 */
-	buildStateOverride(params: {
+	async buildStateOverride(params: {
 		accountAddress: HexString
 		chain: string
 		outputAssets: { token: HexString; amount: bigint }[]
 		spenderAddress: HexString
 		intentGatewayV2Address?: HexString
 		entryPointAddress?: HexString
-	}): {
+	}): Promise<{
 		viem: { address: HexString; balance?: bigint; stateDiff?: { slot: HexString; value: HexString }[] }[]
-		bundler: Record<string, { balance?: string; stateDiff?: Record<string, string> }>
-	} {
+		bundler: Record<string, { balance?: string; stateDiff?: Record<string, string>; code?: string }>
+	}> {
 		const { accountAddress, chain, outputAssets, spenderAddress, intentGatewayV2Address, entryPointAddress } =
 			params
 		const testValue = toHex(maxUint256 / 2n, { size: 32 }) as HexString
@@ -1795,7 +1784,10 @@ export class IntentGatewayV2 {
 			balance?: bigint
 			stateDiff?: { slot: HexString; value: HexString }[]
 		}[] = []
-		const bundlerOverrides: Record<string, { balance?: string; stateDiff?: Record<string, string> }> = {}
+		const bundlerOverrides: Record<
+			string,
+			{ balance?: string; stateDiff?: Record<string, string>; code?: string }
+		> = {}
 
 		// 1. IntentGatewayV2 params override (disable solverSelection for simulation)
 		if (intentGatewayV2Address) {
@@ -1879,6 +1871,24 @@ export class IntentGatewayV2 {
 				}
 			} catch {
 				// Balance slot not found for this token, skip
+			}
+		}
+
+		// 5. SolverAccount code override for eth_estimateUserOperationGas (EIP-7702 delegation)
+		const solverAccountContract = this.dest.configService.getSolverAccountAddress(chain)
+		if (solverAccountContract) {
+			try {
+				const solverCode = await this.dest.client.getCode({ address: solverAccountContract })
+				if (solverCode && solverCode !== "0x") {
+					if (!bundlerOverrides[accountAddress]) {
+						bundlerOverrides[accountAddress] = {}
+					}
+
+					console.log("solverCode", solverCode)
+					bundlerOverrides[accountAddress].code = solverCode
+				}
+			} catch {
+				console.warn("Failed to get SolverAccount code")
 			}
 		}
 

@@ -44,7 +44,7 @@ import { formatAbiItem } from "viem/utils"
 // Test Suites
 // ============================================================================
 
-describe("Filler V2 - Solver Selection ON", () => {
+describe.skip("Filler V2 - Solver Selection ON", () => {
 	it.skip("Should place order, filler submits bid, user selects bid, order filled", async () => {
 		const {
 			bscIntentGatewayV2,
@@ -257,7 +257,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 	}, 300_000)
 })
 
-describe.skip("Filler V2 - Tron Source Chain", () => {
+describe("Filler V2 - Tron Source Chain", () => {
 	it("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
 		const {
 			tronNileId,
@@ -476,7 +476,6 @@ async function setUp() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		solverAccountContractAddress: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
 		bundlerUrl: process.env.BUNDLER_URL,
 	}
 
@@ -564,7 +563,6 @@ async function setUpTron() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		solverAccountContractAddress: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
 		bundlerUrl: process.env.BUNDLER_URL,
 	}
 

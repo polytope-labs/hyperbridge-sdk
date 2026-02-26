@@ -31,7 +31,6 @@ export interface FillerConfig {
 	hyperbridgeWsUrl?: string
 	substratePrivateKey?: string
 	entryPointAddress?: string
-	solverAccountContractAddress?: string
 	dataDir?: string
 	bundlerUrl?: string
 	/**
@@ -203,8 +202,8 @@ export class FillerConfigService {
 		return this.chainConfigService.getEntryPointV08Address(chain) as HexString | undefined
 	}
 
-	getSolverAccountContractAddress(): HexString | undefined {
-		return this.fillerConfig?.solverAccountContractAddress as HexString | undefined
+	getSolverAccountContractAddress(chain: string): HexString | undefined {
+		return this.chainConfigService.getSolverAccountAddress(chain) as HexString | undefined
 	}
 
 	getDataDir(): string | undefined {

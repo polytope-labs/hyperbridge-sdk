@@ -29,7 +29,7 @@ export class DelegationService {
 	async isDelegated(chain: string): Promise<boolean> {
 		const client = this.clientManager.getPublicClient(chain)
 		const account = privateKeyToAccount(this.privateKey)
-		const solverAccountContract = this.configService.getSolverAccountContractAddress()
+		const solverAccountContract = this.configService.getSolverAccountContractAddress(chain)
 
 		if (!solverAccountContract) {
 			return false
@@ -72,7 +72,7 @@ export class DelegationService {
 	 * @returns True if delegation was successful or already in place
 	 */
 	async setupDelegation(chain: string): Promise<boolean> {
-		const solverAccountContract = this.configService.getSolverAccountContractAddress()
+		const solverAccountContract = this.configService.getSolverAccountContractAddress(chain)
 
 		if (!solverAccountContract) {
 			this.logger.error("solverAccountContractAddress not configured")

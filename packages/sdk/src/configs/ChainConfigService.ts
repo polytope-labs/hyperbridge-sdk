@@ -119,6 +119,10 @@ export class ChainConfigService {
 		return (this.getConfig(chain)?.addresses.Permit2 ?? "0x") as HexString
 	}
 
+	getSolverAccountAddress(chain: string): HexString | undefined {
+		return this.getConfig(chain)?.addresses.SolverAccount as HexString | undefined
+	}
+
 	getCoingeckoId(chain: string): string | undefined {
 		return this.getConfig(chain)?.coingeckoId
 	}

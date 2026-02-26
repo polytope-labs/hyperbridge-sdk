@@ -27,6 +27,7 @@ export {
 	orderV2Commitment,
 	getContractCallInput,
 	calculateBalanceMappingLocation,
+	calculateAllowanceMappingLocation,
 	MOCK_ADDRESS,
 	EvmLanguage,
 } from "@/utils"

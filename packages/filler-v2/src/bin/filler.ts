@@ -152,7 +152,6 @@ program
 				substratePrivateKey: config.filler.substratePrivateKey,
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
 				entryPointAddress: config.filler.entryPointAddress,
-				solverAccountContractAddress: config.filler.solverAccountContractAddress,
 				dataDir: config.filler.dataDir,
 				bundlerUrl: config.filler.bundlerUrl,
 				rebalancing: config.rebalancing,
