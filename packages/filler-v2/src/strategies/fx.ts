@@ -18,11 +18,6 @@ import { FillerPricePolicy } from "@/config/interpolated-curve"
 import { Decimal } from "decimal.js"
 import { SupportedTokenType } from "@/strategies/base"
 
-enum Direction {
-	STABLE_TO_CNGN = "stable_to_cngn",
-	CNGN_TO_STABLE = "cngn_to_stable",
-}
-
 /**
  * Strategy for same-chain swaps between stablecoins (USDC/USDT) and cNGN.
  *
@@ -109,7 +104,7 @@ export class FXFiller implements FillerStrategy {
 						? this.configService.getUsdcDecimals(chain)
 						: this.configService.getUsdtDecimals(chain)
 
-				if (pair.direction === Direction.STABLE_TO_CNGN) {
+				if (pair.inputIsStable) {
 					stableUsdValue = stableUsdValue.plus(new Decimal(formatUnits(order.inputs[i].amount, sd)))
 				} else {
 					stableUsdValue = stableUsdValue.plus(new Decimal(formatUnits(order.output.assets[i].amount, sd)))
@@ -131,7 +126,7 @@ export class FXFiller implements FillerStrategy {
 
 				let fillerMaxOutput: bigint
 
-				if (pair.direction === Direction.STABLE_TO_CNGN) {
+				if (pair.inputIsStable) {
 					const inputUsd = new Decimal(formatUnits(input.amount, stableDecimals))
 					const cNgnFromInput = inputUsd.div(cNgnPriceUsd)
 					fillerMaxOutput = BigInt(
@@ -274,7 +269,7 @@ export class FXFiller implements FillerStrategy {
 		outputToken: string,
 		chain: string,
 	): {
-		direction: Direction
+		inputIsStable: boolean
 		stableType: SupportedTokenType
 		stableToken: string
 		cNgnToken: string
@@ -292,21 +287,11 @@ export class FXFiller implements FillerStrategy {
 		const outputStable = this.getStableType(normalizedOutput, chain)
 
 		if (inputStable && normalizedOutput === normalizedCNgn) {
-			return {
-				direction: Direction.STABLE_TO_CNGN,
-				stableType: inputStable,
-				stableToken: inputToken,
-				cNgnToken: outputToken,
-			}
+			return { inputIsStable: true, stableType: inputStable, stableToken: inputToken, cNgnToken: outputToken }
 		}
 
 		if (normalizedInput === normalizedCNgn && outputStable) {
-			return {
-				direction: Direction.CNGN_TO_STABLE,
-				stableType: outputStable,
-				stableToken: outputToken,
-				cNgnToken: inputToken,
-			}
+			return { inputIsStable: false, stableType: outputStable, stableToken: outputToken, cNgnToken: inputToken }
 		}
 
 		return null
