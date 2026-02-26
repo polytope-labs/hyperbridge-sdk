@@ -14,7 +14,7 @@ import { ChainClientManager, ContractInteractionService, BidStorageService } fro
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
-import { FillerBpsPolicy } from "@/config/interpolated-curve"
+import { FillerPricePolicy } from "@/config/interpolated-curve"
 import { Decimal } from "decimal.js"
 import { SupportedTokenType } from "@/strategies/base"
 
@@ -41,9 +41,8 @@ export class FXFiller implements FillerStrategy {
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
 	private bidStorage?: BidStorageService
-	private bpsPolicy: FillerBpsPolicy
-	/** cNGN price in USD (e.g. 0.00062 means 1 cNGN = $0.00062) */
-	private cNgnPriceUsd: Decimal
+	/** cNGN price policy in USD as a function of order USD value */
+	private pricePolicy: FillerPricePolicy
 	private cNgnDecimals: number
 	private logger = getLogger("fx-filler")
 
@@ -52,8 +51,7 @@ export class FXFiller implements FillerStrategy {
 		configService: FillerConfigService,
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
-		bpsPolicy: FillerBpsPolicy,
-		cNgnPriceUsd: number,
+		pricePolicy: FillerPricePolicy,
 		cNgnDecimals: number,
 		bidStorage?: BidStorageService,
 	) {
@@ -62,8 +60,7 @@ export class FXFiller implements FillerStrategy {
 		this.clientManager = clientManager
 		this.contractService = contractService
 		this.bidStorage = bidStorage
-		this.bpsPolicy = bpsPolicy
-		this.cNgnPriceUsd = new Decimal(cNgnPriceUsd)
+		this.pricePolicy = pricePolicy
 		this.cNgnDecimals = cNgnDecimals
 	}
 
@@ -103,9 +100,7 @@ export class FXFiller implements FillerStrategy {
 			const chain = order.source
 			const { decimals: feeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(chain)
 
-			const basisPoints = 10000n
-
-			// Compute USD value from the stable side (for BPS lookup).
+			// Compute USD value from the stable side (for price lookup).
 			let stableUsdValue = new Decimal(0)
 			for (let i = 0; i < order.inputs.length; i++) {
 				const pair = this.classifyPair(order.inputs[i].token, order.output.assets[i].token, chain)!
@@ -121,9 +116,7 @@ export class FXFiller implements FillerStrategy {
 				}
 			}
 
-			const fillerBps = this.bpsPolicy.getBps(stableUsdValue)
-
-			let totalProfitNormalized = 0n
+			const cNgnPriceUsd = this.pricePolicy.getPrice(stableUsdValue)
 			const fillerOutputs: TokenInfoV2[] = []
 
 			for (let i = 0; i < order.inputs.length; i++) {
@@ -139,107 +132,44 @@ export class FXFiller implements FillerStrategy {
 				let fillerMaxOutput: bigint
 
 				if (pair.direction === Direction.STABLE_TO_CNGN) {
-					// User sends stables, wants cNGN.
-					// Filler receives input.amount stables (1:1 USD).
-					// Filler calculates how much cNGN that buys at their price, minus BPS cut.
-					// stableUsd = input.amount (in stable decimals, 1:1 USD)
-					// cNgnFromInput = stableUsd / cNgnPriceUsd (converted to cNGN decimals)
-					// fillerMaxOutput = cNgnFromInput * (10000 - fillerBps) / 10000
 					const inputUsd = new Decimal(formatUnits(input.amount, stableDecimals))
-					const cNgnFromInput = inputUsd.div(this.cNgnPriceUsd)
-					const cNgnFromInputRaw = BigInt(
+					const cNgnFromInput = inputUsd.div(cNgnPriceUsd)
+					fillerMaxOutput = BigInt(
 						cNgnFromInput.mul(new Decimal(10).pow(this.cNgnDecimals)).floor().toFixed(0),
 					)
-					fillerMaxOutput = (cNgnFromInputRaw * (basisPoints - fillerBps)) / basisPoints
-
-					if (output.amount > fillerMaxOutput) {
-						this.logger.info(
-							{
-								orderId: order.id,
-								userExpects: output.amount.toString(),
-								fillerWillProvide: fillerMaxOutput.toString(),
-								fillerBps: fillerBps.toString(),
-							},
-							"User expects more cNGN than filler can provide (stable → cNGN)",
-						)
-						return 0
-					}
-
-					// Profit in USD: what filler receives minus what they pay out
-					// profitUsd = inputUsd - (fillerMaxOutput * cNgnPriceUsd)
-					const fillerMaxOutputUsd = this.cNgnPriceUsd.mul(
-						new Decimal(formatUnits(fillerMaxOutput, this.cNgnDecimals)),
-					)
-					const profitUsd = inputUsd.minus(fillerMaxOutputUsd)
-					const profitInFeeToken = BigInt(
-						profitUsd.mul(new Decimal(10).pow(feeTokenDecimals)).floor().toFixed(0),
-					)
-					totalProfitNormalized += profitInFeeToken
 				} else {
-					// User sends cNGN, wants stables.
-					// Filler receives input.amount cNGN, delivers stables.
-					// cNgnUsd = input.amount * cNgnPriceUsd
-					// stableFromCNgn = cNgnUsd (converted to stable decimals, 1:1 USD)
-					// fillerMaxOutput = stableFromCNgn * (10000 - fillerBps) / 10000
-					const cNgnUsd = this.cNgnPriceUsd.mul(new Decimal(formatUnits(input.amount, this.cNgnDecimals)))
-					const stableFromCNgnRaw = BigInt(
-						cNgnUsd.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0),
-					)
-					fillerMaxOutput = (stableFromCNgnRaw * (basisPoints - fillerBps)) / basisPoints
-
-					if (output.amount > fillerMaxOutput) {
-						this.logger.info(
-							{
-								orderId: order.id,
-								userExpects: output.amount.toString(),
-								fillerWillProvide: fillerMaxOutput.toString(),
-								fillerBps: fillerBps.toString(),
-							},
-							"User expects more stables than filler can provide (cNGN → stable)",
-						)
-						return 0
-					}
-
-					// Profit in USD: cNGN value received minus stables paid out
-					const fillerMaxOutputUsd = new Decimal(formatUnits(fillerMaxOutput, stableDecimals))
-					const profitUsd = cNgnUsd.minus(fillerMaxOutputUsd)
-					const profitInFeeToken = BigInt(
-						profitUsd.mul(new Decimal(10).pow(feeTokenDecimals)).floor().toFixed(0),
-					)
-					totalProfitNormalized += profitInFeeToken
+					const cNgnUsd = cNgnPriceUsd.mul(new Decimal(formatUnits(input.amount, this.cNgnDecimals)))
+					fillerMaxOutput = BigInt(cNgnUsd.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0))
 				}
 
-				fillerOutputs.push({
-					token: output.token,
-					amount: fillerMaxOutput,
-				})
+				if (output.amount > fillerMaxOutput) {
+					this.logger.info(
+						{
+							orderId: order.id,
+							userExpects: output.amount.toString(),
+							fillerWillProvide: fillerMaxOutput.toString(),
+							pricePolicyUsd: cNgnPriceUsd.toString(),
+						},
+						"User expects more than filler can provide at policy price",
+					)
+					return 0
+				}
+
+				fillerOutputs.push({ token: output.token, amount: fillerMaxOutput })
 			}
 
-			// Cache competitive filler outputs for use during order execution
 			this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
-			this.logger.debug(
-				{
-					orderId: order.id,
-					fillerOutputs: fillerOutputs.map((o) => ({ token: o.token, amount: o.amount.toString() })),
-				},
-				"Cached filler outputs for order",
-			)
 
-			// Factor in gas costs vs order fees
 			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
 			const feeProfit = order.fees > totalCostInSourceFeeToken ? order.fees - totalCostInSourceFeeToken : 0n
-			const feeProfitNormalized = adjustDecimals(feeProfit, feeTokenDecimals, feeTokenDecimals)
-			const totalProfit = totalProfitNormalized + feeProfitNormalized
+			const totalProfit = adjustDecimals(feeProfit, feeTokenDecimals, feeTokenDecimals)
 
 			this.logger.info(
 				{
 					orderId: order.id,
 					orderValueUsd: stableUsdValue.toString(),
-					cNgnPriceUsd: this.cNgnPriceUsd.toString(),
-					fillerBps: fillerBps.toString(),
-					fxProfit: formatUnits(totalProfitNormalized, feeTokenDecimals),
-					feeProfit: formatUnits(feeProfitNormalized, feeTokenDecimals),
-					totalProfit: formatUnits(totalProfit, feeTokenDecimals),
+					cNgnPriceUsd: cNgnPriceUsd.toString(),
+					feeProfit: formatUnits(totalProfit, feeTokenDecimals),
 					profitable: totalProfit > 0n,
 				},
 				"Same-chain swap profitability evaluation",
