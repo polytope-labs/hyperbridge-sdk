@@ -1,0 +1,152 @@
+import type { PublicClient } from "viem"
+import { TronWeb } from "tronweb"
+
+import type { IChain, IIsmpMessage, TronChainExtras } from "@/chain"
+import { EvmChain, type EvmChainParams } from "@/chains/evm"
+import type { HexString, IGetRequest, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
+
+/**
+ * Parameters for a Tron-backed chain.
+ * TronWeb is constructed internally from `rpcUrl`.
+ */
+export type TronChainParams = EvmChainParams
+
+export class TronChain implements IChain {
+	private readonly evm: EvmChain
+	private readonly tronWebInstance: InstanceType<typeof TronWeb>
+
+	constructor(private readonly params: TronChainParams) {
+		this.evm = new EvmChain(params)
+		this.tronWebInstance = new TronWeb({ fullHost: params.rpcUrl })
+	}
+
+	// -------------------------------------------------------------------------
+	// Public accessors
+	// -------------------------------------------------------------------------
+
+	/** Underlying viem public client (delegated from the internal EvmChain) */
+	get client(): PublicClient {
+		return this.evm.client
+	}
+
+	/** Host contract address for this chain (delegated from the internal EvmChain) */
+	get host(): HexString {
+		return this.evm.host
+	}
+
+	/** Chain configuration (delegated from the internal EvmChain) */
+	get config() {
+		return this.evm.config
+	}
+
+	/** Chain configuration service (delegated from the internal EvmChain) */
+	get configService() {
+		return this.evm.configService
+	}
+
+	/** TronWeb instance for this Tron chain (constructed from rpcUrl) */
+	get tronWeb(): InstanceType<typeof TronWeb> {
+		return this.tronWebInstance
+	}
+
+	// -------------------------------------------------------------------------
+	// IChain implementation (delegated to the internal EvmChain)
+	// -------------------------------------------------------------------------
+
+	timestamp(): Promise<bigint> {
+		return this.evm.timestamp()
+	}
+
+	requestReceiptKey(commitment: HexString): HexString {
+		return this.evm.requestReceiptKey(commitment)
+	}
+
+	queryRequestReceipt(commitment: HexString): Promise<HexString | undefined> {
+		return this.evm.queryRequestReceipt(commitment)
+	}
+
+	queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
+		return this.evm.queryStateProof(at, keys)
+	}
+
+	queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
+		return this.evm.queryProof(message, counterparty, at)
+	}
+
+	encode(message: IIsmpMessage): HexString {
+		return this.evm.encode(message)
+	}
+
+	latestStateMachineHeight(stateMachineId: StateMachineIdParams): Promise<bigint> {
+		return this.evm.latestStateMachineHeight(stateMachineId)
+	}
+
+	challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
+		return this.evm.challengePeriod(stateMachineId)
+	}
+
+	stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
+		return this.evm.stateMachineUpdateTime(stateMachineHeight)
+	}
+
+	// -------------------------------------------------------------------------
+	// Helpers mirrored from EvmChain for protocol integrations
+	// -------------------------------------------------------------------------
+
+	/** Gets the fee token address and decimals for the chain. */
+	getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }> {
+		return this.evm.getFeeTokenWithDecimals()
+	}
+
+	/** Gets the nonce of the host contract on this chain. */
+	getHostNonce(): Promise<bigint> {
+		return this.evm.getHostNonce()
+	}
+
+	/** Quotes the fee (in native token) required for the given ISMP request. */
+	quoteNative(request: IPostRequest | IGetRequest, fee: bigint): Promise<bigint> {
+		return this.evm.quoteNative(request, fee)
+	}
+
+	/** Estimates gas for executing a post request on this chain. */
+	estimateGas(request: IPostRequest): Promise<{ gas: bigint; postRequestCalldata: HexString }> {
+		return this.evm.estimateGas(request)
+	}
+
+	// -------------------------------------------------------------------------
+	// Tron-specific helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Broadcasts a signed Tron transaction and waits for confirmation,
+	 * returning a 0x-prefixed transaction hash compatible with viem.
+	 *
+	 * This mirrors the behavior used in IntentGatewayV2 for Tron chains.
+	 */
+	async sendAndConfirmTronTransaction(signedTransaction: any): Promise<HexString> {
+		const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
+		if (!tronReceipt.result) {
+			throw new Error("Tron transaction broadcast failed")
+		}
+
+		const tronTxId = tronReceipt.transaction.txID
+		const maxAttempts = 30
+
+		for (let i = 0; i < maxAttempts; i++) {
+			const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
+			if (txInfo?.receipt?.result === "SUCCESS") break
+			if (txInfo?.receipt?.result) {
+				throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
+			}
+
+			if (i === maxAttempts - 1) {
+				throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
+			}
+
+			// Wait 3 seconds before re-checking
+			await new Promise((resolve) => setTimeout(resolve, 3_000))
+		}
+
+		return `0x${tronTxId}` as HexString
+	}
+}

@@ -18,6 +18,7 @@ import {
 	EvmChain,
 	IntentGatewayV2,
 	IntentsCoprocessor,
+	TronChain,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy, FillerBpsPolicy } from "@/config/interpolated-curve"
@@ -312,7 +313,7 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 			process.env.SECRET_PHRASE!,
 		)
 
-		const tronEvmChain = new EvmChain({
+		const tronChain = new TronChain({
 			chainId: 3448148188,
 			host: chainConfigService.getHostAddress(tronNileId),
 			rpcUrl: chainConfigService.getRpcUrl(tronNileId),
@@ -327,13 +328,7 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 		await approveTronTokens(tronWeb, sourceUsdt, tronIntentGatewayAddress)
 
 		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = new IntentGatewayV2(
-			tronEvmChain,
-			polygonAmoyEvmChain,
-			intentsCoprocessor,
-			bundlerUrl,
-			tronWeb,
-		)
+		const userSdkHelper = new IntentGatewayV2(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		const generator = userSdkHelper.placeOrder(order)
 		const firstResult = await generator.next()

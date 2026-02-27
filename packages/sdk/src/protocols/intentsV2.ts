@@ -62,7 +62,7 @@ import {
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
-import { EvmChain, requestCommitmentKey } from "@/chains/evm"
+import { EvmChain, TronChain, requestCommitmentKey } from "@/chain"
 import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import { type IGetRequestMessage, type IProof, type SubstrateChain } from "@/chain"
 import type { IndexerClient } from "@/client"
@@ -70,8 +70,6 @@ import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
 import ERC7821ABI from "@/abis/erc7281"
 import { type ERC7821Call } from "@/types"
-import { TronWeb } from "tronweb"
-
 // =============================================================================
 // Constants
 // =============================================================================
@@ -229,15 +227,12 @@ export class IntentGatewayV2 {
 	 * @param dest - Destination chain for order fulfillment
 	 * @param intentsCoprocessor - Optional coprocessor for bid fetching and order execution
 	 * @param bundlerUrl - Optional ERC-4337 bundler URL for gas estimation and UserOp submission.
-	 * @param tronWeb - Optional TronWeb instance, required when the source chain is Tron.
-	 *
 	 */
 	constructor(
-		public readonly source: EvmChain,
+		public readonly source: EvmChain | TronChain,
 		public readonly dest: EvmChain,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
 		public readonly bundlerUrl?: string,
-		public readonly tronWeb?: InstanceType<typeof TronWeb>,
 	) {
 		this.initPromise = this.initCache()
 	}
@@ -276,11 +271,6 @@ export class IntentGatewayV2 {
 	 * @param order - The order to prepare and place
 	 * @yields `{ calldata, sessionPrivateKey }` - Encoded placeOrder calldata and session private key
 	 * @returns The finalized order with correct nonce, inputs, and commitment from on-chain event
-	 *
-	 * @remarks TronWeb is only provided when the source chain is Tron. For EVM chains, the signed
-	 * transaction is broadcast via viem's `sendRawTransaction`. For Tron chains, it is broadcast
-	 * via `tronWeb.trx.sendRawTransaction` and confirmed before proceeding.
-	 *
 	 * @example EVM chain
 	 * ```typescript
 	 * const generator = gateway.placeOrder(order)
@@ -301,19 +291,6 @@ export class IntentGatewayV2 {
 	 * const { value: finalizedOrder } = await generator.next(signedTx)
 	 * ```
 	 *
-	 * @example Tron chain
-	 * ```typescript
-	 * const gateway = new IntentGatewayV2(sourceChain, destChain, coprocessor, bundlerUrl, tronWeb)
-	 * const generator = gateway.placeOrder(order)
-	 * const { value: { calldata, sessionPrivateKey } } = await generator.next()
-	 *
-	 * // Build and sign with TronWeb
-	 * const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(...)
-	 * const signedTx = await tronWeb.trx.sign(transaction)
-	 *
-	 * // Pass signed TronWeb transaction object back
-	 * const { value: finalizedOrder } = await generator.next(signedTx)
-	 * ```
 	 */
 	async *placeOrder(
 		order: OrderV2,
@@ -334,28 +311,12 @@ export class IntentGatewayV2 {
 
 		const signedTransaction = yield { calldata, sessionPrivateKey: privateKey as HexString }
 
-		let txHash: HexString
-		if (this.tronWeb) {
-			const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
-			if (!tronReceipt.result) {
-				throw new Error("Tron transaction broadcast failed")
-			}
-			const tronTxId = tronReceipt.transaction.txID
-			const maxAttempts = 30
-			for (let i = 0; i < maxAttempts; i++) {
-				const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
-				if (txInfo?.receipt?.result === "SUCCESS") break
-				if (txInfo?.receipt?.result) throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
-				if (i === maxAttempts - 1)
-					throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
-				await sleep(3_000)
-			}
-			txHash = `0x${tronTxId}` as HexString
-		} else {
-			txHash = await this.source.client.sendRawTransaction({
-				serializedTransaction: signedTransaction as HexString,
-			})
-		}
+		const txHash: HexString =
+			this.source instanceof TronChain
+				? await this.source.sendAndConfirmTronTransaction(signedTransaction)
+				: await this.source.client.sendRawTransaction({
+						serializedTransaction: signedTransaction as HexString,
+				  })
 
 		console.log("Order placed transaction sent:", txHash)
 
@@ -704,28 +665,12 @@ export class IntentGatewayV2 {
 				data: { calldata, to: intentGatewayAddress },
 			}
 
-			let txHash: HexString
-			if (this.tronWeb) {
-				const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
-				if (!tronReceipt.result) {
-					throw new Error("Tron cancel transaction broadcast failed")
-				}
-				const tronTxId = tronReceipt.transaction.txID
-				const maxAttempts = 30
-				for (let i = 0; i < maxAttempts; i++) {
-					const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
-					if (txInfo?.receipt?.result === "SUCCESS") break
-					if (txInfo?.receipt?.result) throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
-					if (i === maxAttempts - 1)
-						throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
-					await sleep(3_000)
-				}
-				txHash = `0x${tronTxId}` as HexString
-			} else {
-				txHash = await this.source.client.sendRawTransaction({
-					serializedTransaction: signedTransaction as HexString,
-				})
-			}
+			const txHash: HexString =
+				this.source instanceof TronChain
+					? await this.source.sendAndConfirmTronTransaction(signedTransaction)
+					: await this.source.client.sendRawTransaction({
+							serializedTransaction: signedTransaction as HexString,
+					  })
 
 			const receipt = await this.source.client.waitForTransactionReceipt({
 				hash: txHash,
@@ -2007,7 +1952,7 @@ export class IntentGatewayV2 {
 		evmChainID: string,
 	): Promise<bigint> {
 		const client = this[gasEstimateIn].client
-		const gasPrice = await retryPromise(() => client.getGasPrice(), { maxRetries: 3, backoffMs: 250 })
+		const gasPrice = (await retryPromise(() => client.getGasPrice(), { maxRetries: 3, backoffMs: 250 })) as bigint
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = this[gasEstimateIn].configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = this.feeTokenCache.get(evmChainID)!
@@ -2162,7 +2107,7 @@ export class IntentGatewayV2 {
  */
 async function fetchSourceProof(
 	commitment: HexString,
-	source: EvmChain,
+	source: EvmChain | TronChain,
 	sourceStateMachine: string,
 	sourceConsensusStateId: string,
 	sourceHeight: bigint,

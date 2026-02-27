@@ -50,6 +50,9 @@ export const tronNile = defineChain({
 	},
 })
 
+// Known Tron chain IDs (mainnet + Nile testnet)
+export const tronChainIds = new Set([728126428, 3448148188])
+
 export interface ChainConfigData {
 	chainId: number
 	stateMachineId: Chains

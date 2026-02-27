@@ -8,6 +8,7 @@ import {
 	DecodedOrderV2PlacedLog,
 	getContractCallInput,
 	HexString,
+	tronChainIds,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { PublicClient, decodeFunctionData } from "viem"
@@ -16,10 +17,6 @@ import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
 import { Mutex } from "async-mutex"
 import { TronWeb } from "tronweb"
-
-function isTronChain(chainId: number): boolean {
-	return new Set([728126428, 3448148188]).has(chainId)
-}
 
 export class EventMonitor extends EventEmitter {
 	private clients: Map<number, PublicClient> = new Map()
@@ -43,7 +40,7 @@ export class EventMonitor extends EventEmitter {
 			this.clients.set(config.chainId, client)
 			this.scanningMutexes.set(config.chainId, new Mutex())
 
-			if (isTronChain(config.chainId)) {
+			if (tronChainIds.has(config.chainId)) {
 				const tronWeb = new TronWeb({
 					fullHost: this.configService.getRpcUrl(chainName),
 				})
@@ -167,7 +164,7 @@ export class EventMonitor extends EventEmitter {
 		txHash: string,
 		intentGatewayAddress: string,
 	): Promise<HexString> {
-		if (isTronChain(chainId)) {
+		if (tronChainIds.has(chainId)) {
 			return this.getTronCalldata(chainId, txHash)
 		}
 
