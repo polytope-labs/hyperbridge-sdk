@@ -1255,8 +1255,8 @@ export interface DispatchInfoV2 {
 export interface OrderV2 {
 	id?: string
 	user: HexString
-	source: string
-	destination: string
+	source: HexString
+	destination: HexString
 	deadline: bigint
 	nonce: bigint
 	fees: bigint
@@ -1446,6 +1446,7 @@ export interface SelectBidResult {
 	solverAddress: HexString
 	commitment: HexString
 	txnHash?: HexString
+	fillStatus?: "full" | "partial"
 }
 
 /** Options for executing an intent order */

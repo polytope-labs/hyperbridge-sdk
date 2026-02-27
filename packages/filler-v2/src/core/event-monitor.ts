@@ -212,8 +212,8 @@ export class EventMonitor extends EventEmitter {
 				const decodedLog = log as unknown as DecodedOrderV2PlacedLog
 				let order: OrderV2 = {
 					user: decodedLog.args.user,
-					source: hexToString(decodedLog.args.source),
-					destination: hexToString(decodedLog.args.destination),
+					source: hexToString(decodedLog.args.source) as HexString,
+					destination: hexToString(decodedLog.args.destination) as HexString,
 					deadline: decodedLog.args.deadline,
 					nonce: decodedLog.args.nonce,
 					fees: decodedLog.args.fees,

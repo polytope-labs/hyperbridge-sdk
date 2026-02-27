@@ -402,7 +402,9 @@ export class IntentGatewayV2 {
 	/**
 	 * Generator function that orchestrates the full intent order execution flow.
 	 *
-	 * Flow: AWAITING_BIDS → BIDS_RECEIVED → BID_SELECTED → USEROP_SUBMITTED
+	 * Flow:
+	 * - Cross-chain: AWAITING_BIDS → BIDS_RECEIVED → BID_SELECTED → USEROP_SUBMITTED
+	 * - Same-chain: multiple rounds of the above until the order is fully filled on-chain
 	 *
 	 * Requires `intentsCoprocessor` and `bundlerUrl` to be set in the constructor.
 	 *
@@ -439,6 +441,7 @@ export class IntentGatewayV2 {
 		} = options
 
 		const commitment = order.id as HexString
+		const isSameChain = order.source === order.destination
 
 		if (!this.intentsCoprocessor) {
 			yield {
@@ -457,50 +460,76 @@ export class IntentGatewayV2 {
 		}
 
 		try {
-			yield {
-				status: "AWAITING_BIDS",
-				metadata: { commitment },
-			}
+			// Track which solver+nonce combinations have already been used for this order so we
+			// don't try to execute the same UserOperation multiple times across rounds.
+			const usedUserOps = new Set<string>()
 
-			const startTime = Date.now()
-			let bids: FillerBid[] = []
-
-			while (Date.now() - startTime < bidTimeoutMs) {
-				try {
-					bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
-
-					if (bids.length >= minBids) {
-						break
-					}
-				} catch {
-					// Continue polling on errors
+			while (true) {
+				yield {
+					status: "AWAITING_BIDS",
+					metadata: { commitment },
 				}
 
-				await sleep(pollIntervalMs)
-			}
+				const startTime = Date.now()
+				let bids: FillerBid[] = []
 
-			if (bids.length === 0) {
+				while (Date.now() - startTime < bidTimeoutMs) {
+					try {
+						bids = await this.intentsCoprocessor.getBidsForOrder(commitment)
+
+						if (bids.length >= minBids) {
+							break
+						}
+					} catch {
+						// Continue polling on errors
+					}
+
+					await sleep(pollIntervalMs)
+				}
+
+				// Filter out bids whose userOp (sender + nonce) has already been used in a prior round
+				const freshBids = bids.filter((bid) => {
+					const key = `${bid.userOp.sender.toLowerCase()}-${bid.userOp.nonce.toString()}`
+					return !usedUserOps.has(key)
+				})
+
+				if (freshBids.length === 0) {
+					yield {
+						status: "FAILED",
+						metadata: {
+							commitment,
+							error: `No new bids available within ${bidTimeoutMs}ms timeout`,
+						},
+					}
+					return
+				}
+
 				yield {
-					status: "FAILED",
+					status: "BIDS_RECEIVED",
 					metadata: {
 						commitment,
-						error: `No bids received within ${bidTimeoutMs}ms timeout`,
+						bidCount: freshBids.length,
+						bids: freshBids,
 					},
 				}
-				return
-			}
 
-			yield {
-				status: "BIDS_RECEIVED",
-				metadata: {
-					commitment,
-					bidCount: bids.length,
-					bids,
-				},
-			}
+				let result: SelectBidResult
+				try {
+					result = await this.selectBid(order, freshBids, sessionPrivateKey)
+				} catch (err) {
+					yield {
+						status: "FAILED",
+						metadata: {
+							commitment,
+							error: `Failed to select bid and submit: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					}
+					return
+				}
 
-			try {
-				const result = await this.selectBid(order, bids, sessionPrivateKey)
+				// Mark this solver+nonce combination as used so we don't re-submit the same UserOp in later rounds.
+				const usedKey = `${result.userOp.sender.toLowerCase()}-${result.userOp.nonce.toString()}`
+				usedUserOps.add(usedKey)
 
 				yield {
 					status: "BID_SELECTED",
@@ -521,15 +550,18 @@ export class IntentGatewayV2 {
 						transactionHash: result.txnHash,
 					},
 				}
-			} catch (err) {
-				yield {
-					status: "FAILED",
-					metadata: {
-						commitment,
-						error: `Failed to select bid and submit: ${err instanceof Error ? err.message : String(err)}`,
-					},
+
+				// Cross-chain: preserve existing one-shot behavior
+				if (!isSameChain) {
+					return
 				}
-				return
+
+				// Same-chain: rely on fill status from this user operation to decide whether to continue
+				if (result.fillStatus === "full") {
+					return
+				}
+
+				// Partial: loop again to accept more bids and continue filling.
 			}
 		} catch (err) {
 			yield {
@@ -1028,6 +1060,7 @@ export class IntentGatewayV2 {
 
 		// Poll for receipt to get txnHash
 		let txnHash: HexString | undefined
+		let fillStatus: "full" | "partial" | undefined
 		try {
 			const receipt = await retryPromise(
 				async () => {
@@ -1043,6 +1076,32 @@ export class IntentGatewayV2 {
 				{ maxRetries: 5, backoffMs: 2000, logMessage: "Fetching user operation receipt" },
 			)
 			txnHash = receipt.receipt.transactionHash
+
+			// For same-chain orders, inspect the destination chain tx receipt to determine
+			// whether this round fully filled the order or only partially filled it.
+			if (order.source === order.destination) {
+				try {
+					const chainReceipt = await this.dest.client.getTransactionReceipt({ hash: txnHash })
+					const events = parseEventLogs({
+						abi: IntentGatewayV2ABI,
+						logs: chainReceipt.logs,
+						eventName: ["OrderFilled", "PartialFill"] as any,
+					})
+
+					const matched = events.find((e) => {
+						const eventCommitment = (e.args as any).commitment as HexString
+						return eventCommitment.toLowerCase() === commitment.toLowerCase()
+					})
+
+					if (matched?.eventName === "OrderFilled") {
+						fillStatus = "full"
+					} else if (matched?.eventName === "PartialFill") {
+						fillStatus = "partial"
+					}
+				} catch {
+					throw new Error("Failed to determine fill status from logs")
+				}
+			}
 		} catch {
 			// Receipt may not be available after retries, txnHash will be undefined
 		}
@@ -1053,6 +1112,7 @@ export class IntentGatewayV2 {
 			solverAddress,
 			commitment,
 			txnHash,
+			fillStatus,
 		}
 	}
 
@@ -1593,7 +1653,8 @@ export class IntentGatewayV2 {
 	/**
 	 * Validates bids and sorts them by USD value (best to worst).
 	 *
-	 * A bid is valid if `fillOptions.outputs[i].amount >= order.output.assets[i].amount` for all i.
+	 * Cross-chain: a bid is valid if `fillOptions.outputs[i].amount >= order.output.assets[i].amount` for all i.
+	 * Same-chain: a bid is valid if each requested output is present and has a strictly positive amount.
 	 * USD value is calculated using USDC/USDT at $1 and WETH price fetched via swap.
 	 */
 	private async validateAndSortBids(
@@ -1603,6 +1664,7 @@ export class IntentGatewayV2 {
 		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
 
 		const destChain = hexToString(order.destination)
+		const isSameChain = order.source === order.destination
 
 		const wethAddress = this.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset.toLowerCase()
 		const usdcAddress = this.dest.configService.getUsdcAsset(destChain).toLowerCase()
@@ -1661,12 +1723,29 @@ export class IntentGatewayV2 {
 
 				let isValid = true
 				for (let i = 0; i < order.output.assets.length; i++) {
-					const requiredAmount = order.output.assets[i].amount
-					const bidAmount = bidOutputs[i]?.amount ?? 0n
+					const requiredAsset = order.output.assets[i]
+					const bidOutput = bidOutputs[i]
 
-					if (bidAmount < requiredAmount) {
+					// Require the bid to provide an entry for each requested output
+					if (!bidOutput) {
 						isValid = false
 						break
+					}
+
+					const bidAmount = bidOutput.amount
+
+					if (isSameChain) {
+						// Same-chain: allow partial / over-fills but require strictly positive amounts
+						if (bidAmount <= 0n) {
+							isValid = false
+							break
+						}
+					} else {
+						// Cross-chain: require full-fill semantics
+						if (bidAmount < requiredAsset.amount) {
+							isValid = false
+							break
+						}
 					}
 				}
 
@@ -1706,7 +1785,8 @@ export class IntentGatewayV2 {
 	 * Simulates select + fillOrder to verify execution will succeed.
 	 *
 	 * No state overrides are used - the solver should already have tokens and approvals.
-	 * The contract validates that outputs >= order.output.assets.
+	 * Cross-chain: the contract enforces full-fill semantics (outputs >= order.output.assets).
+	 * Same-chain: the contract may emit multiple PartialFill events plus a final OrderFilled as the order is filled.
 	 */
 	private async simulateAndValidate(
 		order: OrderV2,
@@ -2017,7 +2097,7 @@ export class IntentGatewayV2 {
 					abi: IntentGatewayV2ABI,
 					address: intentGatewayV2Address,
 					functionName: "calculateCommitmentSlotHash",
-					args: [orderId],
+					args: [orderId as HexString],
 				})) as HexString
 
 				const proofHex = await this.dest.queryStateProof(latestHeight, [slotHash], intentGatewayV2Address)
