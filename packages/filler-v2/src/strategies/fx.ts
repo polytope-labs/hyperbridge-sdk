@@ -19,6 +19,9 @@ import { FillerPricePolicy } from "@/config/interpolated-curve"
 import { Decimal } from "decimal.js"
 import { SupportedTokenType } from "@/strategies/base"
 import { ERC20_ABI } from "@/config/abis/ERC20"
+import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
+import { encodeFunctionData, maxUint256 } from "viem"
+import { encodeERC7821ExecuteBatch, type ERC7821Call } from "@hyperbridge/sdk"
 
 /**
  * Strategy for same-chain swaps between stablecoins (USDC/USDT) and cNGN.
@@ -230,9 +233,6 @@ export class FXFiller implements FillerStrategy {
 				}
 			}
 
-			// Ensure tokens are approved before submitting bid
-			await this.contractService.approveTokensIfNeeded(order)
-
 			return await this.submitBid(order, startTime, intentsCoprocessor)
 		} catch (error) {
 			this.logger.error({ err: error }, "Error executing same-chain swap order")
@@ -272,10 +272,15 @@ export class FXFiller implements FillerStrategy {
 			throw new Error(`No cached filler outputs for order ${order.id}. Call calculateProfitability first.`)
 		}
 
+		// Build optional batched calldata that includes any required ERC20 approvals
+		// followed by the fillOrder call, executed via ERC-7821.
+		const approvalAndFillCalldata = await this.buildApprovalAndFillCalldata(order, cachedFillerOutputs)
+
 		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
 			order,
 			entryPointAddress,
 			solverAccountAddress,
+			approvalAndFillCalldata,
 		)
 
 		const bidResult = await intentsCoprocessor.submitBid(commitment, userOp)
@@ -305,6 +310,92 @@ export class FXFiller implements FillerStrategy {
 	// =========================================================================
 	// Private — Helpers
 	// =========================================================================
+
+	/**
+	 * Builds ERC-7821 calldata that:
+	 * 1) Performs any required ERC20 approvals to IntentGatewayV2
+	 * 2) Calls fillOrder with the previously computed filler outputs.
+	 *
+	 * If no approvals are required, this returns undefined so that the SDK
+	 * can fall back to its default single-call fillOrder batching.
+	 */
+	private async buildApprovalAndFillCalldata(
+		order: OrderV2,
+		fillerOutputs: TokenInfoV2[],
+	): Promise<HexString | undefined> {
+		const chain = order.destination
+		const destClient = this.clientManager.getPublicClient(chain)
+		const wallet = privateKeyToAccount(this.privateKey)
+		const walletAddress = wallet.address as HexString
+
+		const cachedEstimate = this.contractService.cacheService.getGasEstimate(order.id!)
+		if (!cachedEstimate) {
+			throw new Error(`No cached gas estimate found for order ${order.id}. Call estimateGasFillPost first.`)
+		}
+
+		const fillOptions: FillOptionsV2 = {
+			relayerFee: cachedEstimate.dispatchFee,
+			nativeDispatchFee: cachedEstimate.nativeDispatchFee,
+			outputs: fillerOutputs,
+		}
+
+		const intentGatewayV2Address = this.configService.getIntentGatewayV2Address(chain)
+
+		// Aggregate required amounts per ERC20 token
+		const perTokenRequired = new Map<string, bigint>()
+		for (const output of fillerOutputs) {
+			const addr = bytes32ToBytes20(output.token)
+			if (addr === ADDRESS_ZERO) continue
+			const key = addr.toLowerCase()
+			perTokenRequired.set(key, (perTokenRequired.get(key) ?? 0n) + output.amount)
+		}
+
+		const feeToken = await this.contractService.getFeeTokenWithDecimals(chain)
+		const key = feeToken.address.toLowerCase()
+		perTokenRequired.set(key, (perTokenRequired.get(key) ?? 0n) + cachedEstimate.totalCostInSourceFeeToken)
+
+		// Check allowances and collect tokens needing approval
+		const calls: ERC7821Call[] = []
+		for (const [tokenAddress, required] of perTokenRequired.entries()) {
+			const allowance = await destClient.readContract({
+				abi: ERC20_ABI,
+				address: tokenAddress as HexString,
+				functionName: "allowance",
+				args: [walletAddress, intentGatewayV2Address],
+			})
+
+			if (allowance < required) {
+				calls.push({
+					target: tokenAddress as HexString,
+					value: 0n,
+					data: encodeFunctionData({
+						abi: ERC20_ABI,
+						functionName: "approve",
+						args: [intentGatewayV2Address, maxUint256],
+					}) as HexString,
+				})
+			}
+		}
+
+		if (calls.length === 0) return undefined
+
+		// Append fillOrder call
+		const nativeOutputValue = fillerOutputs
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+
+		calls.push({
+			target: intentGatewayV2Address,
+			value: nativeOutputValue + fillOptions.nativeDispatchFee,
+			data: encodeFunctionData({
+				abi: INTENT_GATEWAY_V2_ABI,
+				functionName: "fillOrder",
+				args: [order as any, fillOptions as any],
+			}) as HexString,
+		})
+
+		return encodeERC7821ExecuteBatch(calls)
+	}
 
 	private classifyPair(
 		inputToken: string,
