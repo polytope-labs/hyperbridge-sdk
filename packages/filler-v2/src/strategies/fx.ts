@@ -33,6 +33,17 @@ import { encodeERC7821ExecuteBatch, type ERC7821Call } from "@hyperbridge/sdk"
  * 3. Receives the user's escrowed input tokens from the contract
  *
  * The filler manages their own internal rebalancing/swaps outside of order execution.
+ *
+ * This implementation also enforces a per-order USD cap for risk management:
+ * - A maximum order USD value is configured on the constructor.
+ * - The price policy is always evaluated on the capped USD amount.
+ * - The capped USD budget is then allocated across legs in order to determine
+ *   how much the filler is willing to output.
+ * - Actual outputs are further limited by the filler's real token balances.
+ *
+ * Because the IntentGateway releases inputs proportionally to the fraction of
+ * outputs provided, this allows safe partial fills (and even overfills relative
+ * to the user's requested outputs) without additional on-chain logic here.
  */
 export class FXFiller implements FillerStrategy {
 	name = "FXFiller"
@@ -44,14 +55,28 @@ export class FXFiller implements FillerStrategy {
 	/** cNGN price policy in USD as a function of order USD value */
 	private pricePolicy: FillerPricePolicy
 	private cNgnDecimals: number
+	private maxOrderUsd: Decimal
 	private logger = getLogger("fx-filler")
 
+	/**
+	 * @param privateKey         Filler's private key used to sign UserOps.
+	 * @param configService      Network/config provider for addresses and decimals.
+	 * @param clientManager      Used to get viem PublicClients for chains.
+	 * @param contractService    Shared contract interaction service.
+	 * @param pricePolicy        cNGN price curve as a function of order USD value.
+	 * @param maxOrderUsdStr     Maximum USD value this filler is willing to fill per order.
+	 *                            Example: "5000" means, even if the order is for $10,000,
+	 *                            the filler will only size its outputs as if the order were $5,000.
+	 * @param cNgnDecimals       Decimals for the cNGN token on the destination chain.
+	 * @param bidStorage         Optional storage for submitted bids.
+	 */
 	constructor(
 		privateKey: HexString,
 		configService: FillerConfigService,
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
 		pricePolicy: FillerPricePolicy,
+		maxOrderUsdStr: string,
 		cNgnDecimals: number,
 		bidStorage?: BidStorageService,
 	) {
@@ -62,6 +87,10 @@ export class FXFiller implements FillerStrategy {
 		this.bidStorage = bidStorage
 		this.pricePolicy = pricePolicy
 		this.cNgnDecimals = cNgnDecimals
+		this.maxOrderUsd = new Decimal(maxOrderUsdStr)
+		if (this.maxOrderUsd.lte(0)) {
+			throw new Error("FXFiller maxOrderUsd must be greater than 0")
+		}
 	}
 
 	async canFill(order: OrderV2): Promise<boolean> {
@@ -95,6 +124,22 @@ export class FXFiller implements FillerStrategy {
 		}
 	}
 
+	/**
+	 * Evaluates whether an order is profitable to fill under the configured
+	 * per-order USD cap and the filler's current token balances.
+	 *
+	 * High-level flow:
+	 * - Compute the total USD value of the order on the stable side.
+	 * - Cap this at `maxOrderUsd` to get a capped USD budget.
+	 * - Ask the price policy for a cNGN price at that capped USD.
+	 * - Walk each (input, output) leg in order, allocating from the capped USD
+	 *   budget and computing how much the filler is willing to output.
+	 * - Further cap each leg by the filler's current token balance.
+	 * - Cache the resulting outputs for later use in `executeOrder`.
+	 *
+	 * Note: we may intentionally overfill relative to the user's requested
+	 * outputs if the price policy makes that attractive. This is how we stay competitive.
+	 */
 	async calculateProfitability(order: OrderV2): Promise<number> {
 		try {
 			const chain = order.source
@@ -105,7 +150,7 @@ export class FXFiller implements FillerStrategy {
 			const balanceCache = new Map<string, bigint>()
 
 			// Compute USD value from the stable side (for price lookup).
-			let stableUsdValue = new Decimal(0)
+			let totalOrderUsd = new Decimal(0)
 			for (let i = 0; i < order.inputs.length; i++) {
 				const pair = this.classifyPair(order.inputs[i].token, order.output.assets[i].token, chain)!
 				const sd =
@@ -114,14 +159,29 @@ export class FXFiller implements FillerStrategy {
 						: this.configService.getUsdtDecimals(chain)
 
 				if (pair.inputIsStable) {
-					stableUsdValue = stableUsdValue.plus(new Decimal(formatUnits(order.inputs[i].amount, sd)))
+					totalOrderUsd = totalOrderUsd.plus(new Decimal(formatUnits(order.inputs[i].amount, sd)))
 				} else {
-					stableUsdValue = stableUsdValue.plus(new Decimal(formatUnits(order.output.assets[i].amount, sd)))
+					totalOrderUsd = totalOrderUsd.plus(new Decimal(formatUnits(order.output.assets[i].amount, sd)))
 				}
 			}
 
-			const cNgnPriceUsd = this.pricePolicy.getPrice(stableUsdValue)
+			const cappedOrderUsd = Decimal.min(totalOrderUsd, this.maxOrderUsd)
+			if (cappedOrderUsd.lte(0)) {
+				this.logger.info(
+					{
+						orderId: order.id,
+						orderValueUsdFull: totalOrderUsd.toString(),
+						orderValueUsdCapped: cappedOrderUsd.toString(),
+						maxOrderUsd: this.maxOrderUsd.toString(),
+					},
+					"Skipping order: capped USD value is non-positive",
+				)
+				return 0
+			}
+
+			const cNgnPriceUsd = this.pricePolicy.getPrice(cappedOrderUsd)
 			const fillerOutputs: TokenInfoV2[] = []
+			let remainingUsd = cappedOrderUsd
 
 			for (let i = 0; i < order.inputs.length; i++) {
 				const input = order.inputs[i]
@@ -133,51 +193,27 @@ export class FXFiller implements FillerStrategy {
 						? this.configService.getUsdcDecimals(chain)
 						: this.configService.getUsdtDecimals(chain)
 
-				let fillerMaxOutput: bigint
+				const legResult = this.computeLegPolicyOutput(
+					input.amount,
+					output.amount,
+					pair.inputIsStable,
+					stableDecimals,
+					remainingUsd,
+					cNgnPriceUsd,
+				)
 
-				if (pair.inputIsStable) {
-					const inputUsd = new Decimal(formatUnits(input.amount, stableDecimals))
-					const cNgnFromInput = inputUsd.div(cNgnPriceUsd)
-					fillerMaxOutput = BigInt(
-						cNgnFromInput.mul(new Decimal(10).pow(this.cNgnDecimals)).floor().toFixed(0),
-					)
-				} else {
-					const cNgnUsd = cNgnPriceUsd.mul(new Decimal(formatUnits(input.amount, this.cNgnDecimals)))
-					fillerMaxOutput = BigInt(cNgnUsd.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0))
+				if (!legResult) {
+					continue
 				}
 
-				if (output.amount > fillerMaxOutput) {
-					this.logger.info(
-						{
-							orderId: order.id,
-							userExpects: output.amount.toString(),
-							fillerWillProvide: fillerMaxOutput.toString(),
-							pricePolicyUsd: cNgnPriceUsd.toString(),
-						},
-						"User expects more than filler can provide at policy price",
-					)
-					return 0
-				}
+				const { usdUsed, policyMaxOutput } = legResult
+				remainingUsd = remainingUsd.minus(usdUsed)
 
 				// Cap by actual available balance for this token on the filler side.
 				const tokenAddress = bytes32ToBytes20(output.token).toLowerCase()
-				let balance = balanceCache.get(tokenAddress)
+				const balance = await this.getAndCacheBalance(tokenAddress, walletAddress, destClient, balanceCache)
 
-				if (balance === undefined) {
-					if (tokenAddress === ADDRESS_ZERO.toLowerCase()) {
-						balance = await destClient.getBalance({ address: walletAddress })
-					} else {
-						balance = await destClient.readContract({
-							abi: ERC20_ABI,
-							address: tokenAddress as HexString,
-							functionName: "balanceOf",
-							args: [walletAddress],
-						})
-					}
-					balanceCache.set(tokenAddress, balance)
-				}
-
-				const finalOutputAmount = balance > fillerMaxOutput ? fillerMaxOutput : balance
+				const finalOutputAmount = balance > policyMaxOutput ? policyMaxOutput : balance
 
 				if (finalOutputAmount === 0n) {
 					this.logger.info(
@@ -186,9 +222,9 @@ export class FXFiller implements FillerStrategy {
 							token: output.token,
 							fillerBalance: balance.toString(),
 						},
-						"Skipping order: no available balance for required output token",
+						"Skipping leg: no available balance for required output token",
 					)
-					return 0
+					continue
 				}
 
 				// Decrement remaining balance for this token so repeated outputs share the same pool.
@@ -196,6 +232,23 @@ export class FXFiller implements FillerStrategy {
 				balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
 
 				fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
+
+				if (remainingUsd.lte(0)) {
+					break
+				}
+			}
+
+			if (fillerOutputs.length === 0) {
+				this.logger.info(
+					{
+						orderId: order.id,
+						orderValueUsdFull: totalOrderUsd.toString(),
+						orderValueUsdCapped: cappedOrderUsd.toString(),
+						maxOrderUsd: this.maxOrderUsd.toString(),
+					},
+					"Skipping order: no outputs after applying USD cap and balance constraints",
+				)
+				return 0
 			}
 
 			this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
@@ -207,7 +260,9 @@ export class FXFiller implements FillerStrategy {
 			this.logger.info(
 				{
 					orderId: order.id,
-					orderValueUsd: stableUsdValue.toString(),
+					orderValueUsdFull: totalOrderUsd.toString(),
+					orderValueUsdCapped: cappedOrderUsd.toString(),
+					maxOrderUsd: this.maxOrderUsd.toString(),
 					cNgnPriceUsd: cNgnPriceUsd.toString(),
 					feeProfit: formatUnits(totalProfit, feeTokenDecimals),
 					profitable: totalProfit > 0n,
@@ -222,6 +277,14 @@ export class FXFiller implements FillerStrategy {
 		}
 	}
 
+	/**
+	 * Executes an order by submitting a bid via the IntentsCoprocessor.
+	 *
+	 * Assumes that `calculateProfitability` has already been called for the
+	 * given order so that filler outputs are cached in `contractService`.
+	 * This method only orchestrates the bid construction and submission; the
+	 * actual token movements are handled on-chain by the IntentGateway.
+	 */
 	async executeOrder(order: OrderV2, intentsCoprocessor?: IntentsCoprocessor): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
@@ -248,9 +311,13 @@ export class FXFiller implements FillerStrategy {
 	// =========================================================================
 
 	/**
-	 * Prepares and submits a bid UserOp to Hyperbridge.
-	 * Since the filler holds both tokens, no custom batch calldata is needed —
-	 * the standard fillOrder flow handles token delivery and escrow release.
+	 * Prepares and submits a bid UserOp to Hyperbridge for the given order.
+	 *
+	 * Uses the filler outputs previously cached by `calculateProfitability`
+	 * to build optional ERC20 approvals plus a `fillOrder` call (via
+	 * `buildApprovalAndFillCalldata`), wraps them in a UserOp, and submits
+	 * through the provided `IntentsCoprocessor`. Bid metadata is persisted
+	 * to `BidStorageService` when available.
 	 */
 	private async submitBid(
 		order: OrderV2,
@@ -310,6 +377,81 @@ export class FXFiller implements FillerStrategy {
 	// =========================================================================
 	// Private — Helpers
 	// =========================================================================
+
+	/**
+	 * Given a single (input, output) leg and the remaining capped USD budget,
+	 * computes how much USD to allocate to this leg and the corresponding
+	 * maximum output amount according to the price policy.
+	 *
+	 * Returns `null` when this leg cannot consume any of the remaining USD
+	 * budget (e.g. the cap has already been exhausted).
+	 */
+	private computeLegPolicyOutput(
+		inputAmount: bigint,
+		outputAmount: bigint,
+		inputIsStable: boolean,
+		stableDecimals: number,
+		remainingUsd: Decimal,
+		cNgnPriceUsd: Decimal,
+	): { usdUsed: Decimal; policyMaxOutput: bigint } | null {
+		let legMaxUsd: Decimal
+		if (inputIsStable) {
+			legMaxUsd = new Decimal(formatUnits(inputAmount, stableDecimals))
+		} else {
+			legMaxUsd = new Decimal(formatUnits(outputAmount, stableDecimals))
+		}
+
+		const usdForLeg = Decimal.min(legMaxUsd, remainingUsd)
+		if (usdForLeg.lte(0)) {
+			return null
+		}
+
+		let policyMaxOutput: bigint
+		if (inputIsStable) {
+			const cNgnFromAlloc = usdForLeg.div(cNgnPriceUsd)
+			policyMaxOutput = BigInt(cNgnFromAlloc.mul(new Decimal(10).pow(this.cNgnDecimals)).floor().toFixed(0))
+		} else {
+			policyMaxOutput = BigInt(usdForLeg.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0))
+		}
+
+		return { usdUsed: usdForLeg, policyMaxOutput }
+	}
+
+	/**
+	 * Reads and caches the filler's balance for a token on the destination chain.
+	 *
+	 * Normalizes the token address, checks an in-memory cache, and only hits
+	 * the chain (native `getBalance` or ERC20 `balanceOf`) on a cache miss.
+	 * This allows multiple legs within a single profitability evaluation to
+	 * share the same balance pool.
+	 */
+	private async getAndCacheBalance(
+		tokenAddressLower: string,
+		walletAddress: HexString,
+		destClient: any,
+		balanceCache: Map<string, bigint>,
+	): Promise<bigint> {
+		const key = tokenAddressLower.toLowerCase()
+		const cached = balanceCache.get(key)
+		if (cached !== undefined) {
+			return cached
+		}
+
+		let balance: bigint
+		if (key === ADDRESS_ZERO.toLowerCase()) {
+			balance = await destClient.getBalance({ address: walletAddress })
+		} else {
+			balance = await destClient.readContract({
+				abi: ERC20_ABI,
+				address: key as HexString,
+				functionName: "balanceOf",
+				args: [walletAddress],
+			})
+		}
+
+		balanceCache.set(key, balance)
+		return balance
+	}
 
 	/**
 	 * Builds ERC-7821 calldata that:
