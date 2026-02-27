@@ -316,7 +316,7 @@ export class IntentGatewayV2 {
 				? await this.source.sendAndConfirmTronTransaction(signedTransaction)
 				: await this.source.client.sendRawTransaction({
 						serializedTransaction: signedTransaction as HexString,
-				  })
+					})
 
 		console.log("Order placed transaction sent:", txHash)
 
@@ -670,7 +670,7 @@ export class IntentGatewayV2 {
 					? await this.source.sendAndConfirmTronTransaction(signedTransaction)
 					: await this.source.client.sendRawTransaction({
 							serializedTransaction: signedTransaction as HexString,
-					  })
+						})
 
 			const receipt = await this.source.client.waitForTransactionReceipt({
 				hash: txHash,
@@ -1179,24 +1179,8 @@ export class IntentGatewayV2 {
 			args: [transformOrderForContract(orderForEstimation), fillOptions],
 		}) as HexString
 
-		// Get nonce from EntryPoint (2D nonce with commitment as key)
-		const nonce = await this.dest.client.readContract({
-			address: entryPointAddress,
-			abi: [
-				{
-					inputs: [
-						{ name: "sender", type: "address" },
-						{ name: "key", type: "uint192" },
-					],
-					name: "getNonce",
-					outputs: [{ name: "nonce", type: "uint256" }],
-					stateMutability: "view",
-					type: "function",
-				},
-			],
-			functionName: "getNonce",
-			args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
-		})
+		// Hardcoded as 0 since we are using a new key
+		const nonce = 0n
 
 		// Initialize gas values with fallbacks
 		let callGasLimit: bigint = 500_000n
