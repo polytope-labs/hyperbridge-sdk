@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Fix error generating mmr proof because of premature height
+- Prevent stream from constructing hyperbridge finalized event when the request has been timeout on hyperbridge
 
 ## 1.6.1
 
