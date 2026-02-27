@@ -36,6 +36,7 @@ import {
 	GET_RESPONSE_BY_REQUEST_ID,
 	LATEST_STATE_MACHINE_UPDATE,
 	STATE_MACHINE_UPDATES_BY_HEIGHT,
+	STATE_MACHINE_UPDATES_BY_HEIGHT_DESC,
 	STATE_MACHINE_UPDATES_BY_TIMESTAMP,
 } from "@/queries"
 import {
@@ -273,27 +274,42 @@ export class IndexerClient {
 		const logger = this.logger.withTag("[queryStateMachineUpdateByHeight]()")
 		const message = `querying StateMachineId(${statemachineId}) update by Height(${height}) in chain Chain(${chain})`
 
-		const ascResponse = await this.withRetry(
-			() => {
-				return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
-					statemachineId,
-					height,
-					chain,
-				})
-			},
-			{ logger: logger, logMessage: message },
-		)
+		// Query both ASC (for earliest timestamp) and DESC (for latest state machine height)
+		const [ascResponse, descResponse] = await Promise.all([
+			this.withRetry(
+				() => {
+					return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT, {
+						statemachineId,
+						height,
+						chain,
+					})
+				},
+				{ logger: logger, logMessage: `${message} (ASC)` },
+			),
+			this.withRetry(
+				() => {
+					return this.client.request<StateMachineResponse>(STATE_MACHINE_UPDATES_BY_HEIGHT_DESC, {
+						statemachineId,
+						height,
+						chain,
+					})
+				},
+				{ logger: logger, logMessage: `${message} (DESC)` },
+			),
+		])
 
 		const ascNode = ascResponse?.stateMachineUpdateEvents?.nodes[0]
+		const descNode = descResponse?.stateMachineUpdateEvents?.nodes[0]
 
 		if (!ascNode) {
 			return undefined
 		}
 
 		const timestamp = Math.floor(dateStringtoTimestamp(ascNode.createdAt) / 1000)
+		const stateMachineHeight = descNode?.height ?? ascNode.height
 
 		const combined: StateMachineUpdate = {
-			height: ascNode.height,
+			height: stateMachineHeight,
 			chain: ascNode.chain,
 			blockHash: ascNode.blockHash,
 			blockNumber: ascNode.blockNumber,
@@ -490,6 +506,9 @@ export class IndexerClient {
 
 			if (!hyperbridgeDelivered) return addFinalityEvents(request)
 		}
+
+		const isHyperbridgeTimedOut = request.statuses.some((s) => s.status === TimeoutStatus.HYPERBRIDGE_TIMED_OUT)
+		if (isHyperbridgeTimedOut) return addFinalityEvents(request)
 
 		// no need to query finality event if destination is hyperbridge
 		if (request.dest === this.config.hyperbridge.config.stateMachineId) {
@@ -1275,6 +1294,7 @@ export class IndexerClient {
 					if (request.source === this.config.hyperbridge.config.stateMachineId) {
 						return
 					}
+
 					// Get the latest state machine update for hyperbridge on the destination chain
 					const hyperbridgeFinalized = await this.waitOrAbort({
 						signal,
