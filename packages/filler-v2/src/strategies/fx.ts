@@ -8,6 +8,7 @@ import {
 	TokenInfoV2,
 	IntentsCoprocessor,
 	adjustDecimals,
+	ADDRESS_ZERO,
 } from "@hyperbridge/sdk"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
@@ -17,6 +18,7 @@ import { getLogger } from "@/services/Logger"
 import { FillerPricePolicy } from "@/config/interpolated-curve"
 import { Decimal } from "decimal.js"
 import { SupportedTokenType } from "@/strategies/base"
+import { ERC20_ABI } from "@/config/abis/ERC20"
 
 /**
  * Strategy for same-chain swaps between stablecoins (USDC/USDT) and cNGN.
@@ -95,6 +97,10 @@ export class FXFiller implements FillerStrategy {
 			const chain = order.source
 			const { decimals: feeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(chain)
 
+			const destClient = this.clientManager.getPublicClient(chain)
+			const walletAddress = privateKeyToAccount(this.privateKey).address as HexString
+			const balanceCache = new Map<string, bigint>()
+
 			// Compute USD value from the stable side (for price lookup).
 			let stableUsdValue = new Decimal(0)
 			for (let i = 0; i < order.inputs.length; i++) {
@@ -150,7 +156,43 @@ export class FXFiller implements FillerStrategy {
 					return 0
 				}
 
-				fillerOutputs.push({ token: output.token, amount: fillerMaxOutput })
+				// Cap by actual available balance for this token on the filler side.
+				const tokenAddress = bytes32ToBytes20(output.token).toLowerCase()
+				let balance = balanceCache.get(tokenAddress)
+
+				if (balance === undefined) {
+					if (tokenAddress === ADDRESS_ZERO.toLowerCase()) {
+						balance = await destClient.getBalance({ address: walletAddress })
+					} else {
+						balance = await destClient.readContract({
+							abi: ERC20_ABI,
+							address: tokenAddress as HexString,
+							functionName: "balanceOf",
+							args: [walletAddress],
+						})
+					}
+					balanceCache.set(tokenAddress, balance)
+				}
+
+				const finalOutputAmount = balance > fillerMaxOutput ? fillerMaxOutput : balance
+
+				if (finalOutputAmount === 0n) {
+					this.logger.info(
+						{
+							orderId: order.id,
+							token: output.token,
+							fillerBalance: balance.toString(),
+						},
+						"Skipping order: no available balance for required output token",
+					)
+					return 0
+				}
+
+				// Decrement remaining balance for this token so repeated outputs share the same pool.
+				const remaining = balance - finalOutputAmount
+				balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
+
+				fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
 			}
 
 			this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
