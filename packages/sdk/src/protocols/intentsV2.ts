@@ -349,6 +349,84 @@ export class IntentGatewayV2 {
 		return order
 	}
 
+	/**
+	 * End-to-end order execution: estimates fees (if empty), places the order, then executes the intent.
+	 *
+	 * Flow:
+	 * 1. If `order.fees` is empty, calls `estimateFillOrderV2` and sets `order.fees = totalGasInFeeToken`
+	 * 2. Yields `{ calldata, sessionPrivateKey }` for the caller to sign and broadcast
+	 * 3. Receives the signed transaction via `next(signedTransaction)`
+	 * 4. Yields status updates from the intent order execution flow
+	 *
+	 * @param order - The order to execute
+	 * @param options - Optional pass-through for estimateFillOrderV2 and executeIntentOrder
+	 * @yields First: `{ calldata, sessionPrivateKey }` for signing; then: `IntentOrderStatusUpdate` status updates
+	 * @example
+	 * ```typescript
+	 * const gen = gateway.execute(order)
+	 * let result = await gen.next()
+	 * if (result.value && 'calldata' in result.value) {
+	 *   const { calldata, sessionPrivateKey } = result.value
+	 *   const signedTx = await wallet.signTransaction(await publicClient.prepareTransactionRequest({
+	 *     to: gatewayAddr, data: calldata, account: wallet.account, chain: wallet.chain,
+	 *   }))
+	 *   result = await gen.next(signedTx)
+	 * }
+	 * while (!result.done) {
+	 *   if (result.value && 'status' in result.value) console.log(result.value.status)
+	 *   result = await gen.next()
+	 * }
+	 * ```
+	 */
+	async *execute(
+		order: OrderV2,
+		options?: {
+			maxPriorityFeePerGasBumpPercent?: number
+			maxFeePerGasBumpPercent?: number
+			minBids?: number
+			bidTimeoutMs?: number
+			pollIntervalMs?: number
+		},
+	): AsyncGenerator<
+		{ calldata: HexString; sessionPrivateKey: HexString } | IntentOrderStatusUpdate,
+		void,
+		HexString
+	> {
+		if (!order.fees || order.fees === 0n) {
+			const estimate = await this.estimateFillOrderV2({
+				order,
+				maxPriorityFeePerGasBumpPercent: options?.maxPriorityFeePerGasBumpPercent,
+				maxFeePerGasBumpPercent: options?.maxFeePerGasBumpPercent,
+			})
+			order.fees = estimate.totalGasInFeeToken
+		}
+
+		const placeOrderGen = this.placeOrder(order)
+		const placeOrderFirst = await placeOrderGen.next()
+		if (placeOrderFirst.done) {
+			throw new Error("placeOrder generator completed without yielding")
+		}
+		const { calldata, sessionPrivateKey } = placeOrderFirst.value
+
+		const signedTransaction = yield { calldata, sessionPrivateKey }
+
+		const placeOrderSecond = await placeOrderGen.next(signedTransaction)
+		if (placeOrderSecond.done === false) {
+			throw new Error("placeOrder generator yielded unexpectedly after signing")
+		}
+		const finalizedOrder = placeOrderSecond.value as OrderV2
+
+		for await (const status of this.executeIntentOrder({
+			order: finalizedOrder,
+			sessionPrivateKey,
+			minBids: options?.minBids,
+			bidTimeoutMs: options?.bidTimeoutMs,
+			pollIntervalMs: options?.pollIntervalMs,
+		})) {
+			yield status
+		}
+	}
+
 	// =========================================================================
 	// Order Lifecycle - Execution
 	// =========================================================================

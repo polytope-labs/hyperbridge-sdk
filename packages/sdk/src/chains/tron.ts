@@ -158,8 +158,4 @@ export class TronChain implements IChain {
 	estimateGas(request: IPostRequest): Promise<{ gas: bigint; postRequestCalldata: HexString }> {
 		return this.evm.estimateGas(request)
 	}
-
-	// -------------------------------------------------------------------------
-	// Tron-specific helpers
-	// -------------------------------------------------------------------------
 }

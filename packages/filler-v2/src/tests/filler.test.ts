@@ -120,26 +120,38 @@ describe("Filler V2 - Solver Selection ON", () => {
 		const bundlerUrl = process.env.BUNDLER_URL
 		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		const generator = userSdkHelper.placeOrder(order)
-		const firstResult = await generator.next()
-		const { calldata, sessionPrivateKey } = firstResult.value as {
-			calldata: HexString
-			sessionPrivateKey: HexString
+		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
+		let result = await gen.next()
+		if (result.value && "calldata" in result.value) {
+			const { calldata } = result.value
+			const signedTx = (await bscWalletClient.signTransaction(
+				(await bscPublicClient.prepareTransactionRequest({
+					to: bscIntentGatewayV2.address,
+					data: calldata,
+					account: bscWalletClient.account!,
+					chain: bscWalletClient.chain,
+				})) as any,
+			)) as HexString
+			result = await gen.next(signedTx)
 		}
-
-		const signedTransaction = await bscWalletClient.signTransaction(
-			(await bscPublicClient.prepareTransactionRequest({
-				to: bscIntentGatewayV2.address,
-				data: calldata,
-				account: bscWalletClient.account!,
-				chain: bscWalletClient.chain,
-			})) as any,
-		)
-
-		const secondResult = await generator.next(signedTransaction as HexString)
-		order = secondResult.value as OrderV2
-
-		const { userOpHash, selectedSolver } = await executeOrderFlow(userSdkHelper, order, sessionPrivateKey)
+		let userOpHash: HexString | undefined
+		let selectedSolver: HexString | undefined
+		while (!result.done) {
+			if (result.value && "status" in result.value) {
+				const status = result.value
+				if (status.status === "BID_SELECTED") {
+					selectedSolver = status.metadata.selectedSolver as HexString
+					userOpHash = status.metadata.userOpHash as HexString
+				}
+				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
+					console.log("Transaction hash:", status.metadata.transactionHash)
+				}
+				if (status.status === "FAILED") {
+					throw new Error(`Order execution failed: ${status.metadata.error}`)
+				}
+			}
+			result = await gen.next()
+		}
 		expect(userOpHash).toBeDefined()
 		expect(selectedSolver).toBeDefined()
 
@@ -330,19 +342,31 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 		const bundlerUrl = process.env.BUNDLER_URL
 		const userSdkHelper = new IntentGatewayV2(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		const generator = userSdkHelper.placeOrder(order)
-		const firstResult = await generator.next()
-		const { calldata, sessionPrivateKey } = firstResult.value as {
-			calldata: HexString
-			sessionPrivateKey: HexString
+		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
+		let result = await gen.next()
+		if (result.value && "calldata" in result.value) {
+			const { calldata } = result.value
+			const signedTx = (await signTronTransaction(tronWeb, tronIntentGatewayAddress, calldata)) as HexString
+			result = await gen.next(signedTx)
 		}
-
-		const signedTransaction = await signTronTransaction(tronWeb, tronIntentGatewayAddress, calldata)
-
-		const secondResult = await generator.next(signedTransaction)
-		order = secondResult.value as OrderV2
-
-		const { userOpHash, selectedSolver } = await executeOrderFlow(userSdkHelper, order, sessionPrivateKey, 240_000)
+		let userOpHash: HexString | undefined
+		let selectedSolver: HexString | undefined
+		while (!result.done) {
+			if (result.value && "status" in result.value) {
+				const status = result.value
+				if (status.status === "BID_SELECTED") {
+					selectedSolver = status.metadata.selectedSolver as HexString
+					userOpHash = status.metadata.userOpHash as HexString
+				}
+				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
+					console.log("Transaction hash:", status.metadata.transactionHash)
+				}
+				if (status.status === "FAILED") {
+					throw new Error(`Order execution failed: ${status.metadata.error}`)
+				}
+			}
+			result = await gen.next()
+		}
 		expect(userOpHash).toBeDefined()
 		expect(selectedSolver).toBeDefined()
 
@@ -397,42 +421,6 @@ function createIntentFiller(
 		contractService,
 		privateKey,
 	)
-}
-
-async function executeOrderFlow(
-	sdkHelper: IntentGatewayV2,
-	order: OrderV2,
-	sessionPrivateKey: HexString,
-	bidTimeoutMs = 120_000,
-): Promise<{ userOpHash: HexString; selectedSolver: HexString }> {
-	let userOpHash: HexString | undefined
-	let selectedSolver: HexString | undefined
-
-	for await (const status of sdkHelper.executeIntentOrder({
-		order,
-		sessionPrivateKey,
-		minBids: 1,
-		bidTimeoutMs,
-		pollIntervalMs: 5_000,
-	})) {
-		switch (status.status) {
-			case "BIDS_RECEIVED":
-				console.log(`Received ${status.metadata.bidCount} bid(s)`)
-				break
-			case "BID_SELECTED":
-				selectedSolver = status.metadata.selectedSolver as HexString
-				userOpHash = status.metadata.userOpHash as HexString
-				console.log(`Selected solver: ${selectedSolver}`)
-				break
-			case "USEROP_SUBMITTED":
-				console.log(`UserOp submitted, tx: ${status.metadata.transactionHash}`)
-				break
-			case "FAILED":
-				throw new Error(`Order execution failed: ${status.metadata.error}`)
-		}
-	}
-
-	return { userOpHash: userOpHash!, selectedSolver: selectedSolver! }
 }
 
 async function pollForOrderFilled(
