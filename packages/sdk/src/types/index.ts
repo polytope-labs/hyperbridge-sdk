@@ -1255,8 +1255,8 @@ export interface DispatchInfoV2 {
 export interface OrderV2 {
 	id?: string
 	user: HexString
-	source: string
-	destination: string
+	source: HexString
+	destination: HexString
 	deadline: bigint
 	nonce: bigint
 	fees: bigint
@@ -1306,11 +1306,12 @@ export interface SubmitBidOptions {
 	maxFeePerGas: bigint
 	// Priority fee (tip)
 	maxPriorityFeePerGas: bigint
+	/** Pre-built ERC-7821 calldata. If provided, overrides the default fillOrder-only encoding. */
+	callData?: HexString
 }
 
 export interface EstimateFillOrderV2Params {
 	order: OrderV2
-	solverPrivateKey: HexString
 	/**
 	 * Optional percentage to bump maxPriorityFeePerGas.
 	 * This is added on top of the base gasPrice.
@@ -1445,6 +1446,7 @@ export interface SelectBidResult {
 	solverAddress: HexString
 	commitment: HexString
 	txnHash?: HexString
+	fillStatus?: "full" | "partial"
 }
 
 /** Options for executing an intent order */

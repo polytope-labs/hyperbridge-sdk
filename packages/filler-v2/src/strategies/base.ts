@@ -1,5 +1,8 @@
 import { OrderV2, ExecutionResult, IntentsCoprocessor } from "@hyperbridge/sdk"
 
+/** Supported token types for same-token execution */
+export type SupportedTokenType = "USDT" | "USDC"
+
 export interface FillerStrategy {
 	name: string
 

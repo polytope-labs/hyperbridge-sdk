@@ -27,12 +27,14 @@ export {
 	orderV2Commitment,
 	getContractCallInput,
 	calculateBalanceMappingLocation,
+	calculateAllowanceMappingLocation,
 	MOCK_ADDRESS,
 	EvmLanguage,
 } from "@/utils"
 export * from "@/protocols/intents"
 export * from "@/protocols/intentsV2"
 export * from "@/protocols/tokenGateway"
+export { Swap } from "@/utils/swap"
 export * from "@/utils/txEvents"
 export * from "@/utils/tokenGateway"
 export * from "@/utils/xcmGateway"

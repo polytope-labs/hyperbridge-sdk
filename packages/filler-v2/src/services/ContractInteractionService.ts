@@ -4,11 +4,9 @@ import {
 	ADDRESS_ZERO,
 	HexString,
 	bytes32ToBytes20,
-	getGasPriceFromEtherscan,
-	USE_ETHERSCAN_CHAINS,
 	retryPromise,
 	OrderV2,
-	IntentGatewayV2,
+	IntentsV2,
 	EvmChain,
 	getChainId,
 	orderV2Commitment,
@@ -35,7 +33,7 @@ export class ContractInteractionService {
 	private configService: FillerConfigService
 	public cacheService: CacheService
 	private logger = getLogger("contract-service")
-	private sdkHelperCache: Map<string, IntentGatewayV2> = new Map()
+	private sdkHelperCache: Map<string, IntentsV2> = new Map()
 	private solverAccountAddress: HexString
 	private bundlerUrl?: string
 
@@ -57,7 +55,7 @@ export class ContractInteractionService {
 	 * Gets the SDK helper for a given source and destination chain.
 	 * Instances are cached and reused to avoid redundant RPC calls.
 	 */
-	async getSdkHelper(source: string, destination: string): Promise<IntentGatewayV2> {
+	async getIntentsV2(source: string, destination: string): Promise<IntentsV2> {
 		const cacheKey = `${source}:${destination}`
 
 		const cached = this.sdkHelperCache.get(cacheKey)
@@ -79,8 +77,7 @@ export class ContractInteractionService {
 		})
 
 		// Pass bundlerUrl to IntentGatewayV2 for accurate gas estimation via eth_estimateUserOperationGas
-		const helper = new IntentGatewayV2(sourceEvmChain, destinationEvmChain, undefined, this.bundlerUrl)
-		await helper.ensureInitialized()
+		const helper = await IntentsV2.create(sourceEvmChain, destinationEvmChain, undefined, this.bundlerUrl)
 		this.sdkHelperCache.set(cacheKey, helper)
 
 		this.logger.debug(
@@ -105,6 +102,8 @@ export class ContractInteractionService {
 			await this.getTokenDecimals(usdc, destChain)
 			await this.getTokenDecimals(usdt, destChain)
 			for (const sourceChain of chainNames) {
+				// Same-chain intents don't dispatch cross-chain messages, so perByteFee is not needed.
+				// The SDK's estimateFillOrderV2 skips quoteNative for same-chain orders.
 				if (sourceChain === destChain) continue
 				// Check cache before making RPC call to avoid duplicate requests when cache is shared
 				const cachedPerByteFee = this.cacheService.getPerByteFee(destChain, sourceChain)
@@ -250,11 +249,10 @@ export class ContractInteractionService {
 					callGasLimit: cachedEstimate.callGasLimit,
 				}
 			}
-			const sdkHelper = await this.getSdkHelper(order.source, order.destination)
+			const sdkHelper = await this.getIntentsV2(order.source, order.destination)
 			const gasFeeBumpConfig = this.configService.getGasFeeBumpConfig()
 			const estimate = await sdkHelper.estimateFillOrderV2({
 				order,
-				solverPrivateKey: this.privateKey,
 				maxPriorityFeePerGasBumpPercent: gasFeeBumpConfig?.maxPriorityFeePerGasBumpPercent,
 				maxFeePerGasBumpPercent: gasFeeBumpConfig?.maxFeePerGasBumpPercent,
 			})
@@ -417,6 +415,7 @@ export class ContractInteractionService {
 		order: OrderV2,
 		entryPointAddress: HexString,
 		solverAccountAddress: HexString,
+		callData?: HexString,
 	): Promise<{ commitment: HexString; userOp: HexString }> {
 		// Use cached estimate from prior profitability check
 		const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -430,7 +429,7 @@ export class ContractInteractionService {
 			throw new Error(`No cached filler outputs found for order ${order.id}. Call calculateProfitability first.`)
 		}
 
-		const sdkHelper = await this.getSdkHelper(order.source, order.destination)
+		const sdkHelper = await this.getIntentsV2(order.source, order.destination)
 
 		const fillOptions: FillOptionsV2 = {
 			relayerFee: cachedEstimate.dispatchFee,
@@ -452,6 +451,7 @@ export class ContractInteractionService {
 			preVerificationGas: cachedEstimate.preVerificationGas,
 			maxFeePerGas: cachedEstimate.maxFeePerGas,
 			maxPriorityFeePerGas: cachedEstimate.maxPriorityFeePerGas,
+			callData,
 		})
 
 		// Encode the UserOp as bytes for submission to Hyperbridge

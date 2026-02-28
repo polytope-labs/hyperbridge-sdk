@@ -18,9 +18,7 @@ import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
 import { FillerBpsPolicy } from "@/config/interpolated-curve"
-
-/** Supported token types for same-token execution */
-type SupportedTokenType = "USDT" | "USDC"
+import { SupportedTokenType } from "@/strategies/base"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
