@@ -1,4 +1,4 @@
-import type { PublicClient } from "viem"
+import type { PublicClient, TransactionReceipt } from "viem"
 import { TronWeb } from "tronweb"
 
 import type { IChain, IIsmpMessage } from "@/chain"
@@ -116,31 +116,23 @@ export class TronChain implements IChain {
 	 *
 	 * This mirrors the behavior used in IntentGatewayV2 for Tron chains.
 	 */
-	async broadcastTransaction(signedTransaction: any): Promise<HexString> {
+	async broadcastTransaction(signedTransaction: any): Promise<TransactionReceipt> {
 		const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
 		if (!tronReceipt.result) {
 			throw new Error("Tron transaction broadcast failed")
 		}
 
 		const tronTxId = tronReceipt.transaction.txID
-		const maxAttempts = 30
+		const receipt = await this.client.waitForTransactionReceipt({
+			hash: `0x${tronTxId}`,
+			confirmations: 1,
+		})
 
-		for (let i = 0; i < maxAttempts; i++) {
-			const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
-			if (txInfo?.receipt?.result === "SUCCESS") break
-			if (txInfo?.receipt?.result) {
-				throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
-			}
-
-			if (i === maxAttempts - 1) {
-				throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
-			}
-
-			// Wait 3 seconds before re-checking
-			await new Promise((resolve) => setTimeout(resolve, 3_000))
+		if (!receipt) {
+			throw new Error("Tron transaction receipt not found")
 		}
 
-		return `0x${tronTxId}` as HexString
+		return receipt
 	}
 
 	// -------------------------------------------------------------------------

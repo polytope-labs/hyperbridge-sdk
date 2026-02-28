@@ -1,7 +1,7 @@
 import { EvmChain } from "@/chains/evm"
 import { TronChain } from "@/chains/tron"
 import { SubstrateChain } from "@/chains/substrate"
-import type { PublicClient } from "viem"
+import type { PublicClient, TransactionReceipt } from "viem"
 import type {
 	GetResponseStorageValues,
 	HexString,
@@ -205,7 +205,7 @@ export interface IEvmChain extends IChain {
 	quoteNative(request: IPostRequest | IGetRequest, fee: bigint): Promise<bigint>
 	getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }>
 	getPlaceOrderCalldata(txHash: string, intentGatewayAddress: string): Promise<HexString>
-	broadcastTransaction(signedTransaction: any): Promise<HexString>
+	broadcastTransaction(signedTransaction: any): Promise<TransactionReceipt>
 }
 
 /**

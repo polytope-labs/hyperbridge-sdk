@@ -34,7 +34,7 @@ import { tronNile } from "@/configs/chain"
 
 import { flatten, zip } from "lodash-es"
 import { match } from "ts-pattern"
-import type { GetProofParameters, Hex } from "viem"
+import type { GetProofParameters, Hex, TransactionReceipt } from "viem"
 
 import EvmHost from "@/abis/evmHost"
 import evmHost from "@/abis/evmHost"
@@ -656,7 +656,7 @@ export class EvmChain implements IChain {
 		return nonce
 	}
 
-	async broadcastTransaction(signedTransaction: any): Promise<HexString> {
+	async broadcastTransaction(signedTransaction: any): Promise<TransactionReceipt> {
 		const txHash = await this.client.sendRawTransaction({
 			serializedTransaction: signedTransaction as HexString,
 		})
@@ -664,7 +664,11 @@ export class EvmChain implements IChain {
 			hash: txHash,
 			confirmations: 1,
 		})
-		return txHash
+
+		if (!receipt) {
+			throw new Error("Transaction receipt not found")
+		}
+		return receipt
 	}
 }
 

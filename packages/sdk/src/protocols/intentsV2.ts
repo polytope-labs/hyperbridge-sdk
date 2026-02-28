@@ -312,14 +312,11 @@ export class IntentGatewayV2 {
 
 		const signedTransaction = yield { calldata, sessionPrivateKey: privateKey as HexString }
 
-		const txHash = await this.source.broadcastTransaction(signedTransaction)
+		const receipt = await this.source.broadcastTransaction(signedTransaction)
 
-		console.log("Order placed transaction sent:", txHash)
-
-		const receipt = await this.source.client.waitForTransactionReceipt({
-			hash: txHash,
-			confirmations: 1,
-		})
+		console.log(
+			`Place order transaction sent to source chain ${hexToString(order.source)} with hash: ${receipt.transactionHash}`,
+		)
 
 		const events = parseEventLogs({
 			abi: IntentGatewayV2ABI,
@@ -661,12 +658,7 @@ export class IntentGatewayV2 {
 				data: { calldata, to: intentGatewayAddress },
 			}
 
-			const txHash = await this.source.broadcastTransaction(signedTransaction)
-
-			const receipt = await this.source.client.waitForTransactionReceipt({
-				hash: txHash,
-				confirmations: 1,
-			})
+			const receipt = await this.source.broadcastTransaction(signedTransaction)
 
 			const refundEvents = parseEventLogs({
 				abi: IntentGatewayV2ABI,
