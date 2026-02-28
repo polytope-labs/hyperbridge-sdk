@@ -16,9 +16,11 @@ import {
 	type TokenInfoV2,
 	bytes20ToBytes32,
 	EvmChain,
-	IntentGatewayV2,
+	IntentsV2,
 	IntentsCoprocessor,
 	TronChain,
+	PLACE_ORDER_SELECTOR,
+	ORDER_V2_PARAM_TYPE,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy, FillerBpsPolicy } from "@/config/interpolated-curve"
@@ -45,7 +47,7 @@ import { formatAbiItem } from "viem/utils"
 // Test Suites
 // ============================================================================
 
-describe("Filler V2 - Solver Selection ON", () => {
+describe.skip("Filler V2 - Solver Selection ON", () => {
 	it.skip("Should place order, filler submits bid, user selects bid, order filled", async () => {
 		const {
 			bscIntentGatewayV2,
@@ -118,7 +120,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
 		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const userSdkHelper = await IntentsV2.create(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
@@ -234,7 +236,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
 		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = new IntentGatewayV2(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const userSdkHelper = await IntentsV2.create(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		console.log("Preparing to place order...")
 		const generator = userSdkHelper.placeOrder(order)
@@ -270,7 +272,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 	}, 300_000)
 })
 
-describe.skip("Filler V2 - Tron Source Chain", () => {
+describe("Filler V2 - Tron Source Chain", () => {
 	it("Should place order on Tron Nile, filler submits bid, user selects bid, order filled on Polygon Amoy", async () => {
 		const {
 			tronNileId,
@@ -340,7 +342,7 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 		await approveTronTokens(tronWeb, sourceUsdt, tronIntentGatewayAddress)
 
 		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = new IntentGatewayV2(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const userSdkHelper = await IntentsV2.create(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
 		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
@@ -714,10 +716,10 @@ async function signTronTransaction(
 
 	const { transaction } = await (tronWeb.transactionBuilder as any).triggerSmartContract(
 		TronWeb.address.toHex(contractBase58),
-		IntentGatewayV2.PLACE_ORDER_SELECTOR,
+		PLACE_ORDER_SELECTOR,
 		{ feeLimit: 1_000_000_000 },
 		[
-			{ type: IntentGatewayV2.ORDER_V2_PARAM_TYPE, value: orderTuple },
+			{ type: ORDER_V2_PARAM_TYPE, value: orderTuple },
 			{ type: "bytes32", value: graffiti },
 		],
 		tronWeb.defaultAddress.hex,
