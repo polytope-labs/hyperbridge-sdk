@@ -1,9 +1,10 @@
 import type { PublicClient } from "viem"
 import { TronWeb } from "tronweb"
 
-import type { IChain, IIsmpMessage, TronChainExtras } from "@/chain"
+import type { IChain, IIsmpMessage } from "@/chain"
 import { EvmChain, type EvmChainParams } from "@/chains/evm"
 import type { HexString, IGetRequest, IMessage, IPostRequest, StateMachineHeight, StateMachineIdParams } from "@/types"
+import { retryPromise } from "@/utils"
 
 /**
  * Parameters for a Tron-backed chain.
@@ -87,6 +88,26 @@ export class TronChain implements IChain {
 
 	stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
 		return this.evm.stateMachineUpdateTime(stateMachineHeight)
+	}
+
+	/**
+	 * Retrieves top-level calldata from a Tron transaction via TronWeb.
+	 * Only works for direct calls to IntentGateway (not nested/multicall).
+	 * Tron does not support debug_traceTransaction.
+	 */
+	async getPlaceOrderCalldata(txHash: string, _intentGatewayAddress: string): Promise<HexString> {
+		const tx = await retryPromise(() => this.tronWeb.trx.getTransaction(txHash), {
+			maxRetries: 3,
+			backoffMs: 250,
+			logMessage: `Failed to get Tron transaction ${txHash}`,
+		})
+
+		const rawData = (tx?.raw_data?.contract?.[0]?.parameter?.value as any)?.data
+		if (!rawData) {
+			throw new Error(`No calldata found in Tron transaction ${txHash}`)
+		}
+
+		return (rawData.startsWith("0x") ? rawData : `0x${rawData}`) as HexString
 	}
 
 	// -------------------------------------------------------------------------

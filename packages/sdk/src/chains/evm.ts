@@ -53,6 +53,7 @@ import type {
 import {
 	ADDRESS_ZERO,
 	EvmStateProof,
+	getContractCallInput,
 	MmrProof,
 	SubstrateStateProof,
 	calculateMMRSize,
@@ -313,6 +314,17 @@ export class EvmChain implements IChain {
 			args: [{ stateMachineId: BigInt(id), height: stateMachineHeight.height }],
 		})
 		return data
+	}
+
+	/**
+	 * Retrieves the placeOrder calldata from a transaction using debug_traceTransaction.
+	 */
+	async getPlaceOrderCalldata(txHash: string, intentGatewayAddress: string): Promise<HexString> {
+		const callInput = await getContractCallInput(this.publicClient, txHash as HexString, intentGatewayAddress)
+		if (!callInput) {
+			throw new Error(`Failed to extract calldata from trace for tx ${txHash}`)
+		}
+		return callInput
 	}
 
 	/**

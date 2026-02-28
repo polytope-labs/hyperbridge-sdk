@@ -1,6 +1,7 @@
 import { EvmChain } from "@/chains/evm"
 import { TronChain } from "@/chains/tron"
 import { SubstrateChain } from "@/chains/substrate"
+import type { PublicClient } from "viem"
 import type {
 	GetResponseStorageValues,
 	HexString,
@@ -20,17 +21,6 @@ export * from "@/chains/evm"
 export * from "@/chains/substrate"
 export * from "@/chains/intentsCoprocessor"
 export * from "@/chains/tron"
-
-/**
- * Optional Tron-specific capabilities exposed by Tron-backed chains.
- */
-export interface TronChainExtras {
-	/**
-	 * Broadcasts a signed Tron transaction and waits for confirmation,
-	 * returning a 0x-prefixed transaction hash compatible with viem.
-	 */
-	sendAndConfirmTronTransaction(signedTransaction: any): Promise<HexString>
-}
 
 /**
  * Type representing an ISMP message.
@@ -202,10 +192,22 @@ export interface IChain {
 	stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint>
 
 	/**
-	 * Optional Tron-specific capabilities for Tron-backed chains.
-	 * EVM and Substrate chains simply omit this field.
+	 * Underlying viem public client when available (EVM/Tron chains).
+	 * Substrate chains omit this field.
 	 */
-	tron?: TronChainExtras
+	client?: PublicClient
+
+	/**
+	 * Retrieves the placeOrder calldata from a transaction.
+	 * Only supported for EVM and Tron chains; Substrate chains will throw.
+	 */
+	getPlaceOrderCalldata?(txHash: string, intentGatewayAddress: string): Promise<HexString>
+
+	/**
+	 * Broadcasts a signed Tron transaction and waits for confirmation,
+	 * returning a 0x-prefixed transaction hash compatible with viem.
+	 */
+	sendAndConfirmTronTransaction?(signedTransaction: any): Promise<HexString>
 }
 
 /**
@@ -222,36 +224,44 @@ export interface IChain {
  */
 export async function getChain(chainConfig: IEvmConfig | ISubstrateConfig): Promise<IChain> {
 	if (isEvmChain(chainConfig.stateMachineId)) {
-		const config = chainConfig as IEvmConfig
-		const chainId = Number.parseInt(config.stateMachineId.split("-")[1])
+		return getEvmChain(chainConfig as IEvmConfig)
+	}
 
-		if (tronChainIds.has(chainId)) {
-			return new TronChain({
-				chainId,
-				rpcUrl: config.rpcUrl,
-				host: config.host,
-				consensusStateId: config.consensusStateId,
-			})
-		}
+	if (isSubstrateChain(chainConfig.stateMachineId)) {
+		return getSubstrateChain(chainConfig as ISubstrateConfig)
+	}
 
-		const evmChain = new EvmChain({
+	throw new ExpectedError(`Unsupported chain: ${chainConfig.stateMachineId}`)
+}
+
+export function getEvmChain(chainConfig: IEvmConfig): IChain {
+	const config = chainConfig as IEvmConfig
+	const chainId = Number.parseInt(config.stateMachineId.split("-")[1])
+
+	if (tronChainIds.has(chainId)) {
+		return new TronChain({
 			chainId,
 			rpcUrl: config.rpcUrl,
 			host: config.host,
 			consensusStateId: config.consensusStateId,
 		})
-
-		return evmChain
 	}
 
-	if (isSubstrateChain(chainConfig.stateMachineId)) {
-		const config = chainConfig as ISubstrateConfig
-		const substrateChain = new SubstrateChain(config)
+	const evmChain = new EvmChain({
+		chainId,
+		rpcUrl: config.rpcUrl,
+		host: config.host,
+		consensusStateId: config.consensusStateId,
+	})
 
-		await substrateChain.connect()
+	return evmChain
+}
 
-		return substrateChain
-	}
+export async function getSubstrateChain(chainConfig: ISubstrateConfig) {
+	const config = chainConfig as ISubstrateConfig
+	const substrateChain = new SubstrateChain(config)
 
-	throw new ExpectedError(`Unsupported chain: ${chainConfig.stateMachineId}`)
+	await substrateChain.connect()
+
+	return substrateChain
 }

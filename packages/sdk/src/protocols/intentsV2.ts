@@ -70,6 +70,7 @@ import Decimal from "decimal.js"
 import IntentGateway from "@/abis/IntentGateway"
 import ERC7821ABI from "@/abis/erc7281"
 import { type ERC7821Call } from "@/types"
+import EntrypointABI from "@/abis/entrypoint"
 // =============================================================================
 // Constants
 // =============================================================================
@@ -1179,8 +1180,12 @@ export class IntentGatewayV2 {
 			args: [transformOrderForContract(orderForEstimation), fillOptions],
 		}) as HexString
 
-		// Hardcoded as 0 since we are using a new key
-		const nonce = 0n
+		const nonce = await this.dest.client.readContract({
+			address: entryPointAddress,
+			abi: EntrypointABI.ABI,
+			functionName: "getNonce",
+			args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
+		})
 
 		// Initialize gas values with fallbacks
 		let callGasLimit: bigint = 500_000n
