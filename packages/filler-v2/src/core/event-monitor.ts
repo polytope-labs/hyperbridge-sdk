@@ -12,6 +12,7 @@ import {
 	HexString,
 	tronChainIds,
 	getEvmChain,
+	IEvmChain,
 } from "@hyperbridge/sdk"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { decodeFunctionData } from "viem"
@@ -21,7 +22,7 @@ import { getLogger } from "@/services/Logger"
 import { Mutex } from "async-mutex"
 
 export class EventMonitor extends EventEmitter {
-	private chains: Map<number, IChain> = new Map()
+	private chains: Map<number, IEvmChain> = new Map()
 	private listening: boolean = false
 	private configService: FillerConfigService
 	private logger = getLogger("event-monitor")
@@ -43,7 +44,7 @@ export class EventMonitor extends EventEmitter {
 				consensusStateId: this.configService.getConsensusStateId(chainName),
 			}
 			const chain = getEvmChain(chainParams)
-			this.chains.set(config.chainId, chain)
+			this.chains.set(config.chainId, chain as IEvmChain)
 			this.scanningMutexes.set(config.chainId, new Mutex())
 		})
 	}
@@ -101,19 +102,14 @@ export class EventMonitor extends EventEmitter {
 
 	private async scanBlocks(
 		chainId: number,
-		chain: IChain,
+		chain: IEvmChain,
 		intentGatewayAddress: `0x${string}`,
 		orderPlacedEvent: any,
 	): Promise<void> {
 		const lastScanned = this.lastScannedBlock.get(chainId)
 		if (!lastScanned) return
 
-		const client = chain.client
-		if (!client) {
-			throw new Error(`Chain ${chainId} does not expose a public client`)
-		}
-
-		const currentBlock = await retryPromise(() => client.getBlockNumber(), {
+		const currentBlock = await retryPromise(() => chain.client.getBlockNumber(), {
 			maxRetries: 3,
 			backoffMs: 250,
 			logMessage: "Failed to get current block number",
@@ -133,7 +129,7 @@ export class EventMonitor extends EventEmitter {
 
 			const logs = await retryPromise(
 				() =>
-					client.getLogs({
+					chain.client.getLogs({
 						address: intentGatewayAddress,
 						event: orderPlacedEvent,
 						fromBlock,
@@ -160,7 +156,7 @@ export class EventMonitor extends EventEmitter {
 		}
 	}
 
-	private async processLogs(chainId: number, chain: IChain, logs: any[]): Promise<void> {
+	private async processLogs(chainId: number, chain: IEvmChain, logs: any[]): Promise<void> {
 		for (const log of logs) {
 			try {
 				const decodedLog = log as unknown as DecodedOrderV2PlacedLog

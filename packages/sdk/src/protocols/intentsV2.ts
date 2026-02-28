@@ -62,7 +62,7 @@ import {
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
 import { Swap } from "@/utils/swap"
-import { EvmChain, TronChain, requestCommitmentKey } from "@/chain"
+import { type IEvmChain, requestCommitmentKey } from "@/chain"
 import { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import { type IGetRequestMessage, type IProof, type SubstrateChain } from "@/chain"
 import type { IndexerClient } from "@/client"
@@ -230,8 +230,8 @@ export class IntentGatewayV2 {
 	 * @param bundlerUrl - Optional ERC-4337 bundler URL for gas estimation and UserOp submission.
 	 */
 	constructor(
-		public readonly source: EvmChain | TronChain,
-		public readonly dest: EvmChain,
+		public readonly source: IEvmChain,
+		public readonly dest: IEvmChain,
 		public readonly intentsCoprocessor?: IntentsCoprocessor,
 		public readonly bundlerUrl?: string,
 	) {
@@ -312,12 +312,7 @@ export class IntentGatewayV2 {
 
 		const signedTransaction = yield { calldata, sessionPrivateKey: privateKey as HexString }
 
-		const txHash: HexString =
-			this.source instanceof TronChain
-				? await this.source.sendAndConfirmTronTransaction(signedTransaction)
-				: await this.source.client.sendRawTransaction({
-						serializedTransaction: signedTransaction as HexString,
-					})
+		const txHash = await this.source.broadcastTransaction(signedTransaction)
 
 		console.log("Order placed transaction sent:", txHash)
 
@@ -666,12 +661,7 @@ export class IntentGatewayV2 {
 				data: { calldata, to: intentGatewayAddress },
 			}
 
-			const txHash: HexString =
-				this.source instanceof TronChain
-					? await this.source.sendAndConfirmTronTransaction(signedTransaction)
-					: await this.source.client.sendRawTransaction({
-							serializedTransaction: signedTransaction as HexString,
-						})
+			const txHash = await this.source.broadcastTransaction(signedTransaction)
 
 			const receipt = await this.source.client.waitForTransactionReceipt({
 				hash: txHash,
@@ -2096,7 +2086,7 @@ export class IntentGatewayV2 {
  */
 async function fetchSourceProof(
 	commitment: HexString,
-	source: EvmChain | TronChain,
+	source: IEvmChain,
 	sourceStateMachine: string,
 	sourceConsensusStateId: string,
 	sourceHeight: bigint,

@@ -13,6 +13,7 @@ import type {
 	StateMachineHeight,
 	StateMachineIdParams,
 } from "@/types"
+import type { ChainConfigService } from "@/configs/ChainConfigService"
 import { isEvmChain, isSubstrateChain } from "@/utils"
 import { ExpectedError } from "./utils/exceptions"
 import { tronChainIds } from "./configs/chain"
@@ -163,8 +164,9 @@ export interface IChain {
 
 	/**
 	 * Query and return the encoded storage proof for the provided keys at the given height.
+	 * @param address - Optional contract address for EVM chains; defaults to host contract when omitted.
 	 */
-	queryStateProof(at: bigint, keys: HexString[]): Promise<HexString>
+	queryStateProof(at: bigint, keys: HexString[], address?: HexString): Promise<HexString>
 
 	/*
 	 * Query and return the encoded storage proof for requests
@@ -190,24 +192,20 @@ export interface IChain {
 	 * Get the update time for a statemachine height.
 	 */
 	stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint>
+}
 
-	/**
-	 * Underlying viem public client when available (EVM/Tron chains).
-	 * Substrate chains omit this field.
-	 */
-	client?: PublicClient
-
-	/**
-	 * Retrieves the placeOrder calldata from a transaction.
-	 * Only supported for EVM and Tron chains; Substrate chains will throw.
-	 */
-	getPlaceOrderCalldata?(txHash: string, intentGatewayAddress: string): Promise<HexString>
-
-	/**
-	 * Broadcasts a signed Tron transaction and waits for confirmation,
-	 * returning a 0x-prefixed transaction hash compatible with viem.
-	 */
-	sendAndConfirmTronTransaction?(signedTransaction: any): Promise<HexString>
+/**
+ * Interface for EVM-compatible chains (EVM and Tron).
+ * Extends IChain with methods required by IntentGatewayV2 and other EVM-specific protocols.
+ */
+export interface IEvmChain extends IChain {
+	readonly configService: ChainConfigService
+	readonly client: PublicClient
+	getHostNonce(): Promise<bigint>
+	quoteNative(request: IPostRequest | IGetRequest, fee: bigint): Promise<bigint>
+	getFeeTokenWithDecimals(): Promise<{ address: HexString; decimals: number }>
+	getPlaceOrderCalldata(txHash: string, intentGatewayAddress: string): Promise<HexString>
+	broadcastTransaction(signedTransaction: any): Promise<HexString>
 }
 
 /**

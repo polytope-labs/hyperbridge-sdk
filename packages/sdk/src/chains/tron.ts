@@ -66,8 +66,8 @@ export class TronChain implements IChain {
 		return this.evm.queryRequestReceipt(commitment)
 	}
 
-	queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
-		return this.evm.queryStateProof(at, keys)
+	queryStateProof(at: bigint, keys: HexString[], address?: HexString): Promise<HexString> {
+		return this.evm.queryStateProof(at, keys, address)
 	}
 
 	queryProof(message: IMessage, counterparty: string, at?: bigint): Promise<HexString> {
@@ -110,6 +110,39 @@ export class TronChain implements IChain {
 		return (rawData.startsWith("0x") ? rawData : `0x${rawData}`) as HexString
 	}
 
+	/**
+	 * Broadcasts a signed Tron transaction and waits for confirmation,
+	 * returning a 0x-prefixed transaction hash compatible with viem.
+	 *
+	 * This mirrors the behavior used in IntentGatewayV2 for Tron chains.
+	 */
+	async broadcastTransaction(signedTransaction: any): Promise<HexString> {
+		const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
+		if (!tronReceipt.result) {
+			throw new Error("Tron transaction broadcast failed")
+		}
+
+		const tronTxId = tronReceipt.transaction.txID
+		const maxAttempts = 30
+
+		for (let i = 0; i < maxAttempts; i++) {
+			const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
+			if (txInfo?.receipt?.result === "SUCCESS") break
+			if (txInfo?.receipt?.result) {
+				throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
+			}
+
+			if (i === maxAttempts - 1) {
+				throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
+			}
+
+			// Wait 3 seconds before re-checking
+			await new Promise((resolve) => setTimeout(resolve, 3_000))
+		}
+
+		return `0x${tronTxId}` as HexString
+	}
+
 	// -------------------------------------------------------------------------
 	// Helpers mirrored from EvmChain for protocol integrations
 	// -------------------------------------------------------------------------
@@ -137,37 +170,4 @@ export class TronChain implements IChain {
 	// -------------------------------------------------------------------------
 	// Tron-specific helpers
 	// -------------------------------------------------------------------------
-
-	/**
-	 * Broadcasts a signed Tron transaction and waits for confirmation,
-	 * returning a 0x-prefixed transaction hash compatible with viem.
-	 *
-	 * This mirrors the behavior used in IntentGatewayV2 for Tron chains.
-	 */
-	async sendAndConfirmTronTransaction(signedTransaction: any): Promise<HexString> {
-		const tronReceipt = await this.tronWeb.trx.sendRawTransaction(signedTransaction)
-		if (!tronReceipt.result) {
-			throw new Error("Tron transaction broadcast failed")
-		}
-
-		const tronTxId = tronReceipt.transaction.txID
-		const maxAttempts = 30
-
-		for (let i = 0; i < maxAttempts; i++) {
-			const txInfo = await this.tronWeb.trx.getTransactionInfo(tronTxId).catch(() => null)
-			if (txInfo?.receipt?.result === "SUCCESS") break
-			if (txInfo?.receipt?.result) {
-				throw new Error(`Tron tx failed: ${txInfo.receipt.result}`)
-			}
-
-			if (i === maxAttempts - 1) {
-				throw new Error(`Tron tx ${tronTxId} not confirmed after ${maxAttempts} attempts`)
-			}
-
-			// Wait 3 seconds before re-checking
-			await new Promise((resolve) => setTimeout(resolve, 3_000))
-		}
-
-		return `0x${tronTxId}` as HexString
-	}
 }
