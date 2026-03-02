@@ -515,7 +515,7 @@ export class BidManager {
 	 * Prices every token in the basket via on-chain DEX quotes (token → USDC).
 	 * Stables are valued at $1. Non-stables are quoted through Uniswap
 	 * (direct to USDC, or via WETH→USDC as fallback).
-	 * Returns `null` only when *no* token could be priced.
+	 * Returns `null` if any token pricing fails.
 	 */
 	private async computeOutputsUsdValue(
 		outputs: { token: HexString; amount: bigint }[],
