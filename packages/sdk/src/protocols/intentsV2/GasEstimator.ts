@@ -13,6 +13,7 @@ import {
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
 	getRecordedStorageSlot,
+	getStorageSlot,
 	EvmLanguage,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
@@ -299,7 +300,14 @@ export class GasEstimator {
 				const bundlerStateDiffs: Record<string, string> = {}
 
 				const balanceData = (ERC20Method.BALANCE_OF + bytes20ToBytes32(accountAddress).slice(2)) as HexString
-				const balanceSlot = getRecordedStorageSlot(chain, tokenAddress, balanceData)
+				let balanceSlot = getRecordedStorageSlot(chain, tokenAddress, balanceData)
+				if (!balanceSlot) {
+					balanceSlot = (await getStorageSlot(
+						this.ctx.dest.client,
+						tokenAddress,
+						balanceData,
+					)) as HexString
+				}
 				if (balanceSlot) {
 					viemStateDiffs.push({ slot: balanceSlot, value: testValue })
 					bundlerStateDiffs[balanceSlot] = testValue
@@ -309,7 +317,14 @@ export class GasEstimator {
 					const allowanceData = (ERC20Method.ALLOWANCE +
 						bytes20ToBytes32(accountAddress).slice(2) +
 						bytes20ToBytes32(spenderAddress).slice(2)) as HexString
-					const allowanceSlot = getRecordedStorageSlot(chain, tokenAddress, allowanceData)
+					let allowanceSlot = getRecordedStorageSlot(chain, tokenAddress, allowanceData)
+					if (!allowanceSlot) {
+						allowanceSlot = (await getStorageSlot(
+							this.ctx.dest.client,
+							tokenAddress,
+							allowanceData,
+						)) as HexString
+					}
 					if (allowanceSlot) {
 						viemStateDiffs.push({ slot: allowanceSlot, value: testValue })
 						bundlerStateDiffs[allowanceSlot] = testValue
