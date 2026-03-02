@@ -1,7 +1,6 @@
 import { encodeFunctionData, toHex, pad, maxUint256, formatUnits, parseUnits, concat, keccak256 } from "viem"
 import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
-import EntrypointABI from "@/abis/entrypoint"
 import IntentGateway from "@/abis/IntentGateway"
 import {
 	ADDRESS_ZERO,

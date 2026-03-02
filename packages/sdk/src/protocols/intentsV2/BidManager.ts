@@ -1,4 +1,4 @@
-import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs } from "viem"
+import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs, erc20Abi } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import { ADDRESS_ZERO, bytes32ToBytes20, hexToString, retryPromise } from "@/utils"
@@ -11,6 +11,7 @@ import type {
 	SelectOptions,
 	FillerBid,
 	SelectBidResult,
+	TokenInfoV2,
 } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
@@ -156,13 +157,7 @@ export class BidManager {
 			}
 
 			try {
-				await this.simulateAndValidate(
-					order,
-					selectOptions,
-					bidWithOptions.options,
-					solverAddress,
-					intentGatewayV2Address,
-				)
+				await this.simulate(order, selectOptions, bidWithOptions.options, solverAddress, intentGatewayV2Address)
 				selectedBid = bidWithOptions
 				sessionSignature = signature
 				break
@@ -269,71 +264,62 @@ export class BidManager {
 		bids: FillerBid[],
 		order: OrderV2,
 	): Promise<{ bid: FillerBid; options: FillOptionsV2 }[]> {
-		if (order.output.assets.length > 1) {
-			throw new Error("Only single-output orders are supported")
+		const outputs = order.output.assets
+		const decodedBids = this.decodeBids(bids)
+
+		if (outputs.length <= 1) {
+			return this.sortSingleOutput(decodedBids, outputs[0])
 		}
 
-		const requiredAsset = order.output.assets[0]
+		const chainId = this.ctx.dest.config.stateMachineId
+		const allStables = outputs.every((o) => this.isStableToken(bytes32ToBytes20(o.token), chainId))
 
-		const validBids: { bid: FillerBid; options: FillOptionsV2; amount: bigint }[] = []
-
-		for (const bid of bids) {
-			try {
-				const innerCalls = this.crypto.decodeERC7821Execute(bid.userOp.callData)
-				if (!innerCalls || innerCalls.length === 0) {
-					continue
-				}
-
-				let fillOptions: FillOptionsV2 | null = null
-				for (const call of innerCalls) {
-					try {
-						const decoded = decodeFunctionData({
-							abi: IntentGatewayV2ABI,
-							data: call.data,
-						})
-
-						if (decoded?.functionName === "fillOrder" && decoded.args && decoded.args.length >= 2) {
-							fillOptions = decoded.args[1] as FillOptionsV2
-							break
-						}
-					} catch {
-						continue
-					}
-				}
-
-				if (!fillOptions || !fillOptions.outputs) {
-					continue
-				}
-				if (fillOptions.outputs.length === 0) {
-					continue
-				}
-
-				const bidOutput = fillOptions.outputs[0]
-
-				// Decimal comparison for accuracy: filler must provide at least the requested output amount
-				const bidAmountDecimal = new Decimal(bidOutput.amount.toString())
-				const requiredAmountDecimal = new Decimal(requiredAsset.amount.toString())
-				if (bidAmountDecimal.lt(requiredAmountDecimal)) {
-					continue
-				}
-
-				validBids.push({ bid, options: fillOptions, amount: bidOutput.amount })
-			} catch {
-				continue
-			}
+		if (allStables) {
+			return this.sortAllStables(decodedBids, outputs, chainId)
 		}
 
-		// Sort bids by offered output amount (highest first), using Decimal for consistency
-		validBids.sort((a, b) => {
-			const aAmount = new Decimal(a.amount.toString())
-			const bAmount = new Decimal(b.amount.toString())
-			return bAmount.comparedTo(aAmount)
-		})
-
-		return validBids.map(({ amount: _amount, ...rest }) => rest)
+		return this.sortMixedOutputs(decodedBids, outputs, chainId)
 	}
 
-	private async simulateAndValidate(
+	private decodeBids(bids: FillerBid[]): { bid: FillerBid; options: FillOptionsV2 }[] {
+		const result: { bid: FillerBid; options: FillOptionsV2 }[] = []
+		for (const bid of bids) {
+			const fillOptions = this.decodeBidFillOptions(bid)
+			if (fillOptions) {
+				result.push({ bid, options: fillOptions })
+			}
+		}
+		return result
+	}
+
+	private decodeBidFillOptions(bid: FillerBid): FillOptionsV2 | null {
+		try {
+			const innerCalls = this.crypto.decodeERC7821Execute(bid.userOp.callData)
+			if (!innerCalls || innerCalls.length === 0) return null
+
+			for (const call of innerCalls) {
+				try {
+					const decoded = decodeFunctionData({
+						abi: IntentGatewayV2ABI,
+						data: call.data,
+					})
+					if (decoded?.functionName === "fillOrder" && decoded.args && decoded.args.length >= 2) {
+						const fillOptions = decoded.args[1] as FillOptionsV2
+						if (fillOptions?.outputs?.length > 0) {
+							return fillOptions
+						}
+					}
+				} catch {
+					continue
+				}
+			}
+		} catch {
+			// decode failed
+		}
+		return null
+	}
+
+	private async simulate(
 		order: OrderV2,
 		selectOptions: SelectOptions,
 		fillOptions: FillOptionsV2,
@@ -379,6 +365,258 @@ export class BidManager {
 			})
 		} catch (e: unknown) {
 			throw new Error(`Simulation failed: ${e instanceof Error ? e.message : String(e)}`)
+		}
+	}
+
+	/**
+	 * Case A: single output token – keep existing behavior.
+	 * Filter bids whose first output amount < required, sort descending.
+	 */
+	private sortSingleOutput(
+		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
+		requiredAsset: TokenInfoV2,
+	): { bid: FillerBid; options: FillOptionsV2 }[] {
+		const validBids: { bid: FillerBid; options: FillOptionsV2; amount: bigint }[] = []
+
+		for (const { bid, options } of decodedBids) {
+			const bidOutput = options.outputs[0]
+			const bidAmount = new Decimal(bidOutput.amount.toString())
+			const requiredAmount = new Decimal(requiredAsset.amount.toString())
+			if (bidAmount.lt(requiredAmount)) continue
+			validBids.push({ bid, options, amount: bidOutput.amount })
+		}
+
+		validBids.sort((a, b) => {
+			const aAmt = new Decimal(a.amount.toString())
+			const bAmt = new Decimal(b.amount.toString())
+			return bAmt.comparedTo(aAmt)
+		})
+
+		return validBids.map(({ amount: _, ...rest }) => rest)
+	}
+
+	/**
+	 * Case B: all outputs are USDC/USDT.
+	 * Sum normalised USD values (treating each stable as $1) and compare.
+	 */
+	private sortAllStables(
+		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
+		orderOutputs: TokenInfoV2[],
+		chainId: string,
+	): { bid: FillerBid; options: FillOptionsV2 }[] {
+		const requiredUsd = this.computeStablesUsdValue(orderOutputs, chainId)
+		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
+
+		for (const { bid, options } of decodedBids) {
+			const bidUsd = this.computeStablesUsdValue(options.outputs, chainId)
+			if (bidUsd.lt(requiredUsd)) continue
+			validBids.push({ bid, options, usdValue: bidUsd })
+		}
+
+		validBids.sort((a, b) => b.usdValue.comparedTo(a.usdValue))
+		return validBids.map(({ usdValue: _, ...rest }) => rest)
+	}
+
+	/**
+	 * Case C: mixed output tokens (at least one non-stable).
+	 * Price every token via on-chain DEX quotes, fall back to raw amounts
+	 * if pricing is unavailable.
+	 */
+	private async sortMixedOutputs(
+		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
+		orderOutputs: TokenInfoV2[],
+		chainId: string,
+	): Promise<{ bid: FillerBid; options: FillOptionsV2 }[]> {
+		const requiredUsd = await this.computeOutputsUsdValue(orderOutputs, chainId)
+
+		if (requiredUsd === null) {
+			console.warn("BidManager: output tokens unpriceable, falling back to raw-amount sort")
+			return this.sortByRawAmountFallback(decodedBids, orderOutputs)
+		}
+
+		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
+
+		for (const { bid, options } of decodedBids) {
+			const bidUsd = (await this.computeOutputsUsdValue(options.outputs, chainId))!
+			if (bidUsd.lt(requiredUsd)) continue
+			validBids.push({ bid, options, usdValue: bidUsd })
+		}
+
+		validBids.sort((a, b) => b.usdValue.comparedTo(a.usdValue))
+		return validBids.map(({ usdValue: _, ...rest }) => rest)
+	}
+
+	/**
+	 * Fallback when DEX pricing is unavailable.
+	 * Computes the total spread (sum of extra amount above required per token)
+	 * for each bid. Bids that don't meet every token's minimum are discarded.
+	 * Remaining bids are sorted by total spread descending.
+	 */
+	private sortByRawAmountFallback(
+		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
+		orderOutputs: TokenInfoV2[],
+	): { bid: FillerBid; options: FillOptionsV2 }[] {
+		const validBids: { bid: FillerBid; options: FillOptionsV2; totalSpread: Decimal }[] = []
+
+		for (const { bid, options } of decodedBids) {
+			let valid = true
+			let totalSpread = new Decimal(0)
+
+			for (const required of orderOutputs) {
+				const matching = options.outputs.find((o) => o.token.toLowerCase() === required.token.toLowerCase())
+				if (!matching || matching.amount < required.amount) {
+					valid = false
+					break
+				}
+				totalSpread = totalSpread.plus(
+					new Decimal(matching.amount.toString()).minus(required.amount.toString()),
+				)
+			}
+			if (!valid) continue
+
+			validBids.push({ bid, options, totalSpread })
+		}
+
+		validBids.sort((a, b) => b.totalSpread.comparedTo(a.totalSpread))
+		return validBids.map(({ totalSpread: _, ...rest }) => rest)
+	}
+
+	// ── Token classification helpers ──────────────────────────────────
+
+	private isStableToken(tokenAddr: HexString, chainId: string): boolean {
+		const configService = this.ctx.dest.configService
+		const usdc = configService.getUsdcAsset(chainId)
+		const usdt = configService.getUsdtAsset(chainId)
+		const normalized = tokenAddr.toLowerCase()
+		return normalized === usdc.toLowerCase() || normalized === usdt.toLowerCase()
+	}
+
+	private getStableDecimals(tokenAddr: HexString, chainId: string): number {
+		const configService = this.ctx.dest.configService
+		if (tokenAddr.toLowerCase() === configService.getUsdcAsset(chainId).toLowerCase()) {
+			return configService.getUsdcDecimals(chainId)
+		}
+		return configService.getUsdtDecimals(chainId)
+	}
+
+	// ── Basket valuation helpers ──────────────────────────────────────
+
+	private computeStablesUsdValue(outputs: TokenInfoV2[], chainId: string): Decimal {
+		let total = new Decimal(0)
+		for (const output of outputs) {
+			const tokenAddr = bytes32ToBytes20(output.token)
+			const decimals = this.getStableDecimals(tokenAddr, chainId)
+			total = total.plus(new Decimal(output.amount.toString()).div(new Decimal(10).pow(decimals)))
+		}
+		return total
+	}
+
+	/**
+	 * Prices every token in the basket via on-chain DEX quotes (token → USDC).
+	 * Stables are valued at $1. Non-stables are quoted through Uniswap
+	 * (direct to USDC, or via WETH→USDC as fallback).
+	 * Returns `null` only when *no* token could be priced.
+	 */
+	private async computeOutputsUsdValue(
+		outputs: { token: HexString; amount: bigint }[],
+		chainId: string,
+	): Promise<Decimal | null> {
+		const configService = this.ctx.dest.configService
+		const client = this.ctx.dest.client
+		const usdcAddr = configService.getUsdcAsset(chainId)
+		const usdcDecimals = configService.getUsdcDecimals(chainId)
+		const { asset: wethAddr } = configService.getWrappedNativeAssetWithDecimals(chainId)
+
+		let totalUsd = new Decimal(0)
+		let pricedCount = 0
+
+		for (const output of outputs) {
+			const tokenAddr = bytes32ToBytes20(output.token)
+
+			if (this.isStableToken(tokenAddr, chainId)) {
+				const decimals = this.getStableDecimals(tokenAddr, chainId)
+				totalUsd = totalUsd.plus(new Decimal(output.amount.toString()).div(new Decimal(10).pow(decimals)))
+				pricedCount++
+				continue
+			}
+
+			try {
+				const usdcAmount = await this.quoteTokenToUsdc(
+					tokenAddr,
+					output.amount,
+					wethAddr,
+					usdcAddr,
+					chainId,
+					client,
+				)
+				totalUsd = totalUsd.plus(new Decimal(usdcAmount.toString()).div(new Decimal(10).pow(usdcDecimals)))
+				pricedCount++
+			} catch {
+				continue
+			}
+		}
+
+		if (pricedCount === 0) return null
+		return totalUsd
+	}
+
+	/**
+	 * Gets the USDC-equivalent amount for a non-stable token using on-chain DEX quotes.
+	 * Tries direct token→USDC first, then falls back to token→WETH→USDC.
+	 */
+	private async quoteTokenToUsdc(
+		tokenAddr: HexString,
+		amount: bigint,
+		wethAddr: HexString,
+		usdcAddr: HexString,
+		chainId: string,
+		client: IntentsV2Context["dest"]["client"],
+	): Promise<bigint> {
+		const isWethOrNative = tokenAddr.toLowerCase() === wethAddr.toLowerCase() || tokenAddr === ADDRESS_ZERO
+
+		if (isWethOrNative) {
+			const { amountOut, protocol } = await this.ctx.swap.findBestProtocolWithAmountIn(
+				client,
+				wethAddr,
+				usdcAddr,
+				amount,
+				chainId,
+			)
+			if (protocol === null || amountOut === 0n) throw new Error("No WETH→USDC liquidity")
+			return amountOut
+		}
+
+		// Try direct: token → USDC
+		try {
+			const { amountOut, protocol } = await this.ctx.swap.findBestProtocolWithAmountIn(
+				client,
+				tokenAddr,
+				usdcAddr,
+				amount,
+				chainId,
+			)
+			if (protocol === null || amountOut === 0n) throw new Error("No direct liquidity")
+			return amountOut
+		} catch {
+			// Fallback: token → WETH → USDC
+			const { amountOut: wethOut, protocol: p1 } = await this.ctx.swap.findBestProtocolWithAmountIn(
+				client,
+				tokenAddr,
+				wethAddr,
+				amount,
+				chainId,
+			)
+			if (p1 === null || wethOut === 0n) throw new Error("No token→WETH liquidity")
+
+			const { amountOut: usdcOut, protocol: p2 } = await this.ctx.swap.findBestProtocolWithAmountIn(
+				client,
+				wethAddr,
+				usdcAddr,
+				wethOut,
+				chainId,
+			)
+			if (p2 === null || usdcOut === 0n) throw new Error("No WETH→USDC liquidity")
+			return usdcOut
 		}
 	}
 }
