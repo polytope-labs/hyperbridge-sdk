@@ -392,7 +392,7 @@ export class GasEstimator {
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = Number.parseInt(evmChainID.split("-")[1])
 			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
-			const tokenPriceUsd = await fetchPrice("pol", chainId)
+			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
 			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 			const feeTokenPriceUsd = new Decimal(1)
 			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
