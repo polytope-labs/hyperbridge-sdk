@@ -131,6 +131,15 @@ export class OrderExecutor {
 				}
 
 				if (result.fillStatus === "full") {
+					yield {
+						status: "FILLED",
+						metadata: {
+							commitment,
+							userOpHash: result.userOpHash,
+							selectedSolver: result.solverAddress,
+							transactionHash: result.txnHash,
+						},
+					}
 					return
 				}
 
