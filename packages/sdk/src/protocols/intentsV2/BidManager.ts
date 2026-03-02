@@ -166,7 +166,15 @@ export class BidManager {
 				selectedBid = bidWithOptions
 				sessionSignature = signature
 				break
-			} catch {
+			} catch (err) {
+				console.debug(
+					"Bid simulation failed",
+					JSON.stringify({
+						commitment,
+						solver: solverAddress,
+						error: err instanceof Error ? err.message : String(err),
+					}),
+				)
 				continue
 			}
 		}
