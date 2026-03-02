@@ -1,4 +1,4 @@
-import { encodeFunctionData, decodeFunctionData, concat, formatUnits, keccak256, parseEventLogs } from "viem"
+import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import { ADDRESS_ZERO, bytes32ToBytes20, hexToString, retryPromise } from "@/utils"
@@ -268,33 +268,14 @@ export class BidManager {
 	private async validateAndSortBids(
 		bids: FillerBid[],
 		order: OrderV2,
-	): Promise<{ bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[]> {
-		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
-
-		const destChain = hexToString(order.destination as HexString)
-		const isSameChain = order.source === order.destination
-
-		const wethAddress = this.ctx.dest.configService.getWrappedNativeAssetWithDecimals(destChain).asset.toLowerCase()
-		const usdcAddress = this.ctx.dest.configService.getUsdcAsset(destChain).toLowerCase()
-		const usdtAddress = this.ctx.dest.configService.getUsdtAsset(destChain).toLowerCase()
-		const usdcDecimals = this.ctx.dest.configService.getUsdcDecimals(destChain)
-		const usdtDecimals = this.ctx.dest.configService.getUsdtDecimals(destChain)
-
-		let wethPriceUsd = new Decimal(0)
-		try {
-			const oneWeth = 10n ** 18n
-			const { amountOut } = await this.ctx.swap.findBestProtocolWithAmountIn(
-				this.ctx.dest.client,
-				wethAddress as HexString,
-				usdcAddress as HexString,
-				oneWeth,
-				destChain,
-				{ selectedProtocol: "v2" },
-			)
-			wethPriceUsd = new Decimal(formatUnits(amountOut, usdcDecimals))
-		} catch {
-			throw new Error("Failed to fetch WETH price")
+	): Promise<{ bid: FillerBid; options: FillOptionsV2 }[]> {
+		if (order.output.assets.length > 1) {
+			throw new Error("Only single-output orders are supported")
 		}
+
+		const requiredAsset = order.output.assets[0]
+
+		const validBids: { bid: FillerBid; options: FillOptionsV2; amount: bigint }[] = []
 
 		for (const bid of bids) {
 			try {
@@ -323,58 +304,33 @@ export class BidManager {
 				if (!fillOptions || !fillOptions.outputs) {
 					continue
 				}
-
-				const bidOutputs = fillOptions.outputs
-				let isValid = true
-				for (let i = 0; i < order.output.assets.length; i++) {
-					const requiredAsset = order.output.assets[i]
-					const bidOutput = bidOutputs[i]
-
-					if (!bidOutput) {
-						isValid = false
-						break
-					}
-
-					const bidAmount = bidOutput.amount
-
-					if (isSameChain) {
-						if (bidAmount <= 0n) {
-							isValid = false
-							break
-						}
-					} else {
-						if (bidAmount < requiredAsset.amount) {
-							isValid = false
-							break
-						}
-					}
+				if (fillOptions.outputs.length === 0) {
+					continue
 				}
 
-				if (!isValid) continue
+				const bidOutput = fillOptions.outputs[0]
 
-				let totalUsdValue = new Decimal(0)
-				for (let i = 0; i < bidOutputs.length; i++) {
-					const tokenAddress = bytes32ToBytes20(order.output.assets[i].token).toLowerCase()
-					const amount = bidOutputs[i].amount
-
-					if (tokenAddress === usdcAddress) {
-						totalUsdValue = totalUsdValue.plus(new Decimal(formatUnits(amount, usdcDecimals)))
-					} else if (tokenAddress === usdtAddress) {
-						totalUsdValue = totalUsdValue.plus(new Decimal(formatUnits(amount, usdtDecimals)))
-					} else if (tokenAddress === wethAddress) {
-						const wethAmount = new Decimal(formatUnits(amount, 18))
-						totalUsdValue = totalUsdValue.plus(wethAmount.times(wethPriceUsd))
-					}
+				// Decimal comparison for accuracy: filler must provide at least the requested output amount
+				const bidAmountDecimal = new Decimal(bidOutput.amount.toString())
+				const requiredAmountDecimal = new Decimal(requiredAsset.amount.toString())
+				if (bidAmountDecimal.lt(requiredAmountDecimal)) {
+					continue
 				}
 
-				validBids.push({ bid, options: fillOptions, usdValue: totalUsdValue })
+				validBids.push({ bid, options: fillOptions, amount: bidOutput.amount })
 			} catch {
 				continue
 			}
 		}
 
-		validBids.sort((a, b) => b.usdValue.minus(a.usdValue).toNumber())
-		return validBids
+		// Sort bids by offered output amount (highest first), using Decimal for consistency
+		validBids.sort((a, b) => {
+			const aAmount = new Decimal(a.amount.toString())
+			const bAmount = new Decimal(b.amount.toString())
+			return bAmount.comparedTo(aAmount)
+		})
+
+		return validBids.map(({ amount: _amount, ...rest }) => rest)
 	}
 
 	private async simulateAndValidate(
