@@ -133,6 +133,18 @@ export class OrderExecutor {
 				if (result.fillStatus === "full") {
 					return
 				}
+
+				if (result.fillStatus === "partial") {
+					yield {
+						status: "PARTIAL_FILL",
+						metadata: {
+							commitment,
+							userOpHash: result.userOpHash,
+							selectedSolver: result.solverAddress,
+							transactionHash: result.txnHash,
+						},
+					}
+				}
 			}
 		} catch (err) {
 			yield {
