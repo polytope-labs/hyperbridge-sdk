@@ -143,12 +143,7 @@ export class GasEstimator {
 				const accountGasLimits = this.crypto.packGasLimits(100_000n, callGasLimit)
 				const gasFees = this.crypto.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
 
-				const nonce = await this.ctx.dest.client.readContract({
-					address: entryPointAddress,
-					abi: EntrypointABI.ABI,
-					functionName: "getNonce",
-					args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
-				})
+				const nonce = 0n
 
 				const preliminaryUserOp: PackedUserOperation = {
 					sender: solverAccountAddress,
