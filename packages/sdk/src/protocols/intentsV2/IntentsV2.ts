@@ -23,6 +23,7 @@ import { OrderCanceller } from "./OrderCanceller"
 import { BidManager } from "./BidManager"
 import { GasEstimator } from "./GasEstimator"
 import type { ERC7821Call } from "@/types"
+import { DEFAULT_GRAFFITI } from "@/utils"
 
 /**
  * IntentsV2 utilities for placing orders, submitting bids, and managing the intent lifecycle.
@@ -125,6 +126,7 @@ export class IntentsV2 {
 
 	async *execute(
 		order: OrderV2,
+		graffiti: HexString = DEFAULT_GRAFFITI,
 		options?: {
 			maxPriorityFeePerGasBumpPercent?: number
 			maxFeePerGasBumpPercent?: number
@@ -146,7 +148,7 @@ export class IntentsV2 {
 			order.fees = estimate.totalGasInFeeToken
 		}
 
-		const placeOrderGen = this.orderPlacer.placeOrder(order)
+		const placeOrderGen = this.orderPlacer.placeOrder(order, graffiti)
 		const placeOrderFirst = await placeOrderGen.next()
 		if (placeOrderFirst.done) {
 			throw new Error("placeOrder generator completed without yielding")
@@ -174,8 +176,9 @@ export class IntentsV2 {
 
 	async *placeOrder(
 		order: OrderV2,
+		graffiti: HexString = DEFAULT_GRAFFITI,
 	): AsyncGenerator<{ calldata: HexString; sessionPrivateKey: HexString }, OrderV2, any> {
-		return yield* this.orderPlacer.placeOrder(order)
+		return yield* this.orderPlacer.placeOrder(order, graffiti)
 	}
 
 	async *executeIntentOrder(options: ExecuteIntentOrderOptions): AsyncGenerator<IntentOrderStatusUpdate, void> {
