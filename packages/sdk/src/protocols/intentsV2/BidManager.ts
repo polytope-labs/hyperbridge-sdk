@@ -528,7 +528,6 @@ export class BidManager {
 		const { asset: wethAddr } = configService.getWrappedNativeAssetWithDecimals(chainId)
 
 		let totalUsd = new Decimal(0)
-		let pricedCount = 0
 
 		for (const output of outputs) {
 			const tokenAddr = bytes32ToBytes20(output.token)
@@ -536,7 +535,6 @@ export class BidManager {
 			if (this.isStableToken(tokenAddr, chainId)) {
 				const decimals = this.getStableDecimals(tokenAddr, chainId)
 				totalUsd = totalUsd.plus(new Decimal(output.amount.toString()).div(new Decimal(10).pow(decimals)))
-				pricedCount++
 				continue
 			}
 
@@ -552,11 +550,10 @@ export class BidManager {
 				totalUsd = totalUsd.plus(new Decimal(usdcAmount.toString()).div(new Decimal(10).pow(usdcDecimals)))
 				pricedCount++
 			} catch {
-				continue
+				return null
 			}
 		}
 
-		if (pricedCount === 0) return null
 		return totalUsd
 	}
 
