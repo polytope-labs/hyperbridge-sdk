@@ -9,9 +9,7 @@ import {
 	TokenInfoV2,
 	adjustDecimals,
 	IntentsCoprocessor,
-	transformOrderForContract,
 } from "@hyperbridge/sdk"
-import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
 import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
@@ -28,6 +26,7 @@ export class BasicFiller implements FillerStrategy {
 	private configService: FillerConfigService
 	private bidStorage?: BidStorageService
 	private bpsPolicy: FillerBpsPolicy
+	private account: ReturnType<typeof privateKeyToAccount>
 	private logger = getLogger("basic-filler")
 
 	constructor(
@@ -44,6 +43,7 @@ export class BasicFiller implements FillerStrategy {
 		this.contractService = contractService
 		this.bidStorage = bidStorage
 		this.bpsPolicy = bpsPolicy
+		this.account = privateKeyToAccount(privateKey)
 	}
 
 	/**
@@ -285,9 +285,6 @@ export class BasicFiller implements FillerStrategy {
 	async executeOrder(order: OrderV2, intentsCoprocessor?: IntentsCoprocessor): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
-		// Ensure tokens are approved before submitting bid or direct fill
-		await this.contractService.approveTokensIfNeeded(order)
-
 		try {
 			if (intentsCoprocessor) {
 				return await this.submitBidToHyperbridge(order, startTime, intentsCoprocessor)
@@ -324,11 +321,11 @@ export class BasicFiller implements FillerStrategy {
 		}
 
 		// With EIP-7702 delegation, the filler's EOA address IS the solver account
-		const solverAccountAddress = privateKeyToAccount(this.privateKey).address as HexString
+		const solverAccountAddress = this.account.address as HexString
 
 		this.logger.info({ orderId: order.id, destination: order.destination }, "Submitting bid to Hyperbridge")
 
-		// Prepare the signed UserOp for bid submission
+		// Prepare the signed UserOp for bid submission (bundles approvals + fillOrder internally)
 		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
 			order,
 			entryPointAddress,
@@ -399,37 +396,42 @@ export class BasicFiller implements FillerStrategy {
 
 		const fillOptions: FillOptionsV2 = {
 			relayerFee: dispatchFee,
-			nativeDispatchFee: nativeDispatchFee,
+			nativeDispatchFee,
 			outputs: cachedFillerOutputs,
 		}
 
-		// Add all eth values from the filler's calculated outputs
-		const ethValue = cachedFillerOutputs.reduce((acc: bigint, output: TokenInfoV2) => {
-			if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
-				return acc + output.amount
-			}
-			return acc
-		}, 0n)
+		// Bundle any required ERC20 approvals + fillOrder into a single batch tx via ERC-7821 execute
+		const callData = await this.contractService.buildApprovalAndFillCalldata(
+			order,
+			cachedFillerOutputs,
+			fillOptions,
+			dispatchFee,
+		)
+
+		// Total ETH to forward: native outputs + dispatch fee
+		const nativeValue =
+			cachedFillerOutputs.reduce((acc: bigint, output: TokenInfoV2) => {
+				if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
+					return acc + output.amount
+				}
+				return acc
+			}, 0n) + nativeDispatchFee
 
 		const tx = await walletClient
-			.writeContract({
-				abi: INTENT_GATEWAY_V2_ABI,
-				address: this.configService.getIntentGatewayV2Address(order.destination),
-				functionName: "fillOrder",
-				args: [transformOrderForContract(order) as any, fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+			.sendTransaction({
+				account: this.account,
+				to: this.account.address,
+				data: callData,
+				value: nativeValue,
 				chain: walletClient.chain,
 				gas: callGasLimit + (callGasLimit * 2500n) / 10000n,
 			})
 			.catch(async () => {
-				return await walletClient.writeContract({
-					abi: INTENT_GATEWAY_V2_ABI,
-					address: this.configService.getIntentGatewayV2Address(order.destination),
-					functionName: "fillOrder",
-					args: [transformOrderForContract(order) as any, fillOptions as any],
-					account: privateKeyToAccount(this.privateKey),
-					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+				return await walletClient.sendTransaction({
+					account: this.account,
+					to: this.account.address,
+					data: callData,
+					value: nativeValue,
 					chain: walletClient.chain,
 				})
 			})

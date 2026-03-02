@@ -165,7 +165,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 		)
 		expect(isFilled).toBe(true)
 
-		intentFiller.stop()
+		await intentFiller.stop()
 		await intentsCoprocessor.disconnect()
 	}, 600_000)
 
@@ -381,7 +381,7 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 		)
 		expect(isFilled).toBe(true)
 
-		intentFiller.stop()
+		await intentFiller.stop()
 		await intentsCoprocessor.disconnect()
 	}, 600_000)
 })

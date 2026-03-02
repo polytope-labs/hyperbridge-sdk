@@ -12,8 +12,7 @@ import {
 	adjustDecimals,
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
-	getRecordedStorageSlot,
-	getStorageSlot,
+	getOrFetchStorageSlot,
 	EvmLanguage,
 } from "@/utils"
 import { orderV2Commitment } from "@/utils"
@@ -305,10 +304,7 @@ export class GasEstimator {
 				const bundlerStateDiffs: Record<string, string> = {}
 
 				const balanceData = (ERC20Method.BALANCE_OF + bytes20ToBytes32(accountAddress).slice(2)) as HexString
-				let balanceSlot = getRecordedStorageSlot(chain, tokenAddress, balanceData)
-				if (!balanceSlot) {
-					balanceSlot = (await getStorageSlot(this.ctx.dest.client, tokenAddress, balanceData)) as HexString
-				}
+				const balanceSlot = await getOrFetchStorageSlot(this.ctx.dest.client, chain, tokenAddress, balanceData)
 				if (balanceSlot) {
 					viemStateDiffs.push({ slot: balanceSlot, value: testValue })
 					bundlerStateDiffs[balanceSlot] = testValue
@@ -318,14 +314,12 @@ export class GasEstimator {
 					const allowanceData = (ERC20Method.ALLOWANCE +
 						bytes20ToBytes32(accountAddress).slice(2) +
 						bytes20ToBytes32(spenderAddress).slice(2)) as HexString
-					let allowanceSlot = getRecordedStorageSlot(chain, tokenAddress, allowanceData)
-					if (!allowanceSlot) {
-						allowanceSlot = (await getStorageSlot(
-							this.ctx.dest.client,
-							tokenAddress,
-							allowanceData,
-						)) as HexString
-					}
+					const allowanceSlot = await getOrFetchStorageSlot(
+						this.ctx.dest.client,
+						chain,
+						tokenAddress,
+						allowanceData,
+					)
 					if (allowanceSlot) {
 						viemStateDiffs.push({ slot: allowanceSlot, value: testValue })
 						bundlerStateDiffs[allowanceSlot] = testValue
@@ -406,7 +400,7 @@ export class GasEstimator {
 		} catch {
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = Number.parseInt(evmChainID.split("-")[1])
-			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
+			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals ?? 18))
 			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol, chainId)
 			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 			const feeTokenPriceUsd = new Decimal(1)

@@ -358,7 +358,7 @@ export class BinanceRebalancer {
 
 		this.logger.debug({ resp }, "Travel rule withdrawal response")
 
-		if ((resp as any).accpted === false) {
+		if ((resp as any).accepted === false) {
 			throw new Error(`Travel rule withdrawal rejected: ${(resp as any).info || "unknown reason"}`)
 		}
 

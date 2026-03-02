@@ -1,4 +1,4 @@
-import { toHex, maxUint256, formatUnits } from "viem"
+import { toHex, formatUnits, encodeFunctionData, maxUint256 } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -13,6 +13,10 @@ import {
 	encodeUserOpScale,
 	type PackedUserOperation,
 	type FillOptionsV2,
+	encodeERC7821ExecuteBatch,
+	type ERC7821Call,
+	transformOrderForContract,
+	TokenInfoV2,
 } from "@hyperbridge/sdk"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { ChainClientManager } from "./ChainClientManager"
@@ -36,6 +40,7 @@ export class ContractInteractionService {
 	private logger = getLogger("contract-service")
 	private sdkHelperCache: Map<string, IntentsV2> = new Map()
 	private solverAccountAddress: HexString
+	private account: ReturnType<typeof privateKeyToAccount>
 	private bundlerUrl?: string
 
 	constructor(
@@ -48,6 +53,7 @@ export class ContractInteractionService {
 		this.configService = configService
 		this.cacheService = sharedCacheService || new CacheService()
 		this.solverAccountAddress = privateKeyToAddress(this.privateKey)
+		this.account = privateKeyToAccount(this.privateKey)
 		this.bundlerUrl = bundlerUrl
 		this.initCache()
 	}
@@ -170,64 +176,6 @@ export class ContractInteractionService {
 		} catch (error) {
 			this.logger.warn({ err: error }, "Error getting token decimals, defaulting to 18")
 			return 18 // Default to 18 if we can't determine
-		}
-	}
-
-	/**
-	 * Approves ERC20 tokens for the contract if needed
-	 */
-	async approveTokensIfNeeded(order: OrderV2): Promise<void> {
-		const wallet = privateKeyToAccount(this.privateKey)
-		const destClient = this.clientManager.getPublicClient(order.destination)
-		const walletClient = this.clientManager.getWalletClient(order.destination)
-		const intentGateway = this.configService.getIntentGatewayV2Address(order.destination)
-
-		const tokens = [
-			...new Set(
-				order.output.assets.map((o) => bytes32ToBytes20(o.token)).filter((addr) => addr !== ADDRESS_ZERO),
-			),
-			(await this.getFeeTokenWithDecimals(order.destination)).address,
-		].map((address) => ({
-			address,
-			amount: order.output.assets.find((o) => bytes32ToBytes20(o.token) === address)?.amount || maxUint256 / 2n,
-		}))
-
-		for (const token of tokens) {
-			const allowance = await retryPromise(
-				() =>
-					destClient.readContract({
-						abi: ERC20_ABI,
-						address: token.address as HexString,
-						functionName: "allowance",
-						args: [wallet.address, intentGateway],
-					}),
-				{
-					maxRetries: 3,
-					backoffMs: 250,
-					logMessage: "Failed to get token allowance",
-				},
-			)
-
-			if (allowance < token.amount) {
-				this.logger.info({ token: token.address }, "Approving token")
-				const gasPrice = await destClient.getGasPrice()
-				const tx = await walletClient.writeContract({
-					abi: ERC20_ABI,
-					address: token.address as HexString,
-					functionName: "approve",
-					args: [intentGateway, maxUint256],
-					account: wallet,
-					chain: walletClient.chain,
-					gasPrice: gasPrice + (gasPrice * 2000n) / 10000n,
-				})
-
-				await retryPromise(() => destClient.waitForTransactionReceipt({ hash: tx }), {
-					maxRetries: 3,
-					backoffMs: 250,
-					logMessage: "Failed while waiting for approval transaction receipt",
-				})
-				this.logger.info({ token: token.address }, "Approved token")
-			}
 		}
 	}
 
@@ -425,7 +373,6 @@ export class ContractInteractionService {
 		order: OrderV2,
 		entryPointAddress: HexString,
 		solverAccountAddress: HexString,
-		callData?: HexString,
 	): Promise<{ commitment: HexString; userOp: HexString }> {
 		// Use cached estimate from prior profitability check
 		const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
@@ -446,6 +393,13 @@ export class ContractInteractionService {
 			nativeDispatchFee: cachedEstimate.nativeDispatchFee,
 			outputs: cachedFillerOutputs,
 		}
+
+		const callData = await this.buildApprovalAndFillCalldata(
+			order,
+			cachedFillerOutputs,
+			fillOptions,
+			cachedEstimate.totalCostInSourceFeeToken,
+		)
 
 		const commitment = orderV2Commitment(order)
 
@@ -478,5 +432,77 @@ export class ContractInteractionService {
 		)
 
 		return { commitment, userOp: encodedUserOp }
+	}
+
+	/**
+	 * Builds ERC-7821 batch calldata that prepends any required ERC20 approvals
+	 * before the fillOrder call, all within a single UserOp payload.
+	 */
+	public async buildApprovalAndFillCalldata(
+		order: OrderV2,
+		fillerOutputs: TokenInfoV2[],
+		fillOptions: FillOptionsV2,
+		requiredFeeTokenAmount: bigint,
+	): Promise<HexString> {
+		const chain = order.destination
+		const destClient = this.clientManager.getPublicClient(chain)
+		const intentGatewayV2Address = this.configService.getIntentGatewayV2Address(chain)
+
+		// Aggregate required amounts per ERC20 token
+		const perTokenRequired = new Map<string, bigint>()
+		for (const output of fillerOutputs) {
+			const addr = bytes32ToBytes20(output.token)
+			if (addr === ADDRESS_ZERO) continue
+			const key = addr.toLowerCase()
+			perTokenRequired.set(key, (perTokenRequired.get(key) ?? 0n) + output.amount)
+		}
+		const feeToken = await this.getFeeTokenWithDecimals(chain)
+		const feeKey = feeToken.address.toLowerCase()
+		perTokenRequired.set(feeKey, (perTokenRequired.get(feeKey) ?? 0n) + requiredFeeTokenAmount)
+
+		// Check allowances in parallel
+		const entries = [...perTokenRequired.entries()]
+		const allowances = await Promise.all(
+			entries.map(([tokenAddress]) =>
+				destClient.readContract({
+					abi: ERC20_ABI,
+					address: tokenAddress as HexString,
+					functionName: "allowance",
+					args: [this.solverAccountAddress, intentGatewayV2Address],
+				}),
+			),
+		)
+
+		const calls: ERC7821Call[] = []
+		for (const [i, [tokenAddress, required]] of entries.entries()) {
+			if (allowances[i] < required) {
+				calls.push({
+					target: tokenAddress as HexString,
+					value: 0n,
+					data: encodeFunctionData({
+						abi: ERC20_ABI,
+						functionName: "approve",
+						args: [intentGatewayV2Address, maxUint256],
+					}) as HexString,
+				})
+			}
+		}
+
+		// Append fillOrder call (after any approvals, or as the sole call)
+		const nativeOutputValue = fillerOutputs
+			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
+			.reduce((sum, asset) => sum + asset.amount, 0n)
+
+		calls.push({
+			target: intentGatewayV2Address,
+			value: nativeOutputValue + fillOptions.nativeDispatchFee,
+			data: encodeFunctionData({
+				abi: INTENT_GATEWAY_V2_ABI,
+				functionName: "fillOrder",
+				args: [transformOrderForContract(order) as any, fillOptions as any],
+			}) as HexString,
+		})
+
+		return encodeERC7821ExecuteBatch(calls)
 	}
 }

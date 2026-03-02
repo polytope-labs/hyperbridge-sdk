@@ -28,7 +28,6 @@ export class BidManager {
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
 		const {
 			order,
-			fillOptions,
 			solverAccount,
 			solverPrivateKey,
 			nonce,
@@ -38,37 +37,12 @@ export class BidManager {
 			preVerificationGas,
 			maxFeePerGas,
 			maxPriorityFeePerGas,
+			callData,
 		} = options
 
 		const chainId = BigInt(
 			this.ctx.dest.client.chain?.id ?? Number.parseInt(this.ctx.dest.config.stateMachineId.split("-")[1]),
 		)
-
-		let callData: HexString
-		if (options.callData) {
-			callData = options.callData
-		} else {
-			const fillOrderCalldata = encodeFunctionData({
-				abi: IntentGatewayV2ABI,
-				functionName: "fillOrder",
-				args: [transformOrderForContract(order), fillOptions],
-			}) as HexString
-
-			const nativeOutputValue = order.output.assets
-				.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
-				.reduce((sum, asset) => sum + asset.amount, 0n)
-			const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
-
-			const intentGatewayV2Address = this.ctx.dest.configService.getIntentGatewayV2Address(order.destination)
-
-			callData = this.crypto.encodeERC7821Execute([
-				{
-					target: intentGatewayV2Address,
-					value: totalNativeValue,
-					data: fillOrderCalldata,
-				},
-			])
-		}
 
 		const accountGasLimits = this.crypto.packGasLimits(verificationGasLimit, callGasLimit)
 		const gasFees = this.crypto.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
@@ -409,7 +383,7 @@ export class BidManager {
 
 		for (const { bid, options } of decodedBids) {
 			const bidUsd = this.computeStablesUsdValue(options.outputs, chainId)
-			if (bidUsd.lt(requiredUsd)) continue
+			if (bidUsd === null || bidUsd.lt(requiredUsd)) continue
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -437,8 +411,8 @@ export class BidManager {
 		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {
-			const bidUsd = (await this.computeOutputsUsdValue(options.outputs, chainId))!
-			if (bidUsd.lt(requiredUsd)) continue
+			const bidUsd = await this.computeOutputsUsdValue(options.outputs, chainId)
+			if (bidUsd === null || bidUsd.lt(requiredUsd)) continue
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -548,7 +522,6 @@ export class BidManager {
 					client,
 				)
 				totalUsd = totalUsd.plus(new Decimal(usdcAmount.toString()).div(new Decimal(10).pow(usdcDecimals)))
-				pricedCount++
 			} catch {
 				return null
 			}

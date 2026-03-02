@@ -164,7 +164,7 @@ export class IntentFiller {
 		}
 	}
 
-	public stop(): void {
+	public async stop(): Promise<void> {
 		this.monitor.stopListening()
 
 		// Stop rebalancing interval
@@ -181,15 +181,15 @@ export class IntentFiller {
 		})
 		promises.push(this.globalQueue.onIdle())
 
-		Promise.all(promises).then(async () => {
-			// Disconnect shared Hyperbridge connection
-			if (this.hyperbridge) {
-				const service = await this.hyperbridge.catch(() => null)
-				await service?.disconnect()
-			}
+		await Promise.all(promises)
 
-			this.logger.info("All orders processed, filler stopped")
-		})
+		// Disconnect shared Hyperbridge connection
+		if (this.hyperbridge) {
+			const service = await this.hyperbridge.catch(() => null)
+			await service?.disconnect()
+		}
+
+		this.logger.info("All orders processed, filler stopped")
 	}
 
 	// Operations
@@ -221,7 +221,11 @@ export class IntentFiller {
 					orderValue.inputUsdValue.toNumber(),
 				)
 
-				// Run confirmation waiting and evaluation in parallel
+				// Run confirmation waiting and evaluation in parallel.
+				// The AbortController lets evaluateOrder cancel the confirmation
+				// loop early when the order turns out to be unprofitable.
+				const abortController = new AbortController()
+
 				const waitForConfirmations = async (): Promise<void> => {
 					let currentConfirmations = await retryPromise(
 						() =>
@@ -241,7 +245,9 @@ export class IntentFiller {
 					)
 
 					while (currentConfirmations < requiredConfirmations) {
+						if (abortController.signal.aborted) return
 						await new Promise((resolve) => setTimeout(resolve, 300)) // Wait 300ms
+						if (abortController.signal.aborted) return
 						currentConfirmations = await retryPromise(
 							() =>
 								sourceClient.getTransactionConfirmations({
@@ -260,7 +266,13 @@ export class IntentFiller {
 				}
 
 				// Run confirmation and evaluation in parallel
-				const [, evaluationResult] = await Promise.all([waitForConfirmations(), this.evaluateOrder(order)])
+				const [, evaluationResult] = await Promise.all([
+					waitForConfirmations(),
+					this.evaluateOrder(order).then((result) => {
+						if (!result) abortController.abort()
+						return result
+					}),
+				])
 
 				// Execute immediately
 				if (evaluationResult) {

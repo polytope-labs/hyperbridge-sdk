@@ -901,6 +901,28 @@ export function getRecordedStorageSlot(
 }
 
 /**
+ * Returns the storage slot for an ERC20 `balanceOf` or `allowance` call,
+ * first checking the recorded slot cache and falling back to an RPC trace
+ * call via `getStorageSlot` when no cached slot is available.
+ *
+ * @param client - The viem PublicClient to use for the RPC trace fallback
+ * @param chain - The chain identifier (e.g. "EVM-1")
+ * @param contractAddress - The ERC20 token contract address
+ * @param data - The ABI-encoded call data (method selector + padded args)
+ * @returns The storage slot as a hex string, or undefined if not found
+ */
+export async function getOrFetchStorageSlot(
+	client: PublicClient,
+	chain: string,
+	contractAddress: HexString,
+	data: HexString,
+): Promise<HexString | undefined> {
+	const recorded = getRecordedStorageSlot(chain, contractAddress, data)
+	if (recorded) return recorded
+	return (await getStorageSlot(client, contractAddress, data)) as HexString
+}
+
+/**
  * Adjusts fee amounts between different decimal precisions.
  * Handles scaling up or down based on the decimal difference.
  *

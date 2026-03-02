@@ -309,15 +309,15 @@ program
 			)
 
 			// Handle graceful shutdown
-			process.on("SIGINT", () => {
+			process.on("SIGINT", async () => {
 				logger.warn("Shutting down intent filler (SIGINT)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 
-			process.on("SIGTERM", () => {
+			process.on("SIGTERM", async () => {
 				logger.warn("Shutting down intent filler (SIGTERM)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 

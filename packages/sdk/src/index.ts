@@ -14,6 +14,7 @@ export {
 	constructRedeemEscrowRequestBody,
 	estimateGasForPost,
 	getStorageSlot,
+	getOrFetchStorageSlot,
 	ERC20Method,
 	fetchPrice,
 	adjustDecimals,
