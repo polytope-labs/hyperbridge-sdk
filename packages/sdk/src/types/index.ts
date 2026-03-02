@@ -1335,7 +1335,6 @@ export interface FillOrderEstimateV2 {
 	maxPriorityFeePerGas: bigint
 	totalGasCostWei: bigint
 	totalGasInFeeToken: bigint
-	nonce: bigint
 }
 
 /**

@@ -14,17 +14,25 @@ export class OrderPlacer {
 
 	async *placeOrder(
 		order: OrderV2,
+		graffiti: HexString = DEFAULT_GRAFFITI,
 	): AsyncGenerator<{ calldata: HexString; sessionPrivateKey: HexString }, OrderV2, any> {
 		const privateKey = generatePrivateKey()
 		const account = privateKeyToAccount(privateKey)
 		const sessionKeyAddress = account.address as HexString
+		const createdAt = Date.now()
 
 		order.session = sessionKeyAddress
+
+		await this.ctx.sessionKeyStorage.setSessionKeyByAddress(sessionKeyAddress, {
+			privateKey: privateKey as HexString,
+			address: sessionKeyAddress,
+			createdAt,
+		})
 
 		const calldata = encodeFunctionData({
 			abi: IntentGatewayV2ABI,
 			functionName: "placeOrder",
-			args: [transformOrderForContract(order), DEFAULT_GRAFFITI],
+			args: [transformOrderForContract(order), graffiti],
 		}) as HexString
 
 		const signedTransaction = yield { calldata, sessionPrivateKey: privateKey as HexString }
@@ -58,10 +66,10 @@ export class OrderPlacer {
 			privateKey: privateKey as HexString,
 			address: sessionKeyAddress,
 			commitment: order.id as HexString,
-			createdAt: Date.now(),
+			createdAt,
 		}
 
-		await this.ctx.sessionKeyStorage.setSessionKey(order.id as HexString, sessionKeyData)
+		await this.ctx.sessionKeyStorage.setSessionKeyByAddress(sessionKeyAddress, sessionKeyData)
 
 		return order
 	}

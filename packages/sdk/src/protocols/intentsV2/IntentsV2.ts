@@ -73,11 +73,14 @@ export class IntentsV2 {
 		}
 
 		const crypto = new CryptoUtils(this.ctx)
+		const bidManager = new BidManager(this.ctx, crypto)
+		const gasEstimator = new GasEstimator(this.ctx, crypto)
+
 		this.orderPlacer = new OrderPlacer(this.ctx)
-		this.orderExecutor = new OrderExecutor(this.ctx)
+		this.orderExecutor = new OrderExecutor(this.ctx, bidManager)
 		this.orderCanceller = new OrderCanceller(this.ctx)
-		this.bidManager = new BidManager(this.ctx)
-		this.gasEstimator = new GasEstimator(this.ctx)
+		this.bidManager = bidManager
+		this.gasEstimator = gasEstimator
 		this._crypto = crypto
 	}
 

@@ -5,11 +5,10 @@ import type { IntentsV2Context } from "./types"
 import { BidManager } from "./BidManager"
 
 export class OrderExecutor {
-	private readonly bidManager: BidManager
-
-	constructor(private readonly ctx: IntentsV2Context) {
-		this.bidManager = new BidManager(ctx)
-	}
+	constructor(
+		private readonly ctx: IntentsV2Context,
+		private readonly bidManager: BidManager,
+	) {}
 
 	async *executeIntentOrder(options: ExecuteIntentOrderOptions): AsyncGenerator<IntentOrderStatusUpdate, void> {
 		const {

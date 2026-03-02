@@ -23,6 +23,7 @@ import { CacheService } from "./CacheService"
 import { getLogger } from "@/services/Logger"
 import { Decimal } from "decimal.js"
 import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
+import { ENTRYPOINT_ABI } from "@/config/abis/Entrypoint"
 
 // Configure for financial precision
 Decimal.config({ precision: 28, rounding: 4 })
@@ -240,6 +241,7 @@ export class ContractInteractionService {
 		callGasLimit: bigint
 	}> {
 		try {
+			const client = this.clientManager.getPublicClient(order.destination)
 			const cachedEstimate = this.cacheService.getGasEstimate(order.id!)
 			if (cachedEstimate) {
 				return {
@@ -257,6 +259,13 @@ export class ContractInteractionService {
 				maxFeePerGasBumpPercent: gasFeeBumpConfig?.maxFeePerGasBumpPercent,
 			})
 
+			const nonce = await client.readContract({
+				address: this.configService.getEntryPointAddress(order.destination)!,
+				abi: ENTRYPOINT_ABI,
+				functionName: "getNonce",
+				args: [this.solverAccountAddress, BigInt(orderV2Commitment(order)) & ((1n << 192n) - 1n)],
+			})
+
 			this.logger.info({ orderId: order.id }, "Caching gas estimate")
 			this.logger.info({ estimate }, "Estimate")
 			this.cacheService.setGasEstimate(
@@ -269,7 +278,7 @@ export class ContractInteractionService {
 				estimate.preVerificationGas,
 				estimate.maxFeePerGas,
 				estimate.maxPriorityFeePerGas,
-				estimate.nonce,
+				nonce,
 			)
 			return {
 				totalCostInSourceFeeToken: estimate.totalGasInFeeToken,

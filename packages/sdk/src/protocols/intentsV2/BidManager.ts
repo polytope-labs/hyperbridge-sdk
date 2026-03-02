@@ -19,11 +19,10 @@ import { CryptoUtils } from "./CryptoUtils"
 import Decimal from "decimal.js"
 
 export class BidManager {
-	private readonly crypto: CryptoUtils
-
-	constructor(private readonly ctx: IntentsV2Context) {
-		this.crypto = new CryptoUtils(ctx)
-	}
+	constructor(
+		private readonly ctx: IntentsV2Context,
+		private readonly crypto: CryptoUtils,
+	) {}
 
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
 		const {
@@ -100,9 +99,10 @@ export class BidManager {
 
 	async selectBid(order: OrderV2, bids: FillerBid[], sessionPrivateKey?: HexString): Promise<SelectBidResult> {
 		const commitment = order.id as HexString
+		const sessionKeyAddress = order.session as HexString
 		const sessionKeyData = sessionPrivateKey
 			? { privateKey: sessionPrivateKey as HexString }
-			: await this.ctx.sessionKeyStorage.getSessionKey(commitment)
+			: await this.ctx.sessionKeyStorage.getSessionKeyByAddress(sessionKeyAddress)
 		if (!sessionKeyData) {
 			throw new Error("SessionKey not found for commitment: " + commitment)
 		}
@@ -193,14 +193,13 @@ export class BidManager {
 		const chainId = BigInt(
 			this.ctx.dest.client.chain?.id ?? Number.parseInt(this.ctx.dest.config.stateMachineId.split("-")[1]),
 		)
-		const userOpHash = this.crypto.computeUserOpHash(signedUserOp, entryPointAddress, chainId)
 
 		const bundlerResult = await this.crypto.sendBundler<HexString>(BundlerMethod.ETH_SEND_USER_OPERATION, [
 			this.crypto.prepareBundlerCall(signedUserOp),
 			entryPointAddress,
 		])
 
-		const finalUserOpHash = bundlerResult || userOpHash
+		const userOpHash = bundlerResult
 
 		let txnHash: HexString | undefined
 		let fillStatus: "full" | "partial" | undefined
@@ -209,7 +208,7 @@ export class BidManager {
 				async () => {
 					const result = await this.crypto.sendBundler<{
 						receipt: { transactionHash: HexString }
-					} | null>(BundlerMethod.ETH_GET_USER_OPERATION_RECEIPT, [finalUserOpHash])
+					} | null>(BundlerMethod.ETH_GET_USER_OPERATION_RECEIPT, [userOpHash])
 					if (!result?.receipt?.transactionHash) {
 						throw new Error("Receipt not available yet")
 					}
@@ -250,7 +249,7 @@ export class BidManager {
 
 		return {
 			userOp: signedUserOp,
-			userOpHash: finalUserOpHash,
+			userOpHash,
 			solverAddress,
 			commitment,
 			txnHash,

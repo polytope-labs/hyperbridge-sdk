@@ -36,11 +36,10 @@ import { CryptoUtils } from "./CryptoUtils"
 import Decimal from "decimal.js"
 
 export class GasEstimator {
-	private readonly crypto: CryptoUtils
-
-	constructor(private readonly ctx: IntentsV2Context) {
-		this.crypto = new CryptoUtils(ctx)
-	}
+	constructor(
+		private readonly ctx: IntentsV2Context,
+		private readonly crypto: CryptoUtils,
+	) {}
 
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
 		const { order } = params
@@ -131,13 +130,6 @@ export class GasEstimator {
 			args: [transformOrderForContract(orderForEstimation), fillOptions],
 		}) as HexString
 
-		const nonce = await this.ctx.dest.client.readContract({
-			address: entryPointAddress,
-			abi: EntrypointABI.ABI,
-			functionName: "getNonce",
-			args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
-		})
-
 		let callGasLimit: bigint = 500_000n
 		let verificationGasLimit: bigint = 100_000n
 		let preVerificationGas: bigint = 100_000n
@@ -150,6 +142,13 @@ export class GasEstimator {
 
 				const accountGasLimits = this.crypto.packGasLimits(100_000n, callGasLimit)
 				const gasFees = this.crypto.packGasFees(maxPriorityFeePerGas, maxFeePerGas)
+
+				const nonce = await this.ctx.dest.client.readContract({
+					address: entryPointAddress,
+					abi: EntrypointABI.ABI,
+					functionName: "getNonce",
+					args: [solverAccountAddress, BigInt(commitment) & ((1n << 192n) - 1n)],
+				})
 
 				const preliminaryUserOp: PackedUserOperation = {
 					sender: solverAccountAddress,
@@ -221,7 +220,7 @@ export class GasEstimator {
 
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
-		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGasCostWei, "dest", order.destination)
+		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGas, "dest", order.destination, gasPrice)
 
 		return {
 			callGasLimit,
@@ -232,7 +231,6 @@ export class GasEstimator {
 			totalGasCostWei,
 			totalGasInFeeToken,
 			fillOptions,
-			nonce,
 		}
 	}
 
@@ -368,13 +366,16 @@ export class GasEstimator {
 		gasEstimate: bigint,
 		gasEstimateIn: "source" | "dest",
 		evmChainID: string,
+		gasPriceOverride?: bigint,
 	): Promise<bigint> {
 		const chain = this.ctx[gasEstimateIn]
 		const client = chain.client
-		const gasPrice = (await retryPromise(() => client.getGasPrice(), {
-			maxRetries: 3,
-			backoffMs: 250,
-		})) as bigint
+		const gasPrice =
+			gasPriceOverride ??
+			((await retryPromise(() => client.getGasPrice(), {
+				maxRetries: 3,
+				backoffMs: 250,
+			})) as bigint)
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = chain.configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
 		const feeToken = this.ctx.feeTokenCache.get(evmChainID)!
