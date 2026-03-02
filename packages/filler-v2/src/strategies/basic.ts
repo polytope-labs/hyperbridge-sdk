@@ -150,6 +150,7 @@ export class BasicFiller implements FillerStrategy {
 			}
 
 			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
+
 			const { decimals: sourceFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
 				order.source,
 			)

@@ -61,7 +61,7 @@ export interface IntentsV2Context {
 	dest: IEvmChain
 	intentsCoprocessor?: IntentsCoprocessor
 	bundlerUrl?: string
-	feeTokenCache: Map<string, { address: HexString; decimals: number }>
+	feeTokenCache: Map<string, { address: HexString; decimals: number; cachedAt: number }>
 	solverCodeCache: Map<string, string>
 	sessionKeyStorage: ReturnType<typeof createSessionKeyStorage>
 	cancellationStorage: ReturnType<typeof createCancellationStorage>

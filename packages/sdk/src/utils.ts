@@ -547,12 +547,37 @@ export const dateStringtoTimestamp = (date: string): number => {
 	return new Date(date).getTime()
 }
 
+const CHAIN_ID_TO_COINGECKO_NATIVE: Record<number, string> = {
+	1: "weth",
+	11155111: "weth",
+	42161: "weth",
+	8453: "weth",
+	130: "weth",
+	10200: "dai",
+	56: "wbnb",
+	97: "wbnb",
+	137: "polygon-ecosystem-token",
+	80002: "polygon-ecosystem-token",
+	3448148188: "tron",
+}
+
 /**
- * Maps testnet identifiers to mainnet identifiers for price lookup
+ * Maps testnet identifiers to mainnet identifiers for price lookup.
+ * When `identifier` is undefined, falls back to the chain's native token
+ * using `chainId`.
+ *
  * @param identifier - The original token identifier (symbol or contract address)
+ * @param chainId - Numeric EVM chain ID, used as fallback when identifier is undefined
  * @returns The mapped mainnet identifier
  */
-export function mapToValidCoingeckoId(identifier: string): string {
+export function mapToValidCoingeckoId(identifier: string | undefined, chainId?: number): string {
+	if (!identifier) {
+		if (chainId != null && CHAIN_ID_TO_COINGECKO_NATIVE[chainId]) {
+			return CHAIN_ID_TO_COINGECKO_NATIVE[chainId]
+		}
+		throw new Error(`Cannot resolve coingecko id: identifier is undefined and chainId ${chainId} is not mapped`)
+	}
+
 	identifier = identifier.toLowerCase()
 
 	switch (identifier) {
@@ -566,24 +591,26 @@ export function mapToValidCoingeckoId(identifier: string): string {
 			return "dai"
 		case "0xae13d989dac2f0debff460ac112a837c89baa7cd".toLowerCase():
 			return "wbnb"
-		case "0x1938165569A5463327fb206bE06d8D9253aa06b7".toLowerCase():
+		case "0x1938165569a5463327fb206be06d8d9253aa06b7".toLowerCase():
 			return "dai"
-		case "0xC625ec7D30A4b1AAEfb1304610CdAcD0d606aC92".toLowerCase():
+		case "0xc625ec7d30a4b1aaefb1304610cdacd0d606ac92".toLowerCase():
 			return "dai"
-		case "0x50B1d3c7c073c9caa1Ef207365A2c9C976bD70b9".toLowerCase():
+		case "0x50b1d3c7c073c9caa1ef207365a2c9c976bd70b9".toLowerCase():
 			return "dai"
 		case "0xa801da100bf16d07f668f4a49e1f71fc54d05177".toLowerCase():
 			return "dai"
 		case "pol":
 			return "polygon-ecosystem-token"
+		case "trx":
+			return "tron"
 
 		default:
 			return identifier
 	}
 }
 
-export async function fetchPrice(identifier: string, chainId = 1, apiKey?: string): Promise<number> {
-	const mappedIdentifier = mapToValidCoingeckoId(identifier)
+export async function fetchPrice(identifier: string | undefined, chainId = 1, apiKey?: string): Promise<number> {
+	const mappedIdentifier = mapToValidCoingeckoId(identifier, chainId)
 
 	const network = new ChainConfigService().getCoingeckoId(`EVM-${chainId}`) || "ethereum"
 

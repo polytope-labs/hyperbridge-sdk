@@ -31,7 +31,7 @@ import type { HexString } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
 import type { BundlerGasEstimate } from "./types"
-import { transformOrderForContract } from "./utils"
+import { getFeeToken, transformOrderForContract } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
 import Decimal from "decimal.js"
 
@@ -55,8 +55,8 @@ export class GasEstimator {
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
 			.reduce((sum, output) => sum + output.amount, 0n)
 
-		const sourceFeeToken = this.ctx.feeTokenCache.get(this.ctx.source.config.stateMachineId)!
-		const destFeeToken = this.ctx.feeTokenCache.get(this.ctx.dest.config.stateMachineId)!
+		const sourceFeeToken = await getFeeToken(this.ctx, this.ctx.source.config.stateMachineId, this.ctx.source)
+		const destFeeToken = await getFeeToken(this.ctx, this.ctx.dest.config.stateMachineId, this.ctx.dest)
 		const feeTokenAsBytes32 = bytes20ToBytes32(destFeeToken.address)
 		const assetsForOverrides = [...order.output.assets]
 		if (!assetsForOverrides.some((asset) => asset.token.toLowerCase() === feeTokenAsBytes32.toLowerCase())) {
@@ -215,7 +215,12 @@ export class GasEstimator {
 
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
-		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGas, "dest", order.destination, gasPrice)
+		const totalGasInDestFeeToken = await this.convertGasToFeeToken(totalGas, "dest", order.destination, gasPrice)
+		const totalGasInSourceFeeToken = adjustDecimals(
+			totalGasInDestFeeToken,
+			destFeeToken.decimals,
+			sourceFeeToken.decimals,
+		)
 
 		return {
 			callGasLimit,
@@ -224,7 +229,7 @@ export class GasEstimator {
 			maxFeePerGas,
 			maxPriorityFeePerGas,
 			totalGasCostWei,
-			totalGasInFeeToken,
+			totalGasInFeeToken: totalGasInSourceFeeToken,
 			fillOptions,
 		}
 	}
@@ -302,11 +307,7 @@ export class GasEstimator {
 				const balanceData = (ERC20Method.BALANCE_OF + bytes20ToBytes32(accountAddress).slice(2)) as HexString
 				let balanceSlot = getRecordedStorageSlot(chain, tokenAddress, balanceData)
 				if (!balanceSlot) {
-					balanceSlot = (await getStorageSlot(
-						this.ctx.dest.client,
-						tokenAddress,
-						balanceData,
-					)) as HexString
+					balanceSlot = (await getStorageSlot(this.ctx.dest.client, tokenAddress, balanceData)) as HexString
 				}
 				if (balanceSlot) {
 					viemStateDiffs.push({ slot: balanceSlot, value: testValue })
@@ -387,7 +388,7 @@ export class GasEstimator {
 			})) as bigint)
 		const gasCostInWei = gasEstimate * gasPrice
 		const wethAddr = chain.configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
-		const feeToken = this.ctx.feeTokenCache.get(evmChainID)!
+		const feeToken = await getFeeToken(this.ctx, evmChainID, chain)
 
 		try {
 			const { amountOut } = await this.ctx.swap.findBestProtocolWithAmountIn(
@@ -406,7 +407,7 @@ export class GasEstimator {
 			const nativeCurrency = client.chain?.nativeCurrency
 			const chainId = Number.parseInt(evmChainID.split("-")[1])
 			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals!))
-			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol!, chainId)
+			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol, chainId)
 			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
 			const feeTokenPriceUsd = new Decimal(1)
 			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)

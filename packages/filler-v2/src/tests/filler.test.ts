@@ -21,6 +21,7 @@ import {
 	TronChain,
 	PLACE_ORDER_SELECTOR,
 	ORDER_V2_PARAM_TYPE,
+	DEFAULT_GRAFFITI,
 } from "@hyperbridge/sdk"
 import { describe, it, expect } from "vitest"
 import { ConfirmationPolicy, FillerBpsPolicy } from "@/config/interpolated-curve"
@@ -122,7 +123,7 @@ describe("Filler V2 - Solver Selection ON", () => {
 		const bundlerUrl = process.env.BUNDLER_URL
 		const userSdkHelper = await IntentsV2.create(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
+		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
 		if (result.value && "calldata" in result.value) {
 			const { calldata } = result.value
@@ -344,7 +345,7 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 		const bundlerUrl = process.env.BUNDLER_URL
 		const userSdkHelper = await IntentsV2.create(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
 
-		const gen = userSdkHelper.execute(order, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
+		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
 		if (result.value && "calldata" in result.value) {
 			const { calldata } = result.value

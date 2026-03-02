@@ -251,6 +251,7 @@ export class ContractInteractionService {
 					callGasLimit: cachedEstimate.callGasLimit,
 				}
 			}
+
 			const sdkHelper = await this.getIntentsV2(order.source, order.destination)
 			const gasFeeBumpConfig = this.configService.getGasFeeBumpConfig()
 			const estimate = await sdkHelper.estimateFillOrderV2({

@@ -5,9 +5,31 @@ import type { ERC7821Call } from "@/types"
 import type { HexString } from "@/types"
 import ERC7821ABI from "@/abis/erc7281"
 import { ERC7821_BATCH_MODE } from "./types"
+import type { IntentsV2Context } from "./types"
 import { requestCommitmentKey } from "@/chain"
 import type { IEvmChain } from "@/chain"
 import type { IProof } from "@/chain"
+
+const FEE_TOKEN_CACHE_TTL_MS = 5 * 60 * 1000
+
+/**
+ * Returns a cached fee token entry, re-fetching from the chain if the entry
+ * is missing or older than {@link FEE_TOKEN_CACHE_TTL_MS}.
+ */
+export async function getFeeToken(
+	ctx: IntentsV2Context,
+	chainId: string,
+	chain: IEvmChain,
+): Promise<{ address: HexString; decimals: number }> {
+	const cached = ctx.feeTokenCache.get(chainId)
+	if (cached && Date.now() - cached.cachedAt < FEE_TOKEN_CACHE_TTL_MS) {
+		return cached
+	}
+
+	const fresh = await chain.getFeeTokenWithDecimals()
+	ctx.feeTokenCache.set(chainId, { ...fresh, cachedAt: Date.now() })
+	return fresh
+}
 
 /**
  * Standalone utility to encode calls into ERC-7821 execute function calldata.

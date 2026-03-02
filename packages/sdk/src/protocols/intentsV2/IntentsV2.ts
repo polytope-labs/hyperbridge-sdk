@@ -58,7 +58,7 @@ export class IntentsV2 {
 		const sessionKeyStorage = createSessionKeyStorage()
 		const cancellationStorage = createCancellationStorage()
 		const swap = new Swap()
-		const feeTokenCache = new Map<string, { address: HexString; decimals: number }>()
+		const feeTokenCache = new Map<string, { address: HexString; decimals: number; cachedAt: number }>()
 		const solverCodeCache = new Map<string, string>()
 
 		this.ctx = {
@@ -106,10 +106,11 @@ export class IntentsV2 {
 	}
 
 	private async init(): Promise<void> {
+		const now = Date.now()
 		const sourceFeeToken = await this.source.getFeeTokenWithDecimals()
-		this.ctx.feeTokenCache.set(this.source.config.stateMachineId, sourceFeeToken)
+		this.ctx.feeTokenCache.set(this.source.config.stateMachineId, { ...sourceFeeToken, cachedAt: now })
 		const destFeeToken = await this.dest.getFeeTokenWithDecimals()
-		this.ctx.feeTokenCache.set(this.dest.config.stateMachineId, destFeeToken)
+		this.ctx.feeTokenCache.set(this.dest.config.stateMachineId, { ...destFeeToken, cachedAt: now })
 
 		const solverAccountContract = this.dest.configService.getSolverAccountAddress(this.dest.config.stateMachineId)
 		if (solverAccountContract) {
