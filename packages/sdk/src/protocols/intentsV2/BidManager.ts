@@ -203,12 +203,15 @@ export class BidManager {
 					const events = parseEventLogs({
 						abi: IntentGatewayV2ABI,
 						logs: chainReceipt.logs,
-						eventName: ["OrderFilled", "PartialFill"] as any,
+						eventName: ["OrderFilled", "PartialFill"],
 					})
 
 					const matched = events.find((e) => {
-						const eventCommitment = (e.args as any).commitment as HexString
-						return eventCommitment.toLowerCase() === commitment.toLowerCase()
+						if (e.eventName === "OrderFilled")
+							return e.args.commitment.toLowerCase() === commitment.toLowerCase()
+						if (e.eventName === "PartialFill")
+							return e.args.commitment.toLowerCase() === commitment.toLowerCase()
+						return false
 					})
 
 					if (matched?.eventName === "OrderFilled") {

@@ -524,11 +524,7 @@ export function encodeWithdrawalRequest(order: Order | OrderV2, beneficiary: Hex
 	) as HexString
 }
 
-function constructEscrowRequestBody(
-	kind: RequestKind,
-	order: Order | OrderV2,
-	beneficiary: HexString,
-): HexString {
+function constructEscrowRequestBody(kind: RequestKind, order: Order | OrderV2, beneficiary: HexString): HexString {
 	const requestKind = encodePacked(["uint8"], [kind])
 	return concatHex([requestKind, encodeWithdrawalRequest(order, beneficiary)]) as HexString
 }

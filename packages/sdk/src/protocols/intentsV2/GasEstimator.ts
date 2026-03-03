@@ -212,7 +212,13 @@ export class GasEstimator {
 
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
-		const totalGasInDestFeeToken = await convertGasToFeeToken(this.ctx, totalGas, "dest", order.destination, gasPrice)
+		const totalGasInDestFeeToken = await convertGasToFeeToken(
+			this.ctx,
+			totalGas,
+			"dest",
+			order.destination,
+			gasPrice,
+		)
 		const totalGasInSourceFeeToken = adjustDecimals(
 			totalGasInDestFeeToken,
 			destFeeToken.decimals,
@@ -378,7 +384,7 @@ export class GasEstimator {
 			address: this.ctx.dest.configService.getIntentGatewayAddress(postRequest.dest),
 			abi: IntentGateway.ABI,
 			functionName: "quoteNative",
-			args: [dispatchPost] as any,
+			args: [dispatchPost],
 		})
 	}
 }

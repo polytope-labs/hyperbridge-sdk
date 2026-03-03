@@ -135,11 +135,12 @@ export class FillerConfigService {
 	}
 
 	private getChainIdFromStateMachineId(chain: string): number {
-		if (chain.includes("EVM")) {
-			return Number.parseInt(chain.slice(4))
+		const raw = chain.includes("EVM") ? chain.slice(4) : chain
+		const id = Number.parseInt(raw, 10)
+		if (Number.isNaN(id)) {
+			throw new Error(`Cannot derive chain ID from state machine ID: "${chain}"`)
 		}
-
-		return Number.parseInt(chain)
+		return id
 	}
 
 	getUniswapRouterV2Address(chain: string): HexString {

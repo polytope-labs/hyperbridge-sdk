@@ -81,10 +81,7 @@ export class OrderCanceller {
 		yield* this.cancelOrderFromSource(order, indexerClient)
 	}
 
-	private async *cancelOrderFromSource(
-		order: OrderV2,
-		indexerClient: IndexerClient,
-	): AsyncGenerator<CancelEvent> {
+	private async *cancelOrderFromSource(order: OrderV2, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
 		const orderId = order.id!
 		const isSameChain = order.source === order.destination
 
