@@ -164,7 +164,7 @@ export class BasicFiller implements FillerStrategy {
 
 			this.logger.info(
 				{
-					orderFeesUSD: formatUnits(order.fees, destFeeTokenDecimals),
+					orderFeesUSD: formatUnits(order.fees, sourceFeeTokenDecimals),
 					totalCostInSourceFeeTokenUSD: formatUnits(totalCostInSourceFeeToken, sourceFeeTokenDecimals),
 					feeProfitUSD: formatUnits(feeProfitInDestDecimals, destFeeTokenDecimals),
 					slippageProfitUSD: formatUnits(profitFromSlippage, destFeeTokenDecimals),
