@@ -232,6 +232,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20",
 			UniswapRouter02: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
@@ -280,6 +281,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7",
 			UniswapRouter02: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
@@ -330,6 +332,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0xE05AFD4Eb2ce6d65c40e1048381BD0Ef8b4B299e",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -378,6 +381,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x6FFe92e4d7a9D589549644544780e6725E84b248",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -426,6 +430,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0xD8d3db17C1dF65b301D45C84405CcAC1395C559a",
 			UniswapRouter02: "0xd2f9496824951D5237cC71245D659E48d0d5f9E8",
@@ -468,6 +473,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0x2A17C1c3616Bbc33FCe5aF5B965F166ba76cEDAf",
 			UniswapRouter02: "0x284f11109359a7e1306c3e447ef14d38400063ff",
