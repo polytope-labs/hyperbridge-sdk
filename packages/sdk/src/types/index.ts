@@ -790,6 +790,16 @@ export enum RequestKind {
 	 * Identifies a request for updating parameters
 	 */
 	UpdateParams = 2,
+
+	/**
+	 * Identifies a request for sweeping accumulated protocol dust
+	 */
+	SweepDust = 3,
+
+	/**
+	 * Identifies a request for refunding escrowed tokens after cancellation
+	 */
+	RefundEscrow = 4,
 }
 
 /**

@@ -186,12 +186,16 @@ export class IntentsV2 {
 		yield* this.orderExecutor.executeIntentOrder(options)
 	}
 
-	async quoteCancelNative(order: OrderV2): Promise<bigint> {
-		return this.orderCanceller.quoteCancelNative(order)
+	async quoteCancelNative(order: OrderV2, from: "source" | "dest" = "source"): Promise<bigint> {
+		return this.orderCanceller.quoteCancelNative(order, from)
 	}
 
-	async *cancelOrder(order: OrderV2, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
-		yield* this.orderCanceller.cancelOrder(order, indexerClient)
+	async *cancelOrder(
+		order: OrderV2,
+		indexerClient: IndexerClient,
+		from: "source" | "dest" = "source",
+	): AsyncGenerator<CancelEvent> {
+		yield* this.orderCanceller.cancelOrder(order, indexerClient, from)
 	}
 
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {

@@ -1,8 +1,10 @@
-import { encodeFunctionData, encodeAbiParameters } from "viem"
+import { encodeFunctionData, encodeAbiParameters, formatUnits, parseUnits } from "viem"
 import { toHex } from "viem"
+import Decimal from "decimal.js"
 import type { OrderV2 } from "@/types"
 import type { ERC7821Call } from "@/types"
 import type { HexString } from "@/types"
+import { retryPromise, fetchPrice } from "@/utils"
 import ERC7821ABI from "@/abis/erc7281"
 import { ERC7821_BATCH_MODE } from "./types"
 import type { IntentsV2Context } from "./types"
@@ -81,5 +83,53 @@ export function transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | 
 		...contractOrder,
 		source: order.source.startsWith("0x") ? order.source : toHex(order.source),
 		destination: order.destination.startsWith("0x") ? order.destination : toHex(order.destination),
+	}
+}
+
+/**
+ * Converts a gas estimate on a given chain into that chain's fee token amount.
+ * Tries a Uniswap V2 swap quote first, falls back to a price-oracle estimate.
+ */
+export async function convertGasToFeeToken(
+	ctx: IntentsV2Context,
+	gasEstimate: bigint,
+	gasEstimateIn: "source" | "dest",
+	evmChainID: string,
+	gasPriceOverride?: bigint,
+): Promise<bigint> {
+	const chain = ctx[gasEstimateIn]
+	const client = chain.client
+	const gasPrice =
+		gasPriceOverride ??
+		((await retryPromise(() => client.getGasPrice(), {
+			maxRetries: 3,
+			backoffMs: 250,
+		})) as bigint)
+	const gasCostInWei = gasEstimate * gasPrice
+	const wethAddr = chain.configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
+	const feeToken = await getFeeToken(ctx, evmChainID, chain)
+
+	try {
+		const { amountOut } = await ctx.swap.findBestProtocolWithAmountIn(
+			client,
+			wethAddr,
+			feeToken.address,
+			gasCostInWei,
+			evmChainID,
+			{ selectedProtocol: "v2" },
+		)
+		if (amountOut === 0n) {
+			throw new Error()
+		}
+		return amountOut
+	} catch {
+		const nativeCurrency = client.chain?.nativeCurrency
+		const chainId = Number.parseInt(evmChainID.split("-")[1])
+		const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals ?? 18))
+		const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol, chainId)
+		const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
+		const feeTokenPriceUsd = new Decimal(1)
+		const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
+		return parseUnits(gasCostInFeeToken.toFixed(feeToken.decimals), feeToken.decimals)
 	}
 }

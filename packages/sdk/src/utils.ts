@@ -490,24 +490,12 @@ export async function estimateGasForPost(params: {
 }
 
 /**
- * Constructs the request body for a redeem escrow operation.
- * This function encodes the order commitment, beneficiary address, and token inputs
- * to match the format expected by the IntentGateway contract.
+ * ABI-encodes a WithdrawalRequest (commitment + beneficiary + tokens).
+ * Used as the GET-request context for cancel-from-source, and as the inner
+ * payload (after the RequestKind prefix) for POST-based escrow operations.
  */
-export function constructRedeemEscrowRequestBody(order: Order | OrderV2, beneficiary: HexString): HexString {
-	const commitment = order.id as HexString
-	const inputs = order.inputs
-
-	// RequestKind.RedeemEscrow is 0 as defined in the contract
-	const requestKind = encodePacked(["uint8"], [RequestKind.RedeemEscrow])
-
-	const requestBody = {
-		commitment: commitment as HexString,
-		beneficiary: bytes20ToBytes32(beneficiary),
-		tokens: inputs,
-	}
-
-	const encodedRequestBody = encodeAbiParameters(
+export function encodeWithdrawalRequest(order: Order | OrderV2, beneficiary: HexString): HexString {
+	return encodeAbiParameters(
 		[
 			{
 				name: "requestBody",
@@ -526,10 +514,40 @@ export function constructRedeemEscrowRequestBody(order: Order | OrderV2, benefic
 				],
 			},
 		],
-		[requestBody],
-	)
+		[
+			{
+				commitment: order.id as HexString,
+				beneficiary: bytes20ToBytes32(beneficiary),
+				tokens: order.inputs,
+			},
+		],
+	) as HexString
+}
 
-	return concatHex([requestKind, encodedRequestBody]) as HexString
+function constructEscrowRequestBody(
+	kind: RequestKind,
+	order: Order | OrderV2,
+	beneficiary: HexString,
+): HexString {
+	const requestKind = encodePacked(["uint8"], [kind])
+	return concatHex([requestKind, encodeWithdrawalRequest(order, beneficiary)]) as HexString
+}
+
+/**
+ * Constructs the request body for a redeem escrow operation.
+ * This function encodes the order commitment, beneficiary address, and token inputs
+ * to match the format expected by the IntentGateway contract.
+ */
+export function constructRedeemEscrowRequestBody(order: Order | OrderV2, beneficiary: HexString): HexString {
+	return constructEscrowRequestBody(RequestKind.RedeemEscrow, order, beneficiary)
+}
+
+/**
+ * Constructs the request body for a refund escrow operation (cancel from destination).
+ * Uses RequestKind.RefundEscrow to match the IntentGatewayV2 contract's _cancelFromDest.
+ */
+export function constructRefundEscrowRequestBody(order: Order | OrderV2, beneficiary: HexString): HexString {
+	return constructEscrowRequestBody(RequestKind.RefundEscrow, order, beneficiary)
 }
 
 export const normalizeTimestamp = (timestamp: bigint): bigint => {

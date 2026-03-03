@@ -1,4 +1,4 @@
-import { encodeFunctionData, toHex, pad, maxUint256, formatUnits, parseUnits, concat, keccak256 } from "viem"
+import { encodeFunctionData, toHex, pad, maxUint256, concat, keccak256 } from "viem"
 import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import IntentGateway from "@/abis/IntentGateway"
@@ -7,8 +7,6 @@ import {
 	bytes32ToBytes20,
 	bytes20ToBytes32,
 	ERC20Method,
-	retryPromise,
-	fetchPrice,
 	adjustDecimals,
 	constructRedeemEscrowRequestBody,
 	MOCK_ADDRESS,
@@ -30,9 +28,8 @@ import type { HexString } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
 import type { BundlerGasEstimate } from "./types"
-import { getFeeToken, transformOrderForContract } from "./utils"
+import { getFeeToken, transformOrderForContract, convertGasToFeeToken } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
-import Decimal from "decimal.js"
 
 export class GasEstimator {
 	constructor(
@@ -77,7 +74,8 @@ export class GasEstimator {
 
 		if (!isSameChain) {
 			const postRequestGas = 400_000n
-			const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
+			const postRequestFeeInSourceFeeToken = await convertGasToFeeToken(
+				this.ctx,
 				postRequestGas,
 				"source",
 				order.source,
@@ -214,7 +212,7 @@ export class GasEstimator {
 
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
-		const totalGasInDestFeeToken = await this.convertGasToFeeToken(totalGas, "dest", order.destination, gasPrice)
+		const totalGasInDestFeeToken = await convertGasToFeeToken(this.ctx, totalGas, "dest", order.destination, gasPrice)
 		const totalGasInSourceFeeToken = adjustDecimals(
 			totalGasInDestFeeToken,
 			destFeeToken.decimals,
@@ -364,49 +362,6 @@ export class GasEstimator {
 		}
 
 		return { viem: viemOverrides, bundler: bundlerOverrides }
-	}
-
-	private async convertGasToFeeToken(
-		gasEstimate: bigint,
-		gasEstimateIn: "source" | "dest",
-		evmChainID: string,
-		gasPriceOverride?: bigint,
-	): Promise<bigint> {
-		const chain = this.ctx[gasEstimateIn]
-		const client = chain.client
-		const gasPrice =
-			gasPriceOverride ??
-			((await retryPromise(() => client.getGasPrice(), {
-				maxRetries: 3,
-				backoffMs: 250,
-			})) as bigint)
-		const gasCostInWei = gasEstimate * gasPrice
-		const wethAddr = chain.configService.getWrappedNativeAssetWithDecimals(evmChainID).asset
-		const feeToken = await getFeeToken(this.ctx, evmChainID, chain)
-
-		try {
-			const { amountOut } = await this.ctx.swap.findBestProtocolWithAmountIn(
-				client,
-				wethAddr,
-				feeToken.address,
-				gasCostInWei,
-				evmChainID,
-				{ selectedProtocol: "v2" },
-			)
-			if (amountOut === 0n) {
-				throw new Error()
-			}
-			return amountOut
-		} catch {
-			const nativeCurrency = client.chain?.nativeCurrency
-			const chainId = Number.parseInt(evmChainID.split("-")[1])
-			const gasCostInToken = new Decimal(formatUnits(gasCostInWei, nativeCurrency?.decimals ?? 18))
-			const tokenPriceUsd = await fetchPrice(nativeCurrency?.symbol, chainId)
-			const gasCostUsd = gasCostInToken.times(tokenPriceUsd)
-			const feeTokenPriceUsd = new Decimal(1)
-			const gasCostInFeeToken = gasCostUsd.dividedBy(feeTokenPriceUsd)
-			return parseUnits(gasCostInFeeToken.toFixed(feeToken.decimals), feeToken.decimals)
-		}
 	}
 
 	private async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {

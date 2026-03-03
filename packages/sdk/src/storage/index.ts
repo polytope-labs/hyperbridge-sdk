@@ -111,6 +111,7 @@ export const STORAGE_KEYS = Object.freeze({
 	destProof: (orderId: string) => `cancel-order:${orderId}:destProof`,
 	getRequest: (orderId: string) => `cancel-order:${orderId}:getRequest`,
 	sourceProof: (orderId: string) => `cancel-order:${orderId}:sourceProof`,
+	postCommitment: (orderId: string) => `cancel-order:${orderId}:postCommitment`,
 })
 
 /**

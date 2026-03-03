@@ -12,6 +12,8 @@ export {
 	bytes20ToBytes32,
 	hexToString,
 	constructRedeemEscrowRequestBody,
+	constructRefundEscrowRequestBody,
+	encodeWithdrawalRequest,
 	estimateGasForPost,
 	getStorageSlot,
 	getOrFetchStorageSlot,
