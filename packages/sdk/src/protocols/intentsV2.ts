@@ -15,6 +15,7 @@ import {
 	parseAbiParameters,
 	encodePacked,
 	parseEventLogs,
+	isHex,
 } from "viem"
 import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
@@ -934,8 +935,12 @@ export class IntentGatewayV2 {
 
 		const { order, solverPrivateKey } = params
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
-		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(order.destination)
-		const entryPointAddress = this.dest.configService.getEntryPointV08Address(order.destination)
+		const sourceStateMachineId = isHex(order.source) ? hexToString(order.source as HexString) : order.source
+		const destStateMachineId = isHex(order.destination)
+			? hexToString(order.destination as HexString)
+			: order.destination
+		const intentGatewayV2Address = this.dest.configService.getIntentGatewayV2Address(destStateMachineId)
+		const entryPointAddress = this.dest.configService.getEntryPointV08Address(destStateMachineId)
 		const chainId = BigInt(
 			this.dest.client.chain?.id ?? Number.parseInt(this.dest.config.stateMachineId.split("-")[1]),
 		)
@@ -957,7 +962,7 @@ export class IntentGatewayV2 {
 		// Build state overrides once - used for both viem and bundler estimation
 		const { viem: stateOverrides, bundler: bundlerStateOverrides } = this.buildStateOverride({
 			accountAddress: solverAccountAddress,
-			chain: order.destination,
+			chain: destStateMachineId,
 			outputAssets: assetsForOverrides,
 			spenderAddress: intentGatewayV2Address,
 			intentGatewayV2Address,
@@ -966,7 +971,11 @@ export class IntentGatewayV2 {
 
 		// Calculate protocol fees for the post request
 		const postRequestGas = 400_000n
-		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(postRequestGas, "source", order.source)
+		const postRequestFeeInSourceFeeToken = await this.convertGasToFeeToken(
+			postRequestGas,
+			"source",
+			sourceStateMachineId,
+		)
 		let postRequestFeeInDestFeeToken = adjustDecimals(
 			postRequestFeeInSourceFeeToken,
 			sourceFeeToken.decimals,
@@ -974,13 +983,13 @@ export class IntentGatewayV2 {
 		)
 
 		const postRequest: IPostRequest = {
-			source: order.destination,
-			dest: order.source,
+			source: destStateMachineId,
+			dest: sourceStateMachineId,
 			body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
 			timeoutTimestamp: 0n,
 			nonce: await this.source.getHostNonce(),
-			from: this.source.configService.getIntentGatewayV2Address(order.destination),
-			to: this.source.configService.getIntentGatewayV2Address(order.source),
+			from: this.source.configService.getIntentGatewayV2Address(destStateMachineId),
+			to: this.source.configService.getIntentGatewayV2Address(sourceStateMachineId),
 		}
 
 		let protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
@@ -1117,7 +1126,7 @@ export class IntentGatewayV2 {
 		// Calculate total gas cost
 		const totalGas = callGasLimit + verificationGasLimit + preVerificationGas
 		const totalGasCostWei = totalGas * maxFeePerGas
-		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGasCostWei, "dest", order.destination)
+		const totalGasInFeeToken = await this.convertGasToFeeToken(totalGasCostWei, "dest", destStateMachineId)
 
 		return {
 			callGasLimit,
