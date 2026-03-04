@@ -1,6 +1,6 @@
-import { isHex, hexToString, parseAbiItem } from "viem"
+import { isHex, hexToString } from "viem"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
-import { orderV2Commitment } from "@/utils"
+import { orderV2Commitment, bytes32ToBytes20 } from "@/utils"
 import type { OrderV2, HexString } from "@/types"
 import type { IntentsV2Context } from "./types"
 
@@ -41,20 +41,18 @@ export class OrderStatusChecker {
 	}
 
 	/**
-	 * Checks if a V2 order has been refunded by querying the `EscrowRefunded` event on the source chain.
+	 * Checks if a V2 order has been refunded by reading the `_orders` mapping on the source chain.
 	 *
-	 * Unlike V1 (which reads storage slots for escrowed token amounts), V2 does not expose a storage
-	 * slot calculation function for the escrow state. Instead, refunds are signalled by the
-	 * `EscrowRefunded(bytes32 indexed commitment)` event emitted on the source chain after a
-	 * successful cancellation is relayed back from Hyperbridge.
-	 *
-	 * If `order.transactionHash` is set, the log search starts from that block to avoid
-	 * scanning the entire chain history.
+	 * Calls `_orders(commitment, tokenAddress)` for each input token. When the order is placed the
+	 * escrowed amounts are stored there. After a successful refund the contract zeroes them out.
+	 * An order is considered refunded when all escrowed input amounts have been returned (i.e. are 0).
 	 *
 	 * @param order - The V2 order to check. `order.id` is used as the commitment; if not set it is computed.
-	 * @returns True if the escrow has been refunded to the user on the source chain, false otherwise.
+	 * @returns True if all escrowed inputs have been returned to the user on the source chain, false otherwise.
 	 */
 	async isOrderRefunded(order: OrderV2): Promise<boolean> {
+		if (!order.inputs || order.inputs.length === 0) return false
+
 		const commitment = (order.id ?? orderV2Commitment(order)) as HexString
 		const sourceStateMachineId = isHex(order.source)
 			? hexToString(order.source as HexString)
@@ -62,20 +60,20 @@ export class OrderStatusChecker {
 
 		const intentGatewayV2Address = this.ctx.source.configService.getIntentGatewayV2Address(sourceStateMachineId)
 
-		let fromBlock: bigint | undefined
-		if (order.transactionHash) {
-			const receipt = await this.ctx.source.client.getTransactionReceipt({ hash: order.transactionHash })
-			fromBlock = receipt.blockNumber
+		for (const input of order.inputs) {
+			const tokenAddress = bytes32ToBytes20(input.token)
+			const escrowedAmount = await this.ctx.source.client.readContract({
+				abi: IntentGatewayV2ABI,
+				address: intentGatewayV2Address,
+				functionName: "_orders",
+				args: [commitment, tokenAddress],
+			})
+
+			if (escrowedAmount !== 0n) {
+				return false
+			}
 		}
 
-		const logs = await this.ctx.source.client.getLogs({
-			address: intentGatewayV2Address,
-			event: parseAbiItem("event EscrowRefunded(bytes32 indexed commitment)"),
-			args: { commitment },
-			fromBlock,
-			toBlock: "latest",
-		})
-
-		return logs.length > 0
+		return true
 	}
 }
