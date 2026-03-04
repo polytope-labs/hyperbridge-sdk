@@ -50,6 +50,9 @@ export const tronNile = defineChain({
 	},
 })
 
+// Known Tron chain IDs (mainnet + Nile testnet)
+export const tronChainIds = new Set([728126428, 3448148188])
+
 export interface ChainConfigData {
 	chainId: number
 	stateMachineId: Chains
@@ -60,10 +63,12 @@ export interface ChainConfigData {
 		DAI: string
 		USDC: string
 		USDT: string
+		cNGN?: string
 	}
 	tokenDecimals?: {
 		USDC: number
 		USDT: number
+		cNGN?: number
 	}
 	tokenStorageSlots?: {
 		USDT?: { balanceSlot: number; allowanceSlot: number }
@@ -88,6 +93,8 @@ export interface ChainConfigData {
 		EntryPointV08?: `0x${string}`
 		/** USDT0 OFT contract address (OFT Adapter on Ethereum, OFT on other chains) */
 		Usdt0Oft?: `0x${string}`
+		/** SolverAccount contract address used for EIP-7702 delegation */
+		SolverAccount?: `0x${string}`
 	}
 	rpcEnvKey?: string
 	defaultRpcUrl?: string
@@ -115,6 +122,10 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDC: 18,
 			USDT: 18,
 		},
+		tokenStorageSlots: {
+			USDC: { balanceSlot: 1, allowanceSlot: 2 },
+			USDT: { balanceSlot: 151, allowanceSlot: 152 },
+		},
 		addresses: {
 			IntentGateway: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
 			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
@@ -127,6 +138,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
 			UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			SolverAccount: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
 		},
 		rpcEnvKey: "BSC_CHAPEL",
 		defaultRpcUrl: "https://bnb-testnet.api.onfinality.io/public",
@@ -219,10 +231,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x6b175474e89094c44da98b954eedeac495271d0f",
 			USDC: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
 			USDT: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+			cNGN: "0x17CDB2a01e7a34CbB3DD4b83260B05d0274C8dab",
 		},
 		tokenDecimals: {
 			USDC: 6,
 			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 2, allowanceSlot: 5 },
@@ -232,7 +246,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20",
 			UniswapRouter02: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
@@ -281,7 +296,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7",
 			UniswapRouter02: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
@@ -332,7 +348,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0xE05AFD4Eb2ce6d65c40e1048381BD0Ef8b4B299e",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -368,10 +385,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
 			USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
 			USDT: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+			cNGN: "0x46C85152bFe9f96829aA94755D9f915F9B10EF5F",
 		},
 		tokenDecimals: {
 			USDC: 6,
 			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 0, allowanceSlot: 1 },
@@ -381,7 +400,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x6FFe92e4d7a9D589549644544780e6725E84b248",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -417,10 +437,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
 			USDC: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
 			USDT: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+			cNGN: "0x52828daa48C1a9A06F37500882b42daf0bE04C3B",
 		},
 		tokenDecimals: {
 			USDC: 6,
 			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 0, allowanceSlot: 1 },
@@ -430,7 +452,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0xD8d3db17C1dF65b301D45C84405CcAC1395C559a",
 			UniswapRouter02: "0xd2f9496824951D5237cC71245D659E48d0d5f9E8",
@@ -473,7 +496,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
-			IntentGatewayV2: "0x63f78c5A22183b7E7c02D6196352e31E464b99dA",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0x2A17C1c3616Bbc33FCe5aF5B965F166ba76cEDAf",
 			UniswapRouter02: "0x284f11109359a7e1306c3e447ef14d38400063ff",
@@ -514,8 +538,11 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDC: 6,
 			USDT: 6,
 		},
+		tokenStorageSlots: {
+			USDT: { balanceSlot: 0, allowanceSlot: 1 },
+		},
 		addresses: {
-			IntentGatewayV2: tronAddress("TT4CjjHw7QgLbE9wKtYEopid1YqePkbAfb"),
+			IntentGatewayV2: tronAddress("TMcm6r9RRVKPJNLgyFxcuJknFruQBuPumF"),
 			Host: tronAddress("TNduR7v184pMWv2oTamRxxzsmz7oHrKqJc"),
 			Calldispatcher: tronAddress("TA9XyBPuXL9ecXcLpcFV1g778fzstke2Eh"),
 			UniswapRouter02: tronAddress("TLXGSird23Ww5FZrtbTYisrZNARUmjwmcy"),
@@ -535,11 +562,15 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			WETH: "0x360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9", //wmatic, change it to wpol
 			DAI: "0x0000000000000000000000000000000000000000",
 			USDC: "0x693b854d6965ffeaae21c74049dea644b56fcacb",
-			USDT: "0x693B854D6965ffEAaE21C74049deA644b56FCaCB",
+			USDT: "0x693b854d6965ffeaae21c74049dea644b56fcacb",
 		},
 		tokenDecimals: {
 			USDC: 18,
 			USDT: 18,
+		},
+		tokenStorageSlots: {
+			USDT: { balanceSlot: 0, allowanceSlot: 1 },
+			USDC: { balanceSlot: 1, allowanceSlot: 2 },
 		},
 		addresses: {
 			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
@@ -548,6 +579,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			Calldispatcher: "0x876F1891982E260026630c233A4897160A281Fb8",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
 			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			SolverAccount: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
 		},
 		rpcEnvKey: "POLYGON_AMOY",
 		defaultRpcUrl: "https://rpc-amoy.polygon.technology",
