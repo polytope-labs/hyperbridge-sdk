@@ -3,9 +3,9 @@ import type { BridgeResult, BridgeParams, EstimateResult } from "@circle-fin/bri
 import { createViemAdapterFromPrivateKey } from "@circle-fin/adapter-viem-v2"
 import type { Chain, PublicClient } from "viem"
 import { type HexString, parseStateMachineId } from "@hyperbridge/sdk"
-import { ChainClientManager } from "../ChainClientManager"
-import { FillerConfigService } from "../FillerConfigService"
-import { getLogger, type Logger } from "../Logger"
+import { ChainClientManager } from "@/services/ChainClientManager"
+import { FillerConfigService } from "@/services/FillerConfigService"
+import { getLogger, type Logger } from "@/services/Logger"
 import { RebalanceOptions } from "."
 
 /** Viem adapter type */

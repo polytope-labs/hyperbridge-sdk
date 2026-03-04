@@ -4,34 +4,34 @@ import { readFileSync } from "fs"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { parse } from "toml"
-import { IntentFiller } from "../core/filler.js"
-import { BasicFiller } from "../strategies/basic.js"
-import { ConfirmationPolicy, FillerBpsPolicy } from "../config/interpolated-curve.js"
+import { IntentFiller } from "@/core/filler"
+import { BasicFiller } from "@/strategies/basic"
+import { FXFiller } from "@/strategies/fx"
+import { ConfirmationPolicy, FillerBpsPolicy, FillerPricePolicy } from "@/config/interpolated-curve"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
 import {
 	FillerConfigService,
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
 	LoggingConfig,
-} from "../services/FillerConfigService.js"
-import { ChainClientManager } from "../services/ChainClientManager.js"
-import { ContractInteractionService } from "../services/ContractInteractionService.js"
-import { RebalancingService } from "../services/RebalancingService.js"
-import { getLogger, configureLogger } from "../services/Logger.js"
-import { CacheService } from "../services/CacheService.js"
-import { BidStorageService } from "../services/BidStorageService.js"
-import type { BinanceCexConfig } from "../services/rebalancers/index.js"
+} from "@/services/FillerConfigService"
+import { ChainClientManager } from "@/services/ChainClientManager"
+import { ContractInteractionService } from "@/services/ContractInteractionService"
+import { RebalancingService } from "@/services/RebalancingService"
+import { getLogger, configureLogger } from "@/services/Logger"
+import { CacheService } from "@/services/CacheService"
+import { BidStorageService } from "@/services/BidStorageService"
+import type { BinanceCexConfig } from "@/services/rebalancers/index"
 import { Decimal } from "decimal.js"
 
 // ASCII art header
 const ASCII_HEADER = `
-███████╗██╗██╗     ██╗     ███████╗██████╗     ██╗   ██╗██████╗
-██╔════╝██║██║     ██║     ██╔════╝██╔══██╗    ██║   ██║╚════██╗
-█████╗  ██║██║     ██║     █████╗  ██████╔╝    ██║   ██║ █████╔╝
-██╔══╝  ██║██║     ██║     ██╔══╝  ██╔══██╗    ╚██╗ ██╔╝██╔═══╝
-██║     ██║███████╗███████╗███████╗██║  ██║     ╚████╔╝ ███████╗
-╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝      ╚═══╝  ╚══════╝
-                    Hyperbridge IntentGatewayV2
+██╗███╗  ██╗████████╗███████╗███╗  ██╗████████╗ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
+██║████╗ ██║╚══██╔══╝██╔════╝████╗ ██║╚══██╔══╝██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
+██║██╔██╗██║   ██║   █████╗  ██╔██╗██║   ██║   ██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
+██║██║╚████║   ██║   ██╔══╝  ██║╚████║   ██║   ██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
+██║██║ ╚███║   ██║   ███████╗██║ ╚███║   ██║   ╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
+╚═╝╚═╝  ╚══╝   ╚═╝   ╚══════╝╚═╝  ╚══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
 
 `
 
@@ -41,7 +41,7 @@ const __dirname = dirname(__filename)
 const packageJsonPath = resolve(__dirname, "../../package.json")
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
-interface StrategyConfig {
+interface BasicStrategyConfig {
 	type: "basic"
 	/**
 	 * Array of (amount, value) coordinates defining the BPS curve.
@@ -52,6 +52,24 @@ interface StrategyConfig {
 		value: number
 	}>
 }
+
+interface FxStrategyConfig {
+	type: "fx"
+	/**
+	 * Array of (amount, priceUsd) coordinates defining the exotic token price curve.
+	 * priceUsd = price of the exotic token in USD at that order amount
+	 */
+	priceCurve: Array<{
+		amount: string
+		priceUsd: string
+	}>
+	/** Maximum USD value per order */
+	maxOrderUsd: string
+	/** Map of chain identifier (e.g. "EVM-97") to exotic token contract address */
+	exoticTokenAddresses: Record<string, HexString>
+}
+
+type StrategyConfig = BasicStrategyConfig | FxStrategyConfig
 
 interface ChainConfirmationPolicy {
 	/**
@@ -98,8 +116,6 @@ interface FillerTomlConfig {
 		hyperbridgeWsUrl?: string
 		entryPointAddress?: string
 		solverAccountContractAddress?: string
-		/** Directory for persistent data storage (bids database, etc.) */
-		dataDir?: string
 		bundlerUrl?: string
 	}
 	strategies: StrategyConfig[]
@@ -111,14 +127,18 @@ interface FillerTomlConfig {
 
 const program = new Command()
 
-program.name("filler").description("Hyperbridge IntentGatewayV2 FillerV2").version(packageJson.version)
+program
+	.name("filler")
+	.description("Automated market maker for Hyperbridge IntentGatewayV2")
+	.version(packageJson.version)
 
 program
 	.command("run")
 	.description("Run the intent filler with the specified configuration")
 	.requiredOption("-c, --config <path>", "Path to TOML configuration file")
+	.option("-d, --data-dir <path>", "Directory for persistent data storage (bids database, etc.)")
 	.option("--watch-only", "Watch-only mode: monitor orders without executing fills", false)
-	.action(async (options: { config: string; watchOnly?: boolean }) => {
+	.action(async (options: { config: string; dataDir?: string; watchOnly?: boolean }) => {
 		try {
 			// Display ASCII art header
 			process.stdout.write(ASCII_HEADER)
@@ -136,7 +156,7 @@ program
 
 			const logger = getLogger("cli")
 			logger.info({ configPath }, "Loading configuration")
-			logger.info("Starting Hyperbridge IntentGatewayV2 FillerV2...")
+			logger.info("Starting Filler...")
 
 			logger.info("Initializing services...")
 
@@ -152,7 +172,7 @@ program
 				substratePrivateKey: config.filler.substratePrivateKey,
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
 				entryPointAddress: config.filler.entryPointAddress,
-				dataDir: config.filler.dataDir,
+				dataDir: options.dataDir,
 				bundlerUrl: config.filler.bundlerUrl,
 				rebalancing: config.rebalancing,
 			}
@@ -241,8 +261,21 @@ program
 							bidStorageService,
 						)
 					}
+					case "fx": {
+						const pricePolicy = new FillerPricePolicy({ points: strategyConfig.priceCurve })
+						return new FXFiller(
+							privateKey,
+							configService,
+							chainClientManager,
+							contractService,
+							pricePolicy,
+							strategyConfig.maxOrderUsd,
+							strategyConfig.exoticTokenAddresses,
+							bidStorageService,
+						)
+					}
 					default:
-						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
+						throw new Error(`Unknown strategy type: ${(strategyConfig as StrategyConfig).type}`)
 				}
 			})
 
@@ -376,18 +409,41 @@ function validateConfig(config: FillerTomlConfig): void {
 			throw new Error("Strategy type is required")
 		}
 
-		if (!["basic"].includes(strategy.type)) {
+		if (!["basic", "fx"].includes(strategy.type)) {
 			throw new Error(`Invalid strategy type: ${strategy.type}`)
 		}
 
-		// Validate BPS curve
-		if (!strategy.bpsCurve || !Array.isArray(strategy.bpsCurve) || strategy.bpsCurve.length < 2) {
-			throw new Error("Strategy must have a 'bpsCurve' array with at least 2 points")
+		if (strategy.type === "basic") {
+			// Validate BPS curve
+			if (!strategy.bpsCurve || !Array.isArray(strategy.bpsCurve) || strategy.bpsCurve.length < 2) {
+				throw new Error("Basic strategy must have a 'bpsCurve' array with at least 2 points")
+			}
+
+			for (const point of strategy.bpsCurve) {
+				if (point.amount === undefined || point.value === undefined) {
+					throw new Error("Each BPS curve point must have 'amount' and 'value'")
+				}
+			}
 		}
 
-		for (const point of strategy.bpsCurve) {
-			if (point.amount === undefined || point.value === undefined) {
-				throw new Error("Each BPS curve point must have 'amount' and 'value'")
+		if (strategy.type === "fx") {
+			// Validate price curve
+			if (!strategy.priceCurve || !Array.isArray(strategy.priceCurve) || strategy.priceCurve.length < 2) {
+				throw new Error("FX strategy must have a 'priceCurve' array with at least 2 points")
+			}
+
+			for (const point of strategy.priceCurve) {
+				if (point.amount === undefined || point.priceUsd === undefined) {
+					throw new Error("Each FX price curve point must have 'amount' and 'priceUsd'")
+				}
+			}
+
+			if (!strategy.maxOrderUsd) {
+				throw new Error("FX strategy must have 'maxOrderUsd'")
+			}
+
+			if (!strategy.exoticTokenAddresses || Object.keys(strategy.exoticTokenAddresses).length === 0) {
+				throw new Error("FX strategy must have at least one entry in 'exoticTokenAddresses'")
 			}
 		}
 	}

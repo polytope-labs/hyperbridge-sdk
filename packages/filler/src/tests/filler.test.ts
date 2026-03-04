@@ -42,7 +42,6 @@ import "./setup"
 import { ERC20_ABI } from "@/config/abis/ERC20"
 import { Decimal } from "decimal.js"
 import { TronWeb } from "tronweb"
-import { formatAbiItem } from "viem/utils"
 
 // ============================================================================
 // Test Suites
