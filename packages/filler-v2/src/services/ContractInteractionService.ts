@@ -284,54 +284,28 @@ export class ContractInteractionService {
 	}
 
 	/**
-	 * Calculates the total USD value of tokens in an order's inputs and outputs.
+	 * Calculates the total USD value of an order's inputs.
+	 * Only stable (USDC/USDT) inputs contribute; non-stables contribute 0.
 	 *
-	 * @param order - The order to calculate token values for
-	 * @returns An object containing the total USD values of outputs and inputs
+	 * @param order - The order to calculate input value for
+	 * @returns The total USD value of inputs (sum of normalized stable amounts, or 0 if none)
 	 */
-	async getTokenUsdValue(order: OrderV2): Promise<{ outputUsdValue: Decimal; inputUsdValue: Decimal }> {
-		let outputUsdValue = new Decimal(0)
+	async getInputUsdValue(order: OrderV2): Promise<Decimal> {
 		let inputUsdValue = new Decimal(0)
-		const outputs = order.output.assets
 		const inputs = order.inputs
-
-		// Restrict to only USDC and USDT on both sides; otherwise throw error
-		const destUsdc = this.configService.getUsdcAsset(order.destination).toLowerCase()
-		const destUsdt = this.configService.getUsdtAsset(order.destination).toLowerCase()
 		const sourceUsdc = this.configService.getUsdcAsset(order.source).toLowerCase()
 		const sourceUsdt = this.configService.getUsdtAsset(order.source).toLowerCase()
 
-		const outputsAreStableOnly = outputs.every((o) => {
-			const addr = bytes32ToBytes20(o.token).toLowerCase()
-			return addr === destUsdc || addr === destUsdt
-		})
-		const inputsAreStableOnly = inputs.every((i) => {
-			const addr = bytes32ToBytes20(i.token).toLowerCase()
-			return addr === sourceUsdc || addr === sourceUsdt
-		})
-
-		if (!outputsAreStableOnly || !inputsAreStableOnly) {
-			throw new Error("Only USDC and USDT are supported for token value calculation")
-		}
-
-		// For stables, USD value equals the normalized token amount (peg ~ $1)
-		for (const output of outputs) {
-			const tokenAddress = bytes32ToBytes20(output.token)
-			const decimals = await this.getTokenDecimals(tokenAddress, order.destination)
-			const amount = output.amount
-			const tokenAmount = new Decimal(formatUnits(amount, decimals))
-			outputUsdValue = outputUsdValue.plus(tokenAmount)
-		}
-
 		for (const input of inputs) {
 			const tokenAddress = bytes32ToBytes20(input.token)
+			const addr = tokenAddress.toLowerCase()
+			if (addr !== sourceUsdc && addr !== sourceUsdt) continue
 			const decimals = await this.getTokenDecimals(tokenAddress, order.source)
-			const amount = input.amount
-			const tokenAmount = new Decimal(formatUnits(amount, decimals))
+			const tokenAmount = new Decimal(formatUnits(input.amount, decimals))
 			inputUsdValue = inputUsdValue.plus(tokenAmount)
 		}
 
-		return { outputUsdValue, inputUsdValue }
+		return inputUsdValue
 	}
 
 	/**

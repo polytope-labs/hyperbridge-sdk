@@ -13,6 +13,7 @@ import pQueue from "p-queue"
 import { ChainClientManager, ContractInteractionService, DelegationService, RebalancingService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
+import { Decimal } from "decimal.js"
 
 export class IntentFiller {
 	public monitor: EventMonitor
@@ -215,10 +216,44 @@ export class IntentFiller {
 				}
 
 				const sourceClient = this.chainClientManager.getPublicClient(order.source)
-				const orderValue = await this.contractService.getTokenUsdValue(order)
+				// Base layer: stable-only USD value from ContractInteractionService
+				const baseInputUsd = await this.contractService.getInputUsdValue(order)
+
+				// Strategy layer: first strategy that can price the order wins
+				let inputUsdValue = baseInputUsd
+				const canFillCache = new Set<FillerStrategy>()
+				for (const strategy of this.strategies) {
+					// Skip strategies that cannot price inputs
+					if (typeof strategy.getOrderUsdValue !== "function") continue
+
+					let canFill = false
+					try {
+						canFill = await strategy.canFill(order)
+					} catch (err) {
+						this.logger.error(
+							{ orderId: order.id, strategy: strategy.name, err },
+							"Error checking canFill during inputUsdValue computation",
+						)
+					}
+					if (!canFill) continue
+					canFillCache.add(strategy)
+					try {
+						const stratValue = await strategy.getOrderUsdValue(order)
+						if (stratValue != null) {
+							inputUsdValue = Decimal.max(baseInputUsd, stratValue.inputUsd)
+							break
+						}
+					} catch (err) {
+						this.logger.error(
+							{ orderId: order.id, strategy: strategy.name, err },
+							"Error getting strategy-specific inputUsdValue",
+						)
+					}
+				}
+
 				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 					getChainId(order.source)!,
-					orderValue.inputUsdValue.toNumber(),
+					inputUsdValue.toNumber(),
 				)
 
 				// Run confirmation waiting and evaluation in parallel.
@@ -268,7 +303,7 @@ export class IntentFiller {
 				// Run confirmation and evaluation in parallel
 				const [, evaluationResult] = await Promise.all([
 					waitForConfirmations(),
-					this.evaluateOrder(order).then((result) => {
+					this.evaluateOrder(order, canFillCache).then((result) => {
 						if (!result) abortController.abort()
 						return result
 					}),
@@ -284,7 +319,10 @@ export class IntentFiller {
 		})
 	}
 
-	private async evaluateOrder(order: OrderV2): Promise<{ strategy: FillerStrategy; profitability: number } | null> {
+	private async evaluateOrder(
+		order: OrderV2,
+		canFillCache: Set<FillerStrategy>,
+	): Promise<{ strategy: FillerStrategy; profitability: number } | null> {
 		// Check if watch-only mode is enabled for the destination chain
 		const destChainId = getChainId(order.destination)
 		const isWatchOnly =
@@ -313,7 +351,7 @@ export class IntentFiller {
 
 		const eligibleStrategies = await Promise.all(
 			this.strategies.map(async (strategy) => {
-				const canFill = await strategy.canFill(order)
+				const canFill = canFillCache.has(strategy) || (await strategy.canFill(order))
 				if (!canFill) return null
 
 				const profitability = await strategy.calculateProfitability(order)

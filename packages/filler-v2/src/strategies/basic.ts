@@ -131,7 +131,7 @@ export class BasicFiller implements FillerStrategy {
 			)
 
 			// Get order value and determine dynamic BPS from policy
-			const { inputUsdValue } = await this.contractService.getTokenUsdValue(order)
+			const inputUsdValue = await this.contractService.getInputUsdValue(order)
 			const fillerBps = this.bpsPolicy.getBps(inputUsdValue)
 
 			// Validate that order outputs meet filler's minimum bps requirements

@@ -126,13 +126,75 @@ export class FXFiller implements FillerStrategy {
 	}
 
 	/**
+	 * Computes the USD value of both the input and output baskets of an order.
+	 *
+	 * - Stable tokens (USDC/USDT) are valued at $1 per unit.
+	 * - Exotic tokens are valued using the minimum price from the FX price policy
+	 *   (`getPrice(0)` clamps to the first configured point).
+	 * - Unknown tokens are ignored (contribute $0).
+	 *
+	 * Returning both sides allows callers to size budgets from inputs and
+	 * sanity-check that planned outputs never exceed the value received.
+	 */
+	async getOrderUsdValue(order: OrderV2): Promise<{ inputUsd: Decimal; outputUsd: Decimal } | null> {
+		try {
+			const chain = order.source
+			const exoticAddress = this.exoticTokenAddresses[chain].toLowerCase()
+
+			const exoticDecimals = await this.contractService.getTokenDecimals(exoticAddress, chain)
+
+			const sourceUsdc = this.configService.getUsdcAsset(chain).toLowerCase()
+			const sourceUsdt = this.configService.getUsdtAsset(chain).toLowerCase()
+
+			const exoticMinPriceUsd = this.pricePolicy.getPrice(new Decimal(0))
+
+			let inputUsd = new Decimal(0)
+			let outputUsd = new Decimal(0)
+
+			for (let i = 0; i < order.inputs.length; i++) {
+				const inputAddress = bytes32ToBytes20(order.inputs[i].token).toLowerCase()
+				const outputAddress = bytes32ToBytes20(order.output.assets[i].token).toLowerCase()
+
+				// Value the input side
+				if (inputAddress === sourceUsdc || inputAddress === sourceUsdt) {
+					const decimals = await this.contractService.getTokenDecimals(inputAddress as HexString, chain)
+					inputUsd = inputUsd.plus(new Decimal(formatUnits(order.inputs[i].amount, decimals)))
+				} else if (inputAddress === exoticAddress) {
+					const normalized = new Decimal(formatUnits(order.inputs[i].amount, exoticDecimals))
+					inputUsd = inputUsd.plus(normalized.mul(exoticMinPriceUsd))
+				}
+
+				// Value the output side
+				if (outputAddress === sourceUsdc || outputAddress === sourceUsdt) {
+					const decimals = await this.contractService.getTokenDecimals(outputAddress as HexString, chain)
+					outputUsd = outputUsd.plus(new Decimal(formatUnits(order.output.assets[i].amount, decimals)))
+				} else if (outputAddress === exoticAddress) {
+					const normalized = new Decimal(formatUnits(order.output.assets[i].amount, exoticDecimals))
+					outputUsd = outputUsd.plus(normalized.mul(exoticMinPriceUsd))
+				}
+			}
+
+			if (inputUsd.lte(0)) {
+				this.logger.error({ orderId: order.id }, "Total input USD value is non-positive")
+				return null
+			}
+
+			return { inputUsd, outputUsd }
+		} catch (error) {
+			this.logger.error({ err: error }, "Error computing order USD values")
+			return null
+		}
+	}
+
+	/**
 	 * Evaluates whether an order is profitable to fill under the configured
 	 * per-order USD cap and the filler's current token balances.
 	 *
 	 * High-level flow:
-	 * - Compute the total USD value of the order on the stable side.
+	 * - Compute the total USD value of the order based on the input side,
+	 *   pricing exotic inputs at the policy's minimum price.
 	 * - Cap this at `maxOrderUsd` to get a capped USD budget.
-	 * - Ask the price policy for a cNGN price at that capped USD.
+	 * - Ask the price policy for an exotic token price at that capped USD.
 	 * - Walk each (input, output) leg in order, allocating from the capped USD
 	 *   budget and computing how much the filler is willing to output.
 	 * - Further cap each leg by the filler's current token balance.
@@ -150,28 +212,32 @@ export class FXFiller implements FillerStrategy {
 			const walletAddress = this.account.address as HexString
 			const balanceCache = new Map<string, bigint>()
 
-			// Compute USD value from the stable side (for price lookup).
-			let totalOrderUsd = new Decimal(0)
-			for (let i = 0; i < order.inputs.length; i++) {
-				const pair = this.classifyPair(order.inputs[i].token, order.output.assets[i].token, chain)!
-				const sd = await this.contractService.getTokenDecimals(
-					bytes32ToBytes20(pair.stableToken) as HexString,
-					chain,
-				)
-
-				if (pair.inputIsStable) {
-					totalOrderUsd = totalOrderUsd.plus(new Decimal(formatUnits(order.inputs[i].amount, sd)))
-				} else {
-					totalOrderUsd = totalOrderUsd.plus(new Decimal(formatUnits(order.output.assets[i].amount, sd)))
-				}
+			const orderUsd = await this.getOrderUsdValue(order)
+			if (!orderUsd) {
+				this.logger.info({ orderId: order.id }, "Skipping order: could not compute order USD values")
+				return 0
 			}
 
-			const cappedOrderUsd = Decimal.min(totalOrderUsd, this.maxOrderUsd)
+			const { inputUsd: totalInputUsd, outputUsd: totalOutputUsd } = orderUsd
+
+			if (totalOutputUsd.gt(totalInputUsd)) {
+				this.logger.info(
+					{
+						orderId: order.id,
+						totalInputUsd: totalInputUsd.toString(),
+						totalOutputUsd: totalOutputUsd.toString(),
+					},
+					"Skipping order: requested output USD value exceeds input USD value",
+				)
+				return 0
+			}
+
+			const cappedOrderUsd = Decimal.min(totalInputUsd, this.maxOrderUsd)
 			if (cappedOrderUsd.lte(0)) {
 				this.logger.info(
 					{
 						orderId: order.id,
-						orderValueUsdFull: totalOrderUsd.toString(),
+						orderValueUsdFull: totalInputUsd.toString(),
 						orderValueUsdCapped: cappedOrderUsd.toString(),
 						maxOrderUsd: this.maxOrderUsd.toString(),
 					},
@@ -181,10 +247,6 @@ export class FXFiller implements FillerStrategy {
 			}
 
 			const exoticTokenPriceUsd = this.pricePolicy.getPrice(cappedOrderUsd)
-			const exoticTokenDecimals = await this.contractService.getTokenDecimals(
-				this.exoticTokenAddresses[chain],
-				chain,
-			)
 			const fillerOutputs: TokenInfoV2[] = []
 			let remainingUsd = cappedOrderUsd
 
@@ -198,9 +260,13 @@ export class FXFiller implements FillerStrategy {
 					chain,
 				)
 
+				const exoticTokenDecimals = await this.contractService.getTokenDecimals(
+					this.exoticTokenAddresses[chain],
+					chain,
+				)
+
 				const legResult = this.computeLegPolicyOutput(
 					input.amount,
-					output.amount,
 					pair.inputIsStable,
 					stableDecimals,
 					exoticTokenDecimals,
@@ -248,7 +314,7 @@ export class FXFiller implements FillerStrategy {
 				this.logger.info(
 					{
 						orderId: order.id,
-						orderValueUsdFull: totalOrderUsd.toString(),
+						orderValueUsdFull: totalInputUsd.toString(),
 						orderValueUsdCapped: cappedOrderUsd.toString(),
 						maxOrderUsd: this.maxOrderUsd.toString(),
 					},
@@ -265,7 +331,7 @@ export class FXFiller implements FillerStrategy {
 			this.logger.info(
 				{
 					orderId: order.id,
-					orderValueUsdFull: totalOrderUsd.toString(),
+					orderValueUsdFull: totalInputUsd.toString(),
 					orderValueUsdCapped: cappedOrderUsd.toString(),
 					maxOrderUsd: this.maxOrderUsd.toString(),
 					exoticTokenPriceUsd: exoticTokenPriceUsd.toString(),
@@ -378,12 +444,15 @@ export class FXFiller implements FillerStrategy {
 	 * computes how much USD to allocate to this leg and the corresponding
 	 * maximum output amount according to the price policy.
 	 *
+	 * Uses `exoticTokenPriceUsd` consistently for both directions:
+	 * - Stable input → exotic output: USD allocation from stable amount, converted to exotic at policy price.
+	 * - Exotic input → stable output: USD allocation from exotic amount priced at policy price.
+	 *
 	 * Returns `null` when this leg cannot consume any of the remaining USD
 	 * budget (e.g. the cap has already been exhausted).
 	 */
 	private computeLegPolicyOutput(
 		inputAmount: bigint,
-		outputAmount: bigint,
 		inputIsStable: boolean,
 		stableDecimals: number,
 		exoticTokenDecimals: number,
@@ -394,7 +463,8 @@ export class FXFiller implements FillerStrategy {
 		if (inputIsStable) {
 			legMaxUsd = new Decimal(formatUnits(inputAmount, stableDecimals))
 		} else {
-			legMaxUsd = new Decimal(formatUnits(outputAmount, stableDecimals))
+			const normalizedExoticInput = new Decimal(formatUnits(inputAmount, exoticTokenDecimals))
+			legMaxUsd = normalizedExoticInput.mul(exoticTokenPriceUsd)
 		}
 
 		const usdForLeg = Decimal.min(legMaxUsd, remainingUsd)
@@ -404,9 +474,11 @@ export class FXFiller implements FillerStrategy {
 
 		let policyMaxOutput: bigint
 		if (inputIsStable) {
+			// Output is exotic: convert USD allocation to exotic tokens at the policy price
 			const exoticFromAlloc = usdForLeg.div(exoticTokenPriceUsd)
 			policyMaxOutput = BigInt(exoticFromAlloc.mul(new Decimal(10).pow(exoticTokenDecimals)).floor().toFixed(0))
 		} else {
+			// Output is stable: the filler pays out the USD value of the exotic input
 			policyMaxOutput = BigInt(usdForLeg.mul(new Decimal(10).pow(stableDecimals)).floor().toFixed(0))
 		}
 
