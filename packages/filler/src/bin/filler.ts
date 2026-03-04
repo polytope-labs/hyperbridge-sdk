@@ -6,27 +6,32 @@ import { fileURLToPath } from "url"
 import { parse } from "toml"
 import { IntentFiller } from "../core/filler.js"
 import { BasicFiller } from "../strategies/basic.js"
-import { ConfirmationPolicy } from "../config/confirmation-policy.js"
+import { ConfirmationPolicy, FillerBpsPolicy } from "../config/interpolated-curve.js"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
 import {
 	FillerConfigService,
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
-	EtherscanConfig,
 	LoggingConfig,
 } from "../services/FillerConfigService.js"
+import { ChainClientManager } from "../services/ChainClientManager.js"
+import { ContractInteractionService } from "../services/ContractInteractionService.js"
+import { RebalancingService } from "../services/RebalancingService.js"
 import { getLogger, configureLogger } from "../services/Logger.js"
 import { CacheService } from "../services/CacheService.js"
+import { BidStorageService } from "../services/BidStorageService.js"
+import type { BinanceCexConfig } from "../services/rebalancers/index.js"
 import { Decimal } from "decimal.js"
 
 // ASCII art header
 const ASCII_HEADER = `
-██╗███╗   ██╗████████╗███████╗███╗   ██╗████████╗ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
-██║████╗  ██║╚══██╔══╝██╔════╝████╗  ██║╚══██╔══╝██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
-██║██╔██╗ ██║   ██║   █████╗  ██╔██╗ ██║   ██║   ██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
-██║██║╚██╗██║   ██║   ██╔══╝  ██║╚██╗██║   ██║   ██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
-██║██║ ╚████║   ██║   ███████╗██║ ╚████║   ██║   ╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
-╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
+███████╗██╗██╗     ██╗     ███████╗██████╗     ██╗   ██╗██████╗
+██╔════╝██║██║     ██║     ██╔════╝██╔══██╗    ██║   ██║╚════██╗
+█████╗  ██║██║     ██║     █████╗  ██████╔╝    ██║   ██║ █████╔╝
+██╔══╝  ██║██║     ██║     ██╔══╝  ██╔══██╗    ╚██╗ ██╔╝██╔═══╝
+██║     ██║███████╗███████╗███████╗██║  ██║     ╚████╔╝ ███████╗
+╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝      ╚═══╝  ╚══════╝
+                    Hyperbridge IntentGatewayV2
 
 `
 
@@ -37,15 +42,26 @@ const packageJsonPath = resolve(__dirname, "../../package.json")
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
 interface StrategyConfig {
-	type: "basic" | "stable-swap"
-	privateKey: string
+	type: "basic"
+	/**
+	 * Array of (amount, value) coordinates defining the BPS curve.
+	 * value = basis points at that order amount
+	 */
+	bpsCurve: Array<{
+		amount: string
+		value: number
+	}>
 }
 
 interface ChainConfirmationPolicy {
-	minAmount: string
-	maxAmount: string
-	minConfirmations: number
-	maxConfirmations: number
+	/**
+	 * Array of (amount, value) coordinates defining the confirmation curve.
+	 * value = number of confirmations at that order amount
+	 */
+	points: Array<{
+		amount: string
+		value: number
+	}>
 }
 
 interface PendingQueueConfig {
@@ -53,28 +69,56 @@ interface PendingQueueConfig {
 	recheckDelayMs: number
 }
 
+interface RebalancingConfig {
+	triggerPercentage: number
+	baseBalances: {
+		USDC?: Record<string, string>
+		USDT?: Record<string, string>
+	}
+}
+
+interface BinanceConfig {
+	apiKey: string
+	apiSecret: string
+	basePath?: string
+	timeout?: number
+	depositTimeoutMs?: number
+	pollIntervalMs?: number
+	withdrawTimeoutMs?: number
+}
+
 interface FillerTomlConfig {
 	filler: {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
-		etherscan?: EtherscanConfig
 		logging?: LoggingConfig
+		watchOnly?: boolean | Record<string, boolean>
+		substratePrivateKey?: string
+		hyperbridgeWsUrl?: string
+		entryPointAddress?: string
+		solverAccountContractAddress?: string
+		/** Directory for persistent data storage (bids database, etc.) */
+		dataDir?: string
+		bundlerUrl?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
 	confirmationPolicies: Record<string, ChainConfirmationPolicy>
+	rebalancing?: RebalancingConfig
+	binance?: BinanceConfig
 }
 
 const program = new Command()
 
-program.name("filler").description("Hyperbridge IntentGateway Filler").version(packageJson.version)
+program.name("filler").description("Hyperbridge IntentGatewayV2 FillerV2").version(packageJson.version)
 
 program
 	.command("run")
 	.description("Run the intent filler with the specified configuration")
 	.requiredOption("-c, --config <path>", "Path to TOML configuration file")
-	.action(async (options: { config: string }) => {
+	.option("--watch-only", "Watch-only mode: monitor orders without executing fills", false)
+	.action(async (options: { config: string; watchOnly?: boolean }) => {
 		try {
 			// Display ASCII art header
 			process.stdout.write(ASCII_HEADER)
@@ -92,7 +136,7 @@ program
 
 			const logger = getLogger("cli")
 			logger.info({ configPath }, "Loading configuration")
-			logger.info("Starting Hyperbridge IntentGateway Filler...")
+			logger.info("Starting Hyperbridge IntentGatewayV2 FillerV2...")
 
 			logger.info("Initializing services...")
 
@@ -101,14 +145,17 @@ program
 				rpcUrl: chain.rpcUrl,
 			}))
 
-			const fillerConfigForService: FillerServiceConfig | undefined = config.filler.logging
-				? {
-						privateKey: config.filler.privateKey,
-						maxConcurrentOrders: config.filler.maxConcurrentOrders,
-						etherscan: config.filler.etherscan,
-						logging: config.filler.logging,
-					}
-				: undefined
+			const fillerConfigForService: FillerServiceConfig = {
+				privateKey: config.filler.privateKey,
+				maxConcurrentOrders: config.filler.maxConcurrentOrders,
+				logging: config.filler.logging,
+				substratePrivateKey: config.filler.substratePrivateKey,
+				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
+				entryPointAddress: config.filler.entryPointAddress,
+				dataDir: config.filler.dataDir,
+				bundlerUrl: config.filler.bundlerUrl,
+				rebalancing: config.rebalancing,
+			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
 
@@ -122,6 +169,33 @@ program
 			const confirmationPolicy = new ConfirmationPolicy(config.confirmationPolicies)
 
 			// Create filler configuration
+			// Handle watchOnly: can be boolean (global) or Record<string, boolean> (per-chain)
+			let watchOnlyConfig: Record<number, boolean> | undefined
+			if (options.watchOnly) {
+				// CLI flag overrides config - apply to all chains
+				watchOnlyConfig = {}
+				config.chains.forEach((chain) => {
+					watchOnlyConfig![chain.chainId] = true
+				})
+			} else if (config.filler.watchOnly !== undefined) {
+				if (typeof config.filler.watchOnly === "boolean") {
+					// Global watch-only mode
+					watchOnlyConfig = {}
+					config.chains.forEach((chain) => {
+						watchOnlyConfig![chain.chainId] = config.filler.watchOnly as boolean
+					})
+				} else {
+					// Per-chain configuration
+					watchOnlyConfig = {}
+					Object.entries(config.filler.watchOnly).forEach(([chainIdStr, value]) => {
+						const chainId = Number.parseInt(chainIdStr, 10)
+						if (!Number.isNaN(chainId)) {
+							watchOnlyConfig![chainId] = value === true
+						}
+					})
+				}
+			}
+
 			const fillerConfig: FillerConfig = {
 				confirmationPolicy: {
 					getConfirmationBlocks: (chainId: number, amount: number) =>
@@ -129,25 +203,73 @@ program
 				},
 				maxConcurrentOrders: config.filler.maxConcurrentOrders,
 				pendingQueueConfig: config.filler.pendingQueue,
-			}
+				watchOnly: watchOnlyConfig,
+			} as FillerConfig
 
-			// Create shared cache service to avoid duplicate RPC calls during initialization
+			// Create shared services to avoid duplicate RPC calls and reuse connections
 			const sharedCacheService = new CacheService()
+			const privateKey = config.filler.privateKey as HexString
+			const chainClientManager = new ChainClientManager(configService, privateKey)
+			const contractService = new ContractInteractionService(
+				chainClientManager,
+				privateKey,
+				configService,
+				sharedCacheService,
+				configService.getBundlerUrl(),
+			)
 
-			// Initialize strategies
+			// Initialize bid storage service for persistent storage of bid transaction hashes
+			// This enables later cleanup and fund recovery from Hyperbridge
+			const bidStorageService = new BidStorageService(configService.getDataDir())
+			logger.info(
+				{ dataDir: configService.getDataDir() || ".filler-data" },
+				"Bid storage initialized for fund recovery tracking",
+			)
+
+			// Initialize strategies with shared services
 			logger.info("Initializing strategies...")
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
-					case "basic":
+					case "basic": {
+						const bpsPolicy = new FillerBpsPolicy({ points: strategyConfig.bpsCurve })
 						return new BasicFiller(
-							strategyConfig.privateKey as HexString,
+							privateKey,
 							configService,
-							sharedCacheService,
+							chainClientManager,
+							contractService,
+							bpsPolicy,
+							bidStorageService,
 						)
+					}
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}
 			})
+
+			// Initialize rebalancing service if config is provided
+			let rebalancingService: RebalancingService | undefined
+			const rebalancingConfig = configService.getRebalancingConfig()
+			if (rebalancingConfig) {
+				let binanceConfig: BinanceCexConfig | undefined
+				if (config.binance) {
+					binanceConfig = {
+						apiKey: config.binance.apiKey,
+						apiSecret: config.binance.apiSecret,
+						basePath: config.binance.basePath,
+						timeout: config.binance.timeout,
+						pollIntervalMs: config.binance.pollIntervalMs,
+					}
+					logger.info("Binance CEX rebalancing configured")
+				}
+
+				rebalancingService = new RebalancingService(
+					chainClientManager,
+					configService,
+					privateKey,
+					binanceConfig,
+				)
+				logger.info("Rebalancing service initialized")
+			}
 
 			// Initialize and start the intent filler
 			logger.info("Starting intent filler...")
@@ -156,30 +278,46 @@ program
 				strategies,
 				fillerConfig,
 				configService,
-				sharedCacheService,
+				chainClientManager,
+				contractService,
+				privateKey,
+				rebalancingService,
 			)
+
+			// Initialize (sets up EIP-7702 delegation if solver selection is configured)
+			await intentFiller.initialize()
+
 			// Start the filler
 			intentFiller.start()
+
+			const watchOnlyChains = watchOnlyConfig
+				? Object.entries(watchOnlyConfig)
+						.filter(([, value]) => value === true)
+						.map(([chainId]) => Number.parseInt(chainId, 10))
+				: []
 
 			logger.info(
 				{
 					chains: config.chains.map((c) => c.chainId),
 					strategies: config.strategies.map((s) => s.type),
 					maxConcurrentOrders: config.filler.maxConcurrentOrders,
+					watchOnlyChains: watchOnlyChains.length > 0 ? watchOnlyChains : undefined,
 				},
-				"Intent filler is running",
+				watchOnlyChains.length > 0
+					? `Intent filler is running (watch-only on chains: ${watchOnlyChains.join(", ")})`
+					: "Intent filler is running",
 			)
 
 			// Handle graceful shutdown
-			process.on("SIGINT", () => {
+			process.on("SIGINT", async () => {
 				logger.warn("Shutting down intent filler (SIGINT)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 
-			process.on("SIGTERM", () => {
+			process.on("SIGTERM", async () => {
 				logger.warn("Shutting down intent filler (SIGTERM)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 
@@ -194,12 +332,25 @@ program
 
 function validateConfig(config: FillerTomlConfig): void {
 	// Validate required fields
-	if (!config.filler?.privateKey) {
-		throw new Error("Filler private key is required")
+	// Private key is only required if not all chains are in watch-only mode
+	const isWatchOnlyGlobal = config.filler?.watchOnly === true
+	const isWatchOnlyPerChain =
+		config.filler?.watchOnly !== undefined &&
+		typeof config.filler.watchOnly === "object" &&
+		config.filler.watchOnly !== null &&
+		config.chains.every((chain) => {
+			const chainIdStr = String(chain.chainId)
+			const watchOnlyObj = config.filler.watchOnly as Record<string, boolean>
+			return chainIdStr in watchOnlyObj && watchOnlyObj[chainIdStr] === true
+		})
+	const allChainsWatchOnly = isWatchOnlyGlobal || isWatchOnlyPerChain
+
+	if (!config.filler?.privateKey && !allChainsWatchOnly) {
+		throw new Error("Filler private key is required (unless all chains are in watchOnly mode)")
 	}
 
-	if (!config.strategies || config.strategies.length === 0) {
-		throw new Error("At least one strategy must be configured")
+	if ((!config.strategies || config.strategies.length === 0) && !allChainsWatchOnly) {
+		throw new Error("At least one strategy must be configured (unless all chains are in watchOnly mode)")
 	}
 
 	if (!config.chains || config.chains.length === 0) {
@@ -221,27 +372,38 @@ function validateConfig(config: FillerTomlConfig): void {
 
 	// Validate strategies
 	for (const strategy of config.strategies) {
-		if (!strategy.type || !strategy.privateKey) {
-			throw new Error("Strategy type and private key are required")
+		if (!strategy.type) {
+			throw new Error("Strategy type is required")
 		}
 
-		if (!["basic", "stable-swap"].includes(strategy.type)) {
+		if (!["basic"].includes(strategy.type)) {
 			throw new Error(`Invalid strategy type: ${strategy.type}`)
+		}
+
+		// Validate BPS curve
+		if (!strategy.bpsCurve || !Array.isArray(strategy.bpsCurve) || strategy.bpsCurve.length < 2) {
+			throw new Error("Strategy must have a 'bpsCurve' array with at least 2 points")
+		}
+
+		for (const point of strategy.bpsCurve) {
+			if (point.amount === undefined || point.value === undefined) {
+				throw new Error("Each BPS curve point must have 'amount' and 'value'")
+			}
 		}
 	}
 
 	// Validate confirmation policies
 	for (const [chainId, policy] of Object.entries(config.confirmationPolicies)) {
-		if (!policy.minAmount || !policy.maxAmount) {
-			throw new Error(`Confirmation policy for chain ${chainId} must have minAmount and maxAmount`)
+		if (!policy.points || !Array.isArray(policy.points) || policy.points.length < 2) {
+			throw new Error(
+				`Confirmation policy for chain ${chainId} must have a 'points' array with at least 2 points`,
+			)
 		}
 
-		if (policy.minConfirmations === undefined || policy.maxConfirmations === undefined) {
-			throw new Error(`Confirmation policy for chain ${chainId} must have minConfirmations and maxConfirmations`)
-		}
-
-		if (policy.minConfirmations > policy.maxConfirmations) {
-			throw new Error(`Invalid confirmation range for chain ${chainId}`)
+		for (const point of policy.points) {
+			if (point.amount === undefined || point.value === undefined) {
+				throw new Error(`Each point in confirmation policy for chain ${chainId} must have 'amount' and 'value'`)
+			}
 		}
 	}
 }

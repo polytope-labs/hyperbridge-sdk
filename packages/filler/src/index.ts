@@ -6,9 +6,11 @@ export { EventMonitor } from "./core/event-monitor"
 
 // Strategy exports
 export { BasicFiller } from "./strategies/basic"
+export { FXFiller } from "./strategies/fx"
 
 // Configuration exports
-export { ConfirmationPolicy } from "./config/confirmation-policy"
+export { InterpolatedCurve, ConfirmationPolicy, FillerBpsPolicy } from "./config/interpolated-curve"
+export type { CurvePoint, CurveConfig } from "./config/interpolated-curve"
 
 // Service exports
 export { ChainClientManager, ContractInteractionService } from "./services"

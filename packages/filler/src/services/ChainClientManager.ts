@@ -1,12 +1,12 @@
 import { PublicClient, WalletClient, createPublicClient, createWalletClient, http, type Chain } from "viem"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
-import { Order, HexString, ChainConfig, getViemChain } from "@hyperbridge/sdk"
+import { Order, HexString, ChainConfig, getViemChain, OrderV2 } from "@hyperbridge/sdk"
 import { FillerConfigService } from "./FillerConfigService"
 
 /**
  * Factory for creating and managing Viem clients
  */
-export class ViemClientFactory {
+class ViemClientFactoryImpl {
 	private publicClients: Map<number, PublicClient> = new Map()
 	private walletClients: Map<number, WalletClient> = new Map()
 
@@ -52,7 +52,7 @@ export class ViemClientFactory {
 }
 
 // Create a singleton instance of the factory
-export const viemClientFactory = new ViemClientFactory()
+export const ViemClientFactory = new ViemClientFactoryImpl()
 
 /**
  * Manages chain clients for different operations
@@ -60,12 +60,12 @@ export const viemClientFactory = new ViemClientFactory()
 export class ChainClientManager {
 	private privateKey: HexString
 	private configService: FillerConfigService
-	private clientFactory: ViemClientFactory
+	private clientFactory: ViemClientFactoryImpl
 
 	constructor(configService: FillerConfigService, privateKey?: HexString) {
 		this.privateKey = privateKey || generatePrivateKey()
 		this.configService = configService
-		this.clientFactory = viemClientFactory
+		this.clientFactory = ViemClientFactory
 	}
 
 	getPublicClient(chain: string): PublicClient {
@@ -78,15 +78,15 @@ export class ChainClientManager {
 		return this.clientFactory.getWalletClient(config, this.privateKey)
 	}
 
-	getClientsForOrder(order: Order): {
+	getClientsForOrder(order: OrderV2): {
 		destClient: PublicClient
 		sourceClient: PublicClient
 		walletClient: WalletClient
 	} {
 		return {
-			destClient: this.getPublicClient(order.destChain),
-			sourceClient: this.getPublicClient(order.sourceChain),
-			walletClient: this.getWalletClient(order.destChain),
+			destClient: this.getPublicClient(order.destination),
+			sourceClient: this.getPublicClient(order.source),
+			walletClient: this.getWalletClient(order.destination),
 		}
 	}
 }

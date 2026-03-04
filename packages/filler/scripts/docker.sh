@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Simple Docker script for Hyperbridge Filler
+# Simple Docker script for Hyperbridge FillerV2
 # Handles the essential Docker operations: build, run, and docker-compose
 
 # Color codes for output

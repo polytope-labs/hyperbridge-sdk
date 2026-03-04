@@ -1,16 +1,29 @@
 import { EventEmitter } from "events"
-import { ChainConfig, Order, orderCommitment, hexToString, DecodedOrderPlacedLog, retryPromise } from "@hyperbridge/sdk"
-import { INTENT_GATEWAY_ABI } from "@/config/abis/IntentGateway"
-import { PublicClient } from "viem"
+import {
+	ChainConfig,
+	EvmChain,
+	IChain,
+	OrderV2,
+	TronChain,
+	orderV2Commitment,
+	hexToString,
+	retryPromise,
+	DecodedOrderV2PlacedLog,
+	HexString,
+	tronChainIds,
+	getEvmChain,
+	IEvmChain,
+} from "@hyperbridge/sdk"
+import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
+import { decodeFunctionData } from "viem"
 import { ChainClientManager } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
 import { Mutex } from "async-mutex"
 
 export class EventMonitor extends EventEmitter {
-	private clients: Map<number, PublicClient> = new Map()
+	private chains: Map<number, IEvmChain> = new Map()
 	private listening: boolean = false
-	private clientManager: ChainClientManager
 	private configService: FillerConfigService
 	private logger = getLogger("event-monitor")
 	private lastScannedBlock: Map<number, bigint> = new Map()
@@ -20,12 +33,18 @@ export class EventMonitor extends EventEmitter {
 	constructor(chainConfigs: ChainConfig[], configService: FillerConfigService, clientManager: ChainClientManager) {
 		super()
 		this.configService = configService
-		this.clientManager = clientManager
 
 		chainConfigs.forEach((config) => {
 			const chainName = `EVM-${config.chainId}`
-			const client = this.clientManager.getPublicClient(chainName)
-			this.clients.set(config.chainId, client)
+			const chainParams = {
+				stateMachineId: chainName,
+				chainId: config.chainId,
+				rpcUrl: this.configService.getRpcUrl(chainName),
+				host: this.configService.getHostAddress(chainName),
+				consensusStateId: this.configService.getConsensusStateId(chainName),
+			}
+			const chain = getEvmChain(chainParams)
+			this.chains.set(config.chainId, chain as IEvmChain)
 			this.scanningMutexes.set(config.chainId, new Mutex())
 		})
 	}
@@ -34,12 +53,17 @@ export class EventMonitor extends EventEmitter {
 		if (this.listening) return
 		this.listening = true
 
-		for (const [chainId, client] of this.clients.entries()) {
+		for (const [chainId, chain] of this.chains.entries()) {
 			try {
-				const orderPlacedEvent = INTENT_GATEWAY_ABI.find(
+				const orderPlacedEvent = INTENT_GATEWAY_V2_ABI.find(
 					(item) => item.type === "event" && item.name === "OrderPlaced",
 				)
-				const intentGatewayAddress = this.configService.getIntentGatewayAddress(`EVM-${chainId}`)
+				const intentGatewayAddress = this.configService.getIntentGatewayV2Address(`EVM-${chainId}`)
+
+				const client = chain.client
+				if (!client) {
+					throw new Error(`Chain ${chainId} does not expose a public client`)
+				}
 
 				const startBlock = await retryPromise(() => client.getBlockNumber(), {
 					maxRetries: 3,
@@ -60,7 +84,7 @@ export class EventMonitor extends EventEmitter {
 
 					await mutex.runExclusive(async () => {
 						try {
-							await this.scanBlocks(chainId, client, intentGatewayAddress, orderPlacedEvent)
+							await this.scanBlocks(chainId, chain, intentGatewayAddress, orderPlacedEvent)
 						} catch (error) {
 							this.logger.error({ chainId, err: error }, "Error in block scanner")
 						}
@@ -78,14 +102,14 @@ export class EventMonitor extends EventEmitter {
 
 	private async scanBlocks(
 		chainId: number,
-		client: PublicClient,
+		chain: IEvmChain,
 		intentGatewayAddress: `0x${string}`,
 		orderPlacedEvent: any,
 	): Promise<void> {
 		const lastScanned = this.lastScannedBlock.get(chainId)
 		if (!lastScanned) return
 
-		const currentBlock = await retryPromise(() => client.getBlockNumber(), {
+		const currentBlock = await retryPromise(() => chain.client.getBlockNumber(), {
 			maxRetries: 3,
 			backoffMs: 250,
 			logMessage: "Failed to get current block number",
@@ -105,7 +129,7 @@ export class EventMonitor extends EventEmitter {
 
 			const logs = await retryPromise(
 				() =>
-					client.getLogs({
+					chain.client.getLogs({
 						address: intentGatewayAddress,
 						event: orderPlacedEvent,
 						fromBlock,
@@ -123,7 +147,7 @@ export class EventMonitor extends EventEmitter {
 					{ chainId, fromBlock, toBlock: actualToBlock, eventCount: logs.length },
 					"Found events in block scan",
 				)
-				this.processLogs(logs)
+				await this.processLogs(chainId, chain, logs)
 			}
 
 			// Update lastScannedBlock only after successful processing
@@ -132,49 +156,55 @@ export class EventMonitor extends EventEmitter {
 		}
 	}
 
-	private processLogs(logs: any[]): void {
+	private async processLogs(chainId: number, chain: IEvmChain, logs: any[]): Promise<void> {
 		for (const log of logs) {
 			try {
-				const decodedLog = log as unknown as DecodedOrderPlacedLog
-				const order: Order = {
-					id: orderCommitment({
-						id: "",
-						user: decodedLog.args.user,
-						sourceChain: hexToString(decodedLog.args.sourceChain),
-						destChain: hexToString(decodedLog.args.destChain),
-						deadline: decodedLog.args.deadline,
-						nonce: decodedLog.args.nonce,
-						fees: decodedLog.args.fees,
-						outputs: decodedLog.args.outputs.map((output) => ({
-							token: output.token,
-							amount: output.amount,
-							beneficiary: output.beneficiary,
-						})),
-						inputs: decodedLog.args.inputs.map((input) => ({
-							token: input.token,
-							amount: input.amount,
-						})),
-						callData: decodedLog.args.callData,
-						transactionHash: decodedLog.transactionHash,
-					}),
+				const decodedLog = log as unknown as DecodedOrderV2PlacedLog
+				let order: OrderV2 = {
 					user: decodedLog.args.user,
-					sourceChain: hexToString(decodedLog.args.sourceChain),
-					destChain: hexToString(decodedLog.args.destChain),
+					source: hexToString(decodedLog.args.source) as HexString,
+					destination: hexToString(decodedLog.args.destination) as HexString,
 					deadline: decodedLog.args.deadline,
 					nonce: decodedLog.args.nonce,
 					fees: decodedLog.args.fees,
-					outputs: decodedLog.args.outputs.map((output) => ({
-						token: output.token,
-						amount: output.amount,
-						beneficiary: output.beneficiary,
-					})),
+					session: decodedLog.args.session,
+					predispatch: {
+						assets: decodedLog.args.predispatch.map((predispatch) => ({
+							token: predispatch.token,
+							amount: predispatch.amount,
+						})),
+						call: "0x",
+					},
+					output: {
+						beneficiary: "0x0000000000000000000000000000000000000000",
+						assets: decodedLog.args.outputs.map((output) => ({
+							token: output.token,
+							amount: output.amount,
+						})),
+						call: "0x",
+					},
 					inputs: decodedLog.args.inputs.map((input) => ({
 						token: input.token,
 						amount: input.amount,
 					})),
-					callData: decodedLog.args.callData,
 					transactionHash: decodedLog.transactionHash,
 				}
+
+				const intentGatewayAddress = this.configService.getIntentGatewayV2Address(order.source)
+				const placeOrderCallInput = await chain.getPlaceOrderCalldata!(
+					order.transactionHash as string,
+					intentGatewayAddress,
+				)
+
+				const decodedCalldata = decodeFunctionData({
+					abi: INTENT_GATEWAY_V2_ABI,
+					data: placeOrderCallInput as HexString,
+				})?.args?.[0] as OrderV2
+
+				order.output.beneficiary = decodedCalldata.output.beneficiary as `0x${string}`
+				order.output.call = decodedCalldata.output.call as HexString
+				order.predispatch.call = decodedCalldata.predispatch.call as HexString
+				order.id = orderV2Commitment(order)
 
 				this.logger.info({ orderId: order.id, txHash: order.transactionHash }, "New order detected")
 				this.emit("newOrder", { order })

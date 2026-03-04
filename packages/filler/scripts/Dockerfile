@@ -1,4 +1,4 @@
-# Dockerfile for Hyperbridge Intent Filler
+# Dockerfile for Hyperbridge Intent FillerV2
 FROM node:24-alpine
 
 # Install dependencies required for builds

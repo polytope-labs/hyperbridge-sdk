@@ -1,6 +1,6 @@
 # Scripts Directory
 
-This directory contains utility scripts for the Hyperbridge Filler.
+This directory contains utility scripts for the Hyperbridge FillerV2.
 
 ## Docker Script
 

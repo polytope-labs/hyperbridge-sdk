@@ -2,10 +2,15 @@ import { HexString } from "@hyperbridge/sdk"
 import { getLogger } from "./Logger"
 
 interface GasEstimateCache {
-	fillGas: string
-	postGas: string
-	relayerFeeInFeeToken: string
-	relayerFeeInNativeToken: string
+	totalCostInSourceFeeToken: string
+	dispatchFee: string
+	nativeDispatchFee: string
+	callGasLimit: string
+	verificationGasLimit: string
+	preVerificationGas: string
+	maxFeePerGas: string
+	maxPriorityFeePerGas: string
+	nonce: string
 	timestamp: number
 }
 
@@ -21,12 +26,24 @@ interface SwapOperationsCache {
 	timestamp: number
 }
 
+interface FillerOutputCache {
+	token: HexString
+	amount: string
+}
+
+interface FillerOutputsCache {
+	outputs: FillerOutputCache[]
+	timestamp: number
+}
+
 interface CacheData {
 	gasEstimates: Record<string, GasEstimateCache>
 	swapOperations: Record<string, SwapOperationsCache>
+	fillerOutputs: Record<string, FillerOutputsCache>
 	feeTokens: Record<string, { address: HexString; decimals: number }>
 	perByteFees: Record<string, Record<string, bigint>>
 	tokenDecimals: Record<string, Record<HexString, number>>
+	solverSelection: Record<string, boolean>
 }
 
 export class CacheService {
@@ -35,7 +52,15 @@ export class CacheService {
 	private logger = getLogger("cache-service")
 
 	constructor() {
-		this.cacheData = { gasEstimates: {}, swapOperations: {}, feeTokens: {}, perByteFees: {}, tokenDecimals: {} }
+		this.cacheData = {
+			gasEstimates: {},
+			swapOperations: {},
+			fillerOutputs: {},
+			feeTokens: {},
+			perByteFees: {},
+			tokenDecimals: {},
+			solverSelection: {},
+		}
 	}
 
 	private isCacheValid(timestamp: number): boolean {
@@ -60,19 +85,41 @@ export class CacheService {
 		staleSwapOperationIds.forEach((orderId) => {
 			delete this.cacheData.swapOperations[orderId]
 		})
+
+		// Clean up filler outputs
+		const staleFillerOutputIds = Object.entries(this.cacheData.fillerOutputs)
+			.filter(([_, data]) => !this.isCacheValid(data.timestamp))
+			.map(([orderId]) => orderId)
+
+		staleFillerOutputIds.forEach((orderId) => {
+			delete this.cacheData.fillerOutputs[orderId]
+		})
 	}
 
-	getGasEstimate(
-		orderId: string,
-	): { fillGas: bigint; postGas: bigint; relayerFeeInFeeToken: bigint; relayerFeeInNativeToken: bigint } | null {
+	getGasEstimate(orderId: string): {
+		totalCostInSourceFeeToken: bigint
+		dispatchFee: bigint
+		nativeDispatchFee: bigint
+		callGasLimit: bigint
+		verificationGasLimit: bigint
+		preVerificationGas: bigint
+		maxFeePerGas: bigint
+		maxPriorityFeePerGas: bigint
+		nonce: bigint
+	} | null {
 		try {
 			const cache = this.cacheData.gasEstimates[orderId]
 			if (cache && this.isCacheValid(cache.timestamp)) {
 				return {
-					fillGas: BigInt(cache.fillGas),
-					postGas: BigInt(cache.postGas),
-					relayerFeeInFeeToken: BigInt(cache.relayerFeeInFeeToken),
-					relayerFeeInNativeToken: BigInt(cache.relayerFeeInNativeToken),
+					totalCostInSourceFeeToken: BigInt(cache.totalCostInSourceFeeToken),
+					dispatchFee: BigInt(cache.dispatchFee),
+					nativeDispatchFee: BigInt(cache.nativeDispatchFee),
+					callGasLimit: BigInt(cache.callGasLimit),
+					verificationGasLimit: BigInt(cache.verificationGasLimit),
+					preVerificationGas: BigInt(cache.preVerificationGas),
+					maxFeePerGas: BigInt(cache.maxFeePerGas),
+					maxPriorityFeePerGas: BigInt(cache.maxPriorityFeePerGas),
+					nonce: BigInt(cache.nonce),
 				}
 			}
 			return null
@@ -84,21 +131,31 @@ export class CacheService {
 
 	setGasEstimate(
 		orderId: string,
-		fillGas: bigint,
-		postGas: bigint,
-		relayerFeeInFeeToken: bigint,
-		relayerFeeInNativeToken: bigint,
+		totalCostInSourceFeeToken: bigint,
+		dispatchFee: bigint,
+		nativeDispatchFee: bigint,
+		callGasLimit: bigint,
+		verificationGasLimit: bigint,
+		preVerificationGas: bigint,
+		maxFeePerGas: bigint,
+		maxPriorityFeePerGas: bigint,
+		nonce: bigint,
 	): void {
-		if (fillGas <= 0n || postGas <= 0n) {
-			throw new Error("Gas values must be positive")
+		if (totalCostInSourceFeeToken <= 0n) {
+			throw new Error("Total cost in source fee token must be positive")
 		}
 		try {
 			this.cleanupStaleData()
 			this.cacheData.gasEstimates[orderId] = {
-				fillGas: fillGas.toString(),
-				postGas: postGas.toString(),
-				relayerFeeInFeeToken: relayerFeeInFeeToken.toString(),
-				relayerFeeInNativeToken: relayerFeeInNativeToken.toString(),
+				totalCostInSourceFeeToken: totalCostInSourceFeeToken.toString(),
+				dispatchFee: dispatchFee.toString(),
+				nativeDispatchFee: nativeDispatchFee.toString(),
+				callGasLimit: callGasLimit.toString(),
+				verificationGasLimit: verificationGasLimit.toString(),
+				preVerificationGas: preVerificationGas.toString(),
+				maxFeePerGas: maxFeePerGas.toString(),
+				maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+				nonce: nonce.toString(),
 				timestamp: Date.now(),
 			}
 		} catch (error) {
@@ -137,6 +194,38 @@ export class CacheService {
 		}
 	}
 
+	getFillerOutputs(orderId: string): { token: HexString; amount: bigint }[] | null {
+		try {
+			const cache = this.cacheData.fillerOutputs[orderId]
+			if (cache && this.isCacheValid(cache.timestamp)) {
+				return cache.outputs.map((o) => ({
+					token: o.token,
+					amount: BigInt(o.amount),
+				}))
+			}
+			return null
+		} catch (error) {
+			this.logger.error({ err: error }, "Error getting filler outputs")
+			return null
+		}
+	}
+
+	setFillerOutputs(orderId: string, outputs: { token: HexString; amount: bigint }[]): void {
+		try {
+			this.cleanupStaleData()
+			this.cacheData.fillerOutputs[orderId] = {
+				outputs: outputs.map((o) => ({
+					token: o.token,
+					amount: o.amount.toString(),
+				})),
+				timestamp: Date.now(),
+			}
+		} catch (error) {
+			this.logger.error({ err: error }, "Error setting filler outputs")
+			throw error
+		}
+	}
+
 	getFeeTokenWithDecimals(chain: string): { address: HexString; decimals: number } | null {
 		try {
 			const cache = this.cacheData.feeTokens[chain]
@@ -157,11 +246,7 @@ export class CacheService {
 		try {
 			this.cleanupStaleData()
 
-			if (!this.cacheData.feeTokens[chain]) {
-				this.cacheData.feeTokens[chain] = { address, decimals }
-			} else {
-				this.cacheData.feeTokens[chain] = { address, decimals }
-			}
+			this.cacheData.feeTokens[chain] = { address, decimals }
 		} catch (error) {
 			this.logger.error({ chain: chain, err: error }, "Error setting fee token with decimals")
 			throw error
@@ -222,5 +307,14 @@ export class CacheService {
 			this.logger.error({ chain: chain, tokenAddress: tokenAddress, err: error }, "Error setting token decimals")
 			throw error
 		}
+	}
+
+	getSolverSelection(chain: string): boolean | null {
+		const cached = this.cacheData.solverSelection[chain]
+		return cached !== undefined ? cached : null
+	}
+
+	setSolverSelection(chain: string, active: boolean): void {
+		this.cacheData.solverSelection[chain] = active
 	}
 }
