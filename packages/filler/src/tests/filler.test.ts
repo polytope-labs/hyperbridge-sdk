@@ -40,7 +40,6 @@ import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
 import "./setup"
 import { ERC20_ABI } from "@/config/abis/ERC20"
-import { Decimal } from "decimal.js"
 import { TronWeb } from "tronweb"
 
 // ============================================================================
@@ -402,7 +401,6 @@ function createIntentFiller(
 		privateKey,
 		chainConfigService,
 		cacheService,
-		process.env.BUNDLER_URL,
 	)
 
 	const bpsPolicy = new FillerBpsPolicy({
@@ -412,7 +410,12 @@ function createIntentFiller(
 		],
 	})
 
-	const strategies = [new BasicFiller(privateKey, chainConfigService, chainClientManager, contractService, bpsPolicy)]
+	const confirmationPolicy = new ConfirmationPolicy({
+		"97": { points: [{ amount: "1", value: 1 }, { amount: "1000", value: 5 }] },
+		"80002": { points: [{ amount: "1", value: 1 }, { amount: "1000", value: 5 }] },
+	})
+
+	const strategies = [new BasicFiller(privateKey, chainConfigService, chainClientManager, contractService, bpsPolicy, confirmationPolicy)]
 
 	return new IntentFiller(
 		chainConfigs,
@@ -461,32 +464,12 @@ async function setUp() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		bundlerUrl: process.env.BUNDLER_URL,
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
 	const chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
-	const confirmationPolicy = new ConfirmationPolicy({
-		"97": {
-			points: [
-				{ amount: "1", value: 1 },
-				{ amount: "1000", value: 5 },
-			],
-		},
-		"80002": {
-			points: [
-				{ amount: "1", value: 1 },
-				{ amount: "1000", value: 5 },
-			],
-		},
-	})
-
 	const fillerConfig: FillerConfig = {
-		confirmationPolicy: {
-			getConfirmationBlocks: (chainId: number, amountUsd: number) =>
-				confirmationPolicy.getConfirmationBlocks(chainId, new Decimal(amountUsd)),
-		},
 		maxConcurrentOrders: 5,
 		pendingQueueConfig: {
 			maxRechecks: 10,
@@ -502,7 +485,6 @@ async function setUp() {
 		privateKey,
 		chainConfigService,
 		cacheService,
-		chainConfigService.getBundlerUrl(),
 	)
 
 	const bscWalletClient = chainClientManager.getWalletClient(bscChapelId)
@@ -548,32 +530,12 @@ async function setUpTron() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		bundlerUrl: process.env.BUNDLER_URL,
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
 	const chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
 
-	const confirmationPolicy = new ConfirmationPolicy({
-		"3448148188": {
-			points: [
-				{ amount: "1", value: 1 },
-				{ amount: "1000", value: 5 },
-			],
-		},
-		"80002": {
-			points: [
-				{ amount: "1", value: 1 },
-				{ amount: "1000", value: 5 },
-			],
-		},
-	})
-
 	const fillerConfig: FillerConfig = {
-		confirmationPolicy: {
-			getConfirmationBlocks: (chainId: number, amountUsd: number) =>
-				confirmationPolicy.getConfirmationBlocks(chainId, new Decimal(amountUsd)),
-		},
 		maxConcurrentOrders: 5,
 		pendingQueueConfig: {
 			maxRechecks: 10,
@@ -589,7 +551,6 @@ async function setUpTron() {
 		privateKey,
 		chainConfigService,
 		cacheService,
-		chainConfigService.getBundlerUrl(),
 	)
 
 	const tronWeb = new TronWeb({
