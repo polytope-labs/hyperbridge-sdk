@@ -40,20 +40,17 @@ export class ContractInteractionService {
 	private sdkHelperCache: Map<string, IntentsV2> = new Map()
 	private solverAccountAddress: HexString
 	private account: ReturnType<typeof privateKeyToAccount>
-	private bundlerUrl?: string
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private privateKey: HexString,
 		configService: FillerConfigService,
 		sharedCacheService?: CacheService,
-		bundlerUrl?: string,
 	) {
 		this.configService = configService
 		this.cacheService = sharedCacheService || new CacheService()
 		this.solverAccountAddress = privateKeyToAddress(this.privateKey)
 		this.account = privateKeyToAccount(this.privateKey)
-		this.bundlerUrl = bundlerUrl
 		this.initCache()
 	}
 
@@ -83,11 +80,12 @@ export class ContractInteractionService {
 		})
 
 		// Pass bundlerUrl to IntentGatewayV2 for accurate gas estimation via eth_estimateUserOperationGas
-		const helper = await IntentsV2.create(sourceEvmChain, destinationEvmChain, undefined, this.bundlerUrl)
+		const bundlerUrl = this.configService.getBundlerUrl(source)
+		const helper = await IntentsV2.create(sourceEvmChain, destinationEvmChain, undefined, bundlerUrl)
 		this.sdkHelperCache.set(cacheKey, helper)
 
 		this.logger.debug(
-			{ source, destination, bundlerUrl: this.bundlerUrl ? "[configured]" : undefined },
+			{ source, destination, bundlerUrl: bundlerUrl ? "[configured]" : undefined },
 			"Created and cached new IntentGatewayV2 instance",
 		)
 

@@ -41,6 +41,17 @@ const __dirname = dirname(__filename)
 const packageJsonPath = resolve(__dirname, "../../package.json")
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
+interface ChainConfirmationPolicy {
+	/**
+	 * Array of (amount, value) coordinates defining the confirmation curve.
+	 * value = number of confirmations at that order amount
+	 */
+	points: Array<{
+		amount: string
+		value: number
+	}>
+}
+
 interface BasicStrategyConfig {
 	type: "basic"
 	/**
@@ -51,6 +62,8 @@ interface BasicStrategyConfig {
 		amount: string
 		value: number
 	}>
+	/** Per-chain confirmation policies keyed by chain ID string */
+	confirmationPolicies: Record<string, ChainConfirmationPolicy>
 }
 
 interface FxStrategyConfig {
@@ -70,17 +83,6 @@ interface FxStrategyConfig {
 }
 
 type StrategyConfig = BasicStrategyConfig | FxStrategyConfig
-
-interface ChainConfirmationPolicy {
-	/**
-	 * Array of (amount, value) coordinates defining the confirmation curve.
-	 * value = number of confirmations at that order amount
-	 */
-	points: Array<{
-		amount: string
-		value: number
-	}>
-}
 
 interface PendingQueueConfig {
 	maxRechecks: number
@@ -116,11 +118,9 @@ interface FillerTomlConfig {
 		hyperbridgeWsUrl?: string
 		entryPointAddress?: string
 		solverAccountContractAddress?: string
-		bundlerUrl?: string
 	}
 	strategies: StrategyConfig[]
-	chains: UserProvidedChainConfig[]
-	confirmationPolicies: Record<string, ChainConfirmationPolicy>
+	chains: (UserProvidedChainConfig & { bundlerUrl?: string })[]
 	rebalancing?: RebalancingConfig
 	binance?: BinanceConfig
 }
@@ -163,6 +163,7 @@ program
 			const fillerChainConfigs: UserProvidedChainConfig[] = config.chains.map((chain) => ({
 				chainId: chain.chainId,
 				rpcUrl: chain.rpcUrl,
+				bundlerUrl: chain.bundlerUrl,
 			}))
 
 			const fillerConfigForService: FillerServiceConfig = {
@@ -173,7 +174,6 @@ program
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
 				entryPointAddress: config.filler.entryPointAddress,
 				dataDir: options.dataDir,
-				bundlerUrl: config.filler.bundlerUrl,
 				rebalancing: config.rebalancing,
 			}
 
@@ -184,9 +184,6 @@ program
 				const chainName = `EVM-${chain.chainId}`
 				return configService.getChainConfig(chainName)
 			})
-
-			// Initialize confirmation policy
-			const confirmationPolicy = new ConfirmationPolicy(config.confirmationPolicies)
 
 			// Create filler configuration
 			// Handle watchOnly: can be boolean (global) or Record<string, boolean> (per-chain)
@@ -217,10 +214,6 @@ program
 			}
 
 			const fillerConfig: FillerConfig = {
-				confirmationPolicy: {
-					getConfirmationBlocks: (chainId: number, amount: number) =>
-						confirmationPolicy.getConfirmationBlocks(chainId, new Decimal(amount)),
-				},
 				maxConcurrentOrders: config.filler.maxConcurrentOrders,
 				pendingQueueConfig: config.filler.pendingQueue,
 				watchOnly: watchOnlyConfig,
@@ -235,7 +228,6 @@ program
 				privateKey,
 				configService,
 				sharedCacheService,
-				configService.getBundlerUrl(),
 			)
 
 			// Initialize bid storage service for persistent storage of bid transaction hashes
@@ -252,12 +244,14 @@ program
 				switch (strategyConfig.type) {
 					case "basic": {
 						const bpsPolicy = new FillerBpsPolicy({ points: strategyConfig.bpsCurve })
+						const confirmationPolicy = new ConfirmationPolicy(strategyConfig.confirmationPolicies)
 						return new BasicFiller(
 							privateKey,
 							configService,
 							chainClientManager,
 							contractService,
 							bpsPolicy,
+							confirmationPolicy,
 							bidStorageService,
 						)
 					}
@@ -424,6 +418,26 @@ function validateConfig(config: FillerTomlConfig): void {
 					throw new Error("Each BPS curve point must have 'amount' and 'value'")
 				}
 			}
+
+			// Validate confirmation policies
+			if (!strategy.confirmationPolicies || Object.keys(strategy.confirmationPolicies).length === 0) {
+				throw new Error("Basic strategy must have at least one confirmation policy")
+			}
+
+			for (const [chainId, policy] of Object.entries(strategy.confirmationPolicies)) {
+				if (!policy.points || !Array.isArray(policy.points) || policy.points.length < 2) {
+					throw new Error(
+						`Confirmation policy for chain ${chainId} must have a 'points' array with at least 2 points`,
+					)
+				}
+				for (const point of policy.points) {
+					if (point.amount === undefined || point.value === undefined) {
+						throw new Error(
+							`Each point in confirmation policy for chain ${chainId} must have 'amount' and 'value'`,
+						)
+					}
+				}
+			}
 		}
 
 		if (strategy.type === "fx") {
@@ -448,20 +462,6 @@ function validateConfig(config: FillerTomlConfig): void {
 		}
 	}
 
-	// Validate confirmation policies
-	for (const [chainId, policy] of Object.entries(config.confirmationPolicies)) {
-		if (!policy.points || !Array.isArray(policy.points) || policy.points.length < 2) {
-			throw new Error(
-				`Confirmation policy for chain ${chainId} must have a 'points' array with at least 2 points`,
-			)
-		}
-
-		for (const point of policy.points) {
-			if (point.amount === undefined || point.value === undefined) {
-				throw new Error(`Each point in confirmation policy for chain ${chainId} must have 'amount' and 'value'`)
-			}
-		}
-	}
 }
 
 // Parse command line arguments

@@ -251,10 +251,19 @@ export class IntentFiller {
 					}
 				}
 
-				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
-					getChainId(order.source)!,
-					inputUsdValue.toNumber(),
-				)
+				// Derive required confirmations from whichever matched strategy has a policy
+			let requiredConfirmations = 0
+				for (const strategy of canFillCache) {
+					if (strategy.confirmationPolicy) {
+						requiredConfirmations = Math.max(
+							requiredConfirmations,
+							strategy.confirmationPolicy.getConfirmationBlocks(
+								getChainId(order.source)!,
+								inputUsdValue.toNumber(),
+							),
+						)
+					}
+				}
 
 				// Run confirmation waiting and evaluation in parallel.
 				// The AbortController lets evaluateOrder cancel the confirmation

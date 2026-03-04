@@ -5,6 +5,7 @@ import { LogLevel } from "./Logger"
 export interface UserProvidedChainConfig {
 	chainId: number
 	rpcUrl: string
+	bundlerUrl?: string
 }
 
 export interface LoggingConfig {
@@ -32,7 +33,6 @@ export interface FillerConfig {
 	substratePrivateKey?: string
 	entryPointAddress?: string
 	dataDir?: string
-	bundlerUrl?: string
 	/**
 	 * Optional gas fee bump configuration for UserOperation gas estimation.
 	 * If not provided, defaults will be used (8% for priority fee, 10% for max fee).
@@ -48,12 +48,16 @@ export interface FillerConfig {
 export class FillerConfigService {
 	private chainConfigService: ChainConfigService
 	private rpcOverrides: Map<number, string> = new Map()
+	private bundlerUrls: Map<number, string> = new Map()
 	private fillerConfig?: FillerConfig
 
 	constructor(chainConfigs: UserProvidedChainConfig[], fillerConfig?: FillerConfig) {
 		chainConfigs.forEach((config) => {
 			if (config.rpcUrl) {
 				this.rpcOverrides.set(config.chainId, config.rpcUrl)
+			}
+			if (config.bundlerUrl) {
+				this.bundlerUrls.set(config.chainId, config.bundlerUrl)
 			}
 		})
 
@@ -211,8 +215,9 @@ export class FillerConfigService {
 		return this.fillerConfig?.dataDir
 	}
 
-	getBundlerUrl(): string | undefined {
-		return this.fillerConfig?.bundlerUrl
+	getBundlerUrl(chain: string): string | undefined {
+		const chainId = this.getChainIdFromStateMachineId(chain)
+		return this.bundlerUrls.get(chainId)
 	}
 
 	/**

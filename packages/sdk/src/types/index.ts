@@ -807,9 +807,9 @@ export enum RequestKind {
  */
 export interface FillerConfig {
 	/**
-	 * Policy for determining confirmation requirements
+	 * @deprecated Confirmation policy is now configured per-strategy.
 	 */
-	confirmationPolicy: {
+	confirmationPolicy?: {
 		getConfirmationBlocks: (chainId: number, amountUsd: number) => number
 	}
 

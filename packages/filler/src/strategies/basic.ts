@@ -1,3 +1,4 @@
+import { Decimal } from "decimal.js"
 import { FillerStrategy } from "@/strategies/base"
 import {
 	OrderV2,
@@ -15,7 +16,7 @@ import { ChainClientManager, ContractInteractionService, BidStorageService } fro
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
-import { FillerBpsPolicy } from "@/config/interpolated-curve"
+import { FillerBpsPolicy, ConfirmationPolicy } from "@/config/interpolated-curve"
 import { SupportedTokenType } from "@/strategies/base"
 
 export class BasicFiller implements FillerStrategy {
@@ -28,6 +29,7 @@ export class BasicFiller implements FillerStrategy {
 	private bpsPolicy: FillerBpsPolicy
 	private account: ReturnType<typeof privateKeyToAccount>
 	private logger = getLogger("basic-filler")
+	confirmationPolicy: { getConfirmationBlocks: (chainId: number, amountUsd: number) => number }
 
 	constructor(
 		privateKey: HexString,
@@ -35,6 +37,7 @@ export class BasicFiller implements FillerStrategy {
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
 		bpsPolicy: FillerBpsPolicy,
+		confirmationPolicy: ConfirmationPolicy,
 		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
@@ -43,6 +46,10 @@ export class BasicFiller implements FillerStrategy {
 		this.contractService = contractService
 		this.bidStorage = bidStorage
 		this.bpsPolicy = bpsPolicy
+		this.confirmationPolicy = {
+			getConfirmationBlocks: (chainId: number, amountUsd: number) =>
+				confirmationPolicy.getConfirmationBlocks(chainId, new Decimal(amountUsd)),
+		}
 		this.account = privateKeyToAccount(privateKey)
 	}
 

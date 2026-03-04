@@ -18,4 +18,12 @@ export interface FillerStrategy {
 	 * Returns null when the strategy cannot or does not want to price the order.
 	 */
 	getOrderUsdValue?(order: OrderV2): Promise<{ inputUsd: Decimal; outputUsd: Decimal } | null>
+
+	/**
+	 * Optional confirmation policy for this strategy.
+	 * If absent, no confirmation waiting is required (e.g. same-chain strategies).
+	 */
+	confirmationPolicy?: {
+		getConfirmationBlocks: (chainId: number, amountUsd: number) => number
+	}
 }
