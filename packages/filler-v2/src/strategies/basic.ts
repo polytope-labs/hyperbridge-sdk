@@ -8,16 +8,15 @@ import {
 	ADDRESS_ZERO,
 	TokenInfoV2,
 	adjustDecimals,
+	IntentsCoprocessor,
 } from "@hyperbridge/sdk"
-import { INTENT_GATEWAY_V2_ABI } from "@/config/abis/IntentGatewayV2"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService, HyperbridgeService, BidStorageService } from "@/services"
+import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
-
-/** Supported token types for same-token execution */
-type SupportedTokenType = "USDT" | "USDC"
+import { FillerBpsPolicy } from "@/config/interpolated-curve"
+import { SupportedTokenType } from "@/strategies/base"
 
 export class BasicFiller implements FillerStrategy {
 	name = "BasicFiller"
@@ -26,7 +25,8 @@ export class BasicFiller implements FillerStrategy {
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
 	private bidStorage?: BidStorageService
-	private fillerBps: bigint
+	private bpsPolicy: FillerBpsPolicy
+	private account: ReturnType<typeof privateKeyToAccount>
 	private logger = getLogger("basic-filler")
 
 	constructor(
@@ -34,7 +34,7 @@ export class BasicFiller implements FillerStrategy {
 		configService: FillerConfigService,
 		clientManager: ChainClientManager,
 		contractService: ContractInteractionService,
-		fillerBps: number,
+		bpsPolicy: FillerBpsPolicy,
 		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
@@ -42,7 +42,8 @@ export class BasicFiller implements FillerStrategy {
 		this.clientManager = clientManager
 		this.contractService = contractService
 		this.bidStorage = bidStorage
-		this.fillerBps = BigInt(fillerBps)
+		this.bpsPolicy = bpsPolicy
+		this.account = privateKeyToAccount(privateKey)
 	}
 
 	/**
@@ -78,7 +79,10 @@ export class BasicFiller implements FillerStrategy {
 				}
 
 				if (inputType !== outputType) {
-					this.logger.debug({ index: i, inputType, outputType }, "Token type mismatch (must be same-token swap)")
+					this.logger.debug(
+						{ index: i, inputType, outputType },
+						"Token type mismatch (must be same-token swap)",
+					)
 					return false
 				}
 			}
@@ -116,7 +120,7 @@ export class BasicFiller implements FillerStrategy {
 	 * Calculates the USD value of the order's inputs, outputs, fees and compares
 	 * what will the filler receive and what will the filler pay.
 	 * Also validates that the order output amounts meet the filler's minimum requirements
-	 * based on the configured bps (basis points).
+	 * based on the configured bps (basis points) curve.
 	 * @param order The order to calculate the USD value for
 	 * @returns The profit in USD (Number), or 0 if not profitable or output amounts don't meet minimum
 	 */
@@ -126,18 +130,27 @@ export class BasicFiller implements FillerStrategy {
 				order.destination,
 			)
 
+			// Get order value and determine dynamic BPS from policy
+			const inputUsdValue = await this.contractService.getInputUsdValue(order)
+			const fillerBps = this.bpsPolicy.getBps(inputUsdValue)
+
 			// Validate that order outputs meet filler's minimum bps requirements
 			// and calculate profit from slippage (normalized to dest fee token decimals)
-			const { isValid, profitFromSlippage } = await this.calculateSlippageProfit(order, destFeeTokenDecimals)
+			const { isValid, profitFromSlippage } = await this.calculateSlippageProfit(
+				order,
+				destFeeTokenDecimals,
+				fillerBps,
+			)
 			if (!isValid) {
 				this.logger.info(
-					{ orderId: order.id, fillerBps: this.fillerBps.toString() },
+					{ orderId: order.id, orderValueUsd: inputUsdValue.toString(), fillerBps: fillerBps.toString() },
 					"User expects more output than filler can provide based on bps",
 				)
 				return 0
 			}
 
 			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
+
 			const { decimals: sourceFeeTokenDecimals } = await this.contractService.getFeeTokenWithDecimals(
 				order.source,
 			)
@@ -151,7 +164,7 @@ export class BasicFiller implements FillerStrategy {
 
 			this.logger.info(
 				{
-					orderFeesUSD: formatUnits(order.fees, destFeeTokenDecimals),
+					orderFeesUSD: formatUnits(order.fees, sourceFeeTokenDecimals),
 					totalCostInSourceFeeTokenUSD: formatUnits(totalCostInSourceFeeToken, sourceFeeTokenDecimals),
 					feeProfitUSD: formatUnits(feeProfitInDestDecimals, destFeeTokenDecimals),
 					slippageProfitUSD: formatUnits(profitFromSlippage, destFeeTokenDecimals),
@@ -170,13 +183,14 @@ export class BasicFiller implements FillerStrategy {
 	/**
 	 * Validates that the filler can meet the user's minimum output requirements
 	 * based on the configured bps (basis points), and calculates the profit from slippage.
+	 * Also caches the filler's calculated outputs for use during order execution.
 	 *
 	 * The logic:
 	 * - User sends X tokens and expects minimum Y tokens (order.output.amount)
 	 * - Filler calculates max they will provide: X * (10000 - fillerBps) / 10000
 	 * - If filler can provide >= user's minimum → valid, proceed
-	 * - Filler pays out their max (to be competitive), not just user's minimum
-	 * - Profit = X - fillerMaxOutput (filler keeps their bps)
+	 * - Filler pays out their calculated max (to be competitive)
+	 * - Profit = X - fillerMaxOutput (filler keeps their bps as profit)
 	 *
 	 * Example: User sends 100 USDC, expects minimum 99.4 USDC, filler has 50 bps (0.5%)
 	 * - Filler will provide: 100 * (10000 - 50) / 10000 = 99.5 USDC
@@ -185,14 +199,17 @@ export class BasicFiller implements FillerStrategy {
 	 *
 	 * @param order The order to validate (assumed to have passed canFill validation)
 	 * @param normalizeToDecimals The decimal precision to normalize the profit to (e.g., dest fee token decimals)
+	 * @param fillerBps The basis points to use for this order (determined by order value)
 	 * @returns Object with isValid boolean and profitFromSlippage (normalized to specified decimals)
 	 */
 	private async calculateSlippageProfit(
 		order: OrderV2,
 		normalizeToDecimals: number,
+		fillerBps: bigint,
 	): Promise<{ isValid: boolean; profitFromSlippage: bigint }> {
 		const basisPoints = 10000n
 		let totalProfitNormalized = 0n
+		const fillerOutputs: TokenInfoV2[] = []
 
 		for (let i = 0; i < order.inputs.length; i++) {
 			const input = order.inputs[i]
@@ -209,7 +226,7 @@ export class BasicFiller implements FillerStrategy {
 
 			// Calculate max output filler will provide based on their bps
 			// Formula: inputAmount * (10000 - fillerBps) / 10000
-			const fillerMaxOutput = (convertedInputAmount * (basisPoints - this.fillerBps)) / basisPoints
+			const fillerMaxOutput = (convertedInputAmount * (basisPoints - fillerBps)) / basisPoints
 
 			// Reject if user expects more than filler can provide
 			if (output.amount > fillerMaxOutput) {
@@ -221,12 +238,18 @@ export class BasicFiller implements FillerStrategy {
 						userExpects: output.amount.toString(),
 						fillerWillProvide: fillerMaxOutput.toString(),
 						outputDecimals,
-						fillerBps: this.fillerBps.toString(),
+						fillerBps: fillerBps.toString(),
 					},
 					"User expects more than filler can provide based on bps",
 				)
 				return { isValid: false, profitFromSlippage: 0n }
 			}
+
+			// Store the filler's calculated output for this token
+			fillerOutputs.push({
+				token: output.token,
+				amount: fillerMaxOutput,
+			})
 
 			// Calculate profit: filler receives input, pays out their max (to be competitive)
 			// Profit = input - fillerMaxOutput (filler keeps their bps as profit)
@@ -236,6 +259,16 @@ export class BasicFiller implements FillerStrategy {
 			const profitNormalized = adjustDecimals(profitInOutputDecimals, outputDecimals, normalizeToDecimals)
 			totalProfitNormalized += profitNormalized
 		}
+
+		// Cache filler outputs for use during order execution
+		this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
+		this.logger.debug(
+			{
+				orderId: order.id,
+				fillerOutputs: fillerOutputs.map((o) => ({ token: o.token, amount: o.amount.toString() })),
+			},
+			"Cached filler outputs for order",
+		)
 
 		return { isValid: true, profitFromSlippage: totalProfitNormalized }
 	}
@@ -249,15 +282,12 @@ export class BasicFiller implements FillerStrategy {
 	 * @param hyperbridge HyperbridgeService for bid submission (provided when solver selection is active)
 	 * @returns The execution result
 	 */
-	async executeOrder(order: OrderV2, hyperbridge?: HyperbridgeService): Promise<ExecutionResult> {
+	async executeOrder(order: OrderV2, intentsCoprocessor?: IntentsCoprocessor): Promise<ExecutionResult> {
 		const startTime = Date.now()
 
-		// Ensure tokens are approved before submitting bid or direct fill
-		await this.contractService.approveTokensIfNeeded(order)
-
 		try {
-			if (hyperbridge) {
-				return await this.submitBidToHyperbridge(order, startTime, hyperbridge)
+			if (intentsCoprocessor) {
+				return await this.submitBidToHyperbridge(order, startTime, intentsCoprocessor)
 			}
 			return await this.fillOrder(order, startTime)
 		} catch (error) {
@@ -277,12 +307,12 @@ export class BasicFiller implements FillerStrategy {
 	private async submitBidToHyperbridge(
 		order: OrderV2,
 		startTime: number,
-		hyperbridgeService: HyperbridgeService,
+		intentsCoprocessor: IntentsCoprocessor,
 	): Promise<ExecutionResult> {
-		const entryPointAddress = this.configService.getEntryPointAddress()
+		const entryPointAddress = this.configService.getEntryPointAddress(order.destination)
 
 		if (!entryPointAddress) {
-			const errorMsg = "Solver selection is active but entryPointAddress is not configured."
+			const errorMsg = `Solver selection is active but entryPointAddress is not configured for chain ${order.destination}.`
 			this.logger.error(errorMsg)
 			return {
 				success: false,
@@ -291,11 +321,11 @@ export class BasicFiller implements FillerStrategy {
 		}
 
 		// With EIP-7702 delegation, the filler's EOA address IS the solver account
-		const solverAccountAddress = privateKeyToAccount(this.privateKey).address as HexString
+		const solverAccountAddress = this.account.address as HexString
 
 		this.logger.info({ orderId: order.id, destination: order.destination }, "Submitting bid to Hyperbridge")
 
-		// Prepare the signed UserOp for bid submission
+		// Prepare the signed UserOp for bid submission (bundles approvals + fillOrder internally)
 		const { commitment, userOp } = await this.contractService.prepareBidUserOp(
 			order,
 			entryPointAddress,
@@ -303,7 +333,7 @@ export class BasicFiller implements FillerStrategy {
 		)
 
 		// Submit the bid to Hyperbridge
-		const bidResult = await hyperbridgeService.submitBid(commitment, userOp)
+		const bidResult = await intentsCoprocessor.submitBid(commitment, userOp)
 
 		const endTime = Date.now()
 		const processingTimeMs = endTime - startTime
@@ -350,6 +380,7 @@ export class BasicFiller implements FillerStrategy {
 
 	/**
 	 * Fills the order directly via contract call (non-solver selection mode)
+	 * Uses cached filler outputs (calculated based on bps) instead of order.output.assets
 	 * @private
 	 */
 	private async fillOrder(order: OrderV2, startTime: number): Promise<ExecutionResult> {
@@ -357,39 +388,50 @@ export class BasicFiller implements FillerStrategy {
 
 		const { dispatchFee, nativeDispatchFee, callGasLimit } = await this.contractService.estimateGasFillPost(order)
 
-		const fillOptions: FillOptionsV2 = {
-			relayerFee: dispatchFee,
-			nativeDispatchFee: nativeDispatchFee,
-			outputs: order.output.assets,
+		// Use cached filler outputs (calculated based on bps) for competitive filling
+		const cachedFillerOutputs = this.contractService.cacheService.getFillerOutputs(order.id!)
+		if (!cachedFillerOutputs) {
+			throw new Error(`No cached filler outputs found for order ${order.id}. Call calculateProfitability first.`)
 		}
 
-		// Add all eth values from the outputs
-		const ethValue = order.output.assets.reduce((acc: bigint, output: TokenInfoV2) => {
-			if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
-				return acc + output.amount
-			}
-			return acc
-		}, 0n)
+		const fillOptions: FillOptionsV2 = {
+			relayerFee: dispatchFee,
+			nativeDispatchFee,
+			outputs: cachedFillerOutputs,
+		}
+
+		// Bundle any required ERC20 approvals + fillOrder into a single batch tx via ERC-7821 execute
+		const callData = await this.contractService.buildApprovalAndFillCalldata(
+			order,
+			cachedFillerOutputs,
+			fillOptions,
+			dispatchFee,
+		)
+
+		// Total ETH to forward: native outputs + dispatch fee
+		const nativeValue =
+			cachedFillerOutputs.reduce((acc: bigint, output: TokenInfoV2) => {
+				if (bytes32ToBytes20(output.token) === ADDRESS_ZERO) {
+					return acc + output.amount
+				}
+				return acc
+			}, 0n) + nativeDispatchFee
 
 		const tx = await walletClient
-			.writeContract({
-				abi: INTENT_GATEWAY_V2_ABI,
-				address: this.configService.getIntentGatewayV2Address(order.destination),
-				functionName: "fillOrder",
-				args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
-				account: privateKeyToAccount(this.privateKey),
-				value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+			.sendTransaction({
+				account: this.account,
+				to: this.account.address,
+				data: callData,
+				value: nativeValue,
 				chain: walletClient.chain,
 				gas: callGasLimit + (callGasLimit * 2500n) / 10000n,
 			})
 			.catch(async () => {
-				return await walletClient.writeContract({
-					abi: INTENT_GATEWAY_V2_ABI,
-					address: this.configService.getIntentGatewayV2Address(order.destination),
-					functionName: "fillOrder",
-					args: [this.contractService.transformOrderForContract(order) as any, fillOptions as any],
-					account: privateKeyToAccount(this.privateKey),
-					value: nativeDispatchFee !== 0n ? ethValue + nativeDispatchFee : ethValue,
+				return await walletClient.sendTransaction({
+					account: this.account,
+					to: this.account.address,
+					data: callData,
+					value: nativeValue,
 					chain: walletClient.chain,
 				})
 			})
@@ -418,6 +460,4 @@ export class BasicFiller implements FillerStrategy {
 			processingTimeMs,
 		}
 	}
-
-
 }

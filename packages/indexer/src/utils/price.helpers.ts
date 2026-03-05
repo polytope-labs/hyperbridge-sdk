@@ -1,5 +1,5 @@
 import Decimal from "decimal.js"
-import fetch from "node-fetch"
+import { safeFetch as fetch } from "@/utils/safeFetch"
 import type { Hex } from "viem"
 import { fetchWithRetry } from "./fetch-retry.helpers"
 

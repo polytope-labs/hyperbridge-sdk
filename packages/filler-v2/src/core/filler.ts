@@ -1,11 +1,19 @@
-import { getChainId, retryPromise, type HexString } from "@hyperbridge/sdk"
 import { EventMonitor } from "./event-monitor"
 import { FillerStrategy } from "@/strategies/base"
-import { OrderV2, FillerConfig, ChainConfig } from "@hyperbridge/sdk"
+import {
+	OrderV2,
+	FillerConfig,
+	ChainConfig,
+	getChainId,
+	retryPromise,
+	type HexString,
+	IntentsCoprocessor,
+} from "@hyperbridge/sdk"
 import pQueue from "p-queue"
-import { ChainClientManager, ContractInteractionService, DelegationService, HyperbridgeService } from "@/services"
+import { ChainClientManager, ContractInteractionService, DelegationService, RebalancingService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
+import { Decimal } from "decimal.js"
 
 export class IntentFiller {
 	public monitor: EventMonitor
@@ -15,7 +23,9 @@ export class IntentFiller {
 	private chainClientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private delegationService?: DelegationService
-	private hyperbridge: Promise<HyperbridgeService> | undefined = undefined
+	private rebalancingService?: RebalancingService
+	private rebalancingInterval?: NodeJS.Timeout
+	private hyperbridge: Promise<IntentsCoprocessor> | undefined = undefined
 	private config: FillerConfig
 	private configService: FillerConfigService
 	private privateKey: HexString
@@ -29,11 +39,13 @@ export class IntentFiller {
 		chainClientManager: ChainClientManager,
 		contractService: ContractInteractionService,
 		privateKey: HexString,
+		rebalancingService?: RebalancingService,
 	) {
 		this.configService = configService
 		this.privateKey = privateKey
 		this.chainClientManager = chainClientManager
 		this.contractService = contractService
+		this.rebalancingService = rebalancingService
 		this.monitor = new EventMonitor(chainConfigs, configService, this.chainClientManager)
 		this.strategies = strategies
 		this.config = config
@@ -50,8 +62,9 @@ export class IntentFiller {
 
 		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
 		const substrateKey = configService.getSubstratePrivateKey()
+
 		if (hyperbridgeWsUrl && substrateKey) {
-			this.hyperbridge = HyperbridgeService.create(hyperbridgeWsUrl, substrateKey)
+			this.hyperbridge = IntentsCoprocessor.connect(hyperbridgeWsUrl, substrateKey)
 		}
 
 		// Set up event handlers
@@ -94,10 +107,73 @@ export class IntentFiller {
 
 	public start(): void {
 		this.monitor.startListening()
+
+		// Start periodic rebalancing if service is configured
+		if (this.rebalancingService) {
+			this.startRebalancing()
+		}
 	}
 
-	public stop(): void {
+	/**
+	 * Start periodic rebalancing checks.
+	 * Checks every 5 minutes for triggers and executes rebalancing if needed.
+	 */
+	private startRebalancing(): void {
+		// Run initial check after 30 seconds (to let the filler start up)
+		setTimeout(() => {
+			this.checkAndRebalance().catch((error) => {
+				this.logger.error({ error }, "Error in initial rebalancing check")
+			})
+		}, 30_000)
+
+		// Then check every 5 minutes
+		this.rebalancingInterval = setInterval(
+			() => {
+				this.checkAndRebalance().catch((error) => {
+					this.logger.error({ error }, "Error in periodic rebalancing check")
+				})
+			},
+			5 * 60 * 1000,
+		) // 5 minutes
+
+		this.logger.info("Periodic rebalancing checks started (every 5 minutes)")
+	}
+
+	/**
+	 * Check for rebalancing triggers and execute if needed.
+	 */
+	private async checkAndRebalance(): Promise<void> {
+		if (!this.rebalancingService) {
+			return
+		}
+
+		try {
+			const result = await this.rebalancingService.rebalancePortfolio()
+			if (result.success && result.transfers.length > 0) {
+				this.logger.info(
+					{
+						transferCount: result.transfers.length,
+						executedCount: result.executedTransfers.length,
+					},
+					"Portfolio rebalancing completed",
+				)
+			} else if (result.transfers.length === 0) {
+				this.logger.debug("No rebalancing needed")
+			}
+		} catch (error) {
+			this.logger.error({ error }, "Portfolio rebalancing failed")
+		}
+	}
+
+	public async stop(): Promise<void> {
 		this.monitor.stopListening()
+
+		// Stop rebalancing interval
+		if (this.rebalancingInterval) {
+			clearInterval(this.rebalancingInterval)
+			this.rebalancingInterval = undefined
+			this.logger.info("Periodic rebalancing checks stopped")
+		}
 
 		// Wait for all queues to complete
 		const promises: Promise<void>[] = []
@@ -106,15 +182,15 @@ export class IntentFiller {
 		})
 		promises.push(this.globalQueue.onIdle())
 
-		Promise.all(promises).then(async () => {
-			// Disconnect shared Hyperbridge connection
-			if (this.hyperbridge) {
-				const service = await this.hyperbridge.catch(() => null)
-				await service?.disconnect()
-			}
+		await Promise.all(promises)
 
-			this.logger.info("All orders processed, filler stopped")
-		})
+		// Disconnect shared Hyperbridge connection
+		if (this.hyperbridge) {
+			const service = await this.hyperbridge.catch(() => null)
+			await service?.disconnect()
+		}
+
+		this.logger.info("All orders processed, filler stopped")
 	}
 
 	// Operations
@@ -140,13 +216,51 @@ export class IntentFiller {
 				}
 
 				const sourceClient = this.chainClientManager.getPublicClient(order.source)
-				const orderValue = await this.contractService.getTokenUsdValue(order)
+				// Base layer: stable-only USD value from ContractInteractionService
+				const baseInputUsd = await this.contractService.getInputUsdValue(order)
+
+				// Strategy layer: first strategy that can price the order wins
+				let inputUsdValue = baseInputUsd
+				const canFillCache = new Set<FillerStrategy>()
+				for (const strategy of this.strategies) {
+					// Skip strategies that cannot price inputs
+					if (typeof strategy.getOrderUsdValue !== "function") continue
+
+					let canFill = false
+					try {
+						canFill = await strategy.canFill(order)
+					} catch (err) {
+						this.logger.error(
+							{ orderId: order.id, strategy: strategy.name, err },
+							"Error checking canFill during inputUsdValue computation",
+						)
+					}
+					if (!canFill) continue
+					canFillCache.add(strategy)
+					try {
+						const stratValue = await strategy.getOrderUsdValue(order)
+						if (stratValue != null) {
+							inputUsdValue = Decimal.max(baseInputUsd, stratValue.inputUsd)
+							break
+						}
+					} catch (err) {
+						this.logger.error(
+							{ orderId: order.id, strategy: strategy.name, err },
+							"Error getting strategy-specific inputUsdValue",
+						)
+					}
+				}
+
 				const requiredConfirmations = this.config.confirmationPolicy.getConfirmationBlocks(
 					getChainId(order.source)!,
-					orderValue.inputUsdValue.toNumber(),
+					inputUsdValue.toNumber(),
 				)
 
-				// Run confirmation waiting and evaluation in parallel
+				// Run confirmation waiting and evaluation in parallel.
+				// The AbortController lets evaluateOrder cancel the confirmation
+				// loop early when the order turns out to be unprofitable.
+				const abortController = new AbortController()
+
 				const waitForConfirmations = async (): Promise<void> => {
 					let currentConfirmations = await retryPromise(
 						() =>
@@ -166,7 +280,9 @@ export class IntentFiller {
 					)
 
 					while (currentConfirmations < requiredConfirmations) {
+						if (abortController.signal.aborted) return
 						await new Promise((resolve) => setTimeout(resolve, 300)) // Wait 300ms
+						if (abortController.signal.aborted) return
 						currentConfirmations = await retryPromise(
 							() =>
 								sourceClient.getTransactionConfirmations({
@@ -187,10 +303,13 @@ export class IntentFiller {
 				// Run confirmation and evaluation in parallel
 				const [, evaluationResult] = await Promise.all([
 					waitForConfirmations(),
-					this.evaluateOrder(order),
+					this.evaluateOrder(order, canFillCache).then((result) => {
+						if (!result) abortController.abort()
+						return result
+					}),
 				])
 
-				// Execute immediately 
+				// Execute immediately
 				if (evaluationResult) {
 					this.executeOrder(order, evaluationResult.strategy, solverSelectionActive)
 				}
@@ -202,6 +321,7 @@ export class IntentFiller {
 
 	private async evaluateOrder(
 		order: OrderV2,
+		canFillCache: Set<FillerStrategy>,
 	): Promise<{ strategy: FillerStrategy; profitability: number } | null> {
 		// Check if watch-only mode is enabled for the destination chain
 		const destChainId = getChainId(order.destination)
@@ -231,7 +351,7 @@ export class IntentFiller {
 
 		const eligibleStrategies = await Promise.all(
 			this.strategies.map(async (strategy) => {
-				const canFill = await strategy.canFill(order)
+				const canFill = canFillCache.has(strategy) || (await strategy.canFill(order))
 				if (!canFill) return null
 
 				const profitability = await strategy.calculateProfitability(order)
@@ -249,18 +369,18 @@ export class IntentFiller {
 		}
 
 		this.logger.info(
-			{ orderId: order.id, strategy: validStrategies[0].strategy.name, profitability: validStrategies[0].profitability.toString() },
+			{
+				orderId: order.id,
+				strategy: validStrategies[0].strategy.name,
+				profitability: validStrategies[0].profitability.toString(),
+			},
 			"Order evaluation complete - profitable strategy found",
 		)
 
 		return validStrategies[0]
 	}
 
-	private executeOrder(
-		order: OrderV2,
-		bestStrategy: FillerStrategy,
-		solverSelectionActive: boolean,
-	): void {
+	private executeOrder(order: OrderV2, bestStrategy: FillerStrategy, solverSelectionActive: boolean): void {
 		// Get the chain-specific queue
 		const chainQueue = this.chainQueues.get(getChainId(order.destination)!)
 		if (!chainQueue) {

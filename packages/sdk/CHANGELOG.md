@@ -1,5 +1,23 @@
 # @hyperbridge/sdk
 
+## 1.6.3
+
+### Patch Changes
+
+- Further improvements to intents v2
+
+## 1.6.2
+
+### Patch Changes
+
+- Prevent stream from constructing hyperbridge finalized event when the request has been timeout on hyperbridge
+
+## 1.6.1
+
+### Patch Changes
+
+- Improve substrate method
+
 ## 1.5.1
 
 ### Patch Changes

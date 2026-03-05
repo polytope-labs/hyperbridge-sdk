@@ -3,7 +3,6 @@ import { ethers } from "ethers"
 import type { Hex } from "viem"
 import { keccak256, encodeAbiParameters, toHex } from "viem"
 import { bytes32ToBytes20 } from "@/utils/transfer.helpers"
-import IntentGatewayV2Abi from "@/configs/abis/IntentGatewayV2.abi.json"
 
 import { OrderStatus, ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
@@ -12,6 +11,9 @@ import { OrderV2StatusMetadata } from "@/configs/src/types/models/OrderV2StatusM
 import { OrderV2PredispatchAsset } from "@/configs/src/types/models/OrderV2PredispatchAsset"
 import { OrderV2InputAsset } from "@/configs/src/types/models/OrderV2InputAsset"
 import { OrderV2OutputAsset } from "@/configs/src/types/models/OrderV2OutputAsset"
+import { OrderV2PartialFill } from "@/configs/src/types/models/OrderV2PartialFill"
+import { OrderV2PartialFillInputAsset } from "@/configs/src/types/models/OrderV2PartialFillInputAsset"
+import { OrderV2PartialFillOutputAsset } from "@/configs/src/types/models/OrderV2PartialFillOutputAsset"
 import { timestampToDate } from "@/utils/date.helpers"
 
 import { PointsService } from "./points.service"
@@ -449,27 +451,188 @@ export class IntentGatewayV2Service {
 		await orderStatusMetadata.save()
 	}
 
-	static computeOrderCommitment(order: OrderV2): string {
-		const placeOrderAbi = IntentGatewayV2Abi.find(
-			(item: any) => item.type === "function" && item.name === "placeOrder",
-		)
-		const orderType = placeOrderAbi?.inputs?.[0]
-		if (!orderType) throw new Error("Could not find Order type in ABI")
+	static async recordPartialFill(
+		commitment: string,
+		filler: string,
+		outputs: TokenInfo[],
+		inputs: TokenInfo[],
+		logsData: {
+			transactionHash: string
+			blockNumber: number
+			timestamp: bigint
+			logIndex: number
+		},
+	): Promise<void> {
+		const { transactionHash, blockNumber, timestamp, logIndex } = logsData
 
-		const abiOrder = {
-			user: order.user,
-			source: order.sourceChain.startsWith("0x") ? order.sourceChain : toHex(order.sourceChain),
-			destination: order.destChain.startsWith("0x") ? order.destChain : toHex(order.destChain),
-			deadline: order.deadline,
-			nonce: order.nonce,
-			fees: order.fees,
-			session: order.session || "0x0000000000000000000000000000000000000000",
-			predispatch: order.predispatch,
-			inputs: order.inputs,
-			output: order.outputs,
+		// Ensure we at least log if the order doesn't exist yet (race between PLACED and PartialFill)
+		const orderPlaced = await OrderV2Placed.get(commitment)
+		if (!orderPlaced) {
+			logger.warn(
+				`OrderV2 ${stringify({
+					commitment,
+				})} does not exist yet but PartialFill event received. Recording partial fill linked by commitment.`,
+			)
 		}
 
-		const encoded = encodeAbiParameters([orderType] as any, [abiOrder as any])
+		const partialFillId = `${transactionHash}.${logIndex}`
+
+		let partialFill = await OrderV2PartialFill.get(partialFillId)
+		if (!partialFill) {
+			partialFill = await OrderV2PartialFill.create({
+				id: partialFillId,
+				orderId: commitment,
+				chain: chainId,
+				filler,
+				timestamp,
+				blockNumber: blockNumber.toString(),
+				transactionHash,
+				createdAt: timestampToDate(timestamp),
+			})
+		}
+
+		await partialFill.save()
+
+		// Create/update input assets for this partial fill
+		await Promise.all(
+			inputs.map(async (input, index) => {
+				const assetId = `${partialFillId}-input-${index}`
+				let assetEntity = await OrderV2PartialFillInputAsset.get(assetId)
+
+				if (!assetEntity) {
+					assetEntity = await OrderV2PartialFillInputAsset.create({
+						id: assetId,
+						partialFillId,
+						token: input.token,
+						amount: input.amount,
+						index,
+					})
+				}
+
+				await assetEntity.save()
+			}),
+		)
+
+		// Create/update output assets for this partial fill
+		await Promise.all(
+			outputs.map(async (output, index) => {
+				const assetId = `${partialFillId}-output-${index}`
+				let assetEntity = await OrderV2PartialFillOutputAsset.get(assetId)
+
+				// Try to reuse the beneficiary from the original order's output asset
+				const orderOutputAssetId = `${commitment}-output-${index}`
+				const orderOutputAsset = await OrderV2OutputAsset.get(orderOutputAssetId)
+				const beneficiary = orderOutputAsset?.beneficiary ?? "0x0000000000000000000000000000000000000000"
+
+				if (!assetEntity) {
+					assetEntity = await OrderV2PartialFillOutputAsset.create({
+						id: assetId,
+						partialFillId,
+						token: output.token,
+						amount: output.amount,
+						index,
+						beneficiary,
+					})
+				}
+
+				await assetEntity.save()
+			}),
+		)
+
+		logger.info(
+			`OrderV2 PartialFill recorded: ${stringify({
+				commitment,
+				partialFillId,
+				filler,
+			})}`,
+		)
+	}
+
+	static computeOrderCommitment(order: OrderV2): string {
+		const encoded = encodeAbiParameters(
+			[
+				{
+					name: "order",
+					type: "tuple",
+					components: [
+						{ name: "user", type: "bytes32" },
+						{ name: "source", type: "bytes" },
+						{ name: "destination", type: "bytes" },
+						{ name: "deadline", type: "uint256" },
+						{ name: "nonce", type: "uint256" },
+						{ name: "fees", type: "uint256" },
+						{ name: "session", type: "address" },
+						{
+							name: "predispatch",
+							type: "tuple",
+							components: [
+								{
+									name: "assets",
+									type: "tuple[]",
+									components: [
+										{ name: "token", type: "bytes32" },
+										{ name: "amount", type: "uint256" },
+									],
+								},
+								{ name: "call", type: "bytes" },
+							],
+						},
+						{
+							name: "inputs",
+							type: "tuple[]",
+							components: [
+								{ name: "token", type: "bytes32" },
+								{ name: "amount", type: "uint256" },
+							],
+						},
+						{
+							name: "output",
+							type: "tuple",
+							components: [
+								{ name: "beneficiary", type: "bytes32" },
+								{
+									name: "assets",
+									type: "tuple[]",
+									components: [
+										{ name: "token", type: "bytes32" },
+										{ name: "amount", type: "uint256" },
+									],
+								},
+								{ name: "call", type: "bytes" },
+							],
+						},
+					],
+				},
+			],
+			[
+				{
+					user: order.user,
+					source: order.sourceChain.startsWith("0x")
+						? (order.sourceChain as `0x${string}`)
+						: toHex(order.sourceChain),
+					destination: order.destChain.startsWith("0x")
+						? (order.destChain as `0x${string}`)
+						: toHex(order.destChain),
+					deadline: order.deadline,
+					nonce: order.nonce,
+					fees: order.fees,
+					session: (
+						order.session || "0x0000000000000000000000000000000000000000"
+					).toLowerCase() as `0x${string}`,
+					predispatch: {
+						assets: order.predispatch.assets.map((a) => ({ token: a.token, amount: a.amount })),
+						call: order.predispatch.call,
+					},
+					inputs: order.inputs.map((i) => ({ token: i.token, amount: i.amount })),
+					output: {
+						beneficiary: order.outputs.beneficiary,
+						assets: order.outputs.assets.map((a) => ({ token: a.token, amount: a.amount })),
+						call: order.outputs.call,
+					},
+				},
+			],
+		)
+
 		return keccak256(encoded)
 	}
 }

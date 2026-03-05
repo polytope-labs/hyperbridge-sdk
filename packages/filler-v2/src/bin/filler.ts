@@ -6,7 +6,7 @@ import { fileURLToPath } from "url"
 import { parse } from "toml"
 import { IntentFiller } from "../core/filler.js"
 import { BasicFiller } from "../strategies/basic.js"
-import { ConfirmationPolicy } from "../config/confirmation-policy.js"
+import { ConfirmationPolicy, FillerBpsPolicy } from "../config/interpolated-curve.js"
 import { ChainConfig, FillerConfig, HexString } from "@hyperbridge/sdk"
 import {
 	FillerConfigService,
@@ -16,9 +16,11 @@ import {
 } from "../services/FillerConfigService.js"
 import { ChainClientManager } from "../services/ChainClientManager.js"
 import { ContractInteractionService } from "../services/ContractInteractionService.js"
+import { RebalancingService } from "../services/RebalancingService.js"
 import { getLogger, configureLogger } from "../services/Logger.js"
 import { CacheService } from "../services/CacheService.js"
 import { BidStorageService } from "../services/BidStorageService.js"
+import type { BinanceCexConfig } from "../services/rebalancers/index.js"
 import { Decimal } from "decimal.js"
 
 // ASCII art header
@@ -41,20 +43,48 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"))
 
 interface StrategyConfig {
 	type: "basic"
-	/** Filler's basis points (bps) for profit margin. E.g., 50 = 0.5% */
-	fillerBps: number
+	/**
+	 * Array of (amount, value) coordinates defining the BPS curve.
+	 * value = basis points at that order amount
+	 */
+	bpsCurve: Array<{
+		amount: string
+		value: number
+	}>
 }
 
 interface ChainConfirmationPolicy {
-	minAmount: string
-	maxAmount: string
-	minConfirmations: number
-	maxConfirmations: number
+	/**
+	 * Array of (amount, value) coordinates defining the confirmation curve.
+	 * value = number of confirmations at that order amount
+	 */
+	points: Array<{
+		amount: string
+		value: number
+	}>
 }
 
 interface PendingQueueConfig {
 	maxRechecks: number
 	recheckDelayMs: number
+}
+
+interface RebalancingConfig {
+	triggerPercentage: number
+	baseBalances: {
+		USDC?: Record<string, string>
+		USDT?: Record<string, string>
+	}
+}
+
+interface BinanceConfig {
+	apiKey: string
+	apiSecret: string
+	basePath?: string
+	timeout?: number
+	depositTimeoutMs?: number
+	pollIntervalMs?: number
+	withdrawTimeoutMs?: number
 }
 
 interface FillerTomlConfig {
@@ -70,10 +100,13 @@ interface FillerTomlConfig {
 		solverAccountContractAddress?: string
 		/** Directory for persistent data storage (bids database, etc.) */
 		dataDir?: string
+		bundlerUrl?: string
 	}
 	strategies: StrategyConfig[]
 	chains: UserProvidedChainConfig[]
 	confirmationPolicies: Record<string, ChainConfirmationPolicy>
+	rebalancing?: RebalancingConfig
+	binance?: BinanceConfig
 }
 
 const program = new Command()
@@ -119,8 +152,9 @@ program
 				substratePrivateKey: config.filler.substratePrivateKey,
 				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
 				entryPointAddress: config.filler.entryPointAddress,
-				solverAccountContractAddress: config.filler.solverAccountContractAddress,
 				dataDir: config.filler.dataDir,
+				bundlerUrl: config.filler.bundlerUrl,
+				rebalancing: config.rebalancing,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
@@ -181,6 +215,7 @@ program
 				privateKey,
 				configService,
 				sharedCacheService,
+				configService.getBundlerUrl(),
 			)
 
 			// Initialize bid storage service for persistent storage of bid transaction hashes
@@ -195,20 +230,46 @@ program
 			logger.info("Initializing strategies...")
 			const strategies = config.strategies.map((strategyConfig) => {
 				switch (strategyConfig.type) {
-					case "basic":
+					case "basic": {
+						const bpsPolicy = new FillerBpsPolicy({ points: strategyConfig.bpsCurve })
 						return new BasicFiller(
 							privateKey,
 							configService,
 							chainClientManager,
 							contractService,
-							strategyConfig.fillerBps,
+							bpsPolicy,
 							bidStorageService,
-							
 						)
+					}
 					default:
 						throw new Error(`Unknown strategy type: ${strategyConfig.type}`)
 				}
 			})
+
+			// Initialize rebalancing service if config is provided
+			let rebalancingService: RebalancingService | undefined
+			const rebalancingConfig = configService.getRebalancingConfig()
+			if (rebalancingConfig) {
+				let binanceConfig: BinanceCexConfig | undefined
+				if (config.binance) {
+					binanceConfig = {
+						apiKey: config.binance.apiKey,
+						apiSecret: config.binance.apiSecret,
+						basePath: config.binance.basePath,
+						timeout: config.binance.timeout,
+						pollIntervalMs: config.binance.pollIntervalMs,
+					}
+					logger.info("Binance CEX rebalancing configured")
+				}
+
+				rebalancingService = new RebalancingService(
+					chainClientManager,
+					configService,
+					privateKey,
+					binanceConfig,
+				)
+				logger.info("Rebalancing service initialized")
+			}
 
 			// Initialize and start the intent filler
 			logger.info("Starting intent filler...")
@@ -220,6 +281,7 @@ program
 				chainClientManager,
 				contractService,
 				privateKey,
+				rebalancingService,
 			)
 
 			// Initialize (sets up EIP-7702 delegation if solver selection is configured)
@@ -247,15 +309,15 @@ program
 			)
 
 			// Handle graceful shutdown
-			process.on("SIGINT", () => {
+			process.on("SIGINT", async () => {
 				logger.warn("Shutting down intent filler (SIGINT)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 
-			process.on("SIGTERM", () => {
+			process.on("SIGTERM", async () => {
 				logger.warn("Shutting down intent filler (SIGTERM)...")
-				intentFiller.stop()
+				await intentFiller.stop()
 				process.exit(0)
 			})
 
@@ -317,20 +379,31 @@ function validateConfig(config: FillerTomlConfig): void {
 		if (!["basic"].includes(strategy.type)) {
 			throw new Error(`Invalid strategy type: ${strategy.type}`)
 		}
+
+		// Validate BPS curve
+		if (!strategy.bpsCurve || !Array.isArray(strategy.bpsCurve) || strategy.bpsCurve.length < 2) {
+			throw new Error("Strategy must have a 'bpsCurve' array with at least 2 points")
+		}
+
+		for (const point of strategy.bpsCurve) {
+			if (point.amount === undefined || point.value === undefined) {
+				throw new Error("Each BPS curve point must have 'amount' and 'value'")
+			}
+		}
 	}
 
 	// Validate confirmation policies
 	for (const [chainId, policy] of Object.entries(config.confirmationPolicies)) {
-		if (!policy.minAmount || !policy.maxAmount) {
-			throw new Error(`Confirmation policy for chain ${chainId} must have minAmount and maxAmount`)
+		if (!policy.points || !Array.isArray(policy.points) || policy.points.length < 2) {
+			throw new Error(
+				`Confirmation policy for chain ${chainId} must have a 'points' array with at least 2 points`,
+			)
 		}
 
-		if (policy.minConfirmations === undefined || policy.maxConfirmations === undefined) {
-			throw new Error(`Confirmation policy for chain ${chainId} must have minConfirmations and maxConfirmations`)
-		}
-
-		if (policy.minConfirmations > policy.maxConfirmations) {
-			throw new Error(`Invalid confirmation range for chain ${chainId}`)
+		for (const point of policy.points) {
+			if (point.amount === undefined || point.value === undefined) {
+				throw new Error(`Each point in confirmation policy for chain ${chainId} must have 'amount' and 'value'`)
+			}
 		}
 	}
 }

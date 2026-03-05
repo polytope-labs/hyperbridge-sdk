@@ -28,11 +28,13 @@ import {
 	polygon,
 	unichain,
 	soneium,
+	tron,
 } from "viem/chains"
+import { tronNile } from "@/configs/chain"
 
 import { flatten, zip } from "lodash-es"
 import { match } from "ts-pattern"
-import type { GetProofParameters, Hex } from "viem"
+import type { GetProofParameters, Hex, TransactionReceipt } from "viem"
 
 import EvmHost from "@/abis/evmHost"
 import evmHost from "@/abis/evmHost"
@@ -51,6 +53,7 @@ import type {
 import {
 	ADDRESS_ZERO,
 	EvmStateProof,
+	getContractCallInput,
 	MmrProof,
 	SubstrateStateProof,
 	calculateMMRSize,
@@ -76,6 +79,8 @@ const chains = {
 	[gnosisChiado.id]: gnosisChiado,
 	[polygon.id]: polygon,
 	[unichain.id]: unichain,
+	[tron.id]: tron,
+	[tronNile.id]: tronNile,
 }
 
 /**
@@ -309,6 +314,17 @@ export class EvmChain implements IChain {
 			args: [{ stateMachineId: BigInt(id), height: stateMachineHeight.height }],
 		})
 		return data
+	}
+
+	/**
+	 * Retrieves the placeOrder calldata from a transaction using debug_traceTransaction.
+	 */
+	async getPlaceOrderCalldata(txHash: string, intentGatewayAddress: string): Promise<HexString> {
+		const callInput = await getContractCallInput(this.publicClient, txHash as HexString, intentGatewayAddress)
+		if (!callInput) {
+			throw new Error(`Failed to extract calldata from trace for tx ${txHash}`)
+		}
+		return callInput
 	}
 
 	/**
@@ -638,6 +654,21 @@ export class EvmChain implements IChain {
 		})
 
 		return nonce
+	}
+
+	async broadcastTransaction(signedTransaction: any): Promise<TransactionReceipt> {
+		const txHash = await this.client.sendRawTransaction({
+			serializedTransaction: signedTransaction as HexString,
+		})
+		const receipt = await this.client.waitForTransactionReceipt({
+			hash: txHash,
+			confirmations: 1,
+		})
+
+		if (!receipt) {
+			throw new Error("Transaction receipt not found")
+		}
+		return receipt
 	}
 }
 

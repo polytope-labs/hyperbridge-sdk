@@ -13,12 +13,15 @@ const DELEGATION_INDICATOR_PREFIX = "0xef0100"
  */
 export class DelegationService {
 	private logger = getLogger("delegation-service")
+	private account: ReturnType<typeof privateKeyToAccount>
 
 	constructor(
 		private clientManager: ChainClientManager,
 		private configService: FillerConfigService,
 		private privateKey: HexString,
-	) {}
+	) {
+		this.account = privateKeyToAccount(privateKey)
+	}
 
 	/**
 	 * Checks if the filler's EOA is already delegated to the SolverAccount contract on a specific chain.
@@ -28,8 +31,8 @@ export class DelegationService {
 	 */
 	async isDelegated(chain: string): Promise<boolean> {
 		const client = this.clientManager.getPublicClient(chain)
-		const account = privateKeyToAccount(this.privateKey)
-		const solverAccountContract = this.configService.getSolverAccountContractAddress()
+		const account = this.account
+		const solverAccountContract = this.configService.getSolverAccountContractAddress(chain)
 
 		if (!solverAccountContract) {
 			return false
@@ -72,7 +75,7 @@ export class DelegationService {
 	 * @returns True if delegation was successful or already in place
 	 */
 	async setupDelegation(chain: string): Promise<boolean> {
-		const solverAccountContract = this.configService.getSolverAccountContractAddress()
+		const solverAccountContract = this.configService.getSolverAccountContractAddress(chain)
 
 		if (!solverAccountContract) {
 			this.logger.error("solverAccountContractAddress not configured")
@@ -85,22 +88,19 @@ export class DelegationService {
 			return true
 		}
 
-		const account = privateKeyToAccount(this.privateKey)
+		const account = this.account
 		const walletClient = this.clientManager.getWalletClient(chain)
 		const publicClient = this.clientManager.getPublicClient(chain)
 
 		try {
 			this.logger.info({ chain, eoa: account.address, solverAccountContract }, "Setting up EIP-7702 delegation")
 
-			// Sign the authorization to delegate to SolverAccount
-			// viem's experimental EIP-7702 support
 			const authorization = await walletClient.signAuthorization({
 				account,
 				contractAddress: solverAccountContract,
+				executor: "self", // Required when EOA signs authorization and also sends the transaction
 			})
 
-			// Send a transaction with the authorization list to establish delegation
-			// The transaction can be to any address (even self) - the important part is the authorizationList
 			const hash = await walletClient.sendTransaction({
 				account,
 				to: account.address,
@@ -161,7 +161,7 @@ export class DelegationService {
 	 * @returns True if revocation was successful
 	 */
 	async revokeDelegation(chain: string): Promise<boolean> {
-		const account = privateKeyToAccount(this.privateKey)
+		const account = this.account
 		const walletClient = this.clientManager.getWalletClient(chain)
 		const publicClient = this.clientManager.getPublicClient(chain)
 
@@ -169,9 +169,11 @@ export class DelegationService {
 			this.logger.info({ chain, eoa: account.address }, "Revoking EIP-7702 delegation")
 
 			// Delegate to zero address to revoke
+			// IMPORTANT: executor: 'self' required when EOA signs and sends the transaction
 			const authorization = await walletClient.signAuthorization({
 				account,
 				contractAddress: "0x0000000000000000000000000000000000000000",
+				executor: "self",
 			})
 
 			const hash = await walletClient.sendTransaction({

@@ -5,8 +5,7 @@ import { ENV_CONFIG } from "@/constants"
 import { Struct, u32, u128, bool, _void, Enum, u8, Vector } from "scale-ts"
 import { hexToBytes } from "viem"
 import { xxhashAsHex, blake2AsU8a, decodeAddress, xxhashAsU8a } from "@polkadot/util-crypto"
-import fetch from "node-fetch"
-import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
+import { safeFetch as fetch } from "@/utils/safeFetch"
 import { timestampToDate } from "@/utils/date.helpers"
 import { AccountInfo } from "@/services/bridgeTokenSupply.service"
 import { getStateId, StateMachine } from "@/utils/state-machine.helper"
@@ -55,12 +54,13 @@ export class DailyTreasuryRewardService {
 
 	private static async getStorage(storageKey: string, logMessage: string): Promise<string | null> {
 		const operation = async (): Promise<string | null> => {
-			const hyperbridgeChain = getHostStateMachine(chainId);
-			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "");
+			const hyperbridgeChain = getHostStateMachine(chainId)
+			const rpcUrl = replaceWebsocketWithHttp(ENV_CONFIG[hyperbridgeChain] || "")
 			if (!rpcUrl) {
-				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`);
+				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
 			}
 
+<<<<<<< HEAD
 			const response = await fetchWithRetry(
 				rpcUrl,
 				{
@@ -74,30 +74,42 @@ export class DailyTreasuryRewardService {
 					}),
 				}
 			)
+=======
+			const response = await fetch(rpcUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					method: "state_getStorage",
+					params: [storageKey],
+				}),
+			})
+>>>>>>> da7d97fd41a722ffc12a6dfa8e16d567439a807e
 
 			if (!response.ok) {
-				throw new Error(`RPC request failed with status ${response.status}`);
+				throw new Error(`RPC request failed with status ${response.status}`)
 			}
 
-			const result: SubstrateStorageResponse = await response.json();
+			const result: SubstrateStorageResponse = await response.json()
 
 			if (result.error) {
-				throw new Error(result.error.message);
+				throw new Error(result.error.message)
 			}
 
-			return result.result || null;
-		};
+			return result.result || null
+		}
 
 		try {
 			return await retryPromise(operation, {
 				maxRetries: 3,
 				backoffMs: 1000,
 				logMessage: `Fetch ${logMessage}`,
-			});
+			})
 		} catch (e) {
-			const errorMessage = e instanceof Error ? e.message : String(e);
-			logger.error(`All retries failed for ${logMessage}: ${errorMessage}`);
-			return null;
+			const errorMessage = e instanceof Error ? e.message : String(e)
+			logger.error(`All retries failed for ${logMessage}: ${errorMessage}`)
+			return null
 		}
 	}
 
@@ -153,7 +165,6 @@ export class DailyTreasuryRewardService {
 	 */
 	static async getFeeTokenDecimals(stateMachine: any): Promise<number> {
 		try {
-
 			const storageKey = this.generateFeeTokenDecimalsStorageKey(stateMachine)
 			logger.info(`storage key is ${storageKey}`)
 			const result = await this.getStorage(storageKey, "fee token decimals")

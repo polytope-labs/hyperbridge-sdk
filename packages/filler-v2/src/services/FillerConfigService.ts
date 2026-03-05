@@ -11,6 +11,19 @@ export interface LoggingConfig {
 	level?: LogLevel
 }
 
+export interface GasFeeBumpConfig {
+	maxPriorityFeePerGasBumpPercent?: number
+	maxFeePerGasBumpPercent?: number
+}
+
+export interface RebalancingConfig {
+	triggerPercentage: number
+	baseBalances: {
+		USDC?: Record<string, string>
+		USDT?: Record<string, string>
+	}
+}
+
 export interface FillerConfig {
 	privateKey: string
 	maxConcurrentOrders: number
@@ -18,8 +31,14 @@ export interface FillerConfig {
 	hyperbridgeWsUrl?: string
 	substratePrivateKey?: string
 	entryPointAddress?: string
-	solverAccountContractAddress?: string
 	dataDir?: string
+	bundlerUrl?: string
+	/**
+	 * Optional gas fee bump configuration for UserOperation gas estimation.
+	 * If not provided, defaults will be used (8% for priority fee, 10% for max fee).
+	 */
+	gasFeeBump?: GasFeeBumpConfig
+	rebalancing?: RebalancingConfig
 }
 
 /**
@@ -78,6 +97,14 @@ export class FillerConfigService {
 		return this.chainConfigService.getUsdcAsset(chain)
 	}
 
+	getUsdcDecimals(chain: string): number {
+		return this.chainConfigService.getUsdcDecimals(chain)
+	}
+
+	getUsdtDecimals(chain: string): number {
+		return this.chainConfigService.getUsdtDecimals(chain)
+	}
+
 	getChainId(chain: string): number {
 		return this.chainConfigService.getChainId(chain)
 	}
@@ -108,11 +135,12 @@ export class FillerConfigService {
 	}
 
 	private getChainIdFromStateMachineId(chain: string): number {
-		if (chain.includes("EVM")) {
-			return Number.parseInt(chain.slice(4))
+		const raw = chain.includes("EVM") ? chain.slice(4) : chain
+		const id = Number.parseInt(raw, 10)
+		if (Number.isNaN(id)) {
+			throw new Error(`Cannot derive chain ID from state machine ID: "${chain}"`)
 		}
-
-		return Number.parseInt(chain)
+		return id
 	}
 
 	getUniswapRouterV2Address(chain: string): HexString {
@@ -143,6 +171,14 @@ export class FillerConfigService {
 		return this.chainConfigService.getCoingeckoId(chain)
 	}
 
+	getCNgnAsset(chain: string): HexString | undefined {
+		return this.chainConfigService.getCNgnAsset(chain)
+	}
+
+	getCNgnDecimals(chain: string): number | undefined {
+		return this.chainConfigService.getCNgnDecimals(chain)
+	}
+
 	getConfiguredChainIds(): number[] {
 		return Array.from(this.rpcOverrides.keys())
 	}
@@ -163,15 +199,96 @@ export class FillerConfigService {
 		return this.fillerConfig?.substratePrivateKey
 	}
 
-	getEntryPointAddress(): HexString | undefined {
-		return this.fillerConfig?.entryPointAddress as HexString | undefined
+	getEntryPointAddress(chain: string): HexString | undefined {
+		return this.chainConfigService.getEntryPointV08Address(chain) as HexString | undefined
 	}
 
-	getSolverAccountContractAddress(): HexString | undefined {
-		return this.fillerConfig?.solverAccountContractAddress as HexString | undefined
+	getSolverAccountContractAddress(chain: string): HexString | undefined {
+		return this.chainConfigService.getSolverAccountAddress(chain) as HexString | undefined
 	}
 
 	getDataDir(): string | undefined {
 		return this.fillerConfig?.dataDir
+	}
+
+	getBundlerUrl(): string | undefined {
+		return this.fillerConfig?.bundlerUrl
+	}
+
+	/**
+	 * Get the maxPriorityFeePerGas bump percentage.
+	 * @returns The configured percentage or undefined if not set (default 8% will be used)
+	 */
+	getMaxPriorityFeePerGasBumpPercent(): number | undefined {
+		return this.fillerConfig?.gasFeeBump?.maxPriorityFeePerGasBumpPercent
+	}
+
+	/**
+	 * Get the maxFeePerGas bump percentage.
+	 * @returns The configured percentage or undefined if not set (default 10% will be used)
+	 */
+	getMaxFeePerGasBumpPercent(): number | undefined {
+		return this.fillerConfig?.gasFeeBump?.maxFeePerGasBumpPercent
+	}
+
+	/**
+	 * Get the full gas fee bump configuration.
+	 * @returns The gas fee bump config or undefined if not set
+	 */
+	getGasFeeBumpConfig(): GasFeeBumpConfig | undefined {
+		return this.fillerConfig?.gasFeeBump
+	}
+
+	/**
+	 * Get the LayerZero Endpoint ID for the chain
+	 * Used for USDT0 cross-chain transfers via LayerZero OFT
+	 */
+	getLayerZeroEid(chain: string): number | undefined {
+		return this.chainConfigService.getLayerZeroEid(chain)
+	}
+
+	/**
+	 * Get the USDT0 OFT contract address for the chain
+	 * On Ethereum: OFT Adapter (locks/unlocks USDT)
+	 * On other chains: OFT contract (mints/burns USDT0)
+	 */
+	getUsdt0OftAddress(chain: string): HexString | undefined {
+		return this.chainConfigService.getUsdt0OftAddress(chain)
+	}
+
+	/**
+	 * Get rebalancing configuration
+	 */
+	getRebalancingConfig(): RebalancingConfig | undefined {
+		return this.fillerConfig?.rebalancing
+	}
+
+	/**
+	 * Get base balance for a specific chain and asset
+	 * @param chainId Chain ID as number
+	 * @param asset "USDC" or "USDT"
+	 * @returns Base balance as Decimal, or undefined if not configured
+	 */
+	getBaseBalance(chainId: number, asset: "USDC" | "USDT"): number | undefined {
+		const rebalancingConfig = this.fillerConfig?.rebalancing
+		if (!rebalancingConfig) {
+			return undefined
+		}
+
+		const chainIdStr = chainId.toString()
+		const baseBalances = rebalancingConfig.baseBalances[asset]
+		if (!baseBalances || !baseBalances[chainIdStr]) {
+			return undefined
+		}
+
+		return Number.parseFloat(baseBalances[chainIdStr])
+	}
+
+	/**
+	 * Get trigger percentage for rebalancing
+	 * @returns Trigger percentage (0-1), or undefined if not configured
+	 */
+	getTriggerPercentage(): number | undefined {
+		return this.fillerConfig?.rebalancing?.triggerPercentage
 	}
 }

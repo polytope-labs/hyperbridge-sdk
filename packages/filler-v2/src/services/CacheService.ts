@@ -10,6 +10,7 @@ interface GasEstimateCache {
 	preVerificationGas: string
 	maxFeePerGas: string
 	maxPriorityFeePerGas: string
+	nonce: string
 	timestamp: number
 }
 
@@ -25,9 +26,20 @@ interface SwapOperationsCache {
 	timestamp: number
 }
 
+interface FillerOutputCache {
+	token: HexString
+	amount: string
+}
+
+interface FillerOutputsCache {
+	outputs: FillerOutputCache[]
+	timestamp: number
+}
+
 interface CacheData {
 	gasEstimates: Record<string, GasEstimateCache>
 	swapOperations: Record<string, SwapOperationsCache>
+	fillerOutputs: Record<string, FillerOutputsCache>
 	feeTokens: Record<string, { address: HexString; decimals: number }>
 	perByteFees: Record<string, Record<string, bigint>>
 	tokenDecimals: Record<string, Record<HexString, number>>
@@ -43,6 +55,7 @@ export class CacheService {
 		this.cacheData = {
 			gasEstimates: {},
 			swapOperations: {},
+			fillerOutputs: {},
 			feeTokens: {},
 			perByteFees: {},
 			tokenDecimals: {},
@@ -72,6 +85,15 @@ export class CacheService {
 		staleSwapOperationIds.forEach((orderId) => {
 			delete this.cacheData.swapOperations[orderId]
 		})
+
+		// Clean up filler outputs
+		const staleFillerOutputIds = Object.entries(this.cacheData.fillerOutputs)
+			.filter(([_, data]) => !this.isCacheValid(data.timestamp))
+			.map(([orderId]) => orderId)
+
+		staleFillerOutputIds.forEach((orderId) => {
+			delete this.cacheData.fillerOutputs[orderId]
+		})
 	}
 
 	getGasEstimate(orderId: string): {
@@ -83,6 +105,7 @@ export class CacheService {
 		preVerificationGas: bigint
 		maxFeePerGas: bigint
 		maxPriorityFeePerGas: bigint
+		nonce: bigint
 	} | null {
 		try {
 			const cache = this.cacheData.gasEstimates[orderId]
@@ -96,6 +119,7 @@ export class CacheService {
 					preVerificationGas: BigInt(cache.preVerificationGas),
 					maxFeePerGas: BigInt(cache.maxFeePerGas),
 					maxPriorityFeePerGas: BigInt(cache.maxPriorityFeePerGas),
+					nonce: BigInt(cache.nonce),
 				}
 			}
 			return null
@@ -115,6 +139,7 @@ export class CacheService {
 		preVerificationGas: bigint,
 		maxFeePerGas: bigint,
 		maxPriorityFeePerGas: bigint,
+		nonce: bigint,
 	): void {
 		if (totalCostInSourceFeeToken <= 0n) {
 			throw new Error("Total cost in source fee token must be positive")
@@ -130,6 +155,7 @@ export class CacheService {
 				preVerificationGas: preVerificationGas.toString(),
 				maxFeePerGas: maxFeePerGas.toString(),
 				maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+				nonce: nonce.toString(),
 				timestamp: Date.now(),
 			}
 		} catch (error) {
@@ -168,6 +194,38 @@ export class CacheService {
 		}
 	}
 
+	getFillerOutputs(orderId: string): { token: HexString; amount: bigint }[] | null {
+		try {
+			const cache = this.cacheData.fillerOutputs[orderId]
+			if (cache && this.isCacheValid(cache.timestamp)) {
+				return cache.outputs.map((o) => ({
+					token: o.token,
+					amount: BigInt(o.amount),
+				}))
+			}
+			return null
+		} catch (error) {
+			this.logger.error({ err: error }, "Error getting filler outputs")
+			return null
+		}
+	}
+
+	setFillerOutputs(orderId: string, outputs: { token: HexString; amount: bigint }[]): void {
+		try {
+			this.cleanupStaleData()
+			this.cacheData.fillerOutputs[orderId] = {
+				outputs: outputs.map((o) => ({
+					token: o.token,
+					amount: o.amount.toString(),
+				})),
+				timestamp: Date.now(),
+			}
+		} catch (error) {
+			this.logger.error({ err: error }, "Error setting filler outputs")
+			throw error
+		}
+	}
+
 	getFeeTokenWithDecimals(chain: string): { address: HexString; decimals: number } | null {
 		try {
 			const cache = this.cacheData.feeTokens[chain]
@@ -188,11 +246,7 @@ export class CacheService {
 		try {
 			this.cleanupStaleData()
 
-			if (!this.cacheData.feeTokens[chain]) {
-				this.cacheData.feeTokens[chain] = { address, decimals }
-			} else {
-				this.cacheData.feeTokens[chain] = { address, decimals }
-			}
+			this.cacheData.feeTokens[chain] = { address, decimals }
 		} catch (error) {
 			this.logger.error({ chain: chain, err: error }, "Error setting fee token with decimals")
 			throw error

@@ -58,6 +58,22 @@ export class ChainConfigService {
 		return (this.getConfig(chain)?.assets?.USDC ?? "0x") as HexString
 	}
 
+	getUsdcDecimals(chain: string): number {
+		return this.getConfig(chain)?.tokenDecimals?.USDC!
+	}
+
+	getUsdtDecimals(chain: string): number {
+		return this.getConfig(chain)?.tokenDecimals?.USDT!
+	}
+
+	getCNgnAsset(chain: string): HexString | undefined {
+		return this.getConfig(chain)?.assets?.cNGN as HexString | undefined
+	}
+
+	getCNgnDecimals(chain: string): number | undefined {
+		return this.getConfig(chain)?.tokenDecimals?.cNGN
+	}
+
 	getChainId(chain: string): number {
 		return this.getConfig(chain)?.chainId ?? 0
 	}
@@ -103,6 +119,10 @@ export class ChainConfigService {
 		return (this.getConfig(chain)?.addresses.Permit2 ?? "0x") as HexString
 	}
 
+	getSolverAccountAddress(chain: string): HexString | undefined {
+		return this.getConfig(chain)?.addresses.SolverAccount as HexString | undefined
+	}
+
 	getCoingeckoId(chain: string): string | undefined {
 		return this.getConfig(chain)?.coingeckoId
 	}
@@ -139,7 +159,28 @@ export class ChainConfigService {
 		return (this.getConfig(chain)?.addresses.IntentGatewayV2 ?? "0x") as HexString
 	}
 
+	getEntryPointV08Address(chain: string): HexString {
+		return this.getConfig(chain)?.addresses.EntryPointV08!
+	}
+
 	getHyperbridgeAddress(): string {
 		return hyperbridgeAddress
+	}
+
+	/**
+	 * Get the LayerZero Endpoint ID for the chain
+	 * Used for USDT0 cross-chain transfers via LayerZero OFT
+	 */
+	getLayerZeroEid(chain: string): number | undefined {
+		return this.getConfig(chain)?.layerZeroEid
+	}
+
+	/**
+	 * Get the USDT0 OFT contract address for the chain
+	 * On Ethereum: OFT Adapter (locks/unlocks USDT)
+	 * On other chains: OFT contract (mints/burns USDT0)
+	 */
+	getUsdt0OftAddress(chain: string): HexString | undefined {
+		return this.getConfig(chain)?.addresses.Usdt0Oft as HexString | undefined
 	}
 }

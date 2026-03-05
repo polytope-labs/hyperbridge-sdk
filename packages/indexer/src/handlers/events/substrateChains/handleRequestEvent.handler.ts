@@ -1,6 +1,5 @@
 import { SubstrateEvent } from "@subql/types"
-import fetch from "node-fetch"
-import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
+import { safeFetch as fetch } from "@/utils/safeFetch"
 import { bytesToHex, hexToBytes, toHex } from "viem"
 
 import { RequestService } from "@/services/request.service"

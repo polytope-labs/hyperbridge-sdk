@@ -1,6 +1,5 @@
 import { SubstrateEvent } from "@subql/types"
-import fetch from "node-fetch"
-import { fetchWithRetry } from "@/utils/fetch-retry.helpers"
+import { safeFetch as fetch } from "@/utils/safeFetch"
 import { formatChain, getHostStateMachine } from "@/utils/substrate.helpers"
 import { ENV_CONFIG } from "@/constants"
 import { Get } from "@/utils/substrate.helpers"

@@ -507,6 +507,9 @@ export class IndexerClient {
 			if (!hyperbridgeDelivered) return addFinalityEvents(request)
 		}
 
+		const isHyperbridgeTimedOut = request.statuses.some((s) => s.status === TimeoutStatus.HYPERBRIDGE_TIMED_OUT)
+		if (isHyperbridgeTimedOut) return addFinalityEvents(request)
+
 		// no need to query finality event if destination is hyperbridge
 		if (request.dest === this.config.hyperbridge.config.stateMachineId) {
 			return addFinalityEvents(request)
@@ -1094,7 +1097,7 @@ export class IndexerClient {
 						height: BigInt(hyperbridgeFinalized.height),
 						id: {
 							stateId,
-							consensusStateId: toHex(this.config.hyperbridge.config.consensusStateId),
+							consensusStateId: this.config.hyperbridge.config.consensusStateId,
 						},
 					})
 
@@ -1291,6 +1294,7 @@ export class IndexerClient {
 					if (request.source === this.config.hyperbridge.config.stateMachineId) {
 						return
 					}
+
 					// Get the latest state machine update for hyperbridge on the destination chain
 					const hyperbridgeFinalized = await this.waitOrAbort({
 						signal,
@@ -1530,7 +1534,7 @@ export class IndexerClient {
 						height: BigInt(update.height),
 						id: {
 							stateId,
-							consensusStateId: toHex(this.config.dest.config.consensusStateId),
+							consensusStateId: this.config.dest.config.consensusStateId,
 						},
 					})
 
@@ -1646,7 +1650,7 @@ export class IndexerClient {
 						height: BigInt(update.height),
 						id: {
 							stateId,
-							consensusStateId: toHex(this.config.hyperbridge.config.consensusStateId),
+							consensusStateId: this.config.hyperbridge.config.consensusStateId,
 						},
 					})
 
@@ -1896,8 +1900,6 @@ export class IndexerClient {
 
 		const { stateMachineId, consensusStateId } = this.config.source.config
 
-		const consensusStateIdToHex = toHex(consensusStateId)
-
 		// check if request receipt exists on source chain
 		const sourceChain = this.config.source
 		const hyperbridge = this.config.hyperbridge as SubstrateChain
@@ -1909,7 +1911,7 @@ export class IndexerClient {
 		logger.trace("Fetch latest stateMachineHeight")
 		const latestStateMachineHeight = await hyperbridge.latestStateMachineHeight({
 			stateId: parseStateMachineId(stateMachineId).stateId,
-			consensusStateId: consensusStateIdToHex as HexString,
+			consensusStateId,
 		})
 
 		logger.trace("Query Request Proof from sourceChain")

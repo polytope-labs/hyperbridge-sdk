@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import Handlebars from "handlebars"
 import { getEnv, getValidChains } from "../src/configs"
 
-const EVM_IMAGE = "subquerynetwork/subql-node-ethereum:v5.5.0"
+const EVM_IMAGE = "polytopelabs/subql-node-ethereum:v6.3.1"
 const SUBSTRATE_IMAGE = "subquerynetwork/subql-node-substrate:v5.9.1"
 
 // Setup paths
@@ -37,11 +37,10 @@ const generateNodeServices = () => {
 	}
 
 	validChains.forEach((config, chainName) => {
-		const hasBlockConfirmations = config.blockConfirmations !== undefined
 		const serviceData = {
 			chainName,
 			image: config.type === "substrate" ? SUBSTRATE_IMAGE : EVM_IMAGE,
-			unfinalizedBlocks: config.type === "evm" && !hasBlockConfirmations, // Only EVM chains need unfinalized blocks handling, except chains with custom block confirmations
+			unfinalizedBlocks: config.type === "evm" && config.unfinalizedBlocks !== false,
 			blockConfirmations: config.blockConfirmations, // Pass block confirmations from config
 			config,
 			volumesPath: "../../",

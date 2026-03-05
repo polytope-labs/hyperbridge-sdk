@@ -1,4 +1,25 @@
-import { Chain, bscTestnet, gnosisChiado, sepolia, mainnet, bsc, base, arbitrum, polygon, unichain } from "viem/chains"
+import {
+	Chain,
+	bscTestnet,
+	gnosisChiado,
+	sepolia,
+	mainnet,
+	bsc,
+	base,
+	arbitrum,
+	polygon,
+	unichain,
+	polygonAmoy,
+	tron,
+} from "viem/chains"
+import { defineChain } from "viem"
+import { TronWeb } from "tronweb"
+import { HexString } from "@/types"
+
+/** Convert a Tron base58 address to a 0x-prefixed 20-byte EVM hex address */
+function tronAddress(base58: string): HexString {
+	return `0x${TronWeb.address.toHex(base58).slice(2)}` as HexString
+}
 
 export enum Chains {
 	BSC_CHAPEL = "EVM-97",
@@ -11,7 +32,26 @@ export enum Chains {
 	BASE_MAINNET = "EVM-8453",
 	POLYGON_MAINNET = "EVM-137",
 	UNICHAIN_MAINNET = "EVM-130",
+	POLYGON_AMOY = "EVM-80002",
+	TRON_MAINNET = "EVM-728126428",
+	TRON_NILE = "EVM-3448148188",
 }
+
+/** Tron Nile Testnet (chain ID 3448148188) — not in viem/chains */
+export const tronNile = defineChain({
+	id: 3448148188,
+	name: "TRON Nile Testnet",
+	nativeCurrency: { name: "TRX", symbol: "TRX", decimals: 6 },
+	rpcUrls: {
+		default: { http: ["https://nile.trongrid.io/jsonrpc"] },
+	},
+	blockExplorers: {
+		default: { name: "Nile Tronscan", url: "https://nile.tronscan.org" },
+	},
+})
+
+// Known Tron chain IDs (mainnet + Nile testnet)
+export const tronChainIds = new Set([728126428, 3448148188])
 
 export interface ChainConfigData {
 	chainId: number
@@ -23,6 +63,12 @@ export interface ChainConfigData {
 		DAI: string
 		USDC: string
 		USDT: string
+		cNGN?: string
+	}
+	tokenDecimals?: {
+		USDC: number
+		USDT: number
+		cNGN?: number
 	}
 	tokenStorageSlots?: {
 		USDT?: { balanceSlot: number; allowanceSlot: number }
@@ -43,12 +89,20 @@ export interface ChainConfigData {
 		UniswapV4Quoter?: `0x${string}`
 		Calldispatcher?: `0x${string}`
 		Permit2?: `0x${string}`
+		/** ERC-4337 v0.8 EntryPoint address (canonical across all EVM chains) */
+		EntryPointV08?: `0x${string}`
+		/** USDT0 OFT contract address (OFT Adapter on Ethereum, OFT on other chains) */
+		Usdt0Oft?: `0x${string}`
+		/** SolverAccount contract address used for EIP-7702 delegation */
+		SolverAccount?: `0x${string}`
 	}
 	rpcEnvKey?: string
 	defaultRpcUrl?: string
 	consensusStateId: string
 	coingeckoId: string
 	popularTokens?: string[]
+	/** LayerZero Endpoint ID for cross-chain messaging */
+	layerZeroEid?: number
 }
 
 // All chain configuration in one place - add new chains here
@@ -61,11 +115,20 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		assets: {
 			WETH: "0xae13d989dac2f0debff460ac112a837c89baa7cd",
 			DAI: "0x1938165569a5463327fb206be06d8d9253aa06b7",
-			USDC: "0xc625ec7d30a4b1aaefb1304610cdacd0d606ac92",
+			USDC: "0xA801da100bF16D07F668F4A49E1f71fc54D05177",
 			USDT: "0xc043f483373072f7f27420d6e7d7ad269c018e18",
+		},
+		tokenDecimals: {
+			USDC: 18,
+			USDT: 18,
+		},
+		tokenStorageSlots: {
+			USDC: { balanceSlot: 1, allowanceSlot: 2 },
+			USDT: { balanceSlot: 151, allowanceSlot: 152 },
 		},
 		addresses: {
 			IntentGateway: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
+			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
 			TokenGateway: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6",
 			Host: "0x8Aa0Dea6D675d785A882967Bf38183f6117C09b7",
 			UniswapRouter02: "0x9639379819420704457B07A0C33B678D9E0F8Df0",
@@ -74,6 +137,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniversalRouter: "0xcc6d5ece3d4a57245bf5a2f64f3ed9179b81f714",
 			UniswapV3Quoter: "0x0000000000000000000000000000000000000000",
 			UniswapV4Quoter: "0x0000000000000000000000000000000000000000",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			SolverAccount: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
 		},
 		rpcEnvKey: "BSC_CHAPEL",
 		defaultRpcUrl: "https://bnb-testnet.api.onfinality.io/public",
@@ -97,6 +162,10 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x0000000000000000000000000000000000000000",
 			USDT: "0x0000000000000000000000000000000000000000",
 		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+		},
 		addresses: {
 			IntentGateway: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
 			TokenGateway: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6",
@@ -104,6 +173,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapRouter02: "0x0000000000000000000000000000000000000000",
 			UniswapV2Factory: "0x0000000000000000000000000000000000000000",
 			UniswapV3Factory: "0x0000000000000000000000000000000000000000",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
 		},
 		rpcEnvKey: "GNOSIS_CHIADO",
 		defaultRpcUrl: "https://gnosis-chiado-rpc.publicnode.com",
@@ -131,6 +201,10 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDT: "0x0000000000000000000000000000000000000000",
 			DAI: "0x0000000000000000000000000000000000000000",
 		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+		},
 		addresses: {
 			IntentGateway: "0x016b6ffC9f890d1e28f9Fdb9eaDA776b02F89509",
 			TokenGateway: "0xFcDa26cA021d5535C3059547390E6cCd8De7acA6",
@@ -139,6 +213,7 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV2Factory: "0x0000000000000000000000000000000000000000",
 			UniswapV3Factory: "0x0000000000000000000000000000000000000000",
 			Calldispatcher: "0xC7f13b6D03A0A7F3239d38897503E90553ABe155",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
 		},
 		rpcEnvKey: "SEPOLIA",
 		defaultRpcUrl: "https://1rpc.io/sepolia",
@@ -156,6 +231,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x6b175474e89094c44da98b954eedeac495271d0f",
 			USDC: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
 			USDT: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+			cNGN: "0x17CDB2a01e7a34CbB3DD4b83260B05d0274C8dab",
+		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 2, allowanceSlot: 5 },
@@ -165,6 +246,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x792A6236AF69787C40cF76b69B4c8c7B28c4cA20",
 			UniswapRouter02: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
@@ -175,11 +258,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0x6C96dE32CEa08842dcc4058c14d3aaAD7Fa41dee",
 		},
 		rpcEnvKey: "ETH_MAINNET",
 		defaultRpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo",
 		consensusStateId: "ETH0",
 		coingeckoId: "ethereum",
+		layerZeroEid: 30101,
 		popularTokens: [
 			"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
 			"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -198,6 +284,10 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDC: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
 			USDT: "0x55d398326f99059ff775485246999027b3197955",
 		},
+		tokenDecimals: {
+			USDC: 18,
+			USDT: 18,
+		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 1, allowanceSlot: 2 },
 			USDC: { balanceSlot: 1, allowanceSlot: 2 },
@@ -206,6 +296,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x24B5d421Ec373FcA57325dd2F0C074009Af021F7",
 			UniswapRouter02: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
@@ -216,6 +308,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0xd0737C9762912dD34c3271197E362Aa736Df0926",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// "Usdt0Oft": Not available on BSC
 		},
 		rpcEnvKey: "BSC_MAINNET",
 		defaultRpcUrl: "https://binance.llamarpc.com",
@@ -242,6 +336,10 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDC: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
 			USDT: "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
 		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 51, allowanceSlot: 52 },
 			USDC: { balanceSlot: 9, allowanceSlot: 10 },
@@ -250,6 +348,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0xE05AFD4Eb2ce6d65c40e1048381BD0Ef8b4B299e",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -260,11 +360,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0x3972c00f7ed4885e145823eb7c655375d275a1c5",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0x14E4A1B13bf7F943c8ff7C51fb60FA964A298D92",
 		},
 		rpcEnvKey: "ARBITRUM_MAINNET",
 		defaultRpcUrl: "https://arbitrum-one.public.blastapi.io",
 		consensusStateId: "ETH0",
 		coingeckoId: "arbitrum-one",
+		layerZeroEid: 30110,
 		popularTokens: [
 			"0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
 			"0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -282,6 +385,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
 			USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
 			USDT: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+			cNGN: "0x46C85152bFe9f96829aA94755D9f915F9B10EF5F",
+		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 0, allowanceSlot: 1 },
@@ -291,6 +400,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0xFd413e3AFe560182C4471F4d143A96d3e259B6dE",
 			Host: "0x6FFe92e4d7a9D589549644544780e6725E84b248",
 			UniswapRouter02: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
@@ -301,11 +412,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0x0d5e0f971ed27fbff6c2837bf31316121532048d",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			// Usdt0Oft: Not available on Base
 		},
 		rpcEnvKey: "BASE_MAINNET",
 		defaultRpcUrl: "https://base-mainnet.public.blastapi.io",
 		consensusStateId: "ETH0",
 		coingeckoId: "base",
+		layerZeroEid: 30184,
 		popularTokens: [
 			"0x4200000000000000000000000000000000000006",
 			"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -323,6 +437,12 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
 			USDC: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
 			USDT: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+			cNGN: "0x52828daa48C1a9A06F37500882b42daf0bE04C3B",
+		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+			cNGN: 6,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 0, allowanceSlot: 1 },
@@ -332,6 +452,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0xD8d3db17C1dF65b301D45C84405CcAC1395C559a",
 			UniswapRouter02: "0xd2f9496824951D5237cC71245D659E48d0d5f9E8",
@@ -342,11 +464,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0xb3d5c3dfc3a7aebff71895a7191796bffc2c81b9",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0x6BA10300f0DC58B7a1e4c0e41f5daBb7D7829e13",
 		},
 		rpcEnvKey: "POLYGON_MAINNET",
 		defaultRpcUrl: "https://polygon-bor-rpc.publicnode.com",
 		consensusStateId: "POLY",
 		coingeckoId: "polygon-pos",
+		layerZeroEid: 30109,
 		popularTokens: [
 			"0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
 			"0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
@@ -365,8 +490,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			USDC: "0x078d782b760474a361dda0af3839290b0ef57ad6",
 			USDT: "0x9151434b16b9763660705744891fa906f660ecc5",
 		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+		},
 		addresses: {
 			IntentGateway: "0x1a4ee689a004b10210a1df9f24a387ea13359acf",
+			IntentGatewayV2: "0x2d61624A17f361020679FaA16fbB566C344AaF4B",
+			SolverAccount: "0xd4d594C99f23b1Fb9d65fdd9062854B1A1C5780b",
 			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
 			Host: "0x2A17C1c3616Bbc33FCe5aF5B965F166ba76cEDAf",
 			UniswapRouter02: "0x284f11109359a7e1306c3e447ef14d38400063ff",
@@ -377,6 +508,8 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			UniswapV4Quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
 			Calldispatcher: "0xc71251c8b3e7b02697a84363eef6dce8dfbdf333",
 			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			Usdt0Oft: "0xc07be8994d035631c36fb4a89c918cefb2f03ec3",
 		},
 		rpcEnvKey: "UNICHAIN_MAINNET",
 		defaultRpcUrl: "https://unichain.api.onfinality.io/public",
@@ -388,6 +521,70 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			"0x9151434b16b9763660705744891fa906f660ecc5",
 			"0x0000000000000000000000000000000000000000",
 		],
+	},
+
+	3448148188: {
+		chainId: 3448148188,
+		stateMachineId: Chains.TRON_NILE,
+		viemChain: tronNile,
+		wrappedNativeDecimals: 6,
+		assets: {
+			WETH: "0x0000000000000000000000000000000000000000", // WTRX — TODO: fill in
+			DAI: "0x0000000000000000000000000000000000000000",
+			USDC: tronAddress("TNuoKL1ni8aoshfFL1ASca1Gou9RXwAzfn"),
+			USDT: tronAddress("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"),
+		},
+		tokenDecimals: {
+			USDC: 6,
+			USDT: 6,
+		},
+		tokenStorageSlots: {
+			USDT: { balanceSlot: 0, allowanceSlot: 1 },
+		},
+		addresses: {
+			IntentGatewayV2: tronAddress("TMcm6r9RRVKPJNLgyFxcuJknFruQBuPumF"),
+			Host: tronAddress("TNduR7v184pMWv2oTamRxxzsmz7oHrKqJc"),
+			Calldispatcher: tronAddress("TA9XyBPuXL9ecXcLpcFV1g778fzstke2Eh"),
+			UniswapRouter02: tronAddress("TLXGSird23Ww5FZrtbTYisrZNARUmjwmcy"),
+		},
+		rpcEnvKey: "TRON_NILE",
+		defaultRpcUrl: "https://nile.trongrid.io/jsonrpc",
+		consensusStateId: "TRON",
+		coingeckoId: "tron",
+	},
+
+	80002: {
+		chainId: 80002,
+		stateMachineId: Chains.POLYGON_AMOY,
+		viemChain: polygonAmoy,
+		wrappedNativeDecimals: 18,
+		assets: {
+			WETH: "0x360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9", //wmatic, change it to wpol
+			DAI: "0x0000000000000000000000000000000000000000",
+			USDC: "0x693b854d6965ffeaae21c74049dea644b56fcacb",
+			USDT: "0x693b854d6965ffeaae21c74049dea644b56fcacb",
+		},
+		tokenDecimals: {
+			USDC: 18,
+			USDT: 18,
+		},
+		tokenStorageSlots: {
+			USDT: { balanceSlot: 0, allowanceSlot: 1 },
+			USDC: { balanceSlot: 1, allowanceSlot: 2 },
+		},
+		addresses: {
+			IntentGatewayV2: "0xFbF50B2b32768127603cC9eF4b871574b881b8eD",
+			TokenGateway: "0x8b536105b6Fae2aE9199f5146D3C57Dfe53b614E",
+			Host: "0x9a2840D050e64Db89c90Ac5857536E4ec66641DE",
+			Calldispatcher: "0x876F1891982E260026630c233A4897160A281Fb8",
+			Permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+			EntryPointV08: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+			SolverAccount: "0xCDFcFeD7A14154846808FddC8Ba971A2f8a830a3",
+		},
+		rpcEnvKey: "POLYGON_AMOY",
+		defaultRpcUrl: "https://rpc-amoy.polygon.technology",
+		consensusStateId: "POLY",
+		coingeckoId: "polygon-pos",
 	},
 }
 

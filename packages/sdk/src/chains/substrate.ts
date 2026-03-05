@@ -92,8 +92,8 @@ export class SubstrateChain implements IChain {
 		}
 	}
 
-	/*
-	 * connect: Connects to the Substrate chain using the provided WebSocket URL.
+	/**
+	 * Connects to the Substrate chain using the provided WebSocket URL.
 	 */
 	public async connect() {
 		const wsProvider = new WsProvider(this.params.wsUrl)
@@ -102,12 +102,8 @@ export class SubstrateChain implements IChain {
 			this.params.hasher === "Keccak"
 				? {
 						spec: {
-							nexus: {
-								hasher: keccakAsU8a,
-							},
-							gargantua: {
-								hasher: keccakAsU8a,
-							},
+							nexus: { hasher: keccakAsU8a },
+							gargantua: { hasher: keccakAsU8a },
 						},
 					}
 				: {}
@@ -291,9 +287,10 @@ export class SubstrateChain implements IChain {
 	 * Query the state proof for a given set of keys at a specific block height.
 	 * @param at The block height to query the state proof at.
 	 * @param keys The keys to query the state proof for.
+	 * @param _address - Optional address (ignored for Substrate; present for IChain compatibility).
 	 * @returns The state proof as a hexadecimal string.
 	 */
-	async queryStateProof(at: bigint, keys: HexString[]): Promise<HexString> {
+	async queryStateProof(at: bigint, keys: HexString[], _address?: HexString): Promise<HexString> {
 		const encodedKeys = keys.map((key) => Array.from(hexToBytes(key)))
 		const proof: any = await this.rpcClient.call("ismp_queryChildTrieProof", [Number(at), encodedKeys])
 		const basicProof = BasicProof.dec(toHex(proof.proof))
@@ -318,13 +315,9 @@ export class SubstrateChain implements IChain {
 	async latestStateMachineHeight(stateMachineId: StateMachineIdParams): Promise<bigint> {
 		const state_id = convertStateIdToStateMachineId(stateMachineId.stateId)
 
-		const consensusStateIdToBytes = hexToBytes(stateMachineId.consensusStateId)
-		const decoder = new TextDecoder("utf-8")
-		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
-
 		const payload = {
 			state_id,
-			consensus_state_id: decodedConsensusStateId,
+			consensus_state_id: stateMachineId.consensusStateId,
 		}
 
 		const latestHeight: number = await this.rpcClient.call("ismp_queryStateMachineLatestHeight", [payload])
@@ -339,13 +332,9 @@ export class SubstrateChain implements IChain {
 	async stateMachineUpdateTime(stateMachineHeight: StateMachineHeight): Promise<bigint> {
 		const state_id = convertStateIdToStateMachineId(stateMachineHeight.id.stateId)
 
-		const consensusStateIdToBytes = hexToBytes(stateMachineHeight.id.consensusStateId)
-		const decoder = new TextDecoder("utf-8")
-		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
-
 		const stateMachineId = {
 			state_id,
-			consensus_state_id: decodedConsensusStateId,
+			consensus_state_id: stateMachineHeight.id.consensusStateId,
 		}
 
 		const payload = {
@@ -365,13 +354,9 @@ export class SubstrateChain implements IChain {
 	async challengePeriod(stateMachineId: StateMachineIdParams): Promise<bigint> {
 		const state_id = convertStateIdToStateMachineId(stateMachineId.stateId)
 
-		const consensusStateIdToBytes = hexToBytes(stateMachineId.consensusStateId)
-		const decoder = new TextDecoder("utf-8")
-		const decodedConsensusStateId = decoder.decode(consensusStateIdToBytes)
-
 		const payload = {
 			state_id,
-			consensus_state_id: decodedConsensusStateId,
+			consensus_state_id: stateMachineId.consensusStateId,
 		}
 
 		const challengePeriod: number = await this.rpcClient.call("ismp_queryChallengePeriod", [payload])
