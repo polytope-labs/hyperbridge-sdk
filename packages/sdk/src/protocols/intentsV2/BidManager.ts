@@ -1,4 +1,4 @@
-import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs, erc20Abi } from "viem"
+import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs, erc20Abi, maxUint256 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import { ADDRESS_ZERO, bytes32ToBytes20, hexToString, retryPromise } from "@/utils"
@@ -12,6 +12,7 @@ import type {
 	FillerBid,
 	SelectBidResult,
 	TokenInfoV2,
+	ERC7821Call,
 } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
@@ -308,6 +309,22 @@ export class BidManager {
 			.reduce((sum, asset) => sum + asset.amount, 0n)
 		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
 
+		const calls: ERC7821Call[] = []
+
+		for (const asset of fillOptions.outputs) {
+			const addr = bytes32ToBytes20(asset.token)
+			if (addr === ADDRESS_ZERO) continue
+			calls.push({
+				target: addr as HexString,
+				value: 0n,
+				data: encodeFunctionData({
+					abi: erc20Abi,
+					functionName: "approve",
+					args: [intentGatewayV2Address, asset.amount],
+				}) as HexString,
+			})
+		}
+
 		const selectCalldata = encodeFunctionData({
 			abi: IntentGatewayV2ABI,
 			functionName: "select",
@@ -320,7 +337,7 @@ export class BidManager {
 			args: [transformOrderForContract(order), fillOptions],
 		}) as HexString
 
-		const batchedCalldata = this.crypto.encodeERC7821Execute([
+		calls.push(
 			{
 				target: intentGatewayV2Address,
 				value: 0n,
@@ -331,7 +348,9 @@ export class BidManager {
 				value: totalNativeValue,
 				data: fillOrderCalldata,
 			},
-		])
+		)
+
+		const batchedCalldata = this.crypto.encodeERC7821Execute(calls)
 
 		try {
 			await this.ctx.dest.client.call({

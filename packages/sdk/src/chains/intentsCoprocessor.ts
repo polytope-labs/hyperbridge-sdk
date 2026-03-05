@@ -95,6 +95,7 @@ export class IntentsCoprocessor {
 			provider: new WsProvider(wsUrl),
 			typesBundle: {
 				spec: {
+					nexus: { hasher: keccakAsU8a },
 					gargantua: { hasher: keccakAsU8a },
 				},
 			},

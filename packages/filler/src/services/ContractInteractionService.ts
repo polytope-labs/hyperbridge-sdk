@@ -353,6 +353,7 @@ export class ContractInteractionService {
 
 		// Use cached filler outputs (calculated based on bps) for competitive bidding
 		const cachedFillerOutputs = this.cacheService.getFillerOutputs(order.id!)
+
 		if (!cachedFillerOutputs) {
 			throw new Error(`No cached filler outputs found for order ${order.id}. Call calculateProfitability first.`)
 		}
@@ -427,6 +428,7 @@ export class ContractInteractionService {
 			const key = addr.toLowerCase()
 			perTokenRequired.set(key, (perTokenRequired.get(key) ?? 0n) + output.amount)
 		}
+
 		const feeToken = await this.getFeeTokenWithDecimals(chain)
 		const feeKey = feeToken.address.toLowerCase()
 		perTokenRequired.set(feeKey, (perTokenRequired.get(feeKey) ?? 0n) + requiredFeeTokenAmount)

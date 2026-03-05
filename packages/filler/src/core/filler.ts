@@ -252,7 +252,7 @@ export class IntentFiller {
 				}
 
 				// Derive required confirmations from whichever matched strategy has a policy
-			let requiredConfirmations = 0
+				let requiredConfirmations = 0
 				for (const strategy of canFillCache) {
 					if (strategy.confirmationPolicy) {
 						requiredConfirmations = Math.max(

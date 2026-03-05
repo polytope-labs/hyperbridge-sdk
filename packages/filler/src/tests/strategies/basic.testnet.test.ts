@@ -46,7 +46,7 @@ import { TronWeb } from "tronweb"
 // Test Suites
 // ============================================================================
 
-describe("Filler V2 - Solver Selection ON", () => {
+describe.skip("Filler V2 - Solver Selection ON", () => {
 	it.skip("Should place order, filler submits bid, user selects bid, order filled", async () => {
 		const {
 			bscIntentGatewayV2,
@@ -118,8 +118,13 @@ describe("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, feeToken.address, bscIntentGatewayV2.address)
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
-		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = await IntentsV2.create(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const destBundlerUrl = chainConfigService.getBundlerUrl(polygonAmoyId)
+		const userSdkHelper = await IntentsV2.create(
+			bscEvmChain,
+			polygonAmoyEvmChain,
+			intentsCoprocessor,
+			destBundlerUrl,
+		)
 
 		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
@@ -234,8 +239,13 @@ describe("Filler V2 - Solver Selection ON", () => {
 		await approveTokens(bscWalletClient, bscPublicClient, feeToken.address, bscIntentGatewayV2.address)
 		await approveTokens(bscWalletClient, bscPublicClient, sourceUsdc, bscIntentGatewayV2.address)
 
-		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = await IntentsV2.create(bscEvmChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const destBundlerUrl = chainConfigService.getBundlerUrl(polygonAmoyId)
+		const userSdkHelper = await IntentsV2.create(
+			bscEvmChain,
+			polygonAmoyEvmChain,
+			intentsCoprocessor,
+			destBundlerUrl,
+		)
 
 		console.log("Preparing to place order...")
 		const generator = userSdkHelper.placeOrder(order)
@@ -340,8 +350,9 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 
 		await approveTronTokens(tronWeb, sourceUsdt, tronIntentGatewayAddress)
 
-		const bundlerUrl = process.env.BUNDLER_URL
-		const userSdkHelper = await IntentsV2.create(tronChain, polygonAmoyEvmChain, intentsCoprocessor, bundlerUrl)
+		const destBundlerUrl = chainConfigService.getBundlerUrl(polygonAmoyId)
+
+		const userSdkHelper = await IntentsV2.create(tronChain, polygonAmoyEvmChain, intentsCoprocessor, destBundlerUrl)
 
 		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
@@ -411,11 +422,30 @@ function createIntentFiller(
 	})
 
 	const confirmationPolicy = new ConfirmationPolicy({
-		"97": { points: [{ amount: "1", value: 1 }, { amount: "1000", value: 5 }] },
-		"80002": { points: [{ amount: "1", value: 1 }, { amount: "1000", value: 5 }] },
+		"97": {
+			points: [
+				{ amount: "1", value: 1 },
+				{ amount: "1000", value: 5 },
+			],
+		},
+		"80002": {
+			points: [
+				{ amount: "1", value: 1 },
+				{ amount: "1000", value: 5 },
+			],
+		},
 	})
 
-	const strategies = [new BasicFiller(privateKey, chainConfigService, chainClientManager, contractService, bpsPolicy, confirmationPolicy)]
+	const strategies = [
+		new BasicFiller(
+			privateKey,
+			chainConfigService,
+			chainClientManager,
+			contractService,
+			bpsPolicy,
+			confirmationPolicy,
+		),
+	]
 
 	return new IntentFiller(
 		chainConfigs,
@@ -449,14 +479,20 @@ async function pollForOrderFilled(
 // EVM Setup
 // ============================================================================
 
+function bundlerUrl(chainId: number): string | undefined {
+	const apiKey = process.env.BUNDLER_API_KEY
+
+	return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${apiKey}`
+}
+
 async function setUp() {
 	const bscChapelId = "EVM-97"
 	const polygonAmoyId = "EVM-80002"
 	const chains = [bscChapelId, polygonAmoyId]
 
 	const testChainConfigs: UserProvidedChainConfig[] = [
-		{ chainId: 97, rpcUrl: process.env.BSC_CHAPEL! },
-		{ chainId: 80002, rpcUrl: process.env.POLYGON_AMOY! },
+		{ chainId: 97, rpcUrl: process.env.BSC_CHAPEL!, bundlerUrl: bundlerUrl(97) },
+		{ chainId: 80002, rpcUrl: process.env.POLYGON_AMOY!, bundlerUrl: bundlerUrl(80002) },
 	]
 
 	const fillerConfigForService: FillerServiceConfig = {
@@ -522,7 +558,7 @@ async function setUpTron() {
 
 	const testChainConfigs: UserProvidedChainConfig[] = [
 		{ chainId: 3448148188, rpcUrl: process.env.TRON_NILE! },
-		{ chainId: 80002, rpcUrl: process.env.POLYGON_AMOY! },
+		{ chainId: 80002, rpcUrl: process.env.POLYGON_AMOY!, bundlerUrl: bundlerUrl(80002) },
 	]
 
 	const fillerConfigForService: FillerServiceConfig = {

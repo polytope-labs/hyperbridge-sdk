@@ -146,7 +146,8 @@ export class IntentsV2 {
 				maxPriorityFeePerGasBumpPercent: options?.maxPriorityFeePerGasBumpPercent,
 				maxFeePerGasBumpPercent: options?.maxFeePerGasBumpPercent,
 			})
-			order.fees = estimate.totalGasInFeeToken
+
+			order.fees = estimate.totalGasInFeeToken + (estimate.totalGasInFeeToken * 2n) / 100n
 		}
 
 		const placeOrderGen = this.orderPlacer.placeOrder(order, graffiti)

@@ -183,6 +183,14 @@ export class FillerConfigService {
 		return this.chainConfigService.getCNgnDecimals(chain)
 	}
 
+	getExtAsset(chain: string): HexString | undefined {
+		return this.chainConfigService.getExtAsset(chain)
+	}
+
+	getExtDecimals(chain: string): number | undefined {
+		return this.chainConfigService.getExtDecimals(chain)
+	}
+
 	getConfiguredChainIds(): number[] {
 		return Array.from(this.rpcOverrides.keys())
 	}

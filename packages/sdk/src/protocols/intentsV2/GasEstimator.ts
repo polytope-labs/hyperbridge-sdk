@@ -1,4 +1,4 @@
-import { encodeFunctionData, toHex, pad, maxUint256, concat, keccak256 } from "viem"
+import { encodeFunctionData, toHex, pad, maxUint256, concat, keccak256, isHex, hexToString } from "viem"
 import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import IntentGateway from "@/abis/IntentGateway"
@@ -27,7 +27,7 @@ import type {
 import type { HexString } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
-import type { BundlerGasEstimate } from "./types"
+import type { BundlerGasEstimate, PimlicoGasPriceEstimate } from "./types"
 import { getFeeToken, transformOrderForContract, convertGasToFeeToken } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
 
@@ -41,8 +41,10 @@ export class GasEstimator {
 		const { order } = params
 		const solverPrivateKey = generatePrivateKey()
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
-		const intentGatewayV2Address = this.ctx.dest.configService.getIntentGatewayV2Address(order.destination)
-		const entryPointAddress = this.ctx.dest.configService.getEntryPointV08Address(order.destination)
+		const sourceStateMachineId = isHex(order.source) ? hexToString(order.source) : order.source
+		const destStateMachineId = isHex(order.destination) ? hexToString(order.destination) : order.destination
+		const intentGatewayV2Address = this.ctx.dest.configService.getIntentGatewayV2Address(destStateMachineId)
+		const entryPointAddress = this.ctx.dest.configService.getEntryPointV08Address(destStateMachineId)
 		const chainId = BigInt(
 			this.ctx.dest.client.chain?.id ?? Number.parseInt(this.ctx.dest.config.stateMachineId.split("-")[1]),
 		)
@@ -61,14 +63,14 @@ export class GasEstimator {
 
 		const { viem: stateOverrides, bundler: bundlerStateOverrides } = await this.buildStateOverride({
 			accountAddress: solverAccountAddress,
-			chain: order.destination,
+			chain: destStateMachineId,
 			outputAssets: assetsForOverrides,
 			spenderAddress: intentGatewayV2Address,
 			intentGatewayV2Address,
 			entryPointAddress,
 		})
 
-		const isSameChain = order.source === order.destination
+		const isSameChain = order.source === destStateMachineId
 		let postRequestFeeInDestFeeToken = 0n
 		let protocolFeeInNativeToken = 0n
 
@@ -78,7 +80,7 @@ export class GasEstimator {
 				this.ctx,
 				postRequestGas,
 				"source",
-				order.source,
+				sourceStateMachineId,
 			)
 			postRequestFeeInDestFeeToken = adjustDecimals(
 				postRequestFeeInSourceFeeToken,
@@ -87,13 +89,13 @@ export class GasEstimator {
 			)
 
 			const postRequest: IPostRequest = {
-				source: order.destination,
+				source: destStateMachineId,
 				dest: order.source,
 				body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
 				timeoutTimestamp: 0n,
 				nonce: await this.ctx.source.getHostNonce(),
-				from: this.ctx.source.configService.getIntentGatewayV2Address(order.destination),
-				to: this.ctx.source.configService.getIntentGatewayV2Address(order.source),
+				from: this.ctx.source.configService.getIntentGatewayV2Address(destStateMachineId),
+				to: this.ctx.source.configService.getIntentGatewayV2Address(sourceStateMachineId),
 			}
 
 			protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
@@ -115,8 +117,8 @@ export class GasEstimator {
 		const gasPrice = await this.ctx.dest.client.getGasPrice()
 		const priorityFeeBumpPercent = params.maxPriorityFeePerGasBumpPercent ?? 8
 		const maxFeeBumpPercent = params.maxFeePerGasBumpPercent ?? 10
-		const maxPriorityFeePerGas = gasPrice + (gasPrice * BigInt(priorityFeeBumpPercent)) / 100n
-		const maxFeePerGas = gasPrice + (gasPrice * BigInt(maxFeeBumpPercent)) / 100n
+		let maxPriorityFeePerGas = gasPrice + (gasPrice * BigInt(priorityFeeBumpPercent)) / 100n
+		let maxFeePerGas = gasPrice + (gasPrice * BigInt(maxFeeBumpPercent)) / 100n
 
 		const orderForEstimation = { ...order, session: solverAccountAddress }
 		const commitment = orderV2Commitment(orderForEstimation)
@@ -190,6 +192,30 @@ export class GasEstimator {
 				callGasLimit = (BigInt(gasEstimate.callGasLimit) * 105n) / 100n
 				verificationGasLimit = (BigInt(gasEstimate.verificationGasLimit) * 105n) / 100n
 				preVerificationGas = (BigInt(gasEstimate.preVerificationGas) * 105n) / 100n
+
+				// If using a Pimlico bundler, refine gas price using pimlico_getUserOperationGasPrice
+				if (this.ctx.bundlerUrl?.toLowerCase().includes("pim")) {
+					try {
+						const pimlicoGasPrices = await this.crypto.sendBundler<PimlicoGasPriceEstimate>(
+							BundlerMethod.PIMLICO_GET_USER_OPERATION_GAS_PRICE,
+							[],
+						)
+
+						// Prefer fast quotes, then standard, then slow
+						const level =
+							pimlicoGasPrices.fast ?? pimlicoGasPrices.standard ?? pimlicoGasPrices.slow ?? null
+
+						if (level) {
+							const pimMaxFeePerGas = BigInt(level.maxFeePerGas)
+							const pimMaxPriorityFeePerGas = BigInt(level.maxPriorityFeePerGas)
+
+							maxFeePerGas = pimMaxFeePerGas
+							maxPriorityFeePerGas = pimMaxPriorityFeePerGas
+						}
+					} catch (e) {
+						console.warn("Pimlico gas price fetch failed, using default gas price:", e)
+					}
+				}
 			} catch (e) {
 				console.warn("Bundler gas estimation failed, using fallback values:", e)
 			}
@@ -216,7 +242,7 @@ export class GasEstimator {
 			this.ctx,
 			totalGas,
 			"dest",
-			order.destination,
+			destStateMachineId,
 			gasPrice,
 		)
 		const totalGasInSourceFeeToken = adjustDecimals(
