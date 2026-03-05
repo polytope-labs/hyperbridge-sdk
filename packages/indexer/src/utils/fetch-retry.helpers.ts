@@ -1,4 +1,4 @@
-import fetch, { RequestInfo, RequestInit, Response } from "node-fetch"
+import { safeFetch, SafeFetchOptions, SafeFetchResponse } from "./safeFetch"
 import stringify from "safe-stable-stringify"
 
 const MAX_RETRIES = 3
@@ -20,13 +20,15 @@ function calculateBackoff(attempt: number): number {
 
 /**
  * Fetch with automatic retry and exponential backoff
+ * Uses safeFetch for VM2 compatibility in SubQuery sandbox
+ * 
  * - Max retries: 3
  * - Initial backoff: 100ms (exponential: 100ms, 200ms, 400ms)
  * - Retries on: all errors
  * 
  * @param url - URL to fetch
- * @param init - Fetch options
- * @returns Promise with Response
+ * @param options - Fetch options
+ * @returns Promise with SafeFetchResponse
  * 
  * @example
  * ```typescript
@@ -36,12 +38,12 @@ function calculateBackoff(attempt: number): number {
  * })
  * ```
  */
-export async function fetchWithRetry(url: RequestInfo, init?: RequestInit): Promise<Response> {
-	let lastError: Error | Response | undefined
+export async function fetchWithRetry(url: string, options?: SafeFetchOptions): Promise<SafeFetchResponse> {
+	let lastError: Error | SafeFetchResponse | undefined
 
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
 		try {
-			const response = await fetch(url, init)
+			const response = await safeFetch(url, options)
 
 			// If response is not ok, retry
 			if (!response.ok) {
@@ -90,7 +92,7 @@ export async function fetchWithRetry(url: RequestInfo, init?: RequestInit): Prom
 	}
 
 	// Should not reach here, but just in case
-	if (lastError instanceof Response) {
+	if (lastError && 'status' in lastError) {
 		return lastError
 	}
 	throw lastError || new Error("Unknown error in fetchWithRetry")

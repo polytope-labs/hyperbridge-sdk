@@ -60,21 +60,6 @@ export class DailyTreasuryRewardService {
 				throw new Error(`No RPC URL found for Hyperbridge chain: ${hyperbridgeChain}`)
 			}
 
-<<<<<<< HEAD
-			const response = await fetchWithRetry(
-				rpcUrl,
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						jsonrpc: "2.0",
-						id: 1,
-						method: "state_getStorage",
-						params: [storageKey, null],
-					}),
-				}
-			)
-=======
 			const response = await fetch(rpcUrl, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -85,7 +70,6 @@ export class DailyTreasuryRewardService {
 					params: [storageKey],
 				}),
 			})
->>>>>>> da7d97fd41a722ffc12a6dfa8e16d567439a807e
 
 			if (!response.ok) {
 				throw new Error(`RPC request failed with status ${response.status}`)

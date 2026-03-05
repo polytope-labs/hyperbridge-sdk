@@ -2,13 +2,13 @@ import http from "http"
 import https from "https"
 import { URL } from "url"
 
-interface SafeFetchOptions {
+export interface SafeFetchOptions {
 	method?: string
 	headers?: Record<string, string>
 	body?: string
 }
 
-interface SafeFetchResponse {
+export interface SafeFetchResponse {
 	ok: boolean
 	status: number
 	statusText: string
