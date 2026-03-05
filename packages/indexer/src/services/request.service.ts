@@ -1,6 +1,6 @@
 import { solidityKeccak256 } from "ethers/lib/utils"
 import { Status } from "@/configs/src/types/enums"
-import { Request, RequestStatusMetadata } from "@/configs/src/types/models"
+import { RequestV2, RequestStatusMetadata } from "@/configs/src/types/models"
 import { ethers } from "ethers"
 import { timestampToDate } from "@/utils/date.helpers"
 
@@ -46,7 +46,7 @@ export class RequestService {
 	 * Finds a request entity and creates a new one if it doesn't exist
 	 * If the request exists, it updates the request details
 	 */
-	static async createOrUpdate(args: ICreateRequestArgs): Promise<Request> {
+	static async createOrUpdate(args: ICreateRequestArgs): Promise<RequestV2> {
 		const {
 			chain,
 			commitment,
@@ -63,10 +63,10 @@ export class RequestService {
 			transactionHash,
 			blockTimestamp,
 		} = args
-		let request = await Request.get(commitment)
+		let request = await RequestV2.get(commitment)
 
 		logger.info(
-			`Processing Request: ${JSON.stringify({
+			`Processing RequestV2: ${JSON.stringify({
 				commitment,
 				transactionHash,
 			})}`,
@@ -74,7 +74,7 @@ export class RequestService {
 
 		if (typeof request === "undefined") {
 			// Create new request if it doesn't exist
-			request = Request.create({
+			request = RequestV2.create({
 				id: commitment,
 				chain,
 				body: body || "",
@@ -129,14 +129,14 @@ export class RequestService {
 		const { commitment, blockNumber, blockHash, blockTimestamp, status, transactionHash, chain } = args
 
 		logger.info(
-			`Updating Request Status: ${JSON.stringify({
+			`Updating RequestV2 Status: ${JSON.stringify({
 				commitment,
 				transactionHash,
 				status,
 			})}`,
 		)
 
-		let request = await Request.get(commitment)
+		let request = await RequestV2.get(commitment)
 
 		if (!request) {
 			// Create new request and request status metadata

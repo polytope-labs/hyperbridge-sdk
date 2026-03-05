@@ -68,7 +68,7 @@ export async function fetchWithRetry(url: string, options?: SafeFetchOptions): P
 
 			// Success or non-retryable error
 			if (attempt > 0) {
-				logger.info(`[fetchWithRetry] Request succeeded after ${attempt} retry attempt(s) for ${url}`)
+				logger.info(`[fetchWithRetry] RequestV2 succeeded after ${attempt} retry attempt(s) for ${url}`)
 			}
 			return response
 

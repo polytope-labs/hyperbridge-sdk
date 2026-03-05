@@ -3,7 +3,7 @@ import { RequestService } from "@/services/request.service"
 import { Status } from "@/configs/src/types"
 import { getHostStateMachine, isHyperbridge, decodeRelayerAddress } from "@/utils/substrate.helpers"
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Request } from "@/configs/src/types/models"
+import { RequestV2 } from "@/configs/src/types/models"
 import { getBlockTimestamp } from "@/utils/rpc.helpers"
 import { stringify } from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
@@ -34,10 +34,10 @@ export const handleSubstratePostRequestHandledEvent = wrap(async (event: Substra
 	const host = getHostStateMachine(chainId)
 	const blockTimestamp = await getBlockTimestamp(blockHash.toString(), host)
 
-	const request = await Request.get(eventData.commitment.toString())
+	const request = await RequestV2.get(eventData.commitment.toString())
 
 	if (!request) {
-		logger.error(`Request not found for commitment ${eventData.commitment.toString()}`)
+		logger.error(`RequestV2 not found for commitment ${eventData.commitment.toString()}`)
 		return
 	}
 

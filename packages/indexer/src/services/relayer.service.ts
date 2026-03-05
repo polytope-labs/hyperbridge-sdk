@@ -1,4 +1,4 @@
-import { Relayer, RelayerActivity, Transfer } from "@/configs/src/types/models"
+import { RelayerV2, RelayerActivity, Transfer } from "@/configs/src/types/models"
 import { RelayerChainStatsService } from "@/services/relayerChainStats.service"
 import { EthereumTransaction } from "@subql/types-ethereum"
 import PriceHelper from "@/utils/price.helpers"
@@ -10,11 +10,11 @@ export class RelayerService {
 	/**
 	 * Find a relayer by its id or create a new one if it doesn't exist
 	 */
-	static async findOrCreate(relayer_id: string, chain: string, timestamp: bigint): Promise<Relayer> {
-		let relayer = await Relayer.get(relayer_id)
+	static async findOrCreate(relayer_id: string, chain: string, timestamp: bigint): Promise<RelayerV2> {
+		let relayer = await RelayerV2.get(relayer_id)
 
 		if (typeof relayer === "undefined") {
-			relayer = Relayer.create({ id: relayer_id })
+			relayer = RelayerV2.create({ id: relayer_id })
 			await relayer.save()
 		}
 

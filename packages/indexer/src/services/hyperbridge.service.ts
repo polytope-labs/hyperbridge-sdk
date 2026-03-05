@@ -1,6 +1,6 @@
 import { PostRequestEventLog, PostResponseEventLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { EthereumTransaction } from "@subql/types-ethereum"
-import { DailyProtocolFeesStats, Relayer, Transfer } from "@/configs/src/types/models"
+import { DailyProtocolFeesStats, RelayerV2, Transfer } from "@/configs/src/types/models"
 import { HyperBridgeChainStatsService } from "@/services/hyperbridgeChainStats.service"
 import { isHexString } from "ethers/lib/utils"
 import { EthereumHostAbi__factory } from "@/configs/src/types/contracts"
@@ -117,7 +117,7 @@ export class HyperBridgeService {
 	 * Handle transfers out of the host account, incrementing the fees payed out to relayers
 	 */
 	static async handleTransferOutOfHostAccounts(transfer: Transfer, chain: string): Promise<void> {
-		let relayer = await Relayer.get(transfer.to)
+		let relayer = await RelayerV2.get(transfer.to)
 
 		if (typeof relayer !== "undefined") {
 			let chainStats = await HyperBridgeChainStatsService.findOrCreateChainStats(chain)

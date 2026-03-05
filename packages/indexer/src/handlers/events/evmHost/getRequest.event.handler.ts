@@ -13,11 +13,11 @@ import { VolumeService } from "@/services/volume.service"
 import { safeArray } from "@/utils/data.helper"
 
 /**
- * Handles the GetRequest event from Evm Hosts
+ * Handles the GetRequestV2 event from Evm Hosts
  */
 export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Promise<void> => {
 	logger.info(
-		`Handling GetRequest Event: ${stringify({
+		`Handling GetRequestV2 Event: ${stringify({
 			event,
 		})}`,
 	)
@@ -31,7 +31,7 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 	const timestamp = await getBlockTimestamp(blockHash, chain)
 
 	logger.info(
-		`Processing GetRequest Event: ${stringify({
+		`Processing GetRequestV2 Event: ${stringify({
 			source,
 			dest,
 			from,
@@ -56,7 +56,7 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 	)
 
 	logger.info(
-		`Get Request Commitment: ${stringify({
+		`Get RequestV2 Commitment: ${stringify({
 			commitment: get_request_commitment,
 		})}`,
 	)
@@ -138,6 +138,6 @@ export const handleGetRequestEvent = wrap(async (event: GetRequestEventLog): Pro
 			}
 		}
 	} catch (error) {
-		logger.error(`Error in non-critical operations for GetRequest: ${stringify(error)}`)
+		logger.error(`Error in non-critical operations for GetRequestV2: ${stringify(error)}`)
 	}
 })

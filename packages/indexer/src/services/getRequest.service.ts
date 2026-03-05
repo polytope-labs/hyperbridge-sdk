@@ -1,4 +1,4 @@
-import { GetRequest, GetRequestStatusMetadata, Status } from "@/configs/src/types"
+import { GetRequestV2, GetRequestStatusMetadata, Status } from "@/configs/src/types"
 import { ethers } from "ethers"
 import { solidityKeccak256 } from "ethers/lib/utils"
 import { timestampToDate } from "@/utils/date.helpers"
@@ -33,7 +33,7 @@ export interface IUpdateGetRequestStatusArgs {
 }
 
 export class GetRequestService {
-	static async createOrUpdate(args: IGetRequestArgs): Promise<GetRequest> {
+	static async createOrUpdate(args: IGetRequestArgs): Promise<GetRequestV2> {
 		const {
 			id,
 			source,
@@ -51,17 +51,17 @@ export class GetRequestService {
 			transactionHash,
 			chain,
 		} = args
-		let getRequest = await GetRequest.get(id)
+		let getRequest = await GetRequestV2.get(id)
 
 		logger.info(
-			`Processing Get Request: ${JSON.stringify({
+			`Processing Get RequestV2: ${JSON.stringify({
 				id,
 				transactionHash,
 			})}`,
 		)
 
 		if (!getRequest) {
-			getRequest = GetRequest.create({
+			getRequest = GetRequestV2.create({
 				id,
 				chain: chain || "",
 				source: source || "",
@@ -84,7 +84,7 @@ export class GetRequestService {
 			await getRequest.save()
 
 			logger.info(
-				`Saved GetRequest Event: ${JSON.stringify({
+				`Saved GetRequestV2 Event: ${JSON.stringify({
 					id: getRequest.id,
 				})}`,
 			)
@@ -107,7 +107,7 @@ export class GetRequestService {
 			await getRequest.save()
 
 			logger.info(
-				`Updated GetRequest Event: ${JSON.stringify({
+				`Updated GetRequestV2 Event: ${JSON.stringify({
 					id: getRequest.id,
 				})}`,
 			)
@@ -124,7 +124,7 @@ export class GetRequestService {
 		const { commitment, blockNumber, blockHash, blockTimestamp, status, transactionHash, chain } = args
 
 		logger.info(
-			`Updating Get Request Status: ${JSON.stringify({
+			`Updating Get RequestV2 Status: ${JSON.stringify({
 				commitment,
 				transactionHash,
 				status,

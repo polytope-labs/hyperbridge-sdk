@@ -146,7 +146,7 @@ type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], 
 	"""
 	The relayer the metrics are for
 	"""
-	relayer: Relayer!
+	relayer: RelayerV2!
 
 	"""
 	The chain the metrics are for
@@ -182,7 +182,7 @@ type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], 
 """
 A Hyperbridge Relayer
 """
-type Relayer @entity {
+type RelayerV2 @entity {
 	"""
 	Unique identifier of the Relayer (also the relayer's address)
 	"""
@@ -211,7 +211,7 @@ type RelayerActivity @entity {
 	"""
 	Relayer the activities are for
 	"""
-	relayer: Relayer!
+	relayer: RelayerV2!
 
 	"""
 	Last updated at
@@ -311,7 +311,7 @@ type StateMachineUpdateEvent
 """
 A Hyperbridge Request
 """
-type Request @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
+type RequestV2 @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	Unique identifier of the Request (This is the request commitment)
 	"""
@@ -420,7 +420,7 @@ type RequestStatusMetadata @entity {
 	"""
 	The request that owns this status change
 	"""
-	request: Request!
+	request: RequestV2!
 
 	"""
 	The timestamp when this record was created
@@ -431,7 +431,7 @@ type RequestStatusMetadata @entity {
 """
 A Hyperbridge Response
 """
-type Response @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
+type ResponseV2 @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	Unique identifier of the Response (This is the response commitment)
 	"""
@@ -460,7 +460,7 @@ type Response @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	The request that triggered this response
 	"""
-	request: Request
+	request: RequestV2
 
 	"""
 	Metatdata about the response's progression through different statuses
@@ -515,7 +515,7 @@ type ResponseStatusMetadata @entity {
 	"""
 	The response that owns this status change
 	"""
-	response: Response!
+	response: ResponseV2!
 
 	"""
 	The timestamp when this record was created
@@ -551,7 +551,7 @@ type RewardsActivityLog
 """
 Record of assets teleported via the XCM Gateway
 """
-type AssetTeleported @entity {
+type AssetTeleportedV2 @entity {
 	"""
 	Unique identifier of the teleported asset
 	"""
@@ -600,14 +600,14 @@ type AssetTeleported @entity {
 	"""
 	The associated request for this teleport (linked via commitment)
 	"""
-	request: Request
+	request: RequestV2
 }
 
 """
 Represents a cross-chain get request event
 This entity stores information about requests to fetch data from a source chain to a destination chain
 """
-type GetRequest @entity {
+type GetRequestV2 @entity {
 	"""
 	Unique identifier for the get request, computed as keccak256 hash of the encoded request parameters
 	"""
@@ -725,7 +725,7 @@ type GetRequestStatusMetadata @entity {
 	"""
 	The request that owns this status change
 	"""
-	request: GetRequest!
+	request: GetRequestV2!
 
 	"""
 	The timestamp when this record was created
@@ -765,7 +765,7 @@ type GetResponse @entity @compositeIndexes(fields: [["commitment", "chain"]]) {
 	"""
 	The request that triggered this response
 	"""
-	request: GetRequest
+	request: GetRequestV2
 
 	"""
 	The timestamp when this record was created
@@ -1346,7 +1346,7 @@ type OrderV2PartialFillOutputAsset @entity {
 Represents a teleport of assets through the TokenGateway contract.
 This entity tracks cross-chain asset teleports.
 """
-type TokenGatewayAssetTeleported @entity {
+type TokenGatewayAssetTeleportedV2 @entity {
 	"""
 	Unique identifier for the teleport (commitment)
 	"""
@@ -1430,7 +1430,7 @@ type TokenGatewayAssetTeleported @entity {
 	"""
 	The associated request for this teleport (linked via commitment)
 	"""
-	request: Request
+	request: RequestV2
 }
 
 """
@@ -1470,7 +1470,7 @@ type TeleportStatusMetadata @entity {
 	"""
 	The teleport that owns this status change
 	"""
-	teleport: TokenGatewayAssetTeleported!
+	teleport: TokenGatewayAssetTeleportedV2!
 
 	"""
 	The timestamp when this record was created

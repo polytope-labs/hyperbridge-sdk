@@ -79,7 +79,7 @@ export function safeFetch(url: string, options: SafeFetchOptions = {}): Promise<
 
 		req.on("timeout", () => {
 			req.destroy()
-			reject(new Error(`Request to ${url} timed out`))
+			reject(new Error(`RequestV2 to ${url} timed out`))
 		})
 
 		if (options.body) {

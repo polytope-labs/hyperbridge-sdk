@@ -30,7 +30,7 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 	const timestamp = await getBlockTimestamp(block.hash, chain)
 
 	logger.info(
-		`Computing Request Commitment Event: ${stringify({
+		`Computing RequestV2 Commitment Event: ${stringify({
 			dest,
 			fee,
 			from,
@@ -54,7 +54,7 @@ export const handlePostRequestEvent = wrap(async (event: PostRequestEventLog): P
 	)
 
 	logger.info(
-		`Request Commitment: ${stringify({
+		`RequestV2 Commitment: ${stringify({
 			commitment: request_commitment,
 		})}`,
 	)

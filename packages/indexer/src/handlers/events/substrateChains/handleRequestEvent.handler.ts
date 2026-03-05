@@ -14,7 +14,7 @@ import stringify from "safe-stable-stringify"
 import { wrap } from "@/utils/event.utils"
 
 export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
-	logger.info(`Saw Ismp.Request Event on ${getHostStateMachine(chainId)}`)
+	logger.info(`Saw Ismp.RequestV2 Event on ${getHostStateMachine(chainId)}`)
 
 	if (!event.event.data) return
 
@@ -25,7 +25,7 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 	const hostId = getHostStateMachine(chainId)
 
 	logger.info(
-		`Handling ISMP Request Event: ${stringify({
+		`Handling ISMP RequestV2 Event: ${stringify({
 			sourceId,
 			destId,
 			request_nonce,
@@ -72,7 +72,7 @@ export const handleSubstrateRequestEvent = wrap(async (event: SubstrateEvent): P
 	const postRequest = data.result[0].Post
 
 	if (!postRequest) {
-		logger.error(`Request not found for commitment ${commitment.toString()}`)
+		logger.error(`RequestV2 not found for commitment ${commitment.toString()}`)
 		return
 	}
 

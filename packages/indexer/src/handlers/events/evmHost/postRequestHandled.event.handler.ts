@@ -1,5 +1,5 @@
 import { HyperBridgeService } from "@/services/hyperbridge.service"
-import { Status, Transfer, Request } from "@/configs/src/types"
+import { Status, Transfer, RequestV2 } from "@/configs/src/types"
 import { PostRequestHandledLog } from "@/configs/src/types/abi-interfaces/EthereumHostAbi"
 import { RequestService } from "@/services/request.service"
 import { getHostStateMachine } from "@/utils/substrate.helpers"

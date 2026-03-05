@@ -12,7 +12,7 @@ import { wrap } from "@/utils/event.utils"
 
 export const handleSubstrateResponseEvent = wrap(async (event: SubstrateEvent): Promise<void> => {
 	const host = getHostStateMachine(chainId)
-	logger.info(`Saw Ismp.Response Event on ${host}`)
+	logger.info(`Saw Ismp.ResponseV2 Event on ${host}`)
 
 	if (!event.event.data) return
 
@@ -24,7 +24,7 @@ export const handleSubstrateResponseEvent = wrap(async (event: SubstrateEvent): 
 	const blockTimestamp = await getBlockTimestamp(event.block.block.header.hash.toString(), host)
 
 	logger.info(
-		`Handling ISMP Response Event: ${stringify({
+		`Handling ISMP ResponseV2 Event: ${stringify({
 			sourceId,
 			destId,
 			request_nonce,
@@ -53,7 +53,7 @@ export const handleSubstrateResponseEvent = wrap(async (event: SubstrateEvent): 
 	)
 	const data = await response.json()
 
-	logger.info(`Response from calling ismp_queryResponses: ${stringify(data)}`)
+	logger.info(`ResponseV2 from calling ismp_queryResponses: ${stringify(data)}`)
 
 	if (data.result.length === 0) {
 		logger.error(`No responses found for commitment ${commitment.toString()}`)

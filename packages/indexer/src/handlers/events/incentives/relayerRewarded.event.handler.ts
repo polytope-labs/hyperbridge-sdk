@@ -14,7 +14,7 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 			block,
 			extrinsic,
 		} = event
-		logger.info(`Relayer Rewarded Event ${method} event at block: ${block.block.header.number.toString()}`)
+		logger.info(`RelayerV2 Rewarded Event ${method} event at block: ${block.block.header.number.toString()}`)
 
 		const [relayer, amount, stateMachineHeight] = data
 
@@ -28,7 +28,7 @@ export const handleRelayerRewardedEvent = wrap(async (event: SubstrateEvent): Pr
 			})
 		}
 
-		logger.info(`Saving Relayer Rewarded Event ${method} event at block: ${record}`)
+		logger.info(`Saving RelayerV2 Rewarded Event ${method} event at block: ${record}`)
 
 		record.totalConsensusRewardAmount = (record.totalConsensusRewardAmount ?? BigInt(0)) + rewardAmount
 		record.totalRewardAmount = (record.totalRewardAmount ?? BigInt(0)) + rewardAmount

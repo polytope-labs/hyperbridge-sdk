@@ -33,10 +33,6 @@ export { handleAssetTeleportedEvent } from "@/handlers/events/tokenGateway/asset
 export { handleAssetReceivedEvent } from "@/handlers/events/tokenGateway/assetReceived.event.handler"
 export { handleAssetRefundedEvent } from "@/handlers/events/tokenGateway/assetRefunded.event.handler"
 
-// HandlerV1 Handlers
-// export { handlePostRequestTransactionHandler } from "@/handlers/transactions/handlerV1/handlePostRequestTransactionHandler.handler"
-// export { handlePostResponseTransactionHandler } from "@/handlers/transactions/handlerV1/handlePostResponseTransactionHandler.handler"
-
 // Substrate Chains Handlers
 export { handleIsmpStateMachineUpdatedEvent } from "@/handlers/events/substrateChains/handleIsmpStateMachineUpdatedEvent.handler"
 export { handleSubstratePostRequestTimeoutHandledEvent } from "@/handlers/events/substrateChains/handlePostRequestTimeoutHandledEvent.handler"
