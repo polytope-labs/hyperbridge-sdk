@@ -32,6 +32,11 @@ dataSources:
           filter:
            module: relayer
            method: AccumulateFees
+        - handler: handleRelayerWithdrawEvent
+          kind: substrate/EventHandler
+          filter:
+            module: relayer
+            method: Withdraw
         - handler: handleCollatorRewardedEvent
           kind: substrate/EventHandler
           filter:

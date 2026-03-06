@@ -177,6 +177,11 @@ type RelayerStatsPerChainV2 @entity @compositeIndexes(fields: [["relayer", "chai
 	Total fees earned by the relayer
 	"""
 	feesEarned: BigInt! @index
+
+	"""
+	Cumulative amount withdrawn by the relayer on this chain
+	"""
+	cumulativeWithdrawnAmount: BigInt!
 }
 
 """

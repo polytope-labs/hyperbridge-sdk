@@ -18,6 +18,7 @@ export class RelayerStatsPerChainV2Service {
 				gasFeeForSuccessfulMessages: BigInt(0),
 				usdGasFeeForSuccessfulMessages: BigInt(0),
 				feesEarned: BigInt(0),
+				cumulativeWithdrawnAmount: BigInt(0),
 			})
 			await metrics.save()
 		}
