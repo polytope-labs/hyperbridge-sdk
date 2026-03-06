@@ -1,5 +1,5 @@
 import { RelayerV2, RelayerActivity, Transfer } from "@/configs/src/types/models"
-import { RelayerChainStatsService } from "@/services/relayerChainStats.service"
+import { RelayerStatsPerChainV2Service } from "@/services/relayerChainStats.service"
 import { EthereumTransaction } from "@subql/types-ethereum"
 import PriceHelper from "@/utils/price.helpers"
 import { PointsService } from "@/services/points.service"
@@ -27,7 +27,7 @@ export class RelayerService {
 	 */
 	static async updateFeesEarned(transfer: Transfer, timestamp: bigint): Promise<void> {
 		const relayer = await this.findOrCreate(transfer.to, transfer.chain, timestamp)
-		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, transfer.chain)
+		const relayer_chain_stats = await RelayerStatsPerChainV2Service.findOrCreate(relayer.id, transfer.chain)
 
 		relayer_chain_stats.feesEarned += transfer.amount
 		await this.updateRelayerActivity(relayer.id, timestamp)
@@ -46,7 +46,7 @@ export class RelayerService {
 		timestamp: bigint,
 	): Promise<void> {
 		const relayer = await this.findOrCreate(relayer_id, chain, timestamp)
-		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
+		const relayer_chain_stats = await RelayerStatsPerChainV2Service.findOrCreate(relayer.id, chain)
 
 		relayer_chain_stats.feesEarned += fee
 		await this.updateRelayerActivity(relayer.id, timestamp)
@@ -69,7 +69,7 @@ export class RelayerService {
 		transaction?: EthereumTransaction,
 	): Promise<void> {
 		const relayer = await this.findOrCreate(relayer_id, chain, timestamp)
-		const relayer_chain_stats = await RelayerChainStatsService.findOrCreate(relayer.id, chain)
+		const relayer_chain_stats = await RelayerStatsPerChainV2Service.findOrCreate(relayer.id, chain)
 
 		if (transaction) {
 			const receipt = await transaction.receipt()

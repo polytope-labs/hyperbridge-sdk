@@ -137,9 +137,9 @@ type HyperBridgeChainStats @entity {
 """
 Hyperbridge Stats for a specific Relayer on a specific chain
 """
-type RelayerChainStats @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
+type RelayerStatsPerChainV2 @entity @compositeIndexes(fields: [["relayer", "chain"], ["feesEarned", "chain"]]) {
 	"""
-	Unique identifier of the RelayerChainStats entry.
+	Unique identifier of the RelayerStatsPerChainV2 entry.
 	"""
 	id: ID!
 
@@ -191,7 +191,7 @@ type RelayerV2 @entity {
 	"""
 	A list of important stats for the Relayer on every network that they support
 	"""
-	perChainStats: [RelayerChainStats]! @derivedFrom(field: "relayer")
+	perChainStats: [RelayerStatsPerChainV2]! @derivedFrom(field: "relayer")
 
 	"""
 	Latest activity for this relayer

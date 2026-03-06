@@ -28,6 +28,7 @@ const ENTITIES_TO_MIGRATE = [
   'AssetTeleportedV2',
   'TokenGatewayAssetTeleportedV2',
   'RelayerV2',
+  'RelayerStatsPerChainV2',
 ];
 
 // GraphQL to PostgreSQL type mapping

@@ -158,7 +158,8 @@ async function copyTableData(
   destTable: string,
   logger: MigrationOptions['logger'],
   batchSize: number = 1000,
-  limit?: number
+  limit?: number,
+  whereClause?: string
 ): Promise<{ copiedRows: number; skippedColumns: string[] }> {
   const client = await pool.connect();
   
@@ -180,10 +181,14 @@ async function copyTableData(
       logger?.log(`  Skipping columns (${skippedColumns.length}): ${skippedColumns.join(', ')}`);
     }
     
-    // Get total row count
-    const totalRows = await getRowCount(pool, schema, sourceTable);
+    // Get total row count (with where clause filter)
+    const whereFilter = whereClause ? ` WHERE ${whereClause}` : '';
+    const countResult = await client.query(
+      `SELECT COUNT(*) as count FROM ${schema}.${sourceTable}${whereFilter}`
+    );
+    const totalRows = parseInt(countResult.rows[0].count);
     const rowsToProcess = limit ? Math.min(totalRows, limit) : totalRows;
-    logger?.log(`  Total rows to copy: ${rowsToProcess}${limit ? ` (limited from ${totalRows})` : ''}`);
+    logger?.log(`  Total rows to copy: ${rowsToProcess}${limit ? ` (limited from ${totalRows})` : ''}${whereClause ? ` (filtered: ${whereClause})` : ''}`);
     
     if (rowsToProcess === 0) {
       logger?.log(`  No rows to copy from ${sourceTable}`);
@@ -206,7 +211,7 @@ async function copyTableData(
     while (offset < rowsToProcess) {
       // Fetch a batch of rows from source table
       const batchResult = await client.query(
-        `SELECT ${columnsList} FROM ${schema}.${sourceTable} ORDER BY id LIMIT $1 OFFSET $2`,
+        `SELECT ${columnsList} FROM ${schema}.${sourceTable}${whereFilter} ORDER BY id LIMIT $1 OFFSET $2`,
         [batchSize, offset]
       );
       
@@ -263,7 +268,8 @@ async function migrateEntity(
   schema: string,
   versionedEntity: string,
   logger: MigrationOptions['logger'],
-  limit?: number
+  limit?: number,
+  whereClause?: string
 ): Promise<MigrationResult> {
   const suffix = extractVersionSuffix(versionedEntity);
   
@@ -321,7 +327,7 @@ async function migrateEntity(
   }
   
   try {
-    const result = await copyTableData(pool, schema, sourceTable, destTable, logger, 1000, limit);
+    const result = await copyTableData(pool, schema, sourceTable, destTable, logger, 1000, limit, whereClause);
     logger?.log(`  ✅ Migration completed for ${versionedEntity}`);
     logger?.log(`     Copied: ${result.copiedRows} rows`);
     if (result.skippedColumns.length > 0) {
@@ -378,9 +384,15 @@ export async function migrateEntities(options: MigrationOptions): Promise<Migrat
     logger.log(`✓ Connected to database at ${result.rows[0].now}\n`);
     client.release();
     
+    // where clauses for filtering during migration
+    const entityWhereClause: Record<string, string> = {
+      'RelayerStatsPerChainV2': "chain LIKE 'EVM-%'",
+    };
+
     // Process each entity
     for (const entity of entities) {
-      const result = await migrateEntity(pool, schema, entity, logger, limit);
+      const whereClause = entityWhereClause[entity];
+      const result = await migrateEntity(pool, schema, entity, logger, limit, whereClause);
       results.push(result);
     }
     

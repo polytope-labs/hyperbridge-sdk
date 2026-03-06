@@ -1,6 +1,6 @@
 export const POST_REQUEST_STATUS = `
   query RequestStatusM($hash: String!) {
-  requests(
+  requestV2s(
     filter: { commitment: { equalTo: $hash } }
   ) {
     nodes {
@@ -29,7 +29,7 @@ export const POST_REQUEST_STATUS = `
 
 export const GET_REQUEST_STATUS = `
 query GetRequestDetails($commitment: String!) {
-  getRequests(
+  getRequestV2s(
     filter: { commitment: { equalTo: $commitment } }
   ) {
     nodes {
@@ -170,7 +170,7 @@ query LatestStateMachineUpdate($statemachineId: String!, $chain: String!) {
 
 export const ASSET_TELEPORTED_BY_PARAMS = `
 query AssetTeleportedByParams($id: String!) {
-  assetTeleported(id: $id) {
+  assetTeleportedV2(id: $id) {
       id
       from
       to
@@ -240,7 +240,7 @@ query OrderStatus($commitment: String!) {
 
 export const TOKEN_GATEWAY_ASSET_TELEPORTED_STATUS = `
 query TokenGatewayAssetTeleportedStatus($commitment: String!) {
-  tokenGatewayAssetTeleporteds(
+  tokenGatewayAssetTeleportedV2s(
     filter: { commitment: { equalTo: $commitment } }
   ) {
     nodes {

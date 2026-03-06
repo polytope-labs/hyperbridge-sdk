@@ -62,11 +62,11 @@ export async function queryAssetTeleported(params: {
 		async () => {
 			const response = await queryClient.request<AssetTeleportedResponse>(ASSET_TELEPORTED_BY_PARAMS, { id })
 
-			if (!response?.assetTeleported) {
+			if (!response?.assetTeleportedV2) {
 				throw new Error(`AssetTeleportedEvent not found for ${id}`)
 			}
 
-			return response.assetTeleported
+			return response.assetTeleportedV2
 		},
 		{
 			logMessage: "queryingAssetTeleported",
@@ -133,7 +133,7 @@ export async function _queryTokenGatewayAssetTeleportedInternal(
 		},
 	)
 
-	const first_record = response.tokenGatewayAssetTeleporteds.nodes[0]
+	const first_record = response.tokenGatewayAssetTeleportedV2s.nodes[0]
 	if (!first_record) return
 
 	logger.trace("`TokenGatewayAssetTeleported` found")
@@ -195,7 +195,7 @@ export async function _queryRequestInternal(params: InternalQueryParams): Promis
 		},
 	)
 
-	const first_record = response.requests.nodes[0]
+	const first_record = response.requestV2s.nodes[0]
 	if (!first_record) return
 
 	logger.trace("`Request` found")
@@ -251,11 +251,11 @@ export async function _queryGetRequestInternal(params: InternalQueryParams): Pro
 		},
 	)
 
-	if (!response.getRequests.nodes[0]) return
+	if (!response.getRequestV2s.nodes[0]) return
 
 	logger.trace("`Request` found")
 
-	const statuses = response.getRequests.nodes[0].statusMetadata.nodes.map((item) => ({
+	const statuses = response.getRequestV2s.nodes[0].statusMetadata.nodes.map((item) => ({
 		status: item.status as any,
 		metadata: {
 			blockHash: item.blockHash,
@@ -272,7 +272,7 @@ export async function _queryGetRequestInternal(params: InternalQueryParams): Pro
 		)
 	})
 
-	const { statusMetadata, ...rest } = response.getRequests.nodes[0]
+	const { statusMetadata, ...rest } = response.getRequestV2s.nodes[0]
 
 	return {
 		...rest,

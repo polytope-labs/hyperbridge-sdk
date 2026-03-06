@@ -1,15 +1,15 @@
-import { RelayerChainStats } from "@/configs/src/types"
+import { RelayerStatsPerChainV2 } from "@/configs/src/types"
 
-export class RelayerChainStatsService {
+export class RelayerStatsPerChainV2Service {
 	/*
-	 * Find the RelayerChainStats record for a relayer on a chain, create it if it doesn't exist
+	 * Find the RelayerStatsPerChainV2 record for a relayer on a chain, create it if it doesn't exist
 	 */
-	static async findOrCreate(relayer_id: string, chain: string): Promise<RelayerChainStats> {
+	static async findOrCreate(relayer_id: string, chain: string): Promise<RelayerStatsPerChainV2> {
 		let id = `${relayer_id}-${chain}`
-		let metrics = await RelayerChainStats.get(id)
+		let metrics = await RelayerStatsPerChainV2.get(id)
 
 		if (!metrics) {
-			metrics = RelayerChainStats.create({
+			metrics = RelayerStatsPerChainV2.create({
 				id,
 				relayerId: relayer_id,
 				chain,
@@ -29,7 +29,7 @@ export class RelayerChainStatsService {
 	 * Get stats by fees earned
 	 */
 	static async getByFeesEarned(fees: bigint) {
-		return RelayerChainStats.getByFeesEarned(fees, {
+		return RelayerStatsPerChainV2.getByFeesEarned(fees, {
 			orderBy: "feesEarned",
 			limit: -1,
 		})
