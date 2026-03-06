@@ -242,8 +242,8 @@ function createFxOnlyIntentFiller(
 
 	const pricePolicy = new FillerPricePolicy({
 		points: [
-			{ amount: "1", priceUsd: "0.000001" },
-			{ amount: "10000", priceUsd: "0.000001" },
+			{ amount: "1", price: "1000000" },
+			{ amount: "10000", price: "1000000" },
 		],
 	})
 

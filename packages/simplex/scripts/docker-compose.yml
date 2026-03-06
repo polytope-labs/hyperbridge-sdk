@@ -1,19 +1,20 @@
 version: "3.8"
 
 services:
-    filler:
-        image: polytopelabs/hyperbridge-filler:latest
+    simplex:
+        image: polytopelabs/hyperbridge-simplex:latest
         build:
             context: ../../..
-            dockerfile: packages/filler/scripts/Dockerfile
-        container_name: hyperbridge-filler
+            dockerfile: packages/simplex/scripts/Dockerfile
+        container_name: hyperbridge-simplex
         restart: unless-stopped
+        command: ["run", "-c", "/app/config/config.toml"]
         volumes:
-            - ${CONFIG_PATH:-../config.toml}:/app/packages/filler/config/config.toml:ro
+            - ${CONFIG_PATH:-../config.toml}:/app/config/config.toml:ro
         environment:
             - NODE_ENV=production
         networks:
-            - filler-network
+            - simplex-network
         logging:
             driver: "json-file"
             options:
@@ -27,5 +28,5 @@ services:
             start_period: 5s
 
 networks:
-    filler-network:
+    simplex-network:
         driver: bridge

@@ -1,12 +1,12 @@
 {
-	"name": "@hyperbridge/filler",
+	"name": "@hyperbridge/simplex",
 	"version": "0.1.0",
-	"description": "IntentGateway filler package for hyperbridge",
+	"description": "IntentGateway simplex package for hyperbridge",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
 	"bin": {
-		"filler": "./dist/bin/filler.js"
+		"simplex": "./dist/bin/simplex.js"
 	},
 	"exports": {
 		".": {
@@ -29,8 +29,8 @@
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",
 		"format": "prettier --write \"src/**/*.ts\"",
-		"cli": "NODE_NO_WARNINGS=1 tsx src/bin/filler.ts",
-		"cli:dev": "nodemon --watch src --ext ts --exec tsx src/bin/filler.ts"
+		"cli": "NODE_NO_WARNINGS=1 tsx src/bin/simplex.ts",
+		"cli:dev": "nodemon --watch src --ext ts --exec tsx src/bin/simplex.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

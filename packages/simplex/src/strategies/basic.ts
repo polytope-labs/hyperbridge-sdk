@@ -28,7 +28,7 @@ export class BasicFiller implements FillerStrategy {
 	private bidStorage?: BidStorageService
 	private bpsPolicy: FillerBpsPolicy
 	private account: ReturnType<typeof privateKeyToAccount>
-	private logger = getLogger("basic-filler")
+	private logger = getLogger("basic-simplex")
 	confirmationPolicy: { getConfirmationBlocks: (chainId: number, amountUsd: number) => number }
 
 	constructor(

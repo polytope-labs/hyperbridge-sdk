@@ -47,7 +47,7 @@ export class BidStorageService {
 	}
 
 	private resolveDatabasePath(dataDir?: string): string {
-		const dir = dataDir || join(process.cwd(), ".filler-data")
+		const dir = dataDir || join(process.cwd(), ".simplex-data")
 
 		// Ensure directory exists
 		if (!existsSync(dir)) {

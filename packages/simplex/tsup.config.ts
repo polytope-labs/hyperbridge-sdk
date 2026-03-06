@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup"
 
 export default defineConfig({
-	entry: ["src/index.ts", "src/bin/filler.ts"],
+	entry: ["src/index.ts", "src/bin/simplex.ts"],
 	format: ["esm", "cjs"],
 	dts: true,
 	splitting: false,
@@ -11,8 +11,8 @@ export default defineConfig({
 	onSuccess: async () => {
 		// Add shebang only to the CLI file after build
 		const fs = await import("fs/promises")
-		const cliPath = "./dist/bin/filler.js"
-		const cliCjsPath = "./dist/bin/filler.cjs"
+		const cliPath = "./dist/bin/simplex.js"
+		const cliCjsPath = "./dist/bin/simplex.cjs"
 
 		try {
 			// Add shebang to ESM version

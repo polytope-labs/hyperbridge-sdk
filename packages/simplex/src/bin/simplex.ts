@@ -26,12 +26,12 @@ import { Decimal } from "decimal.js"
 
 // ASCII art header
 const ASCII_HEADER = `
-██╗███╗  ██╗████████╗███████╗███╗  ██╗████████╗ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
-██║████╗ ██║╚══██╔══╝██╔════╝████╗ ██║╚══██╔══╝██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
-██║██╔██╗██║   ██║   █████╗  ██╔██╗██║   ██║   ██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
-██║██║╚████║   ██║   ██╔══╝  ██║╚████║   ██║   ██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
-██║██║ ╚███║   ██║   ███████╗██║ ╚███║   ██║   ╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
-╚═╝╚═╝  ╚══╝   ╚═╝   ╚══════╝╚═╝  ╚══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
+███████╗██╗███╗   ███╗██████╗ ██╗     ███████╗██╗  ██╗
+██╔════╝██║████╗ ████║██╔══██╗██║     ██╔════╝╚██╗██╔╝
+███████╗██║██╔████╔██║██████╔╝██║     █████╗   ╚███╔╝
+╚════██║██║██║╚██╔╝██║██╔═══╝ ██║     ██╔══╝   ██╔██╗
+███████║██║██║ ╚═╝ ██║██║     ███████╗███████╗██╔╝ ██╗
+╚══════╝╚═╝╚═╝     ╚═╝╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝
 
 `
 
@@ -67,14 +67,14 @@ interface BasicStrategyConfig {
 }
 
 interface FxStrategyConfig {
-	type: "fx"
+	type: "hyperfx"
 	/**
-	 * Array of (amount, priceUsd) coordinates defining the exotic token price curve.
-	 * priceUsd = price of the exotic token in USD at that order amount
+	 * Array of (amount, price) coordinates defining the exotic token price curve.
+	 * price = exotic tokens per 1 USD at that order amount (e.g. 1600 for cNGN at 1600 NGN/USD).
 	 */
 	priceCurve: Array<{
 		amount: string
-		priceUsd: string
+		price: string
 	}>
 	/** Maximum USD value per order */
 	maxOrderUsd: string
@@ -108,7 +108,7 @@ interface BinanceConfig {
 }
 
 interface FillerTomlConfig {
-	filler: {
+	simplex: {
 		privateKey: string
 		maxConcurrentOrders: number
 		pendingQueue: PendingQueueConfig
@@ -128,8 +128,8 @@ interface FillerTomlConfig {
 const program = new Command()
 
 program
-	.name("filler")
-	.description("Automated market maker for Hyperbridge IntentGatewayV2")
+	.name("simplex")
+	.description("Simplex: Automated market maker for Hyperbridge IntentGatewayV2")
 	.version(packageJson.version)
 
 program
@@ -150,8 +150,8 @@ program
 			validateConfig(config)
 
 			// Configure logger based on config BEFORE creating any services
-			if (config.filler.logging) {
-				configureLogger(config.filler.logging)
+			if (config.simplex.logging) {
+				configureLogger(config.simplex.logging)
 			}
 
 			const logger = getLogger("cli")
@@ -167,12 +167,12 @@ program
 			}))
 
 			const fillerConfigForService: FillerServiceConfig = {
-				privateKey: config.filler.privateKey,
-				maxConcurrentOrders: config.filler.maxConcurrentOrders,
-				logging: config.filler.logging,
-				substratePrivateKey: config.filler.substratePrivateKey,
-				hyperbridgeWsUrl: config.filler.hyperbridgeWsUrl,
-				entryPointAddress: config.filler.entryPointAddress,
+				privateKey: config.simplex.privateKey,
+				maxConcurrentOrders: config.simplex.maxConcurrentOrders,
+				logging: config.simplex.logging,
+				substratePrivateKey: config.simplex.substratePrivateKey,
+				hyperbridgeWsUrl: config.simplex.hyperbridgeWsUrl,
+				entryPointAddress: config.simplex.entryPointAddress,
 				dataDir: options.dataDir,
 				rebalancing: config.rebalancing,
 			}
@@ -194,17 +194,17 @@ program
 				config.chains.forEach((chain) => {
 					watchOnlyConfig![chain.chainId] = true
 				})
-			} else if (config.filler.watchOnly !== undefined) {
-				if (typeof config.filler.watchOnly === "boolean") {
+			} else if (config.simplex.watchOnly !== undefined) {
+				if (typeof config.simplex.watchOnly === "boolean") {
 					// Global watch-only mode
 					watchOnlyConfig = {}
 					config.chains.forEach((chain) => {
-						watchOnlyConfig![chain.chainId] = config.filler.watchOnly as boolean
+						watchOnlyConfig![chain.chainId] = config.simplex.watchOnly as boolean
 					})
 				} else {
 					// Per-chain configuration
 					watchOnlyConfig = {}
-					Object.entries(config.filler.watchOnly).forEach(([chainIdStr, value]) => {
+					Object.entries(config.simplex.watchOnly).forEach(([chainIdStr, value]) => {
 						const chainId = Number.parseInt(chainIdStr, 10)
 						if (!Number.isNaN(chainId)) {
 							watchOnlyConfig![chainId] = value === true
@@ -214,14 +214,14 @@ program
 			}
 
 			const fillerConfig: FillerConfig = {
-				maxConcurrentOrders: config.filler.maxConcurrentOrders,
-				pendingQueueConfig: config.filler.pendingQueue,
+				maxConcurrentOrders: config.simplex.maxConcurrentOrders,
+				pendingQueueConfig: config.simplex.pendingQueue,
 				watchOnly: watchOnlyConfig,
 			} as FillerConfig
 
 			// Create shared services to avoid duplicate RPC calls and reuse connections
 			const sharedCacheService = new CacheService()
-			const privateKey = config.filler.privateKey as HexString
+			const privateKey = config.simplex.privateKey as HexString
 			const chainClientManager = new ChainClientManager(configService, privateKey)
 			const contractService = new ContractInteractionService(
 				chainClientManager,
@@ -255,7 +255,7 @@ program
 							bidStorageService,
 						)
 					}
-					case "fx": {
+					case "hyperfx": {
 						const pricePolicy = new FillerPricePolicy({ points: strategyConfig.priceCurve })
 						return new FXFiller(
 							privateKey,
@@ -327,7 +327,7 @@ program
 				{
 					chains: config.chains.map((c) => c.chainId),
 					strategies: config.strategies.map((s) => s.type),
-					maxConcurrentOrders: config.filler.maxConcurrentOrders,
+					maxConcurrentOrders: config.simplex.maxConcurrentOrders,
 					watchOnlyChains: watchOnlyChains.length > 0 ? watchOnlyChains : undefined,
 				},
 				watchOnlyChains.length > 0
@@ -360,19 +360,19 @@ program
 function validateConfig(config: FillerTomlConfig): void {
 	// Validate required fields
 	// Private key is only required if not all chains are in watch-only mode
-	const isWatchOnlyGlobal = config.filler?.watchOnly === true
+	const isWatchOnlyGlobal = config.simplex?.watchOnly === true
 	const isWatchOnlyPerChain =
-		config.filler?.watchOnly !== undefined &&
-		typeof config.filler.watchOnly === "object" &&
-		config.filler.watchOnly !== null &&
+		config.simplex?.watchOnly !== undefined &&
+		typeof config.simplex.watchOnly === "object" &&
+		config.simplex.watchOnly !== null &&
 		config.chains.every((chain) => {
 			const chainIdStr = String(chain.chainId)
-			const watchOnlyObj = config.filler.watchOnly as Record<string, boolean>
+			const watchOnlyObj = config.simplex.watchOnly as Record<string, boolean>
 			return chainIdStr in watchOnlyObj && watchOnlyObj[chainIdStr] === true
 		})
 	const allChainsWatchOnly = isWatchOnlyGlobal || isWatchOnlyPerChain
 
-	if (!config.filler?.privateKey && !allChainsWatchOnly) {
+	if (!config.simplex?.privateKey && !allChainsWatchOnly) {
 		throw new Error("Filler private key is required (unless all chains are in watchOnly mode)")
 	}
 
@@ -403,7 +403,7 @@ function validateConfig(config: FillerTomlConfig): void {
 			throw new Error("Strategy type is required")
 		}
 
-		if (!["basic", "fx"].includes(strategy.type)) {
+		if (!["basic", "hyperfx"].includes(strategy.type)) {
 			throw new Error(`Invalid strategy type: ${strategy.type}`)
 		}
 
@@ -440,15 +440,15 @@ function validateConfig(config: FillerTomlConfig): void {
 			}
 		}
 
-		if (strategy.type === "fx") {
+		if (strategy.type === "hyperfx") {
 			// Validate price curve
 			if (!strategy.priceCurve || !Array.isArray(strategy.priceCurve) || strategy.priceCurve.length < 2) {
 				throw new Error("FX strategy must have a 'priceCurve' array with at least 2 points")
 			}
 
 			for (const point of strategy.priceCurve) {
-				if (point.amount === undefined || point.priceUsd === undefined) {
-					throw new Error("Each FX price curve point must have 'amount' and 'priceUsd'")
+				if (point.amount === undefined || point.price === undefined) {
+					throw new Error("Each FX price curve point must have 'amount' and 'price'")
 				}
 			}
 

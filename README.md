@@ -12,7 +12,7 @@ Hyperbridge SDK is a monorepo containing packages for building on Hyperbridge �
 | [@hyperbridge/core](./packages/core) | Solidity SDK for dispatching and receiving cross-chain messages |
 | [@hyperbridge/sdk](./packages/sdk) | JavaScript/TypeScript SDK for querying and monitoring cross-chain messages |
 | [@hyperbridge/subql-indexer](./packages/indexer) | SubQuery-based indexer for tracking cross-chain messages |
-| [@hyperbridge/filler](./packages/filler) | Intent Gateway filler — automated solver for cross-chain intents |
+| [@hyperbridge/simplex](./packages/simplex) | Simplex — automated market maker for cross-chain intents |
 
 ## Getting Started
 

@@ -20,11 +20,11 @@ export interface CurveConfig {
 /**
  * A coordinate point on a price curve
  * @property amount - The input threshold (e.g., USD amount)
- * @property priceUsd - The cNGN price in USD at this threshold
+ * @property price - The exotic tokens per 1 USD at this threshold
  */
 export interface PriceCurvePoint {
 	amount: string
-	priceUsd: string
+	price: string
 }
 
 /**
@@ -152,7 +152,7 @@ export class FillerBpsPolicy {
  * Uses piecewise linear interpolation between configured USD thresholds.
  */
 export class FillerPricePolicy {
-	private points: { amount: Decimal; priceUsd: Decimal }[]
+	private points: { amount: Decimal; price: Decimal }[]
 
 	constructor(config: PriceCurveConfig) {
 		if (!config.points || config.points.length < 1) {
@@ -162,7 +162,7 @@ export class FillerPricePolicy {
 		this.points = config.points
 			.map((p) => ({
 				amount: new Decimal(p.amount),
-				priceUsd: new Decimal(p.priceUsd),
+				price: new Decimal(p.price),
 			}))
 			.sort((a, b) => a.amount.comparedTo(b.amount))
 
@@ -170,7 +170,7 @@ export class FillerPricePolicy {
 			if (!point.amount.isFinite() || point.amount.isNegative()) {
 				throw new Error("Filler price policy: invalid amount")
 			}
-			if (!point.priceUsd.isFinite() || !point.priceUsd.isPositive()) {
+			if (!point.price.isFinite() || !point.price.isPositive()) {
 				throw new Error("Filler price policy: price must be a positive number")
 			}
 		}
@@ -181,13 +181,13 @@ export class FillerPricePolicy {
 
 		// Below minimum configured amount, use the first point
 		if (amount.lte(this.points[0].amount)) {
-			return this.points[0].priceUsd
+			return this.points[0].price
 		}
 
 		// Above maximum configured amount, use the last point
 		const lastPoint = this.points[this.points.length - 1]
 		if (amount.gte(lastPoint.amount)) {
-			return lastPoint.priceUsd
+			return lastPoint.price
 		}
 
 		// Piecewise linear interpolation between surrounding points
@@ -197,11 +197,11 @@ export class FillerPricePolicy {
 
 			if (amount.gte(p1.amount) && amount.lte(p2.amount)) {
 				const t = amount.minus(p1.amount).div(p2.amount.minus(p1.amount))
-				return p1.priceUsd.plus(t.mul(p2.priceUsd.minus(p1.priceUsd)))
+				return p1.price.plus(t.mul(p2.price.minus(p1.price)))
 			}
 		}
 
 		// Fallback (should not be reached due to earlier checks)
-		return lastPoint.priceUsd
+		return lastPoint.price
 	}
 }
