@@ -680,7 +680,7 @@ type GetRequestV2 @entity {
 	"""
 	Creation timestamp of this request
 	"""
-	createdAt: Date! @index
+	createdAt: Date @index
 }
 
 """
