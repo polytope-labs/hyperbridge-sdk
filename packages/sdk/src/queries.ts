@@ -47,7 +47,6 @@ query GetRequestDetails($commitment: String!) {
       blockHash
       transactionHash
       blockTimestamp
-      status
       chain
       commitment
       statusMetadata {
