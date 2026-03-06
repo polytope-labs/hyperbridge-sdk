@@ -35,6 +35,7 @@ const ASCII_HEADER = `
 
 `
 
+
 // Get package.json path
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -83,6 +84,114 @@ interface FxStrategyConfig {
 }
 
 type StrategyConfig = BasicStrategyConfig | FxStrategyConfig
+
+// Compact number formatter for axis labels
+function fmtNum(v: number): string {
+	if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
+	if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, "") + "k"
+	if (Number.isInteger(v)) return String(v)
+	if (Math.abs(v) < 0.01) return v.toExponential(1)
+	return parseFloat(v.toFixed(2)).toString()
+}
+
+// Render a 2D point set as ASCII chart rows (chart body + axis row)
+function renderCurveAscii(points: Array<{ x: number; y: number }>, yLabel: string, chartWidth = 30, chartHeight = 5): string[] {
+	const sorted = [...points].sort((a, b) => a.x - b.x)
+	const minX = sorted[0].x
+	const maxX = sorted[sorted.length - 1].x
+	const minY = Math.min(...sorted.map((p) => p.y))
+	const maxY = Math.max(...sorted.map((p) => p.y))
+	const xRange = maxX - minX || 1
+	const yRange = maxY - minY || 1
+
+	const grid: string[][] = Array.from({ length: chartHeight }, () => Array(chartWidth).fill(" "))
+	const plotted: Array<{ col: number; row: number }> = []
+
+	for (const p of sorted) {
+		const col = Math.round(((p.x - minX) / xRange) * (chartWidth - 1))
+		const row = Math.round((1 - (p.y - minY) / yRange) * (chartHeight - 1))
+		grid[row][col] = "●"
+		plotted.push({ col, row })
+	}
+
+	// Connect consecutive points with dashes
+	for (let i = 0; i < plotted.length - 1; i++) {
+		const a = plotted[i],
+			b = plotted[i + 1]
+		for (let c = a.col + 1; c < b.col; c++) {
+			const row = Math.round(a.row + ((c - a.col) / (b.col - a.col)) * (b.row - a.row))
+			if (grid[row][c] === " ") grid[row][c] = "─"
+		}
+	}
+
+	// Extend last point flat to right edge
+	const last = plotted[plotted.length - 1]
+	for (let c = last.col + 1; c < chartWidth; c++) {
+		if (grid[last.row][c] === " ") grid[last.row][c] = "─"
+	}
+
+	// Y-axis prefix: show max at top row, label at mid, min at bottom row
+	const maxYStr = fmtNum(maxY).padStart(4)
+	const minYStr = fmtNum(minY).padStart(4)
+	const midLabel = ` ${yLabel.trim().slice(0, 3).padEnd(3)}`
+	const midRow = Math.floor(chartHeight / 2)
+	const rows: string[] = grid.map((row, i) => {
+		let prefix: string
+		if (i === 0) prefix = `${maxYStr}│`
+		else if (i === chartHeight - 1) prefix = minY !== maxY ? `${minYStr}│` : `    │`
+		else if (i === midRow) prefix = `${midLabel}│`
+		else prefix = `    │`
+		return prefix + row.join("")
+	})
+
+	// X-axis row: embed min/max amounts within the fixed chartWidth region
+	const minXStr = "$" + fmtNum(minX)
+	const maxXStr = "$" + fmtNum(maxX)
+	const dashes = chartWidth - minXStr.length - maxXStr.length
+	const axisContent = dashes >= 1 ? minXStr + "─".repeat(dashes) + maxXStr : "─".repeat(chartWidth)
+	rows.push(`    └${axisContent}`)
+	return rows
+}
+
+// Build a boxed banner with the actual curve plotted inside
+function getStrategyBanner(config: StrategyConfig): string {
+	let chartRows: string[]
+	let title: string
+	let subtitle: string
+
+	if (config.type === "basic") {
+		const points = config.bpsCurve.map((p) => ({ x: parseFloat(p.amount), y: p.value }))
+		chartRows = renderCurveAscii(points, " bps")
+		title = "BASIC STRATEGY  ACTIVE"
+		subtitle = "adaptive BPS spread curve"
+	} else {
+		const points = config.priceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
+		chartRows = renderCurveAscii(points, " tok")
+		title = "HYPERFX STRATEGY  ACTIVE"
+		subtitle = "adaptive FX price curve routing"
+	}
+
+	// innerWidth = 44 accommodates the longest chart row: "    └" + 30×"─" + " order($)" = 44 chars
+	const innerWidth = 44
+	const border = "═".repeat(innerWidth + 2)
+	const pad = (s: string) => `  ║ ${s.padEnd(innerWidth)} ║`
+	const center = (s: string) => {
+		const pad = Math.max(0, innerWidth - s.length)
+		return " ".repeat(Math.floor(pad / 2)) + s + " ".repeat(Math.ceil(pad / 2))
+	}
+
+	return [
+		``,
+		`  ╔${border}╗`,
+		pad(center(title)),
+		pad(""),
+		...chartRows.map(pad),
+		pad(""),
+		pad(center(subtitle)),
+		`  ╚${border}╝`,
+		``,
+	].join("\n")
+}
 
 interface PendingQueueConfig {
 	maxRechecks: number
@@ -148,6 +257,11 @@ program
 			const config = parse(tomlContent) as FillerTomlConfig
 
 			validateConfig(config)
+
+			// Print strategy banners immediately after the header
+			for (const strategyConfig of config.strategies) {
+				process.stdout.write(getStrategyBanner(strategyConfig))
+			}
 
 			// Configure logger based on config BEFORE creating any services
 			if (config.simplex.logging) {
@@ -273,10 +387,10 @@ program
 				}
 			})
 
-			// Initialize rebalancing service if config is provided
+			// Initialize rebalancing service only if fully configured
 			let rebalancingService: RebalancingService | undefined
 			const rebalancingConfig = configService.getRebalancingConfig()
-			if (rebalancingConfig) {
+			if (rebalancingConfig?.triggerPercentage !== undefined && rebalancingConfig?.baseBalances) {
 				let binanceConfig: BinanceCexConfig | undefined
 				if (config.binance) {
 					binanceConfig = {
@@ -348,8 +462,6 @@ program
 				process.exit(0)
 			})
 
-			// Keep the process running
-			process.stdin.resume()
 		} catch (error) {
 			// Use console.error for initial startup errors since logger might not be configured yet
 			console.error("Failed to start filler:", error)

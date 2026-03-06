@@ -15,16 +15,17 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Copy workspace manifests and lockfile first for better layer caching
-COPY pnpm-workspace.yaml package.json .npmrc tsconfig.base.json pnpm-lock.yaml ./
-COPY packages/sdk/package.json ./packages/sdk/
-COPY packages/simplex/package.json ./packages/simplex/
+COPY --chown=simplex:simplex pnpm-workspace.yaml package.json .npmrc tsconfig.base.json pnpm-lock.yaml ./
+COPY --chown=simplex:simplex packages/sdk/package.json ./packages/sdk/
+COPY --chown=simplex:simplex packages/simplex/package.json ./packages/simplex/
 
 # Install dependencies for sdk and simplex only
-RUN pnpm install --frozen-lockfile --filter @hyperbridge/sdk --filter @hyperbridge/simplex
+RUN pnpm install --frozen-lockfile --filter @hyperbridge/sdk --filter @hyperbridge/simplex && \
+    chown -R simplex:simplex /app/node_modules
 
 # Copy source files
-COPY packages/sdk/ ./packages/sdk/
-COPY packages/simplex/ ./packages/simplex/
+COPY --chown=simplex:simplex packages/sdk/ ./packages/sdk/
+COPY --chown=simplex:simplex packages/simplex/ ./packages/simplex/
 
 # Build the SDK first (dependency of simplex)
 RUN cd packages/sdk && pnpm build
@@ -35,10 +36,9 @@ RUN cd packages/simplex && pnpm build
 # Create a healthcheck script
 RUN echo '#!/bin/sh' > /app/healthcheck.sh && \
     echo 'ps -ef | grep "node" | grep -v grep > /dev/null || exit 1' >> /app/healthcheck.sh && \
-    chmod +x /app/healthcheck.sh
+    chmod +x /app/healthcheck.sh && \
+    chown simplex:simplex /app/healthcheck.sh
 
-# Configure permissions then switch to non-root user
-RUN chown -R simplex:simplex /app
 USER simplex
 
 # Set environment variables

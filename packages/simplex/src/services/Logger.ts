@@ -1,4 +1,4 @@
-import pino from "pino"
+import pino, { stdSerializers } from "pino"
 import { LoggingConfig } from "./FillerConfigService"
 
 type LoggerOptions = {
@@ -15,6 +15,10 @@ let baseLogger: pino.Logger
 function initializeLogger() {
 	baseLogger = pino({
 		level: logLevel,
+		serializers: {
+			error: stdSerializers.err,
+			err: stdSerializers.err,
+		},
 		transport: {
 			target: "pino-pretty",
 			options: {
