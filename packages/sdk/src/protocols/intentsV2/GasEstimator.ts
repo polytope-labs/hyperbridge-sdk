@@ -194,7 +194,7 @@ export class GasEstimator {
 				preVerificationGas = (BigInt(gasEstimate.preVerificationGas) * 105n) / 100n
 
 				// If using a Pimlico bundler, refine gas price using pimlico_getUserOperationGasPrice
-				if (this.ctx.bundlerUrl?.toLowerCase().includes("pim")) {
+				if (this.ctx.bundlerUrl?.toLowerCase().includes("pimlico.io")) {
 					try {
 						const pimlicoGasPrices = await this.crypto.sendBundler<PimlicoGasPriceEstimate>(
 							BundlerMethod.PIMLICO_GET_USER_OPERATION_GAS_PRICE,
