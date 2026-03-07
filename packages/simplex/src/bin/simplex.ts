@@ -70,10 +70,20 @@ interface BasicStrategyConfig {
 interface FxStrategyConfig {
 	type: "hyperfx"
 	/**
-	 * Array of (amount, price) coordinates defining the exotic token price curve.
-	 * price = exotic tokens per 1 USD at that order amount (e.g. 1600 for cNGN at 1600 NGN/USD).
+	 * Bid price curve: exotic tokens per 1 USD when the filler *buys* exotic from a user
+	 * (exotic→stable leg). Should have a higher exotic-per-USD rate than the ask curve so
+	 * the filler pays out fewer stablecoins per exotic token received.
 	 */
-	priceCurve: Array<{
+	bidPriceCurve: Array<{
+		amount: string
+		price: string
+	}>
+	/**
+	 * Ask price curve: exotic tokens per 1 USD when the filler *sells* exotic to a user
+	 * (stable→exotic leg). Should have a lower exotic-per-USD rate than the bid curve so
+	 * the filler sends fewer exotic tokens per stablecoin received.
+	 */
+	askPriceCurve: Array<{
 		amount: string
 		price: string
 	}>
@@ -95,61 +105,65 @@ function fmtNum(v: number): string {
 }
 
 // Render a 2D point set as ASCII chart rows (chart body + axis row)
+// Axes: vertical = amount ($, high at top), horizontal = price/bps (low left, high right)
 function renderCurveAscii(points: Array<{ x: number; y: number }>, yLabel: string, chartWidth = 30, chartHeight = 5): string[] {
 	const sorted = [...points].sort((a, b) => a.x - b.x)
-	const minX = sorted[0].x
-	const maxX = sorted[sorted.length - 1].x
-	const minY = Math.min(...sorted.map((p) => p.y))
-	const maxY = Math.max(...sorted.map((p) => p.y))
-	const xRange = maxX - minX || 1
-	const yRange = maxY - minY || 1
+	// After flipping: horizontal = y (price/bps), vertical = x (amount)
+	const minH = Math.min(...sorted.map((p) => p.y))
+	const maxH = Math.max(...sorted.map((p) => p.y))
+	const minV = sorted[0].x
+	const maxV = sorted[sorted.length - 1].x
+	const hRange = maxH - minH || 1
+	const vRange = maxV - minV || 1
 
 	const grid: string[][] = Array.from({ length: chartHeight }, () => Array(chartWidth).fill(" "))
 	const plotted: Array<{ col: number; row: number }> = []
 
 	for (const p of sorted) {
-		const col = Math.round(((p.x - minX) / xRange) * (chartWidth - 1))
-		const row = Math.round((1 - (p.y - minY) / yRange) * (chartHeight - 1))
+		const col = Math.round(((p.y - minH) / hRange) * (chartWidth - 1))
+		const row = Math.round((1 - (p.x - minV) / vRange) * (chartHeight - 1))
 		grid[row][col] = "●"
 		plotted.push({ col, row })
 	}
 
-	// Connect consecutive points with dashes
-	for (let i = 0; i < plotted.length - 1; i++) {
-		const a = plotted[i],
-			b = plotted[i + 1]
-		for (let c = a.col + 1; c < b.col; c++) {
-			const row = Math.round(a.row + ((c - a.col) / (b.col - a.col)) * (b.row - a.row))
-			if (grid[row][c] === " ") grid[row][c] = "─"
+	// Connect consecutive points with vertical connectors (sorted by row now)
+	const byRow = [...plotted].sort((a, b) => a.row - b.row)
+	for (let i = 0; i < byRow.length - 1; i++) {
+		const a = byRow[i],
+			b = byRow[i + 1]
+		for (let r = a.row + 1; r < b.row; r++) {
+			const col = Math.round(a.col + ((r - a.row) / (b.row - a.row)) * (b.col - a.col))
+			if (grid[r][col] === " ") grid[r][col] = "│"
 		}
 	}
 
-	// Extend last point flat to right edge
-	const last = plotted[plotted.length - 1]
-	for (let c = last.col + 1; c < chartWidth; c++) {
-		if (grid[last.row][c] === " ") grid[last.row][c] = "─"
+	// Extend top point flat to left edge (lowest price, highest amount extends left)
+	const top = byRow[0]
+	for (let c = 0; c < top.col; c++) {
+		if (grid[top.row][c] === " ") grid[top.row][c] = "─"
 	}
 
-	// Y-axis prefix: show max at top row, label at mid, min at bottom row
-	const maxYStr = fmtNum(maxY).padStart(4)
-	const minYStr = fmtNum(minY).padStart(4)
-	const midLabel = ` ${yLabel.trim().slice(0, 3).padEnd(3)}`
+	// Y-axis prefix: vertical axis = amount ($), show maxV at top, label at mid, minV at bottom
+	const maxVStr = ("$" + fmtNum(maxV)).padStart(5)
+	const minVStr = ("$" + fmtNum(minV)).padStart(5)
+	const midLabel = ` ${yLabel.trim().slice(0, 4).padEnd(4)}`
 	const midRow = Math.floor(chartHeight / 2)
 	const rows: string[] = grid.map((row, i) => {
 		let prefix: string
-		if (i === 0) prefix = `${maxYStr}│`
-		else if (i === chartHeight - 1) prefix = minY !== maxY ? `${minYStr}│` : `    │`
+		if (i === 0) prefix = `${maxVStr}│`
+		else if (i === chartHeight - 1) prefix = minV !== maxV ? `${minVStr}│` : `     │`
 		else if (i === midRow) prefix = `${midLabel}│`
-		else prefix = `    │`
+		else prefix = `     │`
 		return prefix + row.join("")
 	})
 
-	// X-axis row: embed min/max amounts within the fixed chartWidth region
-	const minXStr = "$" + fmtNum(minX)
-	const maxXStr = "$" + fmtNum(maxX)
-	const dashes = chartWidth - minXStr.length - maxXStr.length
-	const axisContent = dashes >= 1 ? minXStr + "─".repeat(dashes) + maxXStr : "─".repeat(chartWidth)
-	rows.push(`    └${axisContent}`)
+	// X-axis row: horizontal axis = price/bps, show min left and max right
+	const minHStr = fmtNum(minH)
+	const maxHStr = fmtNum(maxH)
+	const dashes = chartWidth - minHStr.length - maxHStr.length
+	const axisContent = dashes >= 1 ? minHStr + "─".repeat(dashes) + maxHStr : "─".repeat(chartWidth)
+	rows.push(`     └${axisContent}`)
+	rows.push(`     ${" ".repeat(Math.floor(chartWidth / 2) - 1)}${yLabel.trim()}`)
 	return rows
 }
 
@@ -165,10 +179,15 @@ function getStrategyBanner(config: StrategyConfig): string {
 		title = "BASIC STRATEGY  ACTIVE"
 		subtitle = "adaptive BPS spread curve"
 	} else {
-		const points = config.priceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
-		chartRows = renderCurveAscii(points, " tok")
+		const bidPoints = config.bidPriceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
+		const askPoints = config.askPriceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
+		chartRows = [
+			...renderCurveAscii(bidPoints, " bid"),
+			"",
+			...renderCurveAscii(askPoints, " ask"),
+		]
 		title = "HYPERFX STRATEGY  ACTIVE"
-		subtitle = "adaptive FX price curve routing"
+		subtitle = "adaptive bid/ask FX price curve routing"
 	}
 
 	// innerWidth = 44 accommodates the longest chart row: "    └" + 30×"─" + " order($)" = 44 chars
@@ -370,13 +389,15 @@ program
 						)
 					}
 					case "hyperfx": {
-						const pricePolicy = new FillerPricePolicy({ points: strategyConfig.priceCurve })
+						const bidPricePolicy = new FillerPricePolicy({ points: strategyConfig.bidPriceCurve })
+						const askPricePolicy = new FillerPricePolicy({ points: strategyConfig.askPriceCurve })
 						return new FXFiller(
 							privateKey,
 							configService,
 							chainClientManager,
 							contractService,
-							pricePolicy,
+							bidPricePolicy,
+							askPricePolicy,
 							strategyConfig.maxOrderUsd,
 							strategyConfig.exoticTokenAddresses,
 							bidStorageService,
@@ -553,14 +574,25 @@ function validateConfig(config: FillerTomlConfig): void {
 		}
 
 		if (strategy.type === "hyperfx") {
-			// Validate price curve
-			if (!strategy.priceCurve || !Array.isArray(strategy.priceCurve) || strategy.priceCurve.length < 2) {
-				throw new Error("FX strategy must have a 'priceCurve' array with at least 2 points")
+			// Validate bid price curve
+			if (!strategy.bidPriceCurve || !Array.isArray(strategy.bidPriceCurve) || strategy.bidPriceCurve.length < 2) {
+				throw new Error("FX strategy must have a 'bidPriceCurve' array with at least 2 points")
 			}
 
-			for (const point of strategy.priceCurve) {
+			for (const point of strategy.bidPriceCurve) {
 				if (point.amount === undefined || point.price === undefined) {
-					throw new Error("Each FX price curve point must have 'amount' and 'price'")
+					throw new Error("Each FX bidPriceCurve point must have 'amount' and 'price'")
+				}
+			}
+
+			// Validate ask price curve
+			if (!strategy.askPriceCurve || !Array.isArray(strategy.askPriceCurve) || strategy.askPriceCurve.length < 2) {
+				throw new Error("FX strategy must have an 'askPriceCurve' array with at least 2 points")
+			}
+
+			for (const point of strategy.askPriceCurve) {
+				if (point.amount === undefined || point.price === undefined) {
+					throw new Error("Each FX askPriceCurve point must have 'amount' and 'price'")
 				}
 			}
 

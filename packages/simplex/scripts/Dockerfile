@@ -20,8 +20,7 @@ COPY --chown=simplex:simplex packages/sdk/package.json ./packages/sdk/
 COPY --chown=simplex:simplex packages/simplex/package.json ./packages/simplex/
 
 # Install dependencies for sdk and simplex only
-RUN pnpm install --frozen-lockfile --filter @hyperbridge/sdk --filter @hyperbridge/simplex && \
-    chown -R simplex:simplex /app/node_modules
+RUN pnpm install --frozen-lockfile --filter @hyperbridge/sdk --filter @hyperbridge/simplex
 
 # Copy source files
 COPY --chown=simplex:simplex packages/sdk/ ./packages/sdk/
@@ -36,8 +35,7 @@ RUN cd packages/simplex && pnpm build
 # Create a healthcheck script
 RUN echo '#!/bin/sh' > /app/healthcheck.sh && \
     echo 'ps -ef | grep "node" | grep -v grep > /dev/null || exit 1' >> /app/healthcheck.sh && \
-    chmod +x /app/healthcheck.sh && \
-    chown simplex:simplex /app/healthcheck.sh
+    chmod +x /app/healthcheck.sh
 
 USER simplex
 

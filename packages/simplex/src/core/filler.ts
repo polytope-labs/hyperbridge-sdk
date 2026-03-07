@@ -221,7 +221,7 @@ export class IntentFiller {
 
 				// Strategy layer: first strategy that can price the order wins
 				let inputUsdValue = baseInputUsd
-				const canFillCache = new Set<FillerStrategy>()
+				const canFillCache = new Map<FillerStrategy, boolean>()
 				for (const strategy of this.strategies) {
 					// Skip strategies that cannot price inputs
 					if (typeof strategy.getOrderUsdValue !== "function") continue
@@ -235,8 +235,8 @@ export class IntentFiller {
 							"Error checking canFill during inputUsdValue computation",
 						)
 					}
+					canFillCache.set(strategy, canFill)
 					if (!canFill) continue
-					canFillCache.add(strategy)
 					try {
 						const stratValue = await strategy.getOrderUsdValue(order)
 						if (stratValue != null) {
@@ -253,16 +253,15 @@ export class IntentFiller {
 
 				// Derive required confirmations from whichever matched strategy has a policy
 				let requiredConfirmations = 0
-				for (const strategy of canFillCache) {
-					if (strategy.confirmationPolicy) {
-						requiredConfirmations = Math.max(
-							requiredConfirmations,
-							strategy.confirmationPolicy.getConfirmationBlocks(
-								getChainId(order.source)!,
-								inputUsdValue.toNumber(),
-							),
-						)
-					}
+				for (const [strategy, canFill] of canFillCache) {
+					if (!canFill || !strategy.confirmationPolicy) continue
+					requiredConfirmations = Math.max(
+						requiredConfirmations,
+						strategy.confirmationPolicy.getConfirmationBlocks(
+							getChainId(order.source)!,
+							inputUsdValue.toNumber(),
+						),
+					)
 				}
 
 				// Run confirmation waiting and evaluation in parallel.
@@ -330,7 +329,7 @@ export class IntentFiller {
 
 	private async evaluateOrder(
 		order: OrderV2,
-		canFillCache: Set<FillerStrategy>,
+		canFillCache: Map<FillerStrategy, boolean>,
 	): Promise<{ strategy: FillerStrategy; profitability: number } | null> {
 		// Check if watch-only mode is enabled for the destination chain
 		const destChainId = getChainId(order.destination)
@@ -360,7 +359,7 @@ export class IntentFiller {
 
 		const eligibleStrategies = await Promise.all(
 			this.strategies.map(async (strategy) => {
-				const canFill = canFillCache.has(strategy) || (await strategy.canFill(order))
+				const canFill = canFillCache.has(strategy) ? canFillCache.get(strategy)! : (await strategy.canFill(order))
 				if (!canFill) return null
 
 				const profitability = await strategy.calculateProfitability(order)

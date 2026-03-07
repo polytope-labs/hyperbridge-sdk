@@ -17,7 +17,7 @@ export interface FillerStrategy {
 	 * Optional hook for strategies to provide a USD value for the full input basket.
 	 * Returns null when the strategy cannot or does not want to price the order.
 	 */
-	getOrderUsdValue?(order: OrderV2): Promise<{ inputUsd: Decimal; outputUsd: Decimal } | null>
+	getOrderUsdValue?(order: OrderV2): Promise<{ inputUsd: Decimal } | null>
 
 	/**
 	 * Optional confirmation policy for this strategy.
