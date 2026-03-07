@@ -200,6 +200,14 @@ async function copyTableData(
     const columnsList = commonColumns.map(col => `"${col}"`).join(', ');
     const placeholders = commonColumns.map((_, i) => `$${i + 1}`).join(', ');
     
+    // Order by _block_range DESC so the most recent version of each row is inserted first,
+    // and older versions are skipped by ON CONFLICT DO NOTHING
+    const hasBlockRange = sourceColumns.includes('_block_range');
+    const orderClause = hasBlockRange ? 'ORDER BY id, _block_range DESC' : 'ORDER BY id';
+    if (hasBlockRange) {
+      logger?.log(`  Using _block_range DESC ordering to pick latest version per row`);
+    }
+    
     await client.query('BEGIN');
     
     logger?.log(`  Processing ${rowsToProcess} rows in batches of ${batchSize}...`);
@@ -211,7 +219,7 @@ async function copyTableData(
     while (offset < rowsToProcess) {
       // Fetch a batch of rows from source table
       const batchResult = await client.query(
-        `SELECT ${columnsList} FROM ${schema}.${sourceTable}${whereFilter} ORDER BY id LIMIT $1 OFFSET $2`,
+        `SELECT ${columnsList} FROM ${schema}.${sourceTable}${whereFilter} ${orderClause} LIMIT $1 OFFSET $2`,
         [batchSize, offset]
       );
       
