@@ -391,12 +391,14 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
 			USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
 			USDT: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+			EXT: "0x0e668E5127087e236578893a0e01E41837A28469",
 			cNGN: "0x46C85152bFe9f96829aA94755D9f915F9B10EF5F",
 		},
 		tokenDecimals: {
 			USDC: 6,
 			USDT: 6,
 			cNGN: 6,
+			EXT: 18,
 		},
 		tokenStorageSlots: {
 			USDT: { balanceSlot: 0, allowanceSlot: 1 },
@@ -443,11 +445,13 @@ export const chainConfigs: Record<number, ChainConfigData> = {
 			DAI: "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
 			USDC: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
 			USDT: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+			EXT: "0x7C8c11ADb8EF7cd3CFa718008Ea048445C6E7209",
 			cNGN: "0x52828daa48C1a9A06F37500882b42daf0bE04C3B",
 		},
 		tokenDecimals: {
 			USDC: 6,
 			USDT: 6,
+			EXT: 18,
 			cNGN: 6,
 		},
 		tokenStorageSlots: {

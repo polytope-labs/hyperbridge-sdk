@@ -187,7 +187,7 @@ export class GasEstimator {
 					[bundlerUserOp, entryPointAddress, bundlerStateOverrides],
 				)
 
-				callGasLimit = (BigInt(gasEstimate.callGasLimit) * 105n) / 100n
+				callGasLimit = (BigInt(gasEstimate.callGasLimit) * 130n) / 100n
 				verificationGasLimit = (BigInt(gasEstimate.verificationGasLimit) * 105n) / 100n
 				preVerificationGas = (BigInt(gasEstimate.preVerificationGas) * 105n) / 100n
 
@@ -207,8 +207,10 @@ export class GasEstimator {
 							const pimMaxFeePerGas = BigInt(level.maxFeePerGas)
 							const pimMaxPriorityFeePerGas = BigInt(level.maxPriorityFeePerGas)
 
-							maxFeePerGas = pimMaxFeePerGas
-							maxPriorityFeePerGas = pimMaxPriorityFeePerGas
+							maxFeePerGas = pimMaxFeePerGas + (pimMaxFeePerGas * BigInt(maxFeeBumpPercent)) / 100n
+							maxPriorityFeePerGas =
+								pimMaxPriorityFeePerGas +
+								(pimMaxPriorityFeePerGas * BigInt(priorityFeeBumpPercent)) / 100n
 						}
 					} catch (e) {
 						console.warn("Pimlico gas price fetch failed, using default gas price:", e)
