@@ -127,11 +127,12 @@ function graphqlToPostgresType(graphqlType: string, isArray: boolean): string {
 }
 
 /**
- * Convert entity name to table name (snake_case)
- * This matches the logic in migrate-entity-data.ts
+ * Convert a PascalCase/camelCase name to snake_case,
+ * matching how SubQuery maps entity names to table names
+ * and field names to column names.
  */
-function entityToTableName(entityName: string): string {
-  return entityName
+function toSnakeCase(name: string): string {
+  return name
     .replace(/([A-Z])/g, '_$1')
     .toLowerCase()
     .replace(/^_/, '');
@@ -142,8 +143,7 @@ function entityToTableName(entityName: string): string {
  * SubQuery creates tables with plural names (e.g., requests, responses)
  */
 function getSubqueryTableName(entityName: string): string {
-  const snakeCase = entityToTableName(entityName);
-  return snakeCase + 's';
+  return toSnakeCase(entityName) + 's';
 }
 
 /**
@@ -154,11 +154,8 @@ function generateCreateTable(entity: GraphQLEntity, schema: string): string {
 
   for (const field of entity.fields) {
     const pgType = graphqlToPostgresType(field.type, field.isArray);
-    // Quote column name to handle SQL reserved keywords like "from"
-    let columnDef = `"${field.name}" ${pgType}`;
-
-    // Don't add NOT NULL constraints to allow for column name mismatches during migration
-    // The PRIMARY KEY on id already implies NOT NULL
+    const columnName = toSnakeCase(field.name);
+    let columnDef = `"${columnName}" ${pgType}`;
 
     columnDefs.push(columnDef);
   }
