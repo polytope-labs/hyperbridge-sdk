@@ -41,13 +41,11 @@ export class GasEstimator {
 		const { order } = params
 		const solverPrivateKey = generatePrivateKey()
 		const solverAccountAddress = privateKeyToAddress(solverPrivateKey)
-		const sourceStateMachineId = isHex(order.source) ? hexToString(order.source) : order.source
+		const souceStateMachineId = isHex(order.source) ? hexToString(order.source) : order.source
 		const destStateMachineId = isHex(order.destination) ? hexToString(order.destination) : order.destination
 		const intentGatewayV2Address = this.ctx.dest.configService.getIntentGatewayV2Address(destStateMachineId)
 		const entryPointAddress = this.ctx.dest.configService.getEntryPointV08Address(destStateMachineId)
-		const chainId = BigInt(
-			this.ctx.dest.client.chain?.id ?? Number.parseInt(this.ctx.dest.config.stateMachineId.split("-")[1]),
-		)
+		const chainId = BigInt(Number.parseInt(destStateMachineId.split("-")[1]))
 
 		const totalEthValue = order.output.assets
 			.filter((output) => bytes32ToBytes20(output.token) === ADDRESS_ZERO)
@@ -70,7 +68,7 @@ export class GasEstimator {
 			entryPointAddress,
 		})
 
-		const isSameChain = order.source === destStateMachineId
+		const isSameChain = souceStateMachineId === destStateMachineId
 		let postRequestFeeInDestFeeToken = 0n
 		let protocolFeeInNativeToken = 0n
 
@@ -80,7 +78,7 @@ export class GasEstimator {
 				this.ctx,
 				postRequestGas,
 				"source",
-				sourceStateMachineId,
+				souceStateMachineId,
 			)
 			postRequestFeeInDestFeeToken = adjustDecimals(
 				postRequestFeeInSourceFeeToken,
@@ -90,12 +88,12 @@ export class GasEstimator {
 
 			const postRequest: IPostRequest = {
 				source: destStateMachineId,
-				dest: order.source,
+				dest: souceStateMachineId,
 				body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
 				timeoutTimestamp: 0n,
 				nonce: await this.ctx.source.getHostNonce(),
 				from: this.ctx.source.configService.getIntentGatewayV2Address(destStateMachineId),
-				to: this.ctx.source.configService.getIntentGatewayV2Address(sourceStateMachineId),
+				to: this.ctx.source.configService.getIntentGatewayV2Address(souceStateMachineId),
 			}
 
 			protocolFeeInNativeToken = await this.quoteNative(postRequest, postRequestFeeInDestFeeToken).catch(() =>
