@@ -1024,17 +1024,17 @@ type IOrderV2 @entity {
 	"""
 	Metatdata about the order's progression through different statuses
 	"""
-	statusMetadata: [OrderV2StatusMetadata]! @derivedFrom(field: "order")
+	statusMetadata: [IOrderV2StatusMetadata]! @derivedFrom(field: "order")
 
 	"""
 	Partial fill events for this order
 	"""
-	partialFills: [OrderV2PartialFill!]! @derivedFrom(field: "order")
+	partialFills: [IOrderV2PartialFill!]! @derivedFrom(field: "order")
 
 	"""
 	Predispatch assets for this order
 	"""
-	predispatchAssets: [OrderV2PredispatchAsset!]! @derivedFrom(field: "order")
+	predispatchAssets: [IOrderV2PredispatchAsset!]! @derivedFrom(field: "order")
 
 	"""
 	Pre dispatch calldata
@@ -1044,12 +1044,12 @@ type IOrderV2 @entity {
 	"""
 	Input assets for this order
 	"""
-	inputAssets: [OrderV2InputAsset!]! @derivedFrom(field: "order")
+	inputAssets: [IOrderV2InputAsset!]! @derivedFrom(field: "order")
 
 	"""
 	Output assets for this order
 	"""
-	outputAssets: [OrderV2OutputAsset!]! @derivedFrom(field: "order")
+	outputAssets: [IOrderV2OutputAsset!]! @derivedFrom(field: "order")
 
 	"""
 	Post dispatch calldata
@@ -1085,7 +1085,7 @@ type IOrderV2 @entity {
 """
 Represents a predispatch asset in an IOrderV2
 """
-type OrderV2PredispatchAsset @entity {
+type IOrderV2PredispatchAsset @entity {
 	"""
 	Unique identifier: {orderId}-predispatch-{index}
 	"""
@@ -1115,7 +1115,7 @@ type OrderV2PredispatchAsset @entity {
 """
 Represents an input asset in an IOrderV2
 """
-type OrderV2InputAsset @entity {
+type IOrderV2InputAsset @entity {
 	"""
 	Unique identifier: {orderId}-input-{index}
 	"""
@@ -1145,7 +1145,7 @@ type OrderV2InputAsset @entity {
 """
 Represents an output asset in an IOrderV2
 """
-type OrderV2OutputAsset @entity {
+type IOrderV2OutputAsset @entity {
 	"""
 	Unique identifier: {orderId}-output-{index}
 	"""
@@ -1180,7 +1180,7 @@ type OrderV2OutputAsset @entity {
 """
 Metadata about the status of an IOrderV2
 """
-type OrderV2StatusMetadata @entity {
+type IOrderV2StatusMetadata @entity {
 	"""
 	The ID of the status metadata
 	"""
@@ -1230,7 +1230,7 @@ type OrderV2StatusMetadata @entity {
 """
 Represents a partial fill event for an IOrderV2. Each record corresponds to a single on-chain PartialFill emission.
 """
-type OrderV2PartialFill @entity {
+type IOrderV2PartialFill @entity {
 	"""
 	Unique identifier for the partial fill event. Recommended format: {commitment}.{sequence} or {transactionHash}.{logIndex}
 	"""
@@ -1269,12 +1269,12 @@ type OrderV2PartialFill @entity {
 	"""
 	Input assets released from escrow for this partial fill
 	"""
-	inputAssets: [OrderV2PartialFillInputAsset!]! @derivedFrom(field: "partialFill")
+	inputAssets: [IOrderV2PartialFillInputAsset!]! @derivedFrom(field: "partialFill")
 
 	"""
 	Output assets delivered in this partial fill
 	"""
-	outputAssets: [OrderV2PartialFillOutputAsset!]! @derivedFrom(field: "partialFill")
+	outputAssets: [IOrderV2PartialFillOutputAsset!]! @derivedFrom(field: "partialFill")
 
 	"""
 	The timestamp when this record was created
@@ -1285,7 +1285,7 @@ type OrderV2PartialFill @entity {
 """
 Represents an input asset released from escrow in an IOrderV2 partial fill
 """
-type OrderV2PartialFillInputAsset @entity {
+type IOrderV2PartialFillInputAsset @entity {
 	"""
 	Unique identifier: {partialFillId}-input-{index}
 	"""
@@ -1294,7 +1294,7 @@ type OrderV2PartialFillInputAsset @entity {
 	"""
 	The partial fill this input asset belongs to
 	"""
-	partialFill: OrderV2PartialFill!
+	partialFill: IOrderV2PartialFill!
 
 	"""
 	Token address (bytes32 format)
@@ -1315,7 +1315,7 @@ type OrderV2PartialFillInputAsset @entity {
 """
 Represents an output asset delivered in an IOrderV2 partial fill
 """
-type OrderV2PartialFillOutputAsset @entity {
+type IOrderV2PartialFillOutputAsset @entity {
 	"""
 	Unique identifier: {partialFillId}-output-{index}
 	"""
@@ -1324,7 +1324,7 @@ type OrderV2PartialFillOutputAsset @entity {
 	"""
 	The partial fill this output asset belongs to
 	"""
-	partialFill: OrderV2PartialFill!
+	partialFill: IOrderV2PartialFill!
 
 	"""
 	Token address (bytes32 format)
