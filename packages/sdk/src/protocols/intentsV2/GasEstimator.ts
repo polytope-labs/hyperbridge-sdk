@@ -27,7 +27,7 @@ import type {
 import type { HexString } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
-import type { BundlerGasEstimate } from "./types"
+import type { BundlerGasEstimate, PimlicoGasPriceEstimate } from "./types"
 import { getFeeToken, transformOrderForContract, convertGasToFeeToken } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
 
@@ -115,8 +115,8 @@ export class GasEstimator {
 		const gasPrice = await this.ctx.dest.client.getGasPrice()
 		const priorityFeeBumpPercent = params.maxPriorityFeePerGasBumpPercent ?? 8
 		const maxFeeBumpPercent = params.maxFeePerGasBumpPercent ?? 10
-		const maxPriorityFeePerGas = gasPrice + (gasPrice * BigInt(priorityFeeBumpPercent)) / 100n
-		const maxFeePerGas = gasPrice + (gasPrice * BigInt(maxFeeBumpPercent)) / 100n
+		let maxPriorityFeePerGas = gasPrice + (gasPrice * BigInt(priorityFeeBumpPercent)) / 100n
+		let maxFeePerGas = gasPrice + (gasPrice * BigInt(maxFeeBumpPercent)) / 100n
 
 		const orderForEstimation = { ...order, session: solverAccountAddress }
 		const commitment = orderV2Commitment(orderForEstimation)
@@ -187,9 +187,35 @@ export class GasEstimator {
 					[bundlerUserOp, entryPointAddress, bundlerStateOverrides],
 				)
 
-				callGasLimit = (BigInt(gasEstimate.callGasLimit) * 105n) / 100n
+				callGasLimit = (BigInt(gasEstimate.callGasLimit) * 130n) / 100n
 				verificationGasLimit = (BigInt(gasEstimate.verificationGasLimit) * 105n) / 100n
 				preVerificationGas = (BigInt(gasEstimate.preVerificationGas) * 105n) / 100n
+
+				// If using a Pimlico bundler, refine gas price using pimlico_getUserOperationGasPrice
+				if (this.ctx.bundlerUrl?.toLowerCase().includes("pimlico.io")) {
+					try {
+						const pimlicoGasPrices = await this.crypto.sendBundler<PimlicoGasPriceEstimate>(
+							BundlerMethod.PIMLICO_GET_USER_OPERATION_GAS_PRICE,
+							[],
+						)
+
+						// Prefer fast quotes, then standard, then slow
+						const level =
+							pimlicoGasPrices.fast ?? pimlicoGasPrices.standard ?? pimlicoGasPrices.slow ?? null
+
+						if (level) {
+							const pimMaxFeePerGas = BigInt(level.maxFeePerGas)
+							const pimMaxPriorityFeePerGas = BigInt(level.maxPriorityFeePerGas)
+
+							maxFeePerGas = pimMaxFeePerGas + (pimMaxFeePerGas * BigInt(maxFeeBumpPercent)) / 100n
+							maxPriorityFeePerGas =
+								pimMaxPriorityFeePerGas +
+								(pimMaxPriorityFeePerGas * BigInt(priorityFeeBumpPercent)) / 100n
+						}
+					} catch (e) {
+						console.warn("Pimlico gas price fetch failed, using default gas price:", e)
+					}
+				}
 			} catch (e) {
 				console.warn("Bundler gas estimation failed, using fallback values:", e)
 			}

@@ -95,6 +95,7 @@ export class IntentsCoprocessor {
 			provider: new WsProvider(wsUrl),
 			typesBundle: {
 				spec: {
+					nexus: { hasher: keccakAsU8a },
 					gargantua: { hasher: keccakAsU8a },
 				},
 			},
@@ -156,7 +157,8 @@ export class IntentsCoprocessor {
 		if (this.substratePrivateKey.includes(" ")) {
 			return keyring.addFromMnemonic(this.substratePrivateKey)
 		}
-		const seedBytes = Buffer.from(this.substratePrivateKey, "hex")
+		const hex = this.substratePrivateKey.startsWith("0x") ? this.substratePrivateKey.slice(2) : this.substratePrivateKey
+		const seedBytes = Buffer.from(hex, "hex")
 		return keyring.addFromSeed(seedBytes)
 	}
 

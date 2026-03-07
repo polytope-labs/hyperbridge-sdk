@@ -807,13 +807,6 @@ export enum RequestKind {
  */
 export interface FillerConfig {
 	/**
-	 * Policy for determining confirmation requirements
-	 */
-	confirmationPolicy: {
-		getConfirmationBlocks: (chainId: number, amountUsd: number) => number
-	}
-
-	/**
 	 * Maximum number of orders to process concurrently
 	 */
 	maxConcurrentOrders?: number

@@ -21,6 +21,7 @@ export const BundlerMethod = {
 	ETH_SEND_USER_OPERATION: "eth_sendUserOperation",
 	ETH_GET_USER_OPERATION_RECEIPT: "eth_getUserOperationReceipt",
 	ETH_ESTIMATE_USER_OPERATION_GAS: "eth_estimateUserOperationGas",
+	PIMLICO_GET_USER_OPERATION_GAS_PRICE: "pimlico_getUserOperationGasPrice",
 } as const
 
 export type BundlerMethod = (typeof BundlerMethod)[keyof typeof BundlerMethod]
@@ -32,6 +33,22 @@ export interface BundlerGasEstimate {
 	callGasLimit: HexString
 	paymasterVerificationGasLimit?: HexString
 	paymasterPostOpGasLimit?: HexString
+}
+
+/** Response from Pimlico's pimlico_getUserOperationGasPrice */
+export interface PimlicoGasPriceEstimate {
+	slow: {
+		maxFeePerGas: HexString
+		maxPriorityFeePerGas: HexString
+	}
+	standard: {
+		maxFeePerGas: HexString
+		maxPriorityFeePerGas: HexString
+	}
+	fast: {
+		maxFeePerGas: HexString
+		maxPriorityFeePerGas: HexString
+	}
 }
 
 /** Event map for cancellation status updates */
