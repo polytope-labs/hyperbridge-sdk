@@ -118,12 +118,13 @@ describe.skip("Filler V2 FX - Polygon mainnet same-chain swap", () => {
 
 		let result = await gen.next()
 		if (result.value && "calldata" in result.value) {
-			const { calldata, sessionPrivateKey } = result.value
+			const { calldata, feesInWei, sessionPrivateKey } = result.value
 
 			const signedTx = (await polygonWalletClient.signTransaction(
 				(await polygonPublicClient.prepareTransactionRequest({
 					to: polygonIntentGatewayV2.address,
 					data: calldata,
+					value: feesInWei,
 					account: polygonWalletClient.account!,
 					chain: polygonWalletClient.chain,
 				})) as any,

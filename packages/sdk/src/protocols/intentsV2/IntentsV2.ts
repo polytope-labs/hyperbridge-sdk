@@ -136,10 +136,12 @@ export class IntentsV2 {
 			pollIntervalMs?: number
 		},
 	): AsyncGenerator<
-		{ calldata: HexString; sessionPrivateKey: HexString } | IntentOrderStatusUpdate,
+		{ calldata: HexString; feesInWei?: bigint; sessionPrivateKey: HexString } | IntentOrderStatusUpdate,
 		void,
 		HexString
 	> {
+		let feesInWei: bigint | undefined
+
 		if (!order.fees || order.fees === 0n) {
 			const estimate = await this.gasEstimator.estimateFillOrderV2({
 				order,
@@ -147,7 +149,9 @@ export class IntentsV2 {
 				maxFeePerGasBumpPercent: options?.maxFeePerGasBumpPercent,
 			})
 
-			order.fees = estimate.totalGasInFeeToken + (estimate.totalGasInFeeToken * 2n) / 100n
+			// Solvers using the same estimate algo will have tighter bounds, so we add a buffer.
+			feesInWei = estimate.totalGasCostWei + (estimate.totalGasCostWei * 2n) / 100n
+			order.fees = estimate.totalGasInFeeToken + (estimate.totalGasInFeeToken * 1n) / 100n
 		}
 
 		const placeOrderGen = this.orderPlacer.placeOrder(order, graffiti)
@@ -157,7 +161,7 @@ export class IntentsV2 {
 		}
 		const { calldata, sessionPrivateKey } = placeOrderFirst.value
 
-		const signedTransaction = yield { calldata, sessionPrivateKey }
+		const signedTransaction = yield { calldata, feesInWei, sessionPrivateKey }
 
 		const placeOrderSecond = await placeOrderGen.next(signedTransaction)
 		if (placeOrderSecond.done === false) {

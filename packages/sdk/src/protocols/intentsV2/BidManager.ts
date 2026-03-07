@@ -1,4 +1,4 @@
-import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs, erc20Abi, maxUint256 } from "viem"
+import { encodeFunctionData, decodeFunctionData, concat, keccak256, parseEventLogs } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 import { ADDRESS_ZERO, bytes32ToBytes20, hexToString, retryPromise } from "@/utils"
@@ -16,7 +16,6 @@ import type {
 } from "@/types"
 import type { IntentsV2Context } from "./types"
 import { BundlerMethod } from "./types"
-import { transformOrderForContract } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
 import Decimal from "decimal.js"
 
@@ -132,7 +131,7 @@ export class BidManager {
 			}
 
 			try {
-				await this.simulate(order, selectOptions, bidWithOptions.options, solverAddress, intentGatewayV2Address)
+				await this.simulate(bidWithOptions.bid, selectOptions, intentGatewayV2Address)
 				selectedBid = bidWithOptions
 				sessionSignature = signature
 				break
@@ -298,32 +297,11 @@ export class BidManager {
 	}
 
 	private async simulate(
-		order: OrderV2,
+		bid: FillerBid,
 		selectOptions: SelectOptions,
-		fillOptions: FillOptionsV2,
-		solverAddress: HexString,
 		intentGatewayV2Address: HexString,
 	): Promise<void> {
-		const nativeOutputValue = order.output.assets
-			.filter((asset) => bytes32ToBytes20(asset.token) === ADDRESS_ZERO)
-			.reduce((sum, asset) => sum + asset.amount, 0n)
-		const totalNativeValue = nativeOutputValue + fillOptions.nativeDispatchFee
-
-		const calls: ERC7821Call[] = []
-
-		for (const asset of fillOptions.outputs) {
-			const addr = bytes32ToBytes20(asset.token)
-			if (addr === ADDRESS_ZERO) continue
-			calls.push({
-				target: addr as HexString,
-				value: 0n,
-				data: encodeFunctionData({
-					abi: erc20Abi,
-					functionName: "approve",
-					args: [intentGatewayV2Address, asset.amount],
-				}) as HexString,
-			})
-		}
+		const solverAddress = bid.userOp.sender
 
 		const selectCalldata = encodeFunctionData({
 			abi: IntentGatewayV2ABI,
@@ -331,25 +309,10 @@ export class BidManager {
 			args: [selectOptions],
 		}) as HexString
 
-		const fillOrderCalldata = encodeFunctionData({
-			abi: IntentGatewayV2ABI,
-			functionName: "fillOrder",
-			args: [transformOrderForContract(order), fillOptions],
-		}) as HexString
-
-		calls.push(
-			{
-				target: intentGatewayV2Address,
-				value: 0n,
-				data: selectCalldata,
-			},
-			{
-				target: intentGatewayV2Address,
-				value: totalNativeValue,
-				data: fillOrderCalldata,
-			},
-		)
-
+		const calls: ERC7821Call[] = [
+			{ target: intentGatewayV2Address, value: 0n, data: selectCalldata },
+			{ target: solverAddress, value: 0n, data: bid.userOp.callData },
+		]
 		const batchedCalldata = this.crypto.encodeERC7821Execute(calls)
 
 		try {
@@ -357,7 +320,7 @@ export class BidManager {
 				account: solverAddress,
 				to: solverAddress,
 				data: batchedCalldata,
-				value: totalNativeValue,
+				value: 0n,
 			})
 		} catch (e: unknown) {
 			throw new Error(`Simulation failed: ${e instanceof Error ? e.message : String(e)}`)
