@@ -965,7 +965,7 @@ type OrderStatusMetadata @entity {
 Represents an order placed through the IntentGatewayV2 contract.
 This entity tracks cross-chain orders for V2 of the IntentGateway.
 """
-type OrderV2 @entity {
+type IOrderV2 @entity {
 	"""
 	Unique identifier for the order (commitment)
 	"""
@@ -1083,7 +1083,7 @@ type OrderV2 @entity {
 }
 
 """
-Represents a predispatch asset in an OrderV2
+Represents a predispatch asset in an IOrderV2
 """
 type OrderV2PredispatchAsset @entity {
 	"""
@@ -1094,7 +1094,7 @@ type OrderV2PredispatchAsset @entity {
 	"""
 	The order this asset belongs to
 	"""
-	order: OrderV2!
+	order: IOrderV2!
 
 	"""
 	Token address (bytes32 format)
@@ -1113,7 +1113,7 @@ type OrderV2PredispatchAsset @entity {
 }
 
 """
-Represents an input asset in an OrderV2
+Represents an input asset in an IOrderV2
 """
 type OrderV2InputAsset @entity {
 	"""
@@ -1124,7 +1124,7 @@ type OrderV2InputAsset @entity {
 	"""
 	The order this asset belongs to
 	"""
-	order: OrderV2!
+	order: IOrderV2!
 
 	"""
 	Token address (bytes32 format)
@@ -1143,7 +1143,7 @@ type OrderV2InputAsset @entity {
 }
 
 """
-Represents an output asset in an OrderV2
+Represents an output asset in an IOrderV2
 """
 type OrderV2OutputAsset @entity {
 	"""
@@ -1154,7 +1154,7 @@ type OrderV2OutputAsset @entity {
 	"""
 	The order this asset belongs to
 	"""
-	order: OrderV2!
+	order: IOrderV2!
 
 	"""
 	Token address (bytes32 format)
@@ -1178,11 +1178,11 @@ type OrderV2OutputAsset @entity {
 }
 
 """
-Metadata about the status of an OrderV2
+Metadata about the status of an IOrderV2
 """
 type OrderV2StatusMetadata @entity {
 	"""
-	The ID of the OrderV2StatusMetadata
+	The ID of the status metadata
 	"""
 	id: ID!
 
@@ -1214,7 +1214,7 @@ type OrderV2StatusMetadata @entity {
 	"""
 	The order that owns this status change
 	"""
-	order: OrderV2
+	order: IOrderV2
 
 	"""
 	The filler of the order if the order has been filled
@@ -1228,7 +1228,7 @@ type OrderV2StatusMetadata @entity {
 }
 
 """
-Represents a partial fill event for an OrderV2. Each record corresponds to a single on-chain PartialFill emission.
+Represents a partial fill event for an IOrderV2. Each record corresponds to a single on-chain PartialFill emission.
 """
 type OrderV2PartialFill @entity {
 	"""
@@ -1239,7 +1239,7 @@ type OrderV2PartialFill @entity {
 	"""
 	The order this partial fill belongs to
 	"""
-	order: OrderV2!
+	order: IOrderV2!
 
 	"""
 	The chain on which the partial fill occurred
@@ -1283,7 +1283,7 @@ type OrderV2PartialFill @entity {
 }
 
 """
-Represents an input asset released from escrow in an OrderV2 partial fill
+Represents an input asset released from escrow in an IOrderV2 partial fill
 """
 type OrderV2PartialFillInputAsset @entity {
 	"""
@@ -1313,7 +1313,7 @@ type OrderV2PartialFillInputAsset @entity {
 }
 
 """
-Represents an output asset delivered in an OrderV2 partial fill
+Represents an output asset delivered in an IOrderV2 partial fill
 """
 type OrderV2PartialFillOutputAsset @entity {
 	"""

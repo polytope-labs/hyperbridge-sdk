@@ -6,7 +6,7 @@ import { bytes32ToBytes20 } from "@/utils/transfer.helpers"
 
 import { OrderStatus, ProtocolParticipantType, PointsActivityType } from "@/configs/src/types"
 import { ERC6160Ext20Abi__factory } from "@/configs/src/types/contracts"
-import { OrderV2 as OrderV2Placed } from "@/configs/src/types/models/OrderV2"
+import { IOrderV2 as OrderV2Placed } from "@/configs/src/types/models/IOrderV2"
 import { OrderV2StatusMetadata } from "@/configs/src/types/models/OrderV2StatusMetadata"
 import { OrderV2PredispatchAsset } from "@/configs/src/types/models/OrderV2PredispatchAsset"
 import { OrderV2InputAsset } from "@/configs/src/types/models/OrderV2InputAsset"
