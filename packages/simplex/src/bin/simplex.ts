@@ -14,6 +14,7 @@ import {
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
 	LoggingConfig,
+	EntryPointDepositConfig,
 } from "@/services/FillerConfigService"
 import { ChainClientManager } from "@/services/ChainClientManager"
 import { ContractInteractionService } from "@/services/ContractInteractionService"
@@ -246,6 +247,7 @@ interface FillerTomlConfig {
 		hyperbridgeWsUrl?: string
 		entryPointAddress?: string
 		solverAccountContractAddress?: string
+		entryPointDeposit?: EntryPointDepositConfig
 	}
 	strategies: StrategyConfig[]
 	chains: (UserProvidedChainConfig & { bundlerUrl?: string })[]
@@ -308,6 +310,7 @@ program
 				entryPointAddress: config.simplex.entryPointAddress,
 				dataDir: options.dataDir,
 				rebalancing: config.rebalancing,
+				entryPointDeposit: config.simplex.entryPointDeposit,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)

@@ -39,6 +39,22 @@ bundlerUrl = ""
 # "56" = false  # BSC Mainnet - normal execution
 # "137" = true  # Polygon Mainnet - watch only
 
+# EntryPoint deposit configuration for solver account prefunding (ERC-4337)
+# When solver selection is active, the solver account needs native token deposits
+# on the EntryPoint contract to cover UserOperation gas costs.
+# Target native token balance per chain on the EntryPoint.
+# Deposits are triggered when balance falls below thresholdFraction * target.
+[simplex.entryPointDeposit]
+thresholdFraction = 0.5    # Trigger deposit when below 50% of target (default: 0.2)
+
+[simplex.entryPointDeposit.targetBalances]
+"1" = "0.05"       # Ethereum: 0.05 ETH
+"56" = "0.5"       # BSC: 0.5 BNB
+"42161" = "0.01"   # Arbitrum: 0.01 ETH
+"8453" = "0.01"    # Base: 0.01 ETH
+"137" = "50"       # Polygon: 50 POL
+"130" = "0.01"     # Unichain: 0.01 ETH
+
 # Logging configuration
 [simplex.logging]
 level = "debug"  # Options: trace, debug, info, warn, error

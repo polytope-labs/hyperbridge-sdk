@@ -9,6 +9,7 @@ import {
 	type HexString,
 	IntentsCoprocessor,
 } from "@hyperbridge/sdk"
+import { formatEther } from "viem"
 import pQueue from "p-queue"
 import { ChainClientManager, ContractInteractionService, DelegationService, RebalancingService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
@@ -405,6 +406,10 @@ export class IntentFiller {
 			)
 
 			try {
+				if (solverSelectionActive) {
+					await this.ensureSolverDeposit(order.destination)
+				}
+
 				const hyperbridgeService = solverSelectionActive ? await this.hyperbridge : undefined
 				const result = await bestStrategy.executeOrder(order, hyperbridgeService)
 				this.logger.info({ orderId: order.id, result }, "Order execution completed")
@@ -417,5 +422,46 @@ export class IntentFiller {
 				throw error
 			}
 		})
+	}
+
+	/**
+	 * Ensures the solver account has sufficient deposit on the ERC-4337 EntryPoint.
+	 * If the balance is below the configured threshold, tops up to the target amount.
+	 */
+	private async ensureSolverDeposit(chain: string): Promise<void> {
+		const chainId = getChainId(chain)
+		if (chainId == null) return
+
+		const targetBalance = this.configService.getEntryPointDepositTarget(chainId)
+		if (targetBalance == null) {
+			this.logger.debug({ chain }, "No EntryPoint deposit target configured for chain, skipping deposit check")
+			return
+		}
+
+		const currentBalance = await this.contractService.getSolverEntryPointBalance(chain)
+		const thresholdFraction = this.configService.getEntryPointDepositThresholdFraction()
+		const threshold = (targetBalance * BigInt(Math.floor(thresholdFraction * 1000))) / 1000n
+
+		this.logger.debug(
+			{
+				chain,
+				currentBalance: formatEther(currentBalance),
+				threshold: formatEther(threshold),
+				target: formatEther(targetBalance),
+			},
+			"EntryPoint deposit check",
+		)
+
+		if (currentBalance >= threshold) {
+			return
+		}
+
+		const depositAmount = targetBalance - currentBalance
+		this.logger.info(
+			{ chain, depositAmount: formatEther(depositAmount) },
+			"Solver EntryPoint balance below threshold, depositing",
+		)
+
+		await this.contractService.depositToEntryPoint(chain, depositAmount)
 	}
 }

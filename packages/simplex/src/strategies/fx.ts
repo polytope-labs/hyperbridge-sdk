@@ -242,23 +242,36 @@ export class FXFiller implements FillerStrategy {
 
 				const finalOutputAmount = balance > policyMaxOutput ? policyMaxOutput : balance
 
-				if (finalOutputAmount === 0n) {
-					this.logger.info(
-						{
-							orderId: order.id,
-							token: output.token,
-							fillerBalance: balance.toString(),
-						},
-						"Skipping leg: no available balance for required output token",
-					)
-					continue
-				}
+			if (finalOutputAmount === 0n) {
+				this.logger.info(
+					{
+						orderId: order.id,
+						token: output.token,
+						fillerBalance: balance.toString(),
+					},
+					"Skipping leg: no available balance for required output token",
+				)
+				continue
+			}
 
-				// Decrement remaining balance for this token so repeated outputs share the same pool.
-				const remaining = balance - finalOutputAmount
-				balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
+			if (finalOutputAmount < output.amount) {
+				this.logger.info(
+					{
+						orderId: order.id,
+						token: output.token,
+						fillerOutput: finalOutputAmount.toString(),
+						userRequested: output.amount.toString(),
+					},
+					"Skipping order: filler output below user's requested minimum",
+				)
+				return 0
+			}
 
-				fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
+			// Decrement remaining balance for this token so repeated outputs share the same pool.
+			const remaining = balance - finalOutputAmount
+			balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
+
+			fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
 
 				if (remainingUsd.lte(0)) {
 					break
@@ -290,7 +303,9 @@ export class FXFiller implements FillerStrategy {
 					orderValueUsdCapped: cappedOrderUsd.toString(),
 					maxOrderUsd: this.maxOrderUsd.toString(),
 					bidPrice: bidPrice.toString(),
-				askPrice: askPrice.toString(),
+					askPrice: askPrice.toString(),
+					orderFees: formatUnits(order.fees, feeTokenDecimals),
+					estimatedFees: formatUnits(totalCostInSourceFeeToken, feeTokenDecimals),
 					feeProfit: formatUnits(feeProfit, feeTokenDecimals),
 					profitable: feeProfit > 0n,
 				},

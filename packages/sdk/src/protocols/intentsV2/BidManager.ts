@@ -75,6 +75,8 @@ export class BidManager {
 	async selectBid(order: OrderV2, bids: FillerBid[], sessionPrivateKey?: HexString): Promise<SelectBidResult> {
 		const commitment = order.id as HexString
 		const sessionKeyAddress = order.session as HexString
+		console.log(`[BidManager] selectBid called for commitment=${commitment}, received ${bids.length} bid(s)`)
+
 		const sessionKeyData = sessionPrivateKey
 			? { privateKey: sessionPrivateKey as HexString }
 			: await this.ctx.sessionKeyStorage.getSessionKeyByAddress(sessionKeyAddress)
@@ -91,6 +93,7 @@ export class BidManager {
 		}
 
 		const sortedBids = await this.validateAndSortBids(bids, order)
+		console.log(`[BidManager] ${sortedBids.length}/${bids.length} bid(s) passed validation and sorting`)
 		if (sortedBids.length === 0) {
 			throw new Error("No valid bids found")
 		}
@@ -111,8 +114,11 @@ export class BidManager {
 		let selectedBid: { bid: FillerBid; options: FillOptionsV2 } | null = null
 		let sessionSignature: HexString | null = null
 
-		for (const bidWithOptions of sortedBids) {
+		console.log(`[BidManager] Simulating ${sortedBids.length} sorted bid(s) to find a valid one`)
+		for (let idx = 0; idx < sortedBids.length; idx++) {
+			const bidWithOptions = sortedBids[idx]
 			const solverAddress = bidWithOptions.bid.userOp.sender
+			console.log(`[BidManager] Simulating bid ${idx + 1}/${sortedBids.length} from solver=${solverAddress}`)
 
 			const signature = await this.crypto.signSolverSelection(
 				commitment,
@@ -121,6 +127,7 @@ export class BidManager {
 				sessionKeyData.privateKey,
 			)
 			if (!signature) {
+				console.warn(`[BidManager] Bid ${idx + 1}: failed to sign solver selection, skipping`)
 				continue
 			}
 
@@ -132,23 +139,21 @@ export class BidManager {
 
 			try {
 				await this.simulate(bidWithOptions.bid, selectOptions, intentGatewayV2Address)
+				console.log(`[BidManager] Bid ${idx + 1} from solver=${solverAddress}: simulation PASSED`)
 				selectedBid = bidWithOptions
 				sessionSignature = signature
 				break
 			} catch (err) {
-				console.debug(
-					"Bid simulation failed",
-					JSON.stringify({
-						commitment,
-						solver: solverAddress,
-						error: err instanceof Error ? err.message : String(err),
-					}),
+				console.warn(
+					`[BidManager] Bid ${idx + 1} from solver=${solverAddress}: simulation FAILED: ` +
+						`${err instanceof Error ? err.message : String(err)}`,
 				)
 				continue
 			}
 		}
 
 		if (!selectedBid || !sessionSignature) {
+			console.error(`[BidManager] All ${sortedBids.length} bid(s) failed simulation for commitment=${commitment}`)
 			throw new Error("No bids passed simulation")
 		}
 
@@ -245,6 +250,7 @@ export class BidManager {
 		const decodedBids = this.decodeBids(bids)
 
 		if (outputs.length <= 1) {
+			console.log(`[BidManager] Using single-output sorting (1 output asset)`)
 			return this.sortSingleOutput(decodedBids, outputs[0])
 		}
 
@@ -252,9 +258,11 @@ export class BidManager {
 		const allStables = outputs.every((o) => this.isStableToken(bytes32ToBytes20(o.token), chainId))
 
 		if (allStables) {
+			console.log(`[BidManager] Using all-stables sorting (${outputs.length} stable output assets)`)
 			return this.sortAllStables(decodedBids, outputs, chainId)
 		}
 
+		console.log(`[BidManager] Using mixed-output sorting (${outputs.length} output assets, some non-stable)`)
 		return this.sortMixedOutputs(decodedBids, outputs, chainId)
 	}
 
@@ -264,8 +272,11 @@ export class BidManager {
 			const fillOptions = this.decodeBidFillOptions(bid)
 			if (fillOptions) {
 				result.push({ bid, options: fillOptions })
+			} else {
+				console.warn(`[BidManager] Failed to decode fillOptions from bid by solver=${bid.userOp.sender}`)
 			}
 		}
+		console.log(`[BidManager] Decoded ${result.length}/${bids.length} bid(s) successfully`)
 		return result
 	}
 
@@ -335,13 +346,38 @@ export class BidManager {
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
 		requiredAsset: TokenInfoV2,
 	): { bid: FillerBid; options: FillOptionsV2 }[] {
+		const requiredAmount = new Decimal(requiredAsset.amount.toString())
+		console.log(
+			`[BidManager] sortSingleOutput: required token=${requiredAsset.token}, amount=${requiredAmount.toString()}`,
+		)
+
 		const validBids: { bid: FillerBid; options: FillOptionsV2; amount: bigint }[] = []
 
 		for (const { bid, options } of decodedBids) {
 			const bidOutput = options.outputs[0]
 			const bidAmount = new Decimal(bidOutput.amount.toString())
-			const requiredAmount = new Decimal(requiredAsset.amount.toString())
-			if (bidAmount.lt(requiredAmount)) continue
+
+			if (bidOutput.token.toLowerCase() !== requiredAsset.token.toLowerCase()) {
+				console.warn(
+					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: token mismatch ` +
+						`(bid=${bidOutput.token}, required=${requiredAsset.token})`,
+				)
+				continue
+			}
+
+			if (bidAmount.lt(requiredAmount)) {
+				console.warn(
+					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: amount too low ` +
+						`(bid=${bidAmount.toString()}, required=${requiredAmount.toString()}, ` +
+						`shortfall=${requiredAmount.minus(bidAmount).toString()})`,
+				)
+				continue
+			}
+
+			console.log(
+				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: amount=${bidAmount.toString()} ` +
+					`(surplus=${bidAmount.minus(requiredAmount).toString()})`,
+			)
 			validBids.push({ bid, options, amount: bidOutput.amount })
 		}
 
@@ -364,11 +400,22 @@ export class BidManager {
 		chainId: string,
 	): { bid: FillerBid; options: FillOptionsV2 }[] {
 		const requiredUsd = this.computeStablesUsdValue(orderOutputs, chainId)
+		console.log(`[BidManager] sortAllStables: required USD value=${requiredUsd.toString()}`)
+
 		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {
 			const bidUsd = this.computeStablesUsdValue(options.outputs, chainId)
-			if (bidUsd === null || bidUsd.lt(requiredUsd)) continue
+			if (bidUsd === null || bidUsd.lt(requiredUsd)) {
+				console.warn(
+					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: USD value too low ` +
+						`(bid=${bidUsd?.toString() ?? "null"}, required=${requiredUsd.toString()})`,
+				)
+				continue
+			}
+			console.log(
+				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: USD value=${bidUsd.toString()}`,
+			)
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -389,15 +436,25 @@ export class BidManager {
 		const requiredUsd = await this.computeOutputsUsdValue(orderOutputs, chainId)
 
 		if (requiredUsd === null) {
-			console.warn("BidManager: output tokens unpriceable, falling back to raw-amount sort")
+			console.warn("[BidManager] sortMixedOutputs: output tokens unpriceable, falling back to raw-amount sort")
 			return this.sortByRawAmountFallback(decodedBids, orderOutputs)
 		}
 
+		console.log(`[BidManager] sortMixedOutputs: required USD value=${requiredUsd.toString()}`)
 		const validBids: { bid: FillerBid; options: FillOptionsV2; usdValue: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {
 			const bidUsd = await this.computeOutputsUsdValue(options.outputs, chainId)
-			if (bidUsd === null || bidUsd.lt(requiredUsd)) continue
+			if (bidUsd === null || bidUsd.lt(requiredUsd)) {
+				console.warn(
+					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: mixed USD value too low ` +
+						`(bid=${bidUsd?.toString() ?? "unpriceable"}, required=${requiredUsd.toString()})`,
+				)
+				continue
+			}
+			console.log(
+				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: mixed USD value=${bidUsd.toString()}`,
+			)
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -415,24 +472,38 @@ export class BidManager {
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
 		orderOutputs: TokenInfoV2[],
 	): { bid: FillerBid; options: FillOptionsV2 }[] {
+		console.log(`[BidManager] sortByRawAmountFallback: checking ${decodedBids.length} bid(s) against ${orderOutputs.length} required output(s)`)
 		const validBids: { bid: FillerBid; options: FillOptionsV2; totalSpread: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {
 			let valid = true
 			let totalSpread = new Decimal(0)
+			let rejectReason = ""
 
 			for (const required of orderOutputs) {
 				const matching = options.outputs.find((o) => o.token.toLowerCase() === required.token.toLowerCase())
-				if (!matching || matching.amount < required.amount) {
+				if (!matching) {
 					valid = false
+					rejectReason = `missing output token=${required.token}`
+					break
+				}
+				if (matching.amount < required.amount) {
+					valid = false
+					rejectReason = `token=${required.token} amount too low (bid=${matching.amount.toString()}, required=${required.amount.toString()})`
 					break
 				}
 				totalSpread = totalSpread.plus(
 					new Decimal(matching.amount.toString()).minus(required.amount.toString()),
 				)
 			}
-			if (!valid) continue
+			if (!valid) {
+				console.warn(`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED (fallback): ${rejectReason}`)
+				continue
+			}
 
+			console.log(
+				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED (fallback): totalSpread=${totalSpread.toString()}`,
+			)
 			validBids.push({ bid, options, totalSpread })
 		}
 

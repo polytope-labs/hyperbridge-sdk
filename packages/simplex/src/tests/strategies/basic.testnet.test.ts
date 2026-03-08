@@ -500,6 +500,10 @@ async function setUp() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
+		entryPointDeposit: {
+			targetBalances: { "97": "0.001", "80002": "0.1" },
+			thresholdFraction: 0.2,
+		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -566,6 +570,10 @@ async function setUpTron() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_GARGANTUA,
 		substratePrivateKey: process.env.SECRET_PHRASE,
+		entryPointDeposit: {
+			targetBalances: { "80002": "0.1" },
+			thresholdFraction: 0.2,
+		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)

@@ -9,4 +9,18 @@ export const ENTRYPOINT_ABI = [
 		stateMutability: "view",
 		type: "function",
 	},
+	{
+		inputs: [{ name: "account", type: "address" }],
+		name: "balanceOf",
+		outputs: [{ name: "", type: "uint256" }],
+		stateMutability: "view",
+		type: "function",
+	},
+	{
+		inputs: [{ name: "account", type: "address" }],
+		name: "depositTo",
+		outputs: [],
+		stateMutability: "payable",
+		type: "function",
+	},
 ] as const

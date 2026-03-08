@@ -1,4 +1,4 @@
-import { toHex, formatUnits, encodeFunctionData, maxUint256 } from "viem"
+import { toHex, formatUnits, encodeFunctionData, maxUint256, formatEther } from "viem"
 import { privateKeyToAccount, privateKeyToAddress } from "viem/accounts"
 import {
 	ADDRESS_ZERO,
@@ -327,6 +327,65 @@ export class ContractInteractionService {
 
 		this.cacheService.setSolverSelection(chain, params.solverSelection)
 		return params.solverSelection
+	}
+
+	/**
+	 * Reads the solver account's deposit balance on the ERC-4337 EntryPoint.
+	 */
+	async getSolverEntryPointBalance(chain: string): Promise<bigint> {
+		const entryPointAddress = this.configService.getEntryPointAddress(chain)
+		if (!entryPointAddress) {
+			throw new Error(`EntryPoint not configured for chain ${chain}`)
+		}
+
+		const client = this.clientManager.getPublicClient(chain)
+		return retryPromise(
+			() =>
+				client.readContract({
+					address: entryPointAddress,
+					abi: ENTRYPOINT_ABI,
+					functionName: "balanceOf",
+					args: [this.solverAccountAddress],
+				}),
+			{ maxRetries: 3, backoffMs: 250, logMessage: "Failed to read EntryPoint balance" },
+		)
+	}
+
+	/**
+	 * Deposits native tokens to the ERC-4337 EntryPoint on behalf of the solver account.
+	 * @returns The transaction hash of the deposit.
+	 */
+	async depositToEntryPoint(chain: string, amount: bigint): Promise<HexString> {
+		const entryPointAddress = this.configService.getEntryPointAddress(chain)
+		if (!entryPointAddress) {
+			throw new Error(`EntryPoint not configured for chain ${chain}`)
+		}
+
+		const walletClient = this.clientManager.getWalletClient(chain)
+		const publicClient = this.clientManager.getPublicClient(chain)
+
+		this.logger.info(
+			{ chain, solver: this.solverAccountAddress, amount: formatEther(amount) },
+			"Depositing to EntryPoint",
+		)
+
+		const hash = await walletClient.writeContract({
+			address: entryPointAddress,
+			abi: ENTRYPOINT_ABI,
+			functionName: "depositTo",
+			args: [this.solverAccountAddress],
+			value: amount,
+			chain: walletClient.chain,
+			account: this.account,
+		})
+
+		const receipt = await publicClient.waitForTransactionReceipt({ hash })
+		if (receipt.status !== "success") {
+			throw new Error(`EntryPoint deposit transaction reverted: ${hash}`)
+		}
+
+		this.logger.info({ chain, txHash: hash, amount: formatEther(amount) }, "EntryPoint deposit confirmed")
+		return hash as HexString
 	}
 
 	/**

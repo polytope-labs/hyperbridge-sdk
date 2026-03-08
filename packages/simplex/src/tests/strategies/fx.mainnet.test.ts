@@ -53,7 +53,13 @@ describe.skip("Filler V2 FX - Polygon mainnet same-chain swap", () => {
 			contractService,
 		} = await setUpMainnetFx()
 
-		const intentFiller = createFxOnlyIntentFiller(chainConfigs, fillerConfig, chainConfigService, contractService)
+		const intentFiller = createFxOnlyIntentFiller(
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			contractService,
+			polygonMainnetId,
+		)
 		await intentFiller.initialize()
 		intentFiller.start()
 
@@ -169,6 +175,276 @@ describe.skip("Filler V2 FX - Polygon mainnet same-chain swap", () => {
 	}, 600_000)
 })
 
+describe.skip("Filler V2 FX - Base mainnet same-chain swap", () => {
+	it("Should place USDC->EXT order on Base and fill on Base using FX strategy only", async () => {
+		const {
+			baseIntentGatewayV2,
+			basePublicClient,
+			baseWalletClient,
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			baseMainnetId,
+			contractService,
+		} = await setUpMainnetFxBase()
+
+		const intentFiller = createFxOnlyIntentFiller(
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			contractService,
+			baseMainnetId,
+		)
+		await intentFiller.initialize()
+		intentFiller.start()
+
+		const sourceUsdc = chainConfigService.getUsdcAsset(baseMainnetId)
+		const destExt = chainConfigService.getExtAsset(baseMainnetId)!
+
+		const sourceUsdcDecimals = await contractService.getTokenDecimals(sourceUsdc, baseMainnetId)
+		const destExtDecimals = await contractService.getTokenDecimals(destExt, baseMainnetId)
+		const amountIn = parseUnits("0.01", sourceUsdcDecimals)
+
+		const inputs: TokenInfoV2[] = [{ token: bytes20ToBytes32(sourceUsdc), amount: amountIn }]
+
+		const requestedExtOut = parseUnits("0.006", destExtDecimals)
+		const outputs: TokenInfoV2[] = [{ token: bytes20ToBytes32(destExt), amount: requestedExtOut }]
+
+		const beneficiaryAddress = "0xdab14BdBF23d10F062eAA1a527cE2e9354E9e07F"
+		const beneficiary = bytes20ToBytes32(beneficiaryAddress)
+		const user = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
+
+		let order: OrderV2 = {
+			user: bytes20ToBytes32(user),
+			source: toHex(baseMainnetId),
+			destination: toHex(baseMainnetId),
+			deadline: 12545151568145n,
+			nonce: 0n,
+			fees: 0n,
+			session: "0x0000000000000000000000000000000000000000" as HexString,
+			predispatch: { assets: [], call: "0x" as HexString },
+			inputs,
+			output: { beneficiary, assets: outputs, call: "0x" as HexString },
+		}
+
+		const intentsCoprocessor = await IntentsCoprocessor.connect(
+			process.env.HYPERBRIDGE_NEXUS!,
+			process.env.SECRET_PHRASE!,
+		)
+
+		const baseEvmChain = new EvmChain({
+			chainId: 8453,
+			host: chainConfigService.getHostAddress(baseMainnetId),
+			rpcUrl: chainConfigService.getRpcUrl(baseMainnetId),
+		})
+
+		const feeToken = await contractService.getFeeTokenWithDecimals(baseMainnetId)
+		await approveTokens(baseWalletClient, basePublicClient, feeToken.address, baseIntentGatewayV2.address)
+		await approveTokens(baseWalletClient, basePublicClient, sourceUsdc, baseIntentGatewayV2.address)
+
+		const destBundlerUrl = chainConfigService.getBundlerUrl(baseMainnetId)
+		const userSdkHelper = await IntentsV2.create(baseEvmChain, baseEvmChain, intentsCoprocessor, destBundlerUrl)
+
+		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, {
+			bidTimeoutMs: 600_000_00,
+			pollIntervalMs: 5_000,
+		})
+
+		let result = await gen.next()
+		if (result.value && "calldata" in result.value) {
+			const { calldata, feesInWei, sessionPrivateKey } = result.value
+
+			const signedTx = (await baseWalletClient.signTransaction(
+				(await basePublicClient.prepareTransactionRequest({
+					to: baseIntentGatewayV2.address,
+					data: calldata,
+					value: feesInWei,
+					account: baseWalletClient.account!,
+					chain: baseWalletClient.chain,
+				})) as any,
+			)) as HexString
+			result = await gen.next(signedTx)
+		}
+
+		let userOpHash: HexString | undefined
+		let selectedSolver: HexString | undefined
+
+		while (!result.done) {
+			if (result.value && "status" in result.value) {
+				const status = result.value
+				console.log("status", status)
+
+				if (status.status === "BID_SELECTED") {
+					selectedSolver = status.metadata.selectedSolver as HexString
+					userOpHash = status.metadata.userOpHash as HexString
+				}
+				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
+					console.log("Transaction hash:", status.metadata.transactionHash)
+				}
+				if (status.status === "FAILED") {
+					throw new Error(`Order execution failed: ${status.metadata.error}`)
+				}
+			}
+			result = await gen.next()
+		}
+
+		expect(userOpHash).toBeDefined()
+		expect(selectedSolver).toBeDefined()
+
+		const isFilled = await pollForOrderFilled(
+			order.id as HexString,
+			basePublicClient,
+			chainConfigService.getIntentGatewayV2Address(baseMainnetId),
+		)
+		expect(isFilled).toBe(true)
+
+		await new Promise((resolve) => setTimeout(resolve, 10000000))
+
+		await intentFiller.stop()
+		// await intentsCoprocessor.disconnect()
+	}, 600_000)
+})
+
+describe.skip("Filler V2 FX - Arbitrum mainnet same-chain swap", () => {
+	it("Should place EXT->USDC order on Arbitrum and fill on Arbitrum using FX strategy only", async () => {
+		const {
+			arbitrumIntentGatewayV2,
+			arbitrumPublicClient,
+			arbitrumWalletClient,
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			arbitrumMainnetId,
+			contractService,
+		} = await setUpMainnetFxArbitrum()
+
+		const intentFiller = createFxOnlyIntentFiller(
+			chainConfigs,
+			fillerConfig,
+			chainConfigService,
+			contractService,
+			arbitrumMainnetId,
+		)
+		await intentFiller.initialize()
+		intentFiller.start()
+
+		const sourceExt = chainConfigService.getExtAsset(arbitrumMainnetId)!
+		const destUsdc = chainConfigService.getUsdcAsset(arbitrumMainnetId)
+
+		const sourceExtDecimals = await contractService.getTokenDecimals(sourceExt, arbitrumMainnetId)
+		const destUsdcDecimals = await contractService.getTokenDecimals(destUsdc, arbitrumMainnetId)
+		const amountIn = parseUnits("100", sourceExtDecimals)
+
+		const inputs: TokenInfoV2[] = [{ token: bytes20ToBytes32(sourceExt), amount: amountIn }]
+
+		const requestedUsdcOut = parseUnits("0.01", destUsdcDecimals)
+		const outputs: TokenInfoV2[] = [{ token: bytes20ToBytes32(destUsdc), amount: requestedUsdcOut }]
+
+		const beneficiaryAddress = "0xdab14BdBF23d10F062eAA1a527cE2e9354E9e07F"
+		const beneficiary = bytes20ToBytes32(beneficiaryAddress)
+		const user = privateKeyToAccount(process.env.PRIVATE_KEY as HexString).address
+
+		let order: OrderV2 = {
+			user: bytes20ToBytes32(user),
+			source: toHex(arbitrumMainnetId),
+			destination: toHex(arbitrumMainnetId),
+			deadline: 12545151568145n,
+			nonce: 0n,
+			fees: 0n,
+			session: "0x0000000000000000000000000000000000000000" as HexString,
+			predispatch: { assets: [], call: "0x" as HexString },
+			inputs,
+			output: { beneficiary, assets: outputs, call: "0x" as HexString },
+		}
+
+		const intentsCoprocessor = await IntentsCoprocessor.connect(
+			process.env.HYPERBRIDGE_NEXUS!,
+			process.env.SECRET_PHRASE!,
+		)
+
+		const arbitrumEvmChain = new EvmChain({
+			chainId: 42161,
+			host: chainConfigService.getHostAddress(arbitrumMainnetId),
+			rpcUrl: chainConfigService.getRpcUrl(arbitrumMainnetId),
+		})
+
+		const feeToken = await contractService.getFeeTokenWithDecimals(arbitrumMainnetId)
+		await approveTokens(
+			arbitrumWalletClient,
+			arbitrumPublicClient,
+			feeToken.address,
+			arbitrumIntentGatewayV2.address,
+		)
+		await approveTokens(arbitrumWalletClient, arbitrumPublicClient, sourceExt, arbitrumIntentGatewayV2.address)
+
+		const destBundlerUrl = chainConfigService.getBundlerUrl(arbitrumMainnetId)
+		const userSdkHelper = await IntentsV2.create(
+			arbitrumEvmChain,
+			arbitrumEvmChain,
+			intentsCoprocessor,
+			destBundlerUrl,
+		)
+
+		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, {
+			bidTimeoutMs: 600_000,
+			pollIntervalMs: 5_000,
+		})
+
+		let result = await gen.next()
+		if (result.value && "calldata" in result.value) {
+			const { calldata, feesInWei } = result.value
+
+			const signedTx = (await arbitrumWalletClient.signTransaction(
+				(await arbitrumPublicClient.prepareTransactionRequest({
+					to: arbitrumIntentGatewayV2.address,
+					data: calldata,
+					value: feesInWei,
+					account: arbitrumWalletClient.account!,
+					chain: arbitrumWalletClient.chain,
+				})) as any,
+			)) as HexString
+			result = await gen.next(signedTx)
+		}
+
+		let userOpHash: HexString | undefined
+		let selectedSolver: HexString | undefined
+
+		while (!result.done) {
+			if (result.value && "status" in result.value) {
+				const status = result.value
+				console.log("status", status)
+
+				if (status.status === "BID_SELECTED") {
+					selectedSolver = status.metadata.selectedSolver as HexString
+					userOpHash = status.metadata.userOpHash as HexString
+				}
+				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
+					console.log("Transaction hash:", status.metadata.transactionHash)
+				}
+				if (status.status === "FAILED") {
+					throw new Error(`Order execution failed: ${status.metadata.error}`)
+				}
+			}
+			result = await gen.next()
+		}
+
+		expect(userOpHash).toBeDefined()
+		expect(selectedSolver).toBeDefined()
+
+		const isFilled = await pollForOrderFilled(
+			order.id as HexString,
+			arbitrumPublicClient,
+			chainConfigService.getIntentGatewayV2Address(arbitrumMainnetId),
+		)
+		expect(isFilled).toBe(true)
+
+		await new Promise((resolve) => setTimeout(resolve, 10000000))
+
+		await intentFiller.stop()
+		await intentsCoprocessor.disconnect()
+	}, 600_000)
+})
+
 function bundlerUrl(chainId: number): string | undefined {
 	const apiKey = process.env.BUNDLER_API_KEY
 	return apiKey ? `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${apiKey}` : undefined
@@ -187,6 +463,10 @@ async function setUpMainnetFx() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
 		substratePrivateKey: process.env.SECRET_PHRASE,
+		entryPointDeposit: {
+			targetBalances: { "137": "0.1" },
+			thresholdFraction: 0.2,
+		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -231,33 +511,164 @@ async function setUpMainnetFx() {
 	}
 }
 
+async function setUpMainnetFxBase() {
+	const baseMainnetId = "EVM-8453"
+	const chains = [baseMainnetId]
+
+	const testChainConfigs: UserProvidedChainConfig[] = [
+		{ chainId: 8453, rpcUrl: process.env.BASE_MAINNET!, bundlerUrl: bundlerUrl(8453) },
+	]
+
+	const fillerConfigForService: FillerServiceConfig = {
+		privateKey: process.env.PRIVATE_KEY as HexString,
+		maxConcurrentOrders: 5,
+		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
+		substratePrivateKey: process.env.SECRET_PHRASE,
+		entryPointDeposit: {
+			targetBalances: { "8453": "0.0009" },
+			thresholdFraction: 0.2,
+		},
+	}
+
+	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
+	const chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
+
+	const fillerConfig: FillerConfig = {
+		maxConcurrentOrders: 5,
+		pendingQueueConfig: {
+			maxRechecks: 10,
+			recheckDelayMs: 30_000,
+		},
+	}
+
+	const privateKey = process.env.PRIVATE_KEY as HexString
+	const cacheService = new CacheService()
+	const chainClientManager = new ChainClientManager(chainConfigService, privateKey)
+	const contractService = new ContractInteractionService(
+		chainClientManager,
+		privateKey,
+		chainConfigService,
+		cacheService,
+	)
+
+	const baseWalletClient = chainClientManager.getWalletClient(baseMainnetId)
+	const basePublicClient = chainClientManager.getPublicClient(baseMainnetId)
+
+	const baseIntentGatewayV2 = getContract({
+		address: chainConfigService.getIntentGatewayV2Address(baseMainnetId),
+		abi: INTENT_GATEWAY_V2_ABI,
+		client: { public: basePublicClient, wallet: baseWalletClient },
+	})
+
+	return {
+		baseWalletClient,
+		basePublicClient,
+		baseIntentGatewayV2,
+		contractService,
+		baseMainnetId,
+		chainConfigService,
+		fillerConfig,
+		chainConfigs,
+	}
+}
+
+async function setUpMainnetFxArbitrum() {
+	const arbitrumMainnetId = "EVM-42161"
+	const chains = [arbitrumMainnetId]
+
+	const testChainConfigs: UserProvidedChainConfig[] = [
+		{ chainId: 42161, rpcUrl: process.env.ARBITRUM_MAINNET!, bundlerUrl: bundlerUrl(42161) },
+	]
+
+	const fillerConfigForService: FillerServiceConfig = {
+		privateKey: process.env.PRIVATE_KEY as HexString,
+		maxConcurrentOrders: 5,
+		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
+		substratePrivateKey: process.env.SECRET_PHRASE,
+		entryPointDeposit: {
+			targetBalances: { "42161": "0.003" },
+			thresholdFraction: 0.5,
+		},
+	}
+
+	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
+	const chainConfigs: ChainConfig[] = chains.map((chain) => chainConfigService.getChainConfig(chain))
+
+	const fillerConfig: FillerConfig = {
+		maxConcurrentOrders: 5,
+		pendingQueueConfig: {
+			maxRechecks: 10,
+			recheckDelayMs: 30_000,
+		},
+	}
+
+	const privateKey = process.env.PRIVATE_KEY as HexString
+	const cacheService = new CacheService()
+	const chainClientManager = new ChainClientManager(chainConfigService, privateKey)
+	const contractService = new ContractInteractionService(
+		chainClientManager,
+		privateKey,
+		chainConfigService,
+		cacheService,
+	)
+
+	const arbitrumWalletClient = chainClientManager.getWalletClient(arbitrumMainnetId)
+	const arbitrumPublicClient = chainClientManager.getPublicClient(arbitrumMainnetId)
+
+	const arbitrumIntentGatewayV2 = getContract({
+		address: chainConfigService.getIntentGatewayV2Address(arbitrumMainnetId),
+		abi: INTENT_GATEWAY_V2_ABI,
+		client: { public: arbitrumPublicClient, wallet: arbitrumWalletClient },
+	})
+
+	return {
+		arbitrumWalletClient,
+		arbitrumPublicClient,
+		arbitrumIntentGatewayV2,
+		contractService,
+		arbitrumMainnetId,
+		chainConfigService,
+		fillerConfig,
+		chainConfigs,
+	}
+}
+
 function createFxOnlyIntentFiller(
 	chainConfigs: ChainConfig[],
 	fillerConfig: FillerConfig,
 	chainConfigService: FillerConfigService,
 	contractService: ContractInteractionService,
+	mainnetId: string,
 ): IntentFiller {
 	const privateKey = process.env.PRIVATE_KEY as HexString
 	const cacheService = new CacheService()
 	const chainClientManager = new ChainClientManager(chainConfigService, privateKey)
 
-	const pricePolicy = new FillerPricePolicy({
+	// Bid: filler buys exotic from user → 1 EXT = 0.0001 USD (1 USD = 10000 EXT)
+	// Ask: filler sells exotic to user → 1 EXT = 0.0001 USD (1 USD = 10000 EXT)
+	const bidPricePolicy = new FillerPricePolicy({
 		points: [
-			{ amount: "1", price: "1000000" },
-			{ amount: "10000", price: "1000000" },
+			{ amount: "1", price: "10000" },
+			{ amount: "10000", price: "10000" },
+		],
+	})
+	const askPricePolicy = new FillerPricePolicy({
+		points: [
+			{ amount: "1", price: "10000" },
+			{ amount: "10000", price: "10000" },
 		],
 	})
 
-	const exoticTokenAddresses: Record<string, HexString> = {
-		"EVM-137": chainConfigService.getExtAsset("EVM-137") as HexString,
-	}
+	const extAsset = chainConfigService.getExtAsset(mainnetId)
+	const exoticTokenAddresses: Record<string, HexString> = extAsset ? { [mainnetId]: extAsset as HexString } : {}
 
 	const fxStrategy = new FXFiller(
 		privateKey,
 		chainConfigService,
 		chainClientManager,
 		contractService,
-		pricePolicy,
+		bidPricePolicy,
+		askPricePolicy,
 		"5000",
 		exoticTokenAddresses,
 	)
