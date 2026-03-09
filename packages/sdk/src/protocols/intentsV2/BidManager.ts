@@ -185,6 +185,7 @@ export class BidManager {
 
 		let txnHash: HexString | undefined
 		let fillStatus: "full" | "partial" | undefined
+		let filledAmount: bigint | undefined
 		try {
 			const receipt = await retryPromise(
 				async () => {
@@ -223,6 +224,13 @@ export class BidManager {
 						fillStatus = "full"
 					} else if (matched?.eventName === "PartialFill") {
 						fillStatus = "partial"
+						try {
+							// Sum all output amounts from the PartialFill event as the filled amount for this attempt
+							const outputs = (matched.args.outputs ?? []) as readonly { amount: bigint }[]
+							filledAmount = outputs.reduce((acc, o) => acc + o.amount, 0n)
+						} catch {
+							// Best-effort only; executor will handle missing filledAmount gracefully
+						}
 					}
 				} catch {
 					throw new Error("Failed to determine fill status from logs")
@@ -239,6 +247,7 @@ export class BidManager {
 			commitment,
 			txnHash,
 			fillStatus,
+			filledAmount,
 		}
 	}
 
@@ -413,9 +422,7 @@ export class BidManager {
 				)
 				continue
 			}
-			console.log(
-				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: USD value=${bidUsd.toString()}`,
-			)
+			console.log(`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: USD value=${bidUsd.toString()}`)
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -472,7 +479,9 @@ export class BidManager {
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
 		orderOutputs: TokenInfoV2[],
 	): { bid: FillerBid; options: FillOptionsV2 }[] {
-		console.log(`[BidManager] sortByRawAmountFallback: checking ${decodedBids.length} bid(s) against ${orderOutputs.length} required output(s)`)
+		console.log(
+			`[BidManager] sortByRawAmountFallback: checking ${decodedBids.length} bid(s) against ${orderOutputs.length} required output(s)`,
+		)
 		const validBids: { bid: FillerBid; options: FillOptionsV2; totalSpread: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {

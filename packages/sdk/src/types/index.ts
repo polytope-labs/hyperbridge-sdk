@@ -1417,6 +1417,7 @@ export const IntentOrderStatus = Object.freeze({
 	USEROP_SUBMITTED: "USEROP_SUBMITTED",
 	FILLED: "FILLED",
 	PARTIAL_FILL: "PARTIAL_FILL",
+	PARTIAL_FILL_EXHAUSTED: "PARTIAL_FILL_EXHAUSTED",
 	FAILED: "FAILED",
 })
 
@@ -1434,6 +1435,14 @@ export interface IntentOrderStatusMetadata {
 	selectedSolver?: HexString
 	userOpHash?: HexString
 	userOp?: PackedUserOperation
+	/** Amount filled in the latest fill attempt (if applicable) */
+	filledAmount?: bigint
+	/** Cumulative amount filled across all attempts (same units as order outputs) */
+	totalFilledAmount?: bigint
+	/** Remaining amount relative to the original order outputs (best-effort estimate) */
+	remainingAmount?: bigint
+	/** Number of partial fill attempts so far */
+	partialAttempts?: number
 	error?: string
 }
 
@@ -1451,6 +1460,8 @@ export interface SelectBidResult {
 	commitment: HexString
 	txnHash?: HexString
 	fillStatus?: "full" | "partial"
+	/** Amount filled in this user operation (best-effort, based on on-chain logs) */
+	filledAmount?: bigint
 }
 
 /** Options for executing an intent order */

@@ -70,7 +70,7 @@ export type CancelEvent = {
 import type { IEvmChain } from "@/chain"
 import type { IntentsCoprocessor } from "@/chains/intentsCoprocessor"
 import type { Swap } from "@/utils/swap"
-import type { createSessionKeyStorage, createCancellationStorage } from "@/storage"
+import type { createSessionKeyStorage, createCancellationStorage, createUsedUserOpsStorage } from "@/storage"
 
 /** Shared context for IntentsV2 sub-modules */
 export interface IntentsV2Context {
@@ -82,5 +82,6 @@ export interface IntentsV2Context {
 	solverCodeCache: Map<string, string>
 	sessionKeyStorage: ReturnType<typeof createSessionKeyStorage>
 	cancellationStorage: ReturnType<typeof createCancellationStorage>
+	usedUserOpsStorage: ReturnType<typeof createUsedUserOpsStorage>
 	swap: Swap
 }

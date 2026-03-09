@@ -1,4 +1,4 @@
-import { createSessionKeyStorage, createCancellationStorage } from "@/storage"
+import { createSessionKeyStorage, createCancellationStorage, createUsedUserOpsStorage } from "@/storage"
 import { Swap } from "@/utils/swap"
 import type { OrderV2, HexString } from "@/types"
 import type {
@@ -59,6 +59,7 @@ export class IntentsV2 {
 
 		const sessionKeyStorage = createSessionKeyStorage()
 		const cancellationStorage = createCancellationStorage()
+		const usedUserOpsStorage = createUsedUserOpsStorage()
 		const swap = new Swap()
 		const feeTokenCache = new Map<string, { address: HexString; decimals: number; cachedAt: number }>()
 		const solverCodeCache = new Map<string, string>()
@@ -72,6 +73,7 @@ export class IntentsV2 {
 			solverCodeCache,
 			sessionKeyStorage,
 			cancellationStorage,
+			usedUserOpsStorage,
 			swap,
 		}
 
@@ -80,7 +82,7 @@ export class IntentsV2 {
 		const gasEstimator = new GasEstimator(this.ctx, crypto)
 
 		this.orderPlacer = new OrderPlacer(this.ctx)
-		this.orderExecutor = new OrderExecutor(this.ctx, bidManager)
+		this.orderExecutor = new OrderExecutor(this.ctx, bidManager, crypto)
 		this.orderCanceller = new OrderCanceller(this.ctx)
 		this.orderStatusChecker = new OrderStatusChecker(this.ctx)
 		this.bidManager = bidManager

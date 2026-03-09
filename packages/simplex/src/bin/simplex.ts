@@ -14,7 +14,6 @@ import {
 	UserProvidedChainConfig,
 	FillerConfig as FillerServiceConfig,
 	LoggingConfig,
-	EntryPointDepositConfig,
 } from "@/services/FillerConfigService"
 import { ChainClientManager } from "@/services/ChainClientManager"
 import { ContractInteractionService } from "@/services/ContractInteractionService"
@@ -35,7 +34,6 @@ const ASCII_HEADER = `
 ╚══════╝╚═╝╚═╝     ╚═╝╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝
 
 `
-
 
 // Get package.json path
 const __filename = fileURLToPath(import.meta.url)
@@ -107,7 +105,12 @@ function fmtNum(v: number): string {
 
 // Render a 2D point set as ASCII chart rows (chart body + axis row)
 // Axes: vertical = amount ($, high at top), horizontal = price/bps (low left, high right)
-function renderCurveAscii(points: Array<{ x: number; y: number }>, yLabel: string, chartWidth = 30, chartHeight = 5): string[] {
+function renderCurveAscii(
+	points: Array<{ x: number; y: number }>,
+	yLabel: string,
+	chartWidth = 30,
+	chartHeight = 5,
+): string[] {
 	const sorted = [...points].sort((a, b) => a.x - b.x)
 	// After flipping: horizontal = y (price/bps), vertical = x (amount)
 	const minH = Math.min(...sorted.map((p) => p.y))
@@ -182,11 +185,7 @@ function getStrategyBanner(config: StrategyConfig): string {
 	} else {
 		const bidPoints = config.bidPriceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
 		const askPoints = config.askPriceCurve.map((p) => ({ x: parseFloat(p.amount), y: parseFloat(p.price) }))
-		chartRows = [
-			...renderCurveAscii(bidPoints, " bid"),
-			"",
-			...renderCurveAscii(askPoints, " ask"),
-		]
+		chartRows = [...renderCurveAscii(bidPoints, " bid"), "", ...renderCurveAscii(askPoints, " ask")]
 		title = "HYPERFX STRATEGY  ACTIVE"
 		subtitle = "adaptive bid/ask FX price curve routing"
 	}
@@ -247,7 +246,6 @@ interface FillerTomlConfig {
 		hyperbridgeWsUrl?: string
 		entryPointAddress?: string
 		solverAccountContractAddress?: string
-		entryPointDeposit?: EntryPointDepositConfig
 	}
 	strategies: StrategyConfig[]
 	chains: (UserProvidedChainConfig & { bundlerUrl?: string })[]
@@ -310,7 +308,6 @@ program
 				entryPointAddress: config.simplex.entryPointAddress,
 				dataDir: options.dataDir,
 				rebalancing: config.rebalancing,
-				entryPointDeposit: config.simplex.entryPointDeposit,
 			}
 
 			const configService = new FillerConfigService(fillerChainConfigs, fillerConfigForService)
@@ -485,7 +482,6 @@ program
 				await intentFiller.stop()
 				process.exit(0)
 			})
-
 		} catch (error) {
 			// Use console.error for initial startup errors since logger might not be configured yet
 			console.error("Failed to start filler:", error)
@@ -578,7 +574,11 @@ function validateConfig(config: FillerTomlConfig): void {
 
 		if (strategy.type === "hyperfx") {
 			// Validate bid price curve
-			if (!strategy.bidPriceCurve || !Array.isArray(strategy.bidPriceCurve) || strategy.bidPriceCurve.length < 2) {
+			if (
+				!strategy.bidPriceCurve ||
+				!Array.isArray(strategy.bidPriceCurve) ||
+				strategy.bidPriceCurve.length < 2
+			) {
 				throw new Error("FX strategy must have a 'bidPriceCurve' array with at least 2 points")
 			}
 
@@ -589,7 +589,11 @@ function validateConfig(config: FillerTomlConfig): void {
 			}
 
 			// Validate ask price curve
-			if (!strategy.askPriceCurve || !Array.isArray(strategy.askPriceCurve) || strategy.askPriceCurve.length < 2) {
+			if (
+				!strategy.askPriceCurve ||
+				!Array.isArray(strategy.askPriceCurve) ||
+				strategy.askPriceCurve.length < 2
+			) {
 				throw new Error("FX strategy must have an 'askPriceCurve' array with at least 2 points")
 			}
 
@@ -608,7 +612,6 @@ function validateConfig(config: FillerTomlConfig): void {
 			}
 		}
 	}
-
 }
 
 // Parse command line arguments
