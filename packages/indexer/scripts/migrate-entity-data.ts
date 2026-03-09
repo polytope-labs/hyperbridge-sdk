@@ -231,7 +231,14 @@ async function copyTableData(
       
       // Insert each row, using WHERE NOT EXISTS to skip duplicates (no unique constraint needed)
       for (const row of batchResult.rows) {
-        const values = commonColumns.map(col => row[col]);
+        const values = commonColumns.map(col => {
+          const v = row[col];
+          // pg deserializes jsonb into JS objects/arrays, but re-serializes JS arrays
+          // as PostgreSQL array literals instead of JSON. Stringify them so they're
+          // sent as valid JSON for jsonb columns.
+          if (v !== null && typeof v === 'object') return JSON.stringify(v);
+          return v;
+        });
         
         const insertResult = await client.query(
           `INSERT INTO ${schema}.${destTable} (${columnsList})
