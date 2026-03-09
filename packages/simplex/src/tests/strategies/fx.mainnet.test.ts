@@ -463,10 +463,6 @@ async function setUpMainnetFx() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		entryPointDeposit: {
-			targetBalances: { "137": "0.1" },
-			thresholdFraction: 0.2,
-		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -524,10 +520,6 @@ async function setUpMainnetFxBase() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		entryPointDeposit: {
-			targetBalances: { "8453": "0.0009" },
-			thresholdFraction: 0.2,
-		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)
@@ -585,10 +577,6 @@ async function setUpMainnetFxArbitrum() {
 		maxConcurrentOrders: 5,
 		hyperbridgeWsUrl: process.env.HYPERBRIDGE_NEXUS,
 		substratePrivateKey: process.env.SECRET_PHRASE,
-		entryPointDeposit: {
-			targetBalances: { "42161": "0.003" },
-			thresholdFraction: 0.5,
-		},
 	}
 
 	const chainConfigService = new FillerConfigService(testChainConfigs, fillerConfigForService)

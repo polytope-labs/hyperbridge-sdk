@@ -1,6 +1,5 @@
 import type { ChainConfig, HexString } from "@hyperbridge/sdk"
 import { ChainConfigService } from "@hyperbridge/sdk"
-import { parseEther } from "viem"
 import { LogLevel } from "./Logger"
 
 export interface UserProvidedChainConfig {
@@ -26,11 +25,6 @@ export interface RebalancingConfig {
 	}
 }
 
-export interface EntryPointDepositConfig {
-	targetBalances: Record<string, string>
-	thresholdFraction?: number
-}
-
 export interface FillerConfig {
 	privateKey: string
 	maxConcurrentOrders: number
@@ -45,7 +39,6 @@ export interface FillerConfig {
 	 */
 	gasFeeBump?: GasFeeBumpConfig
 	rebalancing?: RebalancingConfig
-	entryPointDeposit?: EntryPointDepositConfig
 }
 
 /**
@@ -312,25 +305,4 @@ export class FillerConfigService {
 		return this.fillerConfig?.rebalancing?.triggerPercentage
 	}
 
-	/**
-	 * Get the target EntryPoint deposit for a chain in wei (parsed from the native token string).
-	 * Returns undefined if no target is configured for this chain.
-	 */
-	getEntryPointDepositTarget(chainId: number): bigint | undefined {
-		const depositConfig = this.fillerConfig?.entryPointDeposit
-		if (!depositConfig) return undefined
-
-		const valueStr = depositConfig.targetBalances[chainId.toString()]
-		if (!valueStr) return undefined
-
-		return parseEther(valueStr)
-	}
-
-	/**
-	 * Fraction of the target balance below which a deposit is triggered.
-	 * Defaults to 0.5 (50%) if not configured.
-	 */
-	getEntryPointDepositThresholdFraction(): number {
-		return this.fillerConfig?.entryPointDeposit?.thresholdFraction ?? 0.5
-	}
 }

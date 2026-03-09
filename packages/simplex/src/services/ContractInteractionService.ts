@@ -225,6 +225,7 @@ export class ContractInteractionService {
 				estimate.maxFeePerGas,
 				estimate.maxPriorityFeePerGas,
 				nonce,
+				estimate.totalGasCostWei,
 			)
 			return {
 				totalCostInSourceFeeToken: estimate.totalGasInFeeToken,
@@ -278,6 +279,78 @@ export class ContractInteractionService {
 		)
 		this.cacheService.setFeeTokenWithDecimals(chain, feeTokenAddress, feeTokenDecimals)
 		return { address: feeTokenAddress, decimals: feeTokenDecimals }
+	}
+
+	/**
+	 * Ensures the solver's EntryPoint deposit has enough native token to cover
+	 * the estimated gas cost for a given order.
+	 *
+	 * Uses cached gas estimates (from estimateGasFillPost) and, if the current
+	 * deposit is insufficient, tops up by depositing 10% of the solver's EOA
+	 * native balance on the destination chain.
+	 */
+	async ensureEntryPointDeposit(order: OrderV2): Promise<void> {
+		if (!order.id) {
+			this.logger.warn({ destination: order.destination }, "Order has no ID, skipping EntryPoint deposit check")
+			return
+		}
+
+		const gasEstimate = this.cacheService.getGasEstimate(order.id)
+		if (!gasEstimate) {
+			this.logger.warn(
+				{ orderId: order.id, destination: order.destination },
+				"No cached gas estimate found, skipping EntryPoint deposit check",
+			)
+			return
+		}
+
+		const requiredNative = 3n * gasEstimate.totalGasCostWei
+
+		const currentDeposit = await this.getSolverEntryPointBalance(order.destination)
+
+		this.logger.debug(
+			{
+				orderId: order.id,
+				destination: order.destination,
+				currentDeposit: formatEther(currentDeposit),
+				requiredNative: formatEther(requiredNative),
+			},
+			"EntryPoint deposit gas coverage check",
+		)
+
+		if (currentDeposit >= requiredNative) {
+			return
+		}
+
+		const publicClient = this.clientManager.getPublicClient(order.destination)
+		const solverBalance = await publicClient.getBalance({ address: this.solverAccountAddress })
+		const depositAmount = solverBalance / 10n
+
+		if (depositAmount === 0n) {
+			this.logger.warn(
+				{
+					orderId: order.id,
+					destination: order.destination,
+					solverBalance: formatEther(solverBalance),
+				},
+				"Solver EOA balance too low to top up EntryPoint deposit",
+			)
+			return
+		}
+
+		this.logger.info(
+			{
+				orderId: order.id,
+				destination: order.destination,
+				requiredNative: formatEther(requiredNative),
+				currentDeposit: formatEther(currentDeposit),
+				solverBalance: formatEther(solverBalance),
+				depositAmount: formatEther(depositAmount),
+			},
+			"Top up EntryPoint deposit by 10% of solver EOA balance",
+		)
+
+		await this.depositToEntryPoint(order.destination, depositAmount)
 	}
 
 	/**
