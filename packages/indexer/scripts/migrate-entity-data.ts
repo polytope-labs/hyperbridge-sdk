@@ -197,11 +197,14 @@ async function copyTableData(
     
     // Copy data in batches using LIMIT/OFFSET for memory efficiency
     let copiedRows = 0;
+    let skippedDuplicates = 0;
+    let errorRows = 0;
     const columnsList = commonColumns.map(col => `"${col}"`).join(', ');
     const placeholders = commonColumns.map((_, i) => `$${i + 1}`).join(', ');
+    const idParamIndex = commonColumns.indexOf('id') + 1;
     
     // Order by _block_range DESC so the most recent version of each row is inserted first,
-    // and older versions are skipped by ON CONFLICT DO NOTHING
+    // and older versions are skipped by the WHERE NOT EXISTS check
     const hasBlockRange = sourceColumns.includes('_block_range');
     const orderClause = hasBlockRange ? 'ORDER BY id, _block_range DESC' : 'ORDER BY id';
     if (hasBlockRange) {
@@ -227,21 +230,35 @@ async function copyTableData(
         break; // No more rows to process
       }
       
-      // Insert each row from the batch
+      // Insert each row, using WHERE NOT EXISTS to skip duplicates (no unique constraint needed)
+      // and SAVEPOINTs so individual row failures don't abort the whole transaction.
       for (const row of batchResult.rows) {
         const values = commonColumns.map(col => row[col]);
         
         try {
-          await client.query(
+          await client.query('SAVEPOINT row_insert');
+          const insertResult = await client.query(
             `INSERT INTO ${schema}.${destTable} (${columnsList})
-             VALUES (${placeholders})
-             ON CONFLICT (id) DO NOTHING`,
+             SELECT ${placeholders}
+             WHERE NOT EXISTS (
+               SELECT 1 FROM ${schema}.${destTable} WHERE id = $${idParamIndex}
+             )`,
             values
           );
-          copiedRows++;
+          await client.query('RELEASE SAVEPOINT row_insert');
+          if (insertResult.rowCount && insertResult.rowCount > 0) {
+            copiedRows++;
+          } else {
+            skippedDuplicates++;
+          }
         } catch (error) {
-          // Log error but continue with next row
-          logger?.error(`  ⚠️  Error inserting row with id=${row.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          await client.query('ROLLBACK TO SAVEPOINT row_insert');
+          errorRows++;
+          if (errorRows <= 5) {
+            logger?.error(`  ⚠️  Error inserting row with id=${row.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } else if (errorRows === 6) {
+            logger?.error(`  ⚠️  Suppressing further row errors...`);
+          }
         }
       }
       
@@ -257,7 +274,7 @@ async function copyTableData(
     
     await client.query('COMMIT');
     
-    logger?.log(`  ✓ Successfully copied ${copiedRows} rows`);
+    logger?.log(`  ✓ Successfully copied ${copiedRows} rows${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicates skipped` : ''}${errorRows > 0 ? `, ${errorRows} rows failed` : ''}`);
     
     return { copiedRows, skippedColumns };
   } catch (error) {
