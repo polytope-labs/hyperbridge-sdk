@@ -152,6 +152,10 @@ export class IntentsV2 {
 				maxFeePerGasBumpPercent: options?.maxFeePerGasBumpPercent,
 			})
 
+			if (estimate.totalGasCostWei === 0n || estimate.totalGasInFeeToken === 0n) {
+				throw new Error("Gas estimation failed")
+			}
+
 			// Solvers using the same estimate algo will have tighter bounds, so we add a buffer.
 			feesInWei = estimate.totalGasCostWei + (estimate.totalGasCostWei * 2n) / 100n
 			order.fees = estimate.totalGasInFeeToken + (estimate.totalGasInFeeToken * 1n) / 100n
