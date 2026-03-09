@@ -348,8 +348,9 @@ export class BidManager {
 	}
 
 	/**
-	 * Case A: single output token – keep existing behavior.
-	 * Filter bids whose first output amount < required, sort descending.
+	 * Case A: single output token.
+	 * Filter bids by token match only, sort descending by amount.
+	 * Partial fill bids are allowed — the contract determines fill status.
 	 */
 	private sortSingleOutput(
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
@@ -375,18 +376,18 @@ export class BidManager {
 			}
 
 			if (bidAmount.lt(requiredAmount)) {
-				console.warn(
-					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: amount too low ` +
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender}: partial fill candidate ` +
 						`(bid=${bidAmount.toString()}, required=${requiredAmount.toString()}, ` +
-						`shortfall=${requiredAmount.minus(bidAmount).toString()})`,
+						`covers=${bidAmount.div(requiredAmount).mul(100).toFixed(2)}%)`,
 				)
-				continue
+			} else {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: amount=${bidAmount.toString()} ` +
+						`(surplus=${bidAmount.minus(requiredAmount).toString()})`,
+				)
 			}
 
-			console.log(
-				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: amount=${bidAmount.toString()} ` +
-					`(surplus=${bidAmount.minus(requiredAmount).toString()})`,
-			)
 			validBids.push({ bid, options, amount: bidOutput.amount })
 		}
 
@@ -401,7 +402,8 @@ export class BidManager {
 
 	/**
 	 * Case B: all outputs are USDC/USDT.
-	 * Sum normalised USD values (treating each stable as $1) and compare.
+	 * Sum normalised USD values (treating each stable as $1) and sort descending.
+	 * Partial fill bids are allowed.
 	 */
 	private sortAllStables(
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
@@ -415,14 +417,24 @@ export class BidManager {
 
 		for (const { bid, options } of decodedBids) {
 			const bidUsd = this.computeStablesUsdValue(options.outputs, chainId)
-			if (bidUsd === null || bidUsd.lt(requiredUsd)) {
-				console.warn(
-					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: USD value too low ` +
-						`(bid=${bidUsd?.toString() ?? "null"}, required=${requiredUsd.toString()})`,
-				)
+
+			if (bidUsd === null) {
+				console.warn(`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: unable to compute USD value`)
 				continue
 			}
-			console.log(`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: USD value=${bidUsd.toString()}`)
+
+			if (bidUsd.lt(requiredUsd)) {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender}: partial fill candidate ` +
+						`(bid=${bidUsd.toString()}, required=${requiredUsd.toString()}, ` +
+						`covers=${bidUsd.div(requiredUsd).mul(100).toFixed(2)}%)`,
+				)
+			} else {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: USD value=${bidUsd.toString()}`,
+				)
+			}
+
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -433,7 +445,7 @@ export class BidManager {
 	/**
 	 * Case C: mixed output tokens (at least one non-stable).
 	 * Price every token via on-chain DEX quotes, fall back to raw amounts
-	 * if pricing is unavailable.
+	 * if pricing is unavailable. Partial fill bids are allowed.
 	 */
 	private async sortMixedOutputs(
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
@@ -452,16 +464,26 @@ export class BidManager {
 
 		for (const { bid, options } of decodedBids) {
 			const bidUsd = await this.computeOutputsUsdValue(options.outputs, chainId)
-			if (bidUsd === null || bidUsd.lt(requiredUsd)) {
+
+			if (bidUsd === null) {
 				console.warn(
-					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: mixed USD value too low ` +
-						`(bid=${bidUsd?.toString() ?? "unpriceable"}, required=${requiredUsd.toString()})`,
+					`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED: unable to price mixed outputs`,
 				)
 				continue
 			}
-			console.log(
-				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: mixed USD value=${bidUsd.toString()}`,
-			)
+
+			if (bidUsd.lt(requiredUsd)) {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender}: partial fill candidate ` +
+						`(bid=${bidUsd.toString()}, required=${requiredUsd.toString()}, ` +
+						`covers=${bidUsd.div(requiredUsd).mul(100).toFixed(2)}%)`,
+				)
+			} else {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED: mixed USD value=${bidUsd.toString()}`,
+				)
+			}
+
 			validBids.push({ bid, options, usdValue: bidUsd })
 		}
 
@@ -471,9 +493,9 @@ export class BidManager {
 
 	/**
 	 * Fallback when DEX pricing is unavailable.
-	 * Computes the total spread (sum of extra amount above required per token)
-	 * for each bid. Bids that don't meet every token's minimum are discarded.
-	 * Remaining bids are sorted by total spread descending.
+	 * Computes total spread per bid. Bids missing a required token are rejected.
+	 * Bids offering less than required for a token are allowed (partial fill).
+	 * Sorted by total offered amount descending.
 	 */
 	private sortByRawAmountFallback(
 		decodedBids: { bid: FillerBid; options: FillOptionsV2 }[],
@@ -482,11 +504,11 @@ export class BidManager {
 		console.log(
 			`[BidManager] sortByRawAmountFallback: checking ${decodedBids.length} bid(s) against ${orderOutputs.length} required output(s)`,
 		)
-		const validBids: { bid: FillerBid; options: FillOptionsV2; totalSpread: Decimal }[] = []
+		const validBids: { bid: FillerBid; options: FillOptionsV2; totalOffered: Decimal }[] = []
 
 		for (const { bid, options } of decodedBids) {
 			let valid = true
-			let totalSpread = new Decimal(0)
+			let totalOffered = new Decimal(0)
 			let rejectReason = ""
 
 			for (const required of orderOutputs) {
@@ -496,28 +518,36 @@ export class BidManager {
 					rejectReason = `missing output token=${required.token}`
 					break
 				}
-				if (matching.amount < required.amount) {
-					valid = false
-					rejectReason = `token=${required.token} amount too low (bid=${matching.amount.toString()}, required=${required.amount.toString()})`
-					break
-				}
-				totalSpread = totalSpread.plus(
-					new Decimal(matching.amount.toString()).minus(required.amount.toString()),
-				)
+				totalOffered = totalOffered.plus(new Decimal(matching.amount.toString()))
 			}
+
 			if (!valid) {
 				console.warn(`[BidManager] Bid from solver=${bid.userOp.sender} REJECTED (fallback): ${rejectReason}`)
 				continue
 			}
 
-			console.log(
-				`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED (fallback): totalSpread=${totalSpread.toString()}`,
+			const totalRequired = orderOutputs.reduce(
+				(acc, o) => acc.plus(new Decimal(o.amount.toString())),
+				new Decimal(0),
 			)
-			validBids.push({ bid, options, totalSpread })
+
+			if (totalOffered.lt(totalRequired)) {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender}: partial fill candidate (fallback) ` +
+						`(offered=${totalOffered.toString()}, required=${totalRequired.toString()}, ` +
+						`covers=${totalOffered.div(totalRequired).mul(100).toFixed(2)}%)`,
+				)
+			} else {
+				console.log(
+					`[BidManager] Bid from solver=${bid.userOp.sender} ACCEPTED (fallback): totalOffered=${totalOffered.toString()}`,
+				)
+			}
+
+			validBids.push({ bid, options, totalOffered })
 		}
 
-		validBids.sort((a, b) => b.totalSpread.comparedTo(a.totalSpread))
-		return validBids.map(({ totalSpread: _, ...rest }) => rest)
+		validBids.sort((a, b) => b.totalOffered.comparedTo(a.totalOffered))
+		return validBids.map(({ totalOffered: _, ...rest }) => rest)
 	}
 
 	// ── Token classification helpers ──────────────────────────────────
