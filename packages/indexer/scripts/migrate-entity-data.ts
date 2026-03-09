@@ -198,7 +198,6 @@ async function copyTableData(
     // Copy data in batches using LIMIT/OFFSET for memory efficiency
     let copiedRows = 0;
     let skippedDuplicates = 0;
-    let errorRows = 0;
     const columnsList = commonColumns.map(col => `"${col}"`).join(', ');
     const placeholders = commonColumns.map((_, i) => `$${i + 1}`).join(', ');
     const idParamIndex = commonColumns.indexOf('id') + 1;
@@ -231,34 +230,21 @@ async function copyTableData(
       }
       
       // Insert each row, using WHERE NOT EXISTS to skip duplicates (no unique constraint needed)
-      // and SAVEPOINTs so individual row failures don't abort the whole transaction.
       for (const row of batchResult.rows) {
         const values = commonColumns.map(col => row[col]);
         
-        try {
-          await client.query('SAVEPOINT row_insert');
-          const insertResult = await client.query(
-            `INSERT INTO ${schema}.${destTable} (${columnsList})
-             SELECT ${placeholders}
-             WHERE NOT EXISTS (
-               SELECT 1 FROM ${schema}.${destTable} WHERE id = $${idParamIndex}
-             )`,
-            values
-          );
-          await client.query('RELEASE SAVEPOINT row_insert');
-          if (insertResult.rowCount && insertResult.rowCount > 0) {
-            copiedRows++;
-          } else {
-            skippedDuplicates++;
-          }
-        } catch (error) {
-          await client.query('ROLLBACK TO SAVEPOINT row_insert');
-          errorRows++;
-          if (errorRows <= 5) {
-            logger?.error(`  ⚠️  Error inserting row with id=${row.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          } else if (errorRows === 6) {
-            logger?.error(`  ⚠️  Suppressing further row errors...`);
-          }
+        const insertResult = await client.query(
+          `INSERT INTO ${schema}.${destTable} (${columnsList})
+           SELECT ${placeholders}
+           WHERE NOT EXISTS (
+             SELECT 1 FROM ${schema}.${destTable} WHERE id = $${idParamIndex}
+           )`,
+          values
+        );
+        if (insertResult.rowCount && insertResult.rowCount > 0) {
+          copiedRows++;
+        } else {
+          skippedDuplicates++;
         }
       }
       
@@ -274,7 +260,7 @@ async function copyTableData(
     
     await client.query('COMMIT');
     
-    logger?.log(`  ✓ Successfully copied ${copiedRows} rows${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicates skipped` : ''}${errorRows > 0 ? `, ${errorRows} rows failed` : ''}`);
+    logger?.log(`  ✓ Successfully copied ${copiedRows} rows${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicates skipped` : ''}`);
     
     return { copiedRows, skippedColumns };
   } catch (error) {
