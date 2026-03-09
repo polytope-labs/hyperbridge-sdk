@@ -258,7 +258,7 @@ describe.skip("Filler V2 FX - Base mainnet same-chain swap", () => {
 				(await basePublicClient.prepareTransactionRequest({
 					to: baseIntentGatewayV2.address,
 					data: calldata,
-					value: feesInWei,
+					value: feesInWei ? feesInWei : 0n,
 					account: baseWalletClient.account!,
 					chain: baseWalletClient.chain,
 				})) as any,
@@ -644,8 +644,8 @@ function createFxOnlyIntentFiller(
 	const cacheService = new CacheService()
 	const chainClientManager = new ChainClientManager(chainConfigService, privateKey)
 
-	// Bid: filler buys exotic from user → 1 EXT = 0.0001 USD (1 USD = 10000 EXT)
-	// Ask: filler sells exotic to user → 1 EXT = 0.0001 USD (1 USD = 10000 EXT)
+	// Bid: filler buys exotic from user → 1 USD = 10000 EXT (filler pays fewer USD per exotic)
+	// Ask: filler sells exotic to user → 1 USD = 9500 EXT (filler gives fewer exotic per USD = spread profit)
 	const bidPricePolicy = new FillerPricePolicy({
 		points: [
 			{ amount: "1", price: "10000" },
@@ -654,8 +654,8 @@ function createFxOnlyIntentFiller(
 	})
 	const askPricePolicy = new FillerPricePolicy({
 		points: [
-			{ amount: "1", price: "10000" },
-			{ amount: "10000", price: "10000" },
+			{ amount: "1", price: "9500" },
+			{ amount: "10000", price: "9500" },
 		],
 	})
 

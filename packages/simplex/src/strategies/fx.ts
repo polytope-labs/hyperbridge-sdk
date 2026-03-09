@@ -242,36 +242,36 @@ export class FXFiller implements FillerStrategy {
 
 				const finalOutputAmount = balance > policyMaxOutput ? policyMaxOutput : balance
 
-			if (finalOutputAmount === 0n) {
-				this.logger.info(
-					{
-						orderId: order.id,
-						token: output.token,
-						fillerBalance: balance.toString(),
-					},
-					"Skipping leg: no available balance for required output token",
-				)
-				continue
-			}
+				if (finalOutputAmount === 0n) {
+					this.logger.info(
+						{
+							orderId: order.id,
+							token: output.token,
+							fillerBalance: balance.toString(),
+						},
+						"Skipping leg: no available balance for required output token",
+					)
+					continue
+				}
 
-			if (finalOutputAmount < output.amount) {
-				this.logger.info(
-					{
-						orderId: order.id,
-						token: output.token,
-						fillerOutput: finalOutputAmount.toString(),
-						userRequested: output.amount.toString(),
-					},
-					"Skipping order: filler output below user's requested minimum",
-				)
-				return 0
-			}
+				if (finalOutputAmount < output.amount) {
+					this.logger.info(
+						{
+							orderId: order.id,
+							token: output.token,
+							fillerOutput: finalOutputAmount.toString(),
+							userRequested: output.amount.toString(),
+						},
+						"Skipping order: filler output below user's requested minimum",
+					)
+					return 0
+				}
 
-			// Decrement remaining balance for this token so repeated outputs share the same pool.
-			const remaining = balance - finalOutputAmount
-			balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
+				// Decrement remaining balance for this token so repeated outputs share the same pool.
+				const remaining = balance - finalOutputAmount
+				balanceCache.set(tokenAddress, remaining > 0n ? remaining : 0n)
 
-			fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
+				fillerOutputs.push({ token: output.token, amount: finalOutputAmount })
 
 				if (remainingUsd.lte(0)) {
 					break
@@ -293,8 +293,42 @@ export class FXFiller implements FillerStrategy {
 
 			this.contractService.cacheService.setFillerOutputs(order.id!, fillerOutputs)
 
+			// Spread profit (bid/ask): value received minus cost, using opposite side of spread for valuation.
+			// - When filler sells exotic (stable→exotic): value exotic we give at acquisition cost (bid).
+			// - When filler buys exotic (exotic→stable): value exotic we receive at resale (ask).
+			let spreadProfitUsd = new Decimal(0)
+			for (let i = 0; i < fillerOutputs.length; i++) {
+				const input = order.inputs[i]
+				const output = fillerOutputs[i]
+				const pair = this.classifyPair(input.token, output.token, chain)!
+				const stableDecimals = await this.contractService.getTokenDecimals(
+					bytes32ToBytes20(pair.stableToken) as HexString,
+					chain,
+				)
+				const exoticDecimalsLeg = await this.contractService.getTokenDecimals(
+					this.exoticTokenAddresses[chain],
+					chain,
+				)
+				if (pair.inputIsStable) {
+					// Filler sells exotic (stable→exotic): receives stable, gives exotic. Value exotic at bid (acquisition cost).
+					const inputUsd = new Decimal(formatUnits(input.amount, stableDecimals))
+					const outputExotic = new Decimal(formatUnits(output.amount, exoticDecimalsLeg))
+					// Cost = outputExotic / bidPrice; revenue = inputUsd → profit = inputUsd - outputExotic/bid
+					spreadProfitUsd = spreadProfitUsd.plus(inputUsd.minus(outputExotic.div(bidPrice)))
+				} else {
+					// Filler buys exotic (exotic→stable): receives exotic, gives stable. Value exotic at ask (resale value).
+					const inputExotic = new Decimal(formatUnits(input.amount, exoticDecimalsLeg))
+					const outputUsd = new Decimal(formatUnits(output.amount, stableDecimals))
+					// Revenue = inputExotic / askPrice; cost = outputUsd → profit = inputExotic/ask - outputUsd
+					spreadProfitUsd = spreadProfitUsd.plus(inputExotic.div(askPrice).minus(outputUsd))
+				}
+			}
+
 			const { totalCostInSourceFeeToken } = await this.contractService.estimateGasFillPost(order)
 			const feeProfit = order.fees > totalCostInSourceFeeToken ? order.fees - totalCostInSourceFeeToken : 0n
+			const feeProfitParsed = parseFloat(formatUnits(feeProfit, feeTokenDecimals))
+			// Total profit = fee profit + spread profit (spread in USD; assumes fee token is USD-pegged for combined return)
+			const totalProfit = feeProfitParsed + spreadProfitUsd.toNumber()
 
 			this.logger.info(
 				{
@@ -307,12 +341,14 @@ export class FXFiller implements FillerStrategy {
 					orderFees: formatUnits(order.fees, feeTokenDecimals),
 					estimatedFees: formatUnits(totalCostInSourceFeeToken, feeTokenDecimals),
 					feeProfit: formatUnits(feeProfit, feeTokenDecimals),
-					profitable: feeProfit > 0n,
+					spreadProfitUsd: spreadProfitUsd.toString(),
+					totalProfit,
+					profitable: totalProfit > 0,
 				},
 				"Same-chain swap profitability evaluation",
 			)
 
-			return parseFloat(formatUnits(feeProfit, feeTokenDecimals))
+			return totalProfit
 		} catch (error) {
 			this.logger.error({ err: error }, "Error calculating profitability")
 			return 0
