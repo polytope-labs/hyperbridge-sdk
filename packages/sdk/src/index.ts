@@ -36,6 +36,7 @@ export {
 } from "@/utils"
 export * from "@/protocols/intents"
 export * from "@/protocols/intentsV2"
+export { ABI as IntentGatewayV2ABI } from "@/abis/IntentGatewayV2"
 export * from "@/protocols/tokenGateway"
 export { Swap } from "@/utils/swap"
 export * from "@/utils/txEvents"
