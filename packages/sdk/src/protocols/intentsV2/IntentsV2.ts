@@ -178,6 +178,14 @@ export class IntentsV2 {
 		}
 		const finalizedOrder = placeOrderSecond.value as OrderV2
 
+		yield {
+			status: "ORDER_PLACED",
+			metadata: {
+				commitment: finalizedOrder.id as HexString,
+				transactionHash: finalizedOrder.transactionHash,
+			},
+		} as IntentOrderStatusUpdate
+
 		for await (const status of this.orderExecutor.executeIntentOrder({
 			order: finalizedOrder,
 			sessionPrivateKey,

@@ -462,6 +462,67 @@ export class ContractInteractionService {
 	}
 
 	/**
+	 * Withdraws the solver's full EntryPoint deposit back to the solver EOA on a single chain.
+	 * @returns The transaction hash, or null if there was nothing to withdraw.
+	 */
+	async withdrawFromEntryPoint(chain: string): Promise<HexString | null> {
+		const entryPointAddress = this.configService.getEntryPointAddress(chain)
+		if (!entryPointAddress) {
+			throw new Error(`EntryPoint not configured for chain ${chain}`)
+		}
+
+		const balance = await this.getSolverEntryPointBalance(chain)
+		if (balance === 0n) {
+			this.logger.debug({ chain }, "No EntryPoint deposit to withdraw")
+			return null
+		}
+
+		const walletClient = this.clientManager.getWalletClient(chain)
+		const publicClient = this.clientManager.getPublicClient(chain)
+
+		this.logger.info(
+			{ chain, solver: this.solverAccountAddress, amount: formatEther(balance) },
+			"Withdrawing from EntryPoint",
+		)
+
+		const hash = await walletClient.writeContract({
+			address: entryPointAddress,
+			abi: ENTRYPOINT_ABI,
+			functionName: "withdrawTo",
+			args: [this.solverAccountAddress, balance],
+			chain: walletClient.chain,
+			account: this.account,
+		})
+
+		const receipt = await publicClient.waitForTransactionReceipt({ hash })
+		if (receipt.status !== "success") {
+			throw new Error(`EntryPoint withdrawal transaction reverted: ${hash}`)
+		}
+
+		this.logger.info({ chain, txHash: hash, amount: formatEther(balance) }, "EntryPoint withdrawal confirmed")
+		return hash as HexString
+	}
+
+	/**
+	 * Withdraws EntryPoint deposits on all configured chains that have a positive balance.
+	 */
+	async withdrawAllEntryPointDeposits(): Promise<void> {
+		const chainIds = this.configService.getConfiguredChainIds()
+
+		for (const chainId of chainIds) {
+			const chain = `EVM-${chainId}`
+			const entryPointAddress = this.configService.getEntryPointAddress(chain)
+			if (!entryPointAddress) continue
+
+			try {
+				await this.withdrawFromEntryPoint(chain)
+			} catch (error) {
+				this.logger.error({ chain, err: error }, "Failed to withdraw EntryPoint deposit")
+			}
+		}
+	}
+
+	/**
 	 * Prepares a signed PackedUserOperation for bid submission to Hyperbridge
 	 *
 	 * Uses cached gas estimates from prior profitability check (estimateGasFillPost)

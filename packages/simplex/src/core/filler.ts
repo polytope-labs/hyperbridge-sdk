@@ -245,6 +245,9 @@ export class IntentFiller {
 
 		await Promise.all(promises)
 
+		// Withdraw any remaining EntryPoint deposits back to the solver EOA
+		await this.contractService.withdrawAllEntryPointDeposits()
+
 		// Disconnect shared Hyperbridge connection
 		if (this.hyperbridge) {
 			const service = await this.hyperbridge.catch(() => null)
@@ -467,7 +470,12 @@ export class IntentFiller {
 
 			try {
 				if (solverSelectionActive) {
-					await this.contractService.ensureEntryPointDeposit(order)
+					this.contractService.ensureEntryPointDeposit(order).catch((err) => {
+						this.logger.error(
+							{ orderId: order.id, err },
+							"Background EntryPoint deposit top-up failed",
+						)
+					})
 				}
 
 				const hyperbridgeService = solverSelectionActive ? await this.hyperbridge : undefined

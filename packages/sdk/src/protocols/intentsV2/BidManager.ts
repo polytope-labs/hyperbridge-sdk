@@ -229,7 +229,7 @@ export class BidManager {
 							const outputs = (matched.args.outputs ?? []) as readonly { amount: bigint }[]
 							filledAmount = outputs.reduce((acc, o) => acc + o.amount, 0n)
 						} catch {
-							// Best-effort only; executor will handle missing filledAmount gracefully
+							throw new Error("Failed to determine filled amount from PartialFill event")
 						}
 					}
 				} catch {

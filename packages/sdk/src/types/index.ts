@@ -1415,7 +1415,7 @@ export interface SelectOptions {
 
 /** Status stages for the intent order execution flow */
 export const IntentOrderStatus = Object.freeze({
-	ORDER_SUBMITTED: "ORDER_SUBMITTED",
+	ORDER_PLACED: "ORDER_PLACED",
 	ORDER_CONFIRMED: "ORDER_CONFIRMED",
 	AWAITING_BIDS: "AWAITING_BIDS",
 	BIDS_RECEIVED: "BIDS_RECEIVED",
@@ -1447,8 +1447,6 @@ export interface IntentOrderStatusMetadata {
 	totalFilledAmount?: bigint
 	/** Remaining amount relative to the original order outputs (best-effort estimate) */
 	remainingAmount?: bigint
-	/** Number of partial fill attempts so far */
-	partialAttempts?: number
 	error?: string
 }
 
