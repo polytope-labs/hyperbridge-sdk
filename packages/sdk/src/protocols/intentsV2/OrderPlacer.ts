@@ -39,10 +39,6 @@ export class OrderPlacer {
 
 		const receipt = await this.ctx.source.broadcastTransaction(signedTransaction)
 
-		console.log(
-			`Place order transaction sent to source chain ${hexToString(order.source as HexString)} with hash: ${receipt.transactionHash}`,
-		)
-
 		const events = parseEventLogs({
 			abi: IntentGatewayV2ABI,
 			logs: receipt.logs,
@@ -61,6 +57,7 @@ export class OrderPlacer {
 		}))
 
 		order.id = orderV2Commitment(order)
+		order.transactionHash = receipt.transactionHash as HexString
 
 		const sessionKeyData: SessionKeyData = {
 			privateKey: privateKey as HexString,

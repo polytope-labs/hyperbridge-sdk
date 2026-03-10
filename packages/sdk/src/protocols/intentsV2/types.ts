@@ -54,7 +54,6 @@ export interface PimlicoGasPriceEstimate {
 /** Event map for cancellation status updates */
 export interface CancelEventMap {
 	DESTINATION_FINALIZED: { proof: IProof }
-	AWAITING_GET_REQUEST: undefined
 	AWAITING_CANCEL_TRANSACTION: { calldata: HexString; to: HexString }
 	SOURCE_FINALIZED: { metadata: { blockNumber: number } }
 	HYPERBRIDGE_DELIVERED: RequestStatusWithMetadata

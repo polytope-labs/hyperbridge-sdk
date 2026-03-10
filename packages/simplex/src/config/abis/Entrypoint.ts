@@ -23,4 +23,14 @@ export const ENTRYPOINT_ABI = [
 		stateMutability: "payable",
 		type: "function",
 	},
+	{
+		inputs: [
+			{ name: "withdrawAddress", type: "address" },
+			{ name: "withdrawAmount", type: "uint256" },
+		],
+		name: "withdrawTo",
+		outputs: [],
+		stateMutability: "nonpayable",
+		type: "function",
+	},
 ] as const

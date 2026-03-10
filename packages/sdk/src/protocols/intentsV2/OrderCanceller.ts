@@ -84,12 +84,11 @@ export class OrderCanceller {
 	private async *cancelOrderFromSource(order: OrderV2, indexerClient: IndexerClient): AsyncGenerator<CancelEvent> {
 		const orderId = order.id!
 		const isSameChain = order.source === order.destination
+		const intentGatewayAddress = this.ctx.source.configService.getIntentGatewayV2Address(
+			hexToString(order.source as HexString),
+		)
 
 		if (isSameChain) {
-			const intentGatewayAddress = this.ctx.source.configService.getIntentGatewayV2Address(
-				hexToString(order.source as HexString),
-			)
-
 			const calldata = encodeFunctionData({
 				abi: IntentGatewayV2ABI,
 				functionName: "cancelOrder",
@@ -135,13 +134,18 @@ export class OrderCanceller {
 			STORAGE_KEYS.getRequest(orderId),
 		)
 		if (!getRequest) {
-			const transactionHash = yield {
-				status: "AWAITING_GET_REQUEST",
-				data: undefined,
+			const calldata = encodeFunctionData({
+				abi: IntentGatewayV2ABI,
+				functionName: "cancelOrder",
+				args: [transformOrderForContract(order), { relayerFee: 0n, height: destIProof.height }],
+			}) as HexString
+
+			const signedTransaction = yield {
+				status: "AWAITING_CANCEL_TRANSACTION",
+				data: { calldata, to: intentGatewayAddress },
 			}
-			const receipt = await this.ctx.source.client.getTransactionReceipt({
-				hash: transactionHash,
-			})
+
+			const receipt = await this.ctx.source.broadcastTransaction(signedTransaction)
 
 			const events = parseEventLogs({ abi: EVM_HOST.ABI, logs: receipt.logs })
 			const request = events.find((e) => e.eventName === "GetRequestEvent")
