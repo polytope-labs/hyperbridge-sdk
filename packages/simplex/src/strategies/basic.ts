@@ -12,7 +12,7 @@ import {
 	IntentsCoprocessor,
 } from "@hyperbridge/sdk"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
+import { ChainClientManager, ContractInteractionService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
@@ -25,7 +25,6 @@ export class BasicFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
-	private bidStorage?: BidStorageService
 	private bpsPolicy: FillerBpsPolicy
 	private account: ReturnType<typeof privateKeyToAccount>
 	private logger = getLogger("basic-simplex")
@@ -38,13 +37,11 @@ export class BasicFiller implements FillerStrategy {
 		contractService: ContractInteractionService,
 		bpsPolicy: FillerBpsPolicy,
 		confirmationPolicy: ConfirmationPolicy,
-		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
 		this.configService = configService
 		this.clientManager = clientManager
 		this.contractService = contractService
-		this.bidStorage = bidStorage
 		this.bpsPolicy = bpsPolicy
 		this.confirmationPolicy = {
 			getConfirmationBlocks: (chainId: number, amountUsd: number) =>
@@ -355,33 +352,20 @@ export class BasicFiller implements FillerStrategy {
 				"Bid submitted to Hyperbridge successfully",
 			)
 
-			// Store successful bid for later cleanup/fund recovery
-			this.bidStorage?.storeBid({
-				commitment,
-				extrinsicHash: bidResult.extrinsicHash!,
-				blockHash: bidResult.blockHash!,
-				success: true,
-			})
-
 			return {
 				success: true,
 				txHash: bidResult.extrinsicHash,
 				strategyUsed: this.name,
 				processingTimeMs,
+				commitment,
 			}
 		}
 		this.logger.error({ commitment, error: bidResult.error }, "Failed to submit bid to Hyperbridge")
 
-		// Store failed bid for debugging/analysis
-		this.bidStorage?.storeBid({
-			commitment,
-			success: false,
-			error: bidResult.error,
-		})
-
 		return {
 			success: false,
 			error: bidResult.error,
+			commitment,
 		}
 	}
 

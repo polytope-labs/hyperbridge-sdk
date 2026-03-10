@@ -11,7 +11,7 @@ import {
 	ADDRESS_ZERO,
 } from "@hyperbridge/sdk"
 import { privateKeyToAccount } from "viem/accounts"
-import { ChainClientManager, ContractInteractionService, BidStorageService } from "@/services"
+import { ChainClientManager, ContractInteractionService } from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { formatUnits } from "viem"
 import { getLogger } from "@/services/Logger"
@@ -48,7 +48,6 @@ export class FXFiller implements FillerStrategy {
 	private clientManager: ChainClientManager
 	private contractService: ContractInteractionService
 	private configService: FillerConfigService
-	private bidStorage?: BidStorageService
 	/** Bid price policy: exotic tokens per USD when the filler is *buying* exotic from a user */
 	private bidPricePolicy: FillerPricePolicy
 	/** Ask price policy: exotic tokens per USD when the filler is *selling* exotic to a user */
@@ -75,7 +74,6 @@ export class FXFiller implements FillerStrategy {
 	 *                                the filler will only size its outputs as if the order were $5,000.
 	 * @param exoticTokenAddresses   Map of chain identifier → exotic token address.
 	 *                                Example: `{ "EVM-56": "0xabc..." }` for cNGN on BSC.
-	 * @param bidStorage             Optional storage for submitted bids.
 	 */
 	constructor(
 		privateKey: HexString,
@@ -86,13 +84,11 @@ export class FXFiller implements FillerStrategy {
 		askPricePolicy: FillerPricePolicy,
 		maxOrderUsdStr: string,
 		exoticTokenAddresses: Record<string, HexString>,
-		bidStorage?: BidStorageService,
 	) {
 		this.privateKey = privateKey
 		this.configService = configService
 		this.clientManager = clientManager
 		this.contractService = contractService
-		this.bidStorage = bidStorage
 		this.bidPricePolicy = bidPricePolicy
 		this.askPricePolicy = askPricePolicy
 		this.exoticTokenAddresses = exoticTokenAddresses
@@ -393,8 +389,7 @@ export class FXFiller implements FillerStrategy {
 	 *
 	 * Uses the filler outputs previously cached by `calculateProfitability`.
 	 * Approval bundling and UserOp construction are handled by
-	 * `ContractInteractionService.prepareBidUserOp`. Bid metadata is persisted
-	 * to `BidStorageService` when available.
+	 * `ContractInteractionService.prepareBidUserOp`.
 	 */
 	private async submitBid(
 		order: OrderV2,
@@ -423,23 +418,17 @@ export class FXFiller implements FillerStrategy {
 		const endTime = Date.now()
 		if (bidResult.success) {
 			this.logger.info({ commitment }, "Bid submitted successfully")
-			this.bidStorage?.storeBid({
-				commitment,
-				extrinsicHash: bidResult.extrinsicHash!,
-				blockHash: bidResult.blockHash!,
-				success: true,
-			})
 			return {
 				success: true,
 				txHash: bidResult.extrinsicHash,
 				strategyUsed: this.name,
 				processingTimeMs: endTime - startTime,
+				commitment,
 			}
 		}
 
 		this.logger.error({ commitment, error: bidResult.error }, "Bid submission failed")
-		this.bidStorage?.storeBid({ commitment, success: false, error: bidResult.error })
-		return { success: false, error: bidResult.error }
+		return { success: false, error: bidResult.error, commitment }
 	}
 
 	// =========================================================================

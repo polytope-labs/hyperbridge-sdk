@@ -385,7 +385,6 @@ program
 							contractService,
 							bpsPolicy,
 							confirmationPolicy,
-							bidStorageService,
 						)
 					}
 					case "hyperfx": {
@@ -400,7 +399,6 @@ program
 							askPricePolicy,
 							strategyConfig.maxOrderUsd,
 							strategyConfig.exoticTokenAddresses,
-							bidStorageService,
 						)
 					}
 					default:
@@ -444,6 +442,7 @@ program
 				contractService,
 				privateKey,
 				rebalancingService,
+				bidStorageService,
 			)
 
 			// Initialize (sets up EIP-7702 delegation if solver selection is configured)

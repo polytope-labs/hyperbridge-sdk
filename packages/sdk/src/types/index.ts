@@ -938,6 +938,12 @@ export interface ExecutionResult {
 	 * The time it took to fill the order
 	 */
 	processingTimeMs?: number
+
+	/**
+	 * The order commitment hash, returned when a bid is submitted via Hyperbridge.
+	 * Used for subsequent bid retraction after the order is filled on-chain.
+	 */
+	commitment?: string
 }
 
 /**

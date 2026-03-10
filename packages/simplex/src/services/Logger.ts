@@ -7,7 +7,7 @@ type LoggerOptions = {
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 
-let logLevel: LogLevel = "debug"
+let logLevel: LogLevel = "info"
 
 let baseLogger: pino.Logger
 

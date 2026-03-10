@@ -1,5 +1,6 @@
 import { IntentFiller } from "@/core/filler"
 import {
+	BidStorageService,
 	CacheService,
 	ChainClientManager,
 	ContractInteractionService,
@@ -301,7 +302,7 @@ describe.skip("Filler V2 FX - Base mainnet same-chain swap", () => {
 		await new Promise((resolve) => setTimeout(resolve, 10000000))
 
 		await intentFiller.stop()
-		// await intentsCoprocessor.disconnect()
+		await intentsCoprocessor.disconnect()
 	}, 600_000)
 })
 
@@ -438,11 +439,11 @@ describe.skip("Filler V2 FX - Arbitrum mainnet same-chain swap", () => {
 		)
 		expect(isFilled).toBe(true)
 
-		await new Promise((resolve) => setTimeout(resolve, 10000000))
+		await new Promise((resolve) => setTimeout(resolve, 600_000_000))
 
 		await intentFiller.stop()
 		await intentsCoprocessor.disconnect()
-	}, 600_000)
+	}, 600_000_000)
 })
 
 function bundlerUrl(chainId: number): string | undefined {
@@ -642,8 +643,8 @@ function createFxOnlyIntentFiller(
 	})
 	const askPricePolicy = new FillerPricePolicy({
 		points: [
-			{ amount: "1", price: "9500" },
-			{ amount: "10000", price: "9500" },
+			{ amount: "1", price: "10000" },
+			{ amount: "10000", price: "10000" },
 		],
 	})
 
@@ -662,6 +663,7 @@ function createFxOnlyIntentFiller(
 	)
 
 	const strategies = [fxStrategy]
+	const bidStorage = new BidStorageService(chainConfigService.getDataDir())
 
 	return new IntentFiller(
 		chainConfigs,
@@ -671,6 +673,8 @@ function createFxOnlyIntentFiller(
 		chainClientManager,
 		contractService,
 		privateKey,
+		undefined,
+		bidStorage,
 	)
 }
 

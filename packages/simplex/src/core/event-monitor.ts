@@ -53,11 +53,12 @@ export class EventMonitor extends EventEmitter {
 		if (this.listening) return
 		this.listening = true
 
+		const gatewayEvents = INTENT_GATEWAY_V2_ABI.filter(
+			(item) => item.type === "event" && (item.name === "OrderPlaced" || item.name === "OrderFilled"),
+		)
+
 		for (const [chainId, chain] of this.chains.entries()) {
 			try {
-				const orderPlacedEvent = INTENT_GATEWAY_V2_ABI.find(
-					(item) => item.type === "event" && item.name === "OrderPlaced",
-				)
 				const intentGatewayAddress = this.configService.getIntentGatewayV2Address(`EVM-${chainId}`)
 
 				const client = chain.client
@@ -84,7 +85,7 @@ export class EventMonitor extends EventEmitter {
 
 					await mutex.runExclusive(async () => {
 						try {
-							await this.scanBlocks(chainId, chain, intentGatewayAddress, orderPlacedEvent)
+							await this.scanBlocks(chainId, chain, intentGatewayAddress, gatewayEvents)
 						} catch (error) {
 							this.logger.error({ chainId, err: error }, "Error in block scanner")
 						}
@@ -93,7 +94,7 @@ export class EventMonitor extends EventEmitter {
 
 				this.blockScanIntervals.set(chainId, scanInterval)
 
-				this.logger.info({ chainId }, "Started monitoring for new orders")
+				this.logger.info({ chainId }, "Started monitoring for new orders and fills")
 			} catch (error) {
 				this.logger.error({ chainId, err: error }, "Failed to start block scanner")
 			}
@@ -104,7 +105,7 @@ export class EventMonitor extends EventEmitter {
 		chainId: number,
 		chain: IEvmChain,
 		intentGatewayAddress: `0x${string}`,
-		orderPlacedEvent: any,
+		gatewayEvents: any[],
 	): Promise<void> {
 		const lastScanned = this.lastScannedBlock.get(chainId)
 		if (!lastScanned) return
@@ -131,23 +132,34 @@ export class EventMonitor extends EventEmitter {
 				() =>
 					chain.client.getLogs({
 						address: intentGatewayAddress,
-						event: orderPlacedEvent,
+						events: gatewayEvents,
 						fromBlock,
 						toBlock: actualToBlock,
 					}),
 				{
 					maxRetries: 3,
 					backoffMs: 250,
-					logMessage: "Failed to get logs for block scan",
+					logMessage: "Failed to get gateway event logs",
 				},
 			)
 
-			if (logs.length > 0) {
+			const placedLogs = logs.filter((l: any) => l.eventName === "OrderPlaced")
+			const filledLogs = logs.filter((l: any) => l.eventName === "OrderFilled")
+
+			if (placedLogs.length > 0) {
 				this.logger.info(
-					{ chainId, fromBlock, toBlock: actualToBlock, eventCount: logs.length },
-					"Found events in block scan",
+					{ chainId, fromBlock, toBlock: actualToBlock, eventCount: placedLogs.length },
+					"Found OrderPlaced events in block scan",
 				)
-				await this.processLogs(chainId, chain, logs)
+				await this.processOrderPlacedLogs(chainId, chain, placedLogs)
+			}
+
+			if (filledLogs.length > 0) {
+				this.logger.info(
+					{ chainId, fromBlock, toBlock: actualToBlock, eventCount: filledLogs.length },
+					"Found OrderFilled events in block scan",
+				)
+				this.processOrderFilledLogs(chainId, filledLogs)
 			}
 
 			// Update lastScannedBlock only after successful processing
@@ -156,7 +168,7 @@ export class EventMonitor extends EventEmitter {
 		}
 	}
 
-	private async processLogs(chainId: number, chain: IEvmChain, logs: any[]): Promise<void> {
+	private async processOrderPlacedLogs(chainId: number, chain: IEvmChain, logs: any[]): Promise<void> {
 		for (const log of logs) {
 			try {
 				const decodedLog = log as unknown as DecodedOrderV2PlacedLog
@@ -210,6 +222,25 @@ export class EventMonitor extends EventEmitter {
 				this.emit("newOrder", { order })
 			} catch (error) {
 				this.logger.error({ err: error, log }, "Error parsing event log")
+			}
+		}
+	}
+
+	private processOrderFilledLogs(chainId: number, logs: any[]): void {
+		for (const log of logs) {
+			try {
+				const commitment = log.args?.commitment as HexString | undefined
+				const filler = log.args?.filler as string | undefined
+
+				if (!commitment) {
+					this.logger.warn({ log }, "OrderFilled log missing commitment")
+					continue
+				}
+
+				this.logger.info({ chainId, commitment, filler }, "OrderFilled event detected")
+				this.emit("orderFilledOnChain", { commitment, filler, chainId })
+			} catch (error) {
+				this.logger.error({ err: error, log }, "Error parsing OrderFilled log")
 			}
 		}
 	}

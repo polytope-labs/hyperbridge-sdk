@@ -304,5 +304,4 @@ export class FillerConfigService {
 	getTriggerPercentage(): number | undefined {
 		return this.fillerConfig?.rebalancing?.triggerPercentage
 	}
-
 }

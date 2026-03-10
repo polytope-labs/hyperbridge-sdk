@@ -11,7 +11,13 @@ import {
 } from "@hyperbridge/sdk"
 import { formatEther } from "viem"
 import pQueue from "p-queue"
-import { ChainClientManager, ContractInteractionService, DelegationService, RebalancingService } from "@/services"
+import {
+	BidStorageService,
+	ChainClientManager,
+	ContractInteractionService,
+	DelegationService,
+	RebalancingService,
+} from "@/services"
 import { FillerConfigService } from "@/services/FillerConfigService"
 import { getLogger } from "@/services/Logger"
 import { Decimal } from "decimal.js"
@@ -25,6 +31,8 @@ export class IntentFiller {
 	private contractService: ContractInteractionService
 	private delegationService?: DelegationService
 	private rebalancingService?: RebalancingService
+	private bidStorage?: BidStorageService
+	private retractionQueue: pQueue
 	private rebalancingInterval?: NodeJS.Timeout
 	private hyperbridge: Promise<IntentsCoprocessor> | undefined = undefined
 	private config: FillerConfig
@@ -41,12 +49,14 @@ export class IntentFiller {
 		contractService: ContractInteractionService,
 		privateKey: HexString,
 		rebalancingService?: RebalancingService,
+		bidStorage?: BidStorageService,
 	) {
 		this.configService = configService
 		this.privateKey = privateKey
 		this.chainClientManager = chainClientManager
 		this.contractService = contractService
 		this.rebalancingService = rebalancingService
+		this.bidStorage = bidStorage
 		this.monitor = new EventMonitor(chainConfigs, configService, this.chainClientManager)
 		this.strategies = strategies
 		this.config = config
@@ -61,6 +71,8 @@ export class IntentFiller {
 			concurrency: config.maxConcurrentOrders || 5,
 		})
 
+		this.retractionQueue = new pQueue({ concurrency: 1 })
+
 		const hyperbridgeWsUrl = configService.getHyperbridgeWsUrl()
 		const substrateKey = configService.getSubstratePrivateKey()
 
@@ -71,6 +83,10 @@ export class IntentFiller {
 		// Set up event handlers
 		this.monitor.on("newOrder", ({ order }) => {
 			this.handleNewOrder(order)
+		})
+
+		this.monitor.on("orderFilledOnChain", ({ commitment, filler, chainId }) => {
+			this.handleOrderFilledOnChain(commitment as HexString, filler, chainId)
 		})
 	}
 
@@ -182,6 +198,7 @@ export class IntentFiller {
 			promises.push(queue.onIdle())
 		})
 		promises.push(this.globalQueue.onIdle())
+		promises.push(this.retractionQueue.onIdle())
 
 		await Promise.all(promises)
 
@@ -416,10 +433,58 @@ export class IntentFiller {
 				if (result.success) {
 					this.monitor.emit("orderFilled", { orderId: order.id, hash: result.txHash })
 				}
+
+				if (result.commitment) {
+					this.bidStorage?.storeBid({
+						commitment: result.commitment as HexString,
+						extrinsicHash: (result.txHash as HexString) || undefined,
+						success: result.success,
+						error: result.error,
+					})
+				}
+
 				return result
 			} catch (error) {
 				this.logger.error({ orderId: order.id, err: error }, "Order execution failed")
 				throw error
+			}
+		})
+	}
+
+	private handleOrderFilledOnChain(commitment: HexString, filler: string, chainId: number): void {
+		if (!this.bidStorage || !this.hyperbridge) {
+			this.logger.warn(
+				{ commitment, filler, chainId },
+				"Bid storage or Hyperbridge not configured, skipping retraction",
+			)
+			return
+		}
+
+		this.retractionQueue.add(async () => {
+			try {
+				const bid = this.bidStorage!.getBidByCommitment(commitment)
+				if (!bid) {
+					return
+				}
+
+				if (bid.retracted) {
+					this.logger.debug({ commitment }, "Bid already retracted, skipping")
+					return
+				}
+
+				this.logger.info({ commitment, filler, chainId }, "Retracting bid after on-chain OrderFilled")
+
+				const coprocessor = await this.hyperbridge!
+				const result = await coprocessor.retractBid(commitment)
+
+				if (result.success) {
+					this.bidStorage!.markBidAsRetracted(commitment, result.extrinsicHash as HexString)
+					this.logger.info({ commitment, retractHash: result.extrinsicHash }, "Bid retracted successfully")
+				} else {
+					this.logger.error({ commitment, error: result.error }, "Failed to retract bid")
+				}
+			} catch (error) {
+				this.logger.error({ commitment, err: error }, "Error retracting bid")
 			}
 		})
 	}
