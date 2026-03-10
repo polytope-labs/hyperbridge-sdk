@@ -203,8 +203,9 @@ export class BidManager {
 
 			if (order.source === order.destination) {
 				try {
-					const chainReceipt = await this.ctx.dest.client.getTransactionReceipt({
+					const chainReceipt = await this.ctx.dest.client.waitForTransactionReceipt({
 						hash: txnHash,
+						confirmations: 1,
 					})
 					const events = parseEventLogs({
 						abi: IntentGatewayV2ABI,
@@ -224,20 +225,18 @@ export class BidManager {
 						fillStatus = "full"
 					} else if (matched?.eventName === "PartialFill") {
 						fillStatus = "partial"
-						try {
-							// Sum all output amounts from the PartialFill event as the filled amount for this attempt
-							const outputs = (matched.args.outputs ?? []) as readonly { amount: bigint }[]
-							filledAmount = outputs.reduce((acc, o) => acc + o.amount, 0n)
-						} catch {
-							throw new Error("Failed to determine filled amount from PartialFill event")
-						}
+
+						// Sum all output amounts from the PartialFill event as the filled amount for this attempt
+						const outputs = (matched.args.outputs ?? []) as readonly { amount: bigint }[]
+						filledAmount = outputs.reduce((acc, o) => acc + o.amount, 0n)
 					}
 				} catch {
 					throw new Error("Failed to determine fill status from logs")
 				}
 			}
-		} catch {
+		} catch (err) {
 			// Receipt may not be available
+			throw new Error(`Failed to select bid: ${err instanceof Error ? err.message : String(err)}`)
 		}
 
 		return {
