@@ -417,7 +417,8 @@ export class BasicFiller implements FillerStrategy {
 				chain: walletClient.chain,
 				gas: callGasLimit + (callGasLimit * 2500n) / 10000n,
 			})
-			.catch(async () => {
+            .catch(async (err) => {
+                this.logger.error({ err }, "Could not send transaction")
 				return await walletClient.sendTransaction({
 					account: this.account,
 					to: this.account.address,
