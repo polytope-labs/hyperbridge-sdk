@@ -9,8 +9,8 @@ import {
 	type HexString,
 	IntentsCoprocessor,
 } from "@hyperbridge/sdk"
-import { formatEther } from "viem"
 import pQueue from "p-queue"
+import { privateKeyToAddress } from "viem/accounts"
 import {
 	BidStorageService,
 	ChainClientManager,
@@ -33,6 +33,7 @@ export class IntentFiller {
 	private rebalancingService?: RebalancingService
 	private bidStorage?: BidStorageService
 	private retractionQueue: pQueue
+	private pendingRetractions = new Set<string>()
 	private rebalancingInterval?: NodeJS.Timeout
 	private hyperbridge: Promise<IntentsCoprocessor> | undefined = undefined
 	private config: FillerConfig
@@ -57,7 +58,8 @@ export class IntentFiller {
 		this.contractService = contractService
 		this.rebalancingService = rebalancingService
 		this.bidStorage = bidStorage
-		this.monitor = new EventMonitor(chainConfigs, configService, this.chainClientManager)
+		const fillerAddress = privateKeyToAddress(privateKey) as HexString
+		this.monitor = new EventMonitor(chainConfigs, configService, this.chainClientManager, fillerAddress)
 		this.strategies = strategies
 		this.config = config
 
@@ -435,12 +437,18 @@ export class IntentFiller {
 				}
 
 				if (result.commitment) {
+					const commitment = result.commitment as HexString
 					this.bidStorage?.storeBid({
-						commitment: result.commitment as HexString,
+						commitment,
 						extrinsicHash: (result.txHash as HexString) || undefined,
 						success: result.success,
 						error: result.error,
 					})
+
+					if (this.pendingRetractions.delete(commitment)) {
+						this.logger.info({ commitment }, "OrderFilled arrived before bid was stored, retracting now")
+						this.enqueueRetraction(commitment)
+					}
 				}
 
 				return result
@@ -453,26 +461,31 @@ export class IntentFiller {
 
 	private handleOrderFilledOnChain(commitment: HexString, filler: string, chainId: number): void {
 		if (!this.bidStorage || !this.hyperbridge) {
-			this.logger.warn(
+			return
+		}
+
+		const bid = this.bidStorage.getBidByCommitment(commitment)
+		if (!bid) {
+			this.pendingRetractions.add(commitment)
+			this.logger.debug(
 				{ commitment, filler, chainId },
-				"Bid storage or Hyperbridge not configured, skipping retraction",
+				"OrderFilled received before bid stored, deferring retraction",
 			)
 			return
 		}
 
+		if (bid.retracted) {
+			this.logger.debug({ commitment }, "Bid already retracted, skipping")
+			return
+		}
+
+		this.enqueueRetraction(commitment)
+	}
+
+	private enqueueRetraction(commitment: HexString): void {
 		this.retractionQueue.add(async () => {
 			try {
-				const bid = this.bidStorage!.getBidByCommitment(commitment)
-				if (!bid) {
-					return
-				}
-
-				if (bid.retracted) {
-					this.logger.debug({ commitment }, "Bid already retracted, skipping")
-					return
-				}
-
-				this.logger.info({ commitment, filler, chainId }, "Retracting bid after on-chain OrderFilled")
+				this.logger.info({ commitment }, "Retracting bid after on-chain OrderFilled")
 
 				const coprocessor = await this.hyperbridge!
 				const result = await coprocessor.retractBid(commitment)

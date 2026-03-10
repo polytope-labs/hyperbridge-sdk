@@ -25,14 +25,21 @@ export class EventMonitor extends EventEmitter {
 	private chains: Map<number, IEvmChain> = new Map()
 	private listening: boolean = false
 	private configService: FillerConfigService
+	private fillerAddress: string
 	private logger = getLogger("event-monitor")
 	private lastScannedBlock: Map<number, bigint> = new Map()
 	private blockScanIntervals: Map<number, NodeJS.Timeout> = new Map()
 	private scanningMutexes: Map<number, Mutex> = new Map()
 
-	constructor(chainConfigs: ChainConfig[], configService: FillerConfigService, clientManager: ChainClientManager) {
+	constructor(
+		chainConfigs: ChainConfig[],
+		configService: FillerConfigService,
+		clientManager: ChainClientManager,
+		fillerAddress: HexString,
+	) {
 		super()
 		this.configService = configService
+		this.fillerAddress = fillerAddress.toLowerCase()
 
 		chainConfigs.forEach((config) => {
 			const chainName = `EVM-${config.chainId}`
@@ -237,7 +244,11 @@ export class EventMonitor extends EventEmitter {
 					continue
 				}
 
-				this.logger.info({ chainId, commitment, filler }, "OrderFilled event detected")
+				if (filler?.toLowerCase() !== this.fillerAddress) {
+					continue
+				}
+
+				this.logger.info({ chainId, commitment, filler }, "OrderFilled event detected for this filler")
 				this.emit("orderFilledOnChain", { commitment, filler, chainId })
 			} catch (error) {
 				this.logger.error({ err: error, log }, "Error parsing OrderFilled log")
