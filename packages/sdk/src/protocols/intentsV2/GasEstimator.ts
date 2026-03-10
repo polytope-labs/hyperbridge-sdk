@@ -91,7 +91,7 @@ export class GasEstimator {
 				dest: souceStateMachineId,
 				body: constructRedeemEscrowRequestBody({ ...order, id: orderV2Commitment(order) }, MOCK_ADDRESS),
 				timeoutTimestamp: 0n,
-				nonce: await this.ctx.source.getHostNonce(),
+				nonce: await this.ctx.dest.getHostNonce(),
 				from: this.ctx.source.configService.getIntentGatewayV2Address(destStateMachineId),
 				to: this.ctx.source.configService.getIntentGatewayV2Address(souceStateMachineId),
 			}
