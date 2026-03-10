@@ -175,6 +175,38 @@ export class BidStorageService {
 	}
 
 	/**
+	 * Retrieves successful, unretracted bids older than the given age.
+	 * Used by the periodic sweep to retract stale bids after a TTL.
+	 */
+	getExpiredUnretractedBids(maxAgeMs: number): StoredBid[] {
+		const cutoff = new Date(Date.now() - maxAgeMs).toISOString()
+		const stmt = this.db.prepare(`
+			SELECT 
+				id,
+				commitment,
+				extrinsic_hash as extrinsicHash,
+				block_hash as blockHash,
+				success,
+				error,
+				created_at as createdAt,
+				retracted,
+				retracted_at as retractedAt,
+				retract_extrinsic_hash as retractExtrinsicHash
+			FROM bids 
+			WHERE success = 1 AND retracted = 0 AND created_at < ?
+			ORDER BY created_at ASC
+		`)
+
+		const rows = stmt.all(cutoff) as any[]
+
+		return rows.map((row) => ({
+			...row,
+			success: Boolean(row.success),
+			retracted: Boolean(row.retracted),
+		}))
+	}
+
+	/**
 	 * Retrieves all bids within a date range
 	 */
 	getBidsByDateRange(startDate: Date, endDate: Date): StoredBid[] {

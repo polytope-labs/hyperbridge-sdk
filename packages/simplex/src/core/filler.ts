@@ -35,6 +35,7 @@ export class IntentFiller {
 	private retractionQueue: pQueue
 	private pendingRetractions = new Set<string>()
 	private rebalancingInterval?: NodeJS.Timeout
+	private retractionSweepInterval?: NodeJS.Timeout
 	private hyperbridge: Promise<IntentsCoprocessor> | undefined = undefined
 	private config: FillerConfig
 	private configService: FillerConfigService
@@ -131,6 +132,10 @@ export class IntentFiller {
 		if (this.rebalancingService) {
 			this.startRebalancing()
 		}
+
+		if (this.bidStorage && this.hyperbridge) {
+			this.startRetractionSweep()
+		}
 	}
 
 	/**
@@ -184,6 +189,36 @@ export class IntentFiller {
 		}
 	}
 
+	private startRetractionSweep(): void {
+		const BID_TTL_MS = 60 * 60 * 1000 // 1 hour
+		const SWEEP_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+
+		this.retractionSweepInterval = setInterval(() => {
+			this.sweepExpiredBids(BID_TTL_MS).catch((error) => {
+				this.logger.error({ error }, "Error in retraction sweep")
+			})
+		}, SWEEP_INTERVAL_MS)
+
+		this.logger.info("Periodic retraction sweep started (every 5 minutes, 1h TTL)")
+	}
+
+	private async sweepExpiredBids(maxAgeMs: number): Promise<void> {
+		if (!this.bidStorage || !this.hyperbridge) {
+			return
+		}
+
+		const expired = this.bidStorage.getExpiredUnretractedBids(maxAgeMs)
+		if (expired.length === 0) {
+			return
+		}
+
+		this.logger.info({ count: expired.length }, "Sweeping expired unretracted bids")
+
+		for (const bid of expired) {
+			this.enqueueRetraction(bid.commitment)
+		}
+	}
+
 	public async stop(): Promise<void> {
 		this.monitor.stopListening()
 
@@ -192,6 +227,12 @@ export class IntentFiller {
 			clearInterval(this.rebalancingInterval)
 			this.rebalancingInterval = undefined
 			this.logger.info("Periodic rebalancing checks stopped")
+		}
+
+		if (this.retractionSweepInterval) {
+			clearInterval(this.retractionSweepInterval)
+			this.retractionSweepInterval = undefined
+			this.logger.info("Periodic retraction sweep stopped")
 		}
 
 		// Wait for all queues to complete

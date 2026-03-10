@@ -61,7 +61,9 @@ export class EventMonitor extends EventEmitter {
 		this.listening = true
 
 		const gatewayEvents = INTENT_GATEWAY_V2_ABI.filter(
-			(item) => item.type === "event" && (item.name === "OrderPlaced" || item.name === "OrderFilled"),
+			(item) =>
+				item.type === "event" &&
+				(item.name === "OrderPlaced" || item.name === "OrderFilled" || item.name === "PartialFill"),
 		)
 
 		for (const [chainId, chain] of this.chains.entries()) {
@@ -151,7 +153,7 @@ export class EventMonitor extends EventEmitter {
 			)
 
 			const placedLogs = logs.filter((l: any) => l.eventName === "OrderPlaced")
-			const filledLogs = logs.filter((l: any) => l.eventName === "OrderFilled")
+			const filledLogs = logs.filter((l: any) => l.eventName === "OrderFilled" || l.eventName === "PartialFill")
 
 			if (placedLogs.length > 0) {
 				this.logger.info(
