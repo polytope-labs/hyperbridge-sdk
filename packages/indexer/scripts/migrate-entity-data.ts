@@ -416,7 +416,7 @@ export async function migrateEntities(options: MigrationOptions): Promise<Migrat
       if (value === null || value === undefined) return null;
       const str = String(value).trim();
       if (str === '' || isNaN(Number(str))) return '0';
-      return str;
+      return String(Math.round(Number(str)));
     };
 
     // Column-level type transforms applied during migration
