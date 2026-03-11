@@ -19,12 +19,42 @@ import { BundlerMethod } from "./types"
 import { CryptoUtils } from "./CryptoUtils"
 import Decimal from "decimal.js"
 
+/**
+ * Manages the solver bid lifecycle for IntentGatewayV2 orders.
+ *
+ * Responsibilities include:
+ * - Constructing signed `PackedUserOperation` objects that solvers submit to the
+ *   Hyperbridge coprocessor as bids (`prepareSubmitBid`).
+ * - Validating, sorting, simulating, and submitting the best available bid for
+ *   a given order (`selectBid`).
+ * - Pricing bid outputs using on-chain DEX quotes so that the highest-value
+ *   solver is preferred.
+ */
 export class BidManager {
+	/**
+	 * @param ctx - Shared IntentsV2 context providing the destination chain
+	 *   client, coprocessor, bundler URL, and session-key storage.
+	 * @param crypto - Crypto utilities used for gas packing, UserOp hashing,
+	 *   EIP-712 signing, and bundler calls.
+	 */
 	constructor(
 		private readonly ctx: IntentsV2Context,
 		private readonly crypto: CryptoUtils,
 	) {}
 
+	/**
+	 * Constructs a signed `PackedUserOperation` that a solver can submit to the
+	 * Hyperbridge coprocessor as a bid to fill an order.
+	 *
+	 * The solver's signature covers a hash that binds the UserOperation to the
+	 * order commitment and the session key address, so the IntentGatewayV2
+	 * contract can verify the solver's intent on-chain.
+	 *
+	 * @param options - Parameters describing the solver account, gas limits, fee
+	 *   market values, and pre-built `callData` for the fill operation.
+	 * @returns A `PackedUserOperation` with the solver's signature prepended
+	 *   with the order commitment.
+	 */
 	async prepareSubmitBid(options: SubmitBidOptions): Promise<PackedUserOperation> {
 		const {
 			order,
@@ -72,6 +102,30 @@ export class BidManager {
 		return { ...userOp, signature }
 	}
 
+	/**
+	 * Selects the best available bid, simulates it on-chain, signs the
+	 * solver-selection EIP-712 message with the session key, and submits the
+	 * UserOperation to the bundler.
+	 *
+	 * **Selection algorithm:**
+	 * 1. Decodes `fillOrder` calldata from each bid's `callData`.
+	 * 2. Sorts bids by output value (single-output: amount; all-stables: normalised
+	 *    USD; mixed: DEX-quoted USD; fallback: raw amount).
+	 * 3. Iterates sorted bids, simulating each with `eth_call` until one passes.
+	 * 4. Appends the session-key's `SelectSolver` signature to the solver's
+	 *    existing signature and submits via `eth_sendUserOperation`.
+	 * 5. For same-chain orders, waits for the transaction receipt and reads
+	 *    `OrderFilled` / `PartialFill` events to determine fill status.
+	 *
+	 * @param order - The placed order for which to select a bid.
+	 * @param bids - Raw bids fetched from the Hyperbridge coprocessor.
+	 * @param sessionPrivateKey - Optional override; if omitted, the key is
+	 *   looked up from `sessionKeyStorage` using `order.session`.
+	 * @returns A {@link SelectBidResult} containing the submitted UserOperation,
+	 *   its hash, the winning solver address, transaction hash, and fill status.
+	 * @throws If the session key is not found, no valid bids exist, all
+	 *   simulations fail, or the bundler rejects the UserOperation.
+	 */
 	async selectBid(order: OrderV2, bids: FillerBid[], sessionPrivateKey?: HexString): Promise<SelectBidResult> {
 		const commitment = order.id as HexString
 		const sessionKeyAddress = order.session as HexString
@@ -250,6 +304,20 @@ export class BidManager {
 		}
 	}
 
+	/**
+	 * Validates and sorts a list of raw bids for the given order.
+	 *
+	 * Delegates to one of three strategies based on the order's output token
+	 * composition:
+	 * - Single output token: sort by offered amount descending.
+	 * - All stable outputs (USDC/USDT): sort by normalised USD value descending.
+	 * - Mixed outputs: sort by DEX-quoted USD value descending, with a raw-amount
+	 *   fallback if pricing fails.
+	 *
+	 * @param bids - Raw filler bids from the coprocessor.
+	 * @param order - The placed order whose output spec drives sorting logic.
+	 * @returns Sorted array of `{ bid, options }` pairs ready for simulation.
+	 */
 	private async validateAndSortBids(
 		bids: FillerBid[],
 		order: OrderV2,
@@ -274,6 +342,15 @@ export class BidManager {
 		return this.sortMixedOutputs(decodedBids, outputs, chainId)
 	}
 
+	/**
+	 * Decodes the `fillOrder` fill-options from each bid's ERC-7821 calldata.
+	 *
+	 * Bids whose calldata cannot be decoded or do not contain a valid
+	 * `fillOrder` call are silently dropped with a warning.
+	 *
+	 * @param bids - Raw bids to decode.
+	 * @returns Array of successfully decoded `{ bid, options }` pairs.
+	 */
 	private decodeBids(bids: FillerBid[]): { bid: FillerBid; options: FillOptionsV2 }[] {
 		const result: { bid: FillerBid; options: FillOptionsV2 }[] = []
 		for (const bid of bids) {
@@ -288,6 +365,13 @@ export class BidManager {
 		return result
 	}
 
+	/**
+	 * Extracts the `FillOptionsV2` struct from a single bid's ERC-7821
+	 * batch calldata by finding and decoding the inner `fillOrder` call.
+	 *
+	 * @param bid - A single filler bid.
+	 * @returns The decoded `FillOptionsV2`, or `null` if extraction fails.
+	 */
 	private decodeBidFillOptions(bid: FillerBid): FillOptionsV2 | null {
 		try {
 			const innerCalls = this.crypto.decodeERC7821Execute(bid.userOp.callData)
@@ -315,6 +399,16 @@ export class BidManager {
 		return null
 	}
 
+	/**
+	 * Simulates a bid on-chain by batching the `select` and `fillOrder` calls
+	 * via `eth_call` from the solver's account, using the IntentGatewayV2
+	 * ERC-7821 batch-execute pattern.
+	 *
+	 * @param bid - The filler bid to simulate.
+	 * @param selectOptions - The signed solver-selection parameters.
+	 * @param intentGatewayV2Address - Address of the IntentGatewayV2 contract on the destination chain.
+	 * @throws If the `eth_call` simulation reverts or errors.
+	 */
 	private async simulate(
 		bid: FillerBid,
 		selectOptions: SelectOptions,
@@ -551,6 +645,12 @@ export class BidManager {
 
 	// ── Token classification helpers ──────────────────────────────────
 
+	/**
+	 * Returns `true` if `tokenAddr` is either USDC or USDT on the given chain.
+	 *
+	 * @param tokenAddr - 20-byte ERC-20 token address (hex).
+	 * @param chainId - State-machine ID of the chain to look up token addresses on.
+	 */
 	private isStableToken(tokenAddr: HexString, chainId: string): boolean {
 		const configService = this.ctx.dest.configService
 		const usdc = configService.getUsdcAsset(chainId)
@@ -559,6 +659,14 @@ export class BidManager {
 		return normalized === usdc.toLowerCase() || normalized === usdt.toLowerCase()
 	}
 
+	/**
+	 * Returns the ERC-20 decimal count for a known stable token (USDC or USDT)
+	 * on the given chain.
+	 *
+	 * @param tokenAddr - 20-byte token address (hex).
+	 * @param chainId - State-machine ID of the chain.
+	 * @returns Decimal count (e.g. 6 for USDC on most chains).
+	 */
 	private getStableDecimals(tokenAddr: HexString, chainId: string): number {
 		const configService = this.ctx.dest.configService
 		if (tokenAddr.toLowerCase() === configService.getUsdcAsset(chainId).toLowerCase()) {
@@ -569,6 +677,14 @@ export class BidManager {
 
 	// ── Basket valuation helpers ──────────────────────────────────────
 
+	/**
+	 * Sums the USD value of a basket of stable tokens (USDC/USDT only),
+	 * normalising each amount by its decimal count and treating each token as $1.
+	 *
+	 * @param outputs - List of token/amount pairs where every token is a stable.
+	 * @param chainId - State-machine ID used to look up decimals.
+	 * @returns Total USD value as a `Decimal`.
+	 */
 	private computeStablesUsdValue(outputs: TokenInfoV2[], chainId: string): Decimal {
 		let total = new Decimal(0)
 		for (const output of outputs) {

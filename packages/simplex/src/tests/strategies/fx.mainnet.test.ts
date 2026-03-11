@@ -124,14 +124,14 @@ describe.skip("Filler V2 FX - Polygon mainnet same-chain swap", () => {
 		})
 
 		let result = await gen.next()
-		if (result.value && "calldata" in result.value) {
-			const { calldata, feesInWei, sessionPrivateKey } = result.value
+		if (result.value?.status === "AWAITING_PLACE_ORDER") {
+			const { to, data, value } = result.value
 
 			const signedTx = (await polygonWalletClient.signTransaction(
 				(await polygonPublicClient.prepareTransactionRequest({
-					to: polygonIntentGatewayV2.address,
-					data: calldata,
-					value: feesInWei,
+					to,
+					data,
+					value,
 					account: polygonWalletClient.account!,
 					chain: polygonWalletClient.chain,
 				})) as any,
@@ -148,14 +148,14 @@ describe.skip("Filler V2 FX - Polygon mainnet same-chain swap", () => {
 				console.log("status", status)
 
 				if (status.status === "BID_SELECTED") {
-					selectedSolver = status.metadata.selectedSolver as HexString
-					userOpHash = status.metadata.userOpHash as HexString
+					selectedSolver = status.selectedSolver as HexString
+					userOpHash = status.userOpHash as HexString
 				}
-				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
-					console.log("Transaction hash:", status.metadata.transactionHash)
+				if (status.status === "USEROP_SUBMITTED" && status.transactionHash) {
+					console.log("Transaction hash:", status.transactionHash)
 				}
 				if (status.status === "FAILED") {
-					throw new Error(`Order execution failed: ${status.metadata.error}`)
+					throw new Error(`Order execution failed: ${status.error}`)
 				}
 			}
 			result = await gen.next()
@@ -252,14 +252,14 @@ describe.skip("Filler V2 FX - Base mainnet same-chain swap", () => {
 		})
 
 		let result = await gen.next()
-		if (result.value && "calldata" in result.value) {
-			const { calldata, feesInWei, sessionPrivateKey } = result.value
+		if (result.value?.status === "AWAITING_PLACE_ORDER") {
+			const { to, data, value } = result.value
 
 			const signedTx = (await baseWalletClient.signTransaction(
 				(await basePublicClient.prepareTransactionRequest({
-					to: baseIntentGatewayV2.address,
-					data: calldata,
-					value: feesInWei ? feesInWei : 0n,
+					to,
+					data,
+					value: value ?? 0n,
 					account: baseWalletClient.account!,
 					chain: baseWalletClient.chain,
 				})) as any,
@@ -276,14 +276,14 @@ describe.skip("Filler V2 FX - Base mainnet same-chain swap", () => {
 				console.log("status", status)
 
 				if (status.status === "BID_SELECTED") {
-					selectedSolver = status.metadata.selectedSolver as HexString
-					userOpHash = status.metadata.userOpHash as HexString
+					selectedSolver = status.selectedSolver as HexString
+					userOpHash = status.userOpHash as HexString
 				}
-				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
-					console.log("Transaction hash:", status.metadata.transactionHash)
+				if (status.status === "USEROP_SUBMITTED" && status.transactionHash) {
+					console.log("Transaction hash:", status.transactionHash)
 				}
 				if (status.status === "FAILED") {
-					throw new Error(`Order execution failed: ${status.metadata.error}`)
+					throw new Error(`Order execution failed: ${status.error}`)
 				}
 			}
 			result = await gen.next()
@@ -392,14 +392,14 @@ describe.skip("Filler V2 FX - Arbitrum mainnet same-chain swap", () => {
 		})
 
 		let result = await gen.next()
-		if (result.value && "calldata" in result.value) {
-			const { calldata, feesInWei } = result.value
+		if (result.value?.status === "AWAITING_PLACE_ORDER") {
+			const { to, data, value } = result.value
 
 			const signedTx = (await arbitrumWalletClient.signTransaction(
 				(await arbitrumPublicClient.prepareTransactionRequest({
-					to: arbitrumIntentGatewayV2.address,
-					data: calldata,
-					value: feesInWei,
+					to,
+					data,
+					value,
 					account: arbitrumWalletClient.account!,
 					chain: arbitrumWalletClient.chain,
 				})) as any,
@@ -416,14 +416,14 @@ describe.skip("Filler V2 FX - Arbitrum mainnet same-chain swap", () => {
 				console.log("status", status)
 
 				if (status.status === "BID_SELECTED") {
-					selectedSolver = status.metadata.selectedSolver as HexString
-					userOpHash = status.metadata.userOpHash as HexString
+					selectedSolver = status.selectedSolver as HexString
+					userOpHash = status.userOpHash as HexString
 				}
-				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
-					console.log("Transaction hash:", status.metadata.transactionHash)
+				if (status.status === "USEROP_SUBMITTED" && status.transactionHash) {
+					console.log("Transaction hash:", status.transactionHash)
 				}
 				if (status.status === "FAILED") {
-					throw new Error(`Order execution failed: ${status.metadata.error}`)
+					throw new Error(`Order execution failed: ${status.error}`)
 				}
 			}
 			result = await gen.next()

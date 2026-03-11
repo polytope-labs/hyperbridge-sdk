@@ -31,12 +31,53 @@ import type { BundlerGasEstimate, PimlicoGasPriceEstimate } from "./types"
 import { getFeeToken, transformOrderForContract, convertGasToFeeToken } from "./utils"
 import { CryptoUtils } from "./CryptoUtils"
 
+/**
+ * Estimates the gas cost for filling an IntentGatewayV2 order and converts it
+ * into the source-chain fee token so callers can set `order.fees` accurately.
+ *
+ * When a bundler URL is configured, estimation uses
+ * `eth_estimateUserOperationGas` with realistic state overrides (token
+ * balances, allowances, EntryPoint deposits, and optional solver account
+ * bytecode). Without a bundler, it falls back to `estimateContractGas`.
+ * Pimlico-specific gas-price refinement is applied automatically when the
+ * bundler URL contains `pimlico.io`.
+ */
 export class GasEstimator {
+	/**
+	 * @param ctx - Shared IntentsV2 context providing the source and destination
+	 *   chain clients, config service, bundler URL, and solver-code cache.
+	 * @param crypto - Crypto utilities used for UserOp construction, signing,
+	 *   gas packing, and bundler calls.
+	 */
 	constructor(
 		private readonly ctx: IntentsV2Context,
 		private readonly crypto: CryptoUtils,
 	) {}
 
+	/**
+	 * Estimates the gas cost for a solver to fill the given order and returns
+	 * a structured estimate with individual gas components and total costs in
+	 * both wei and fee-token units.
+	 *
+	 * **Cross-chain orders:** also estimates the ISMP POST request fee required
+	 * for the solver to trigger source-chain escrow redemption after filling, and
+	 * includes it in `fillOptions.relayerFee` and `fillOptions.nativeDispatchFee`.
+	 *
+	 * **Bundler path:** constructs a mock `PackedUserOperation` signed by an
+	 * ephemeral keypair, applies state overrides, and calls
+	 * `eth_estimateUserOperationGas`. Gas limits are bumped by 5-10% for
+	 * headroom. If the bundler is Pimlico, gas prices are refined with
+	 * `pimlico_getUserOperationGasPrice`.
+	 *
+	 * **Fallback path (no bundler):** calls `estimateContractGas` directly on
+	 * `fillOrder` with state overrides.
+	 *
+	 * @param params - Parameters including the order to estimate and optional
+	 *   percentage bumps for `maxPriorityFeePerGas` and `maxFeePerGas`.
+	 * @returns A {@link FillOrderEstimateV2} containing all gas components,
+	 *   EIP-1559 fee values, total cost in wei, and total cost in the source
+	 *   chain's fee token.
+	 */
 	async estimateFillOrderV2(params: EstimateFillOrderV2Params): Promise<FillOrderEstimateV2> {
 		const { order } = params
 		const solverPrivateKey = generatePrivateKey()
@@ -263,6 +304,32 @@ export class GasEstimator {
 		}
 	}
 
+	/**
+	 * Builds EVM state override objects for gas estimation of the `fillOrder`
+	 * call, granting the solver account sufficient balances, allowances, and
+	 * EntryPoint deposits so the estimation does not revert due to missing funds.
+	 *
+	 * Returns two formats of the same overrides:
+	 * - `viem`: array format compatible with viem's `stateOverride` parameter.
+	 * - `bundler`: object format compatible with the ERC-4337 bundler's
+	 *   `eth_estimateUserOperationGas` state-override parameter.
+	 *
+	 * Optionally injects known solver account bytecode (from `solverCodeCache`)
+	 * so the mock EOA used for estimation behaves like a real solver smart account.
+	 *
+	 * @param params.accountAddress - Address of the mock solver account.
+	 * @param params.chain - State-machine ID of the destination chain.
+	 * @param params.outputAssets - Token/amount pairs whose balance and allowance
+	 *   slots should be overridden.
+	 * @param params.spenderAddress - Address that needs allowance from the solver
+	 *   account (i.e. the IntentGatewayV2 contract).
+	 * @param params.intentGatewayV2Address - If provided, overrides slot 5 of
+	 *   IntentGatewayV2 with the call-dispatcher address so dispatch calls
+	 *   succeed during estimation.
+	 * @param params.entryPointAddress - If provided, overrides the EntryPoint
+	 *   deposit mapping to give the solver account a large deposit.
+	 * @returns An object with `viem` and `bundler` state-override collections.
+	 */
 	async buildStateOverride(params: {
 		accountAddress: HexString
 		chain: string
@@ -396,6 +463,17 @@ export class GasEstimator {
 		return { viem: viemOverrides, bundler: bundlerOverrides }
 	}
 
+	/**
+	 * Quotes the native token cost of dispatching an ISMP POST request through
+	 * the IntentGateway (v1) `quoteNative` function.
+	 *
+	 * Uses the v1 IntentGateway ABI (not IntentGatewayV2) because the dispatch
+	 * call is routed through the legacy gateway contract.
+	 *
+	 * @param postRequest - The ISMP POST request to quote.
+	 * @param fee - The relayer fee (in dest fee token) to include in the quote.
+	 * @returns The native token amount required to dispatch the request.
+	 */
 	private async quoteNative(postRequest: IPostRequest, fee: bigint): Promise<bigint> {
 		const dispatchPost: DispatchPost = {
 			dest: toHex(postRequest.dest),

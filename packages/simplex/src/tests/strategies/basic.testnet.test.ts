@@ -128,12 +128,13 @@ describe.skip("Filler V2 - Solver Selection ON", () => {
 
 		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 120_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
-		if (result.value && "calldata" in result.value) {
-			const { calldata } = result.value
+		if (result.value?.status === "AWAITING_PLACE_ORDER") {
+			const { to, data, value } = result.value
 			const signedTx = (await bscWalletClient.signTransaction(
 				(await bscPublicClient.prepareTransactionRequest({
-					to: bscIntentGatewayV2.address,
-					data: calldata,
+					to,
+					data,
+					value,
 					account: bscWalletClient.account!,
 					chain: bscWalletClient.chain,
 				})) as any,
@@ -146,14 +147,14 @@ describe.skip("Filler V2 - Solver Selection ON", () => {
 			if (result.value && "status" in result.value) {
 				const status = result.value
 				if (status.status === "BID_SELECTED") {
-					selectedSolver = status.metadata.selectedSolver as HexString
-					userOpHash = status.metadata.userOpHash as HexString
+					selectedSolver = status.selectedSolver as HexString
+					userOpHash = status.userOpHash as HexString
 				}
-				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
-					console.log("Transaction hash:", status.metadata.transactionHash)
+				if (status.status === "USEROP_SUBMITTED" && status.transactionHash) {
+					console.log("Transaction hash:", status.transactionHash)
 				}
 				if (status.status === "FAILED") {
-					throw new Error(`Order execution failed: ${status.metadata.error}`)
+					throw new Error(`Order execution failed: ${status.error}`)
 				}
 			}
 			result = await gen.next()
@@ -356,9 +357,9 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 
 		const gen = userSdkHelper.execute(order, DEFAULT_GRAFFITI, { bidTimeoutMs: 240_000, pollIntervalMs: 5_000 })
 		let result = await gen.next()
-		if (result.value && "calldata" in result.value) {
-			const { calldata } = result.value
-			const signedTx = (await signTronTransaction(tronWeb, tronIntentGatewayAddress, calldata)) as HexString
+		if (result.value?.status === "AWAITING_PLACE_ORDER") {
+			const { data } = result.value
+			const signedTx = (await signTronTransaction(tronWeb, tronIntentGatewayAddress, data)) as HexString
 			result = await gen.next(signedTx)
 		}
 		let userOpHash: HexString | undefined
@@ -367,14 +368,14 @@ describe.skip("Filler V2 - Tron Source Chain", () => {
 			if (result.value && "status" in result.value) {
 				const status = result.value
 				if (status.status === "BID_SELECTED") {
-					selectedSolver = status.metadata.selectedSolver as HexString
-					userOpHash = status.metadata.userOpHash as HexString
+					selectedSolver = status.selectedSolver as HexString
+					userOpHash = status.userOpHash as HexString
 				}
-				if (status.status === "USEROP_SUBMITTED" && status.metadata.transactionHash) {
-					console.log("Transaction hash:", status.metadata.transactionHash)
+				if (status.status === "USEROP_SUBMITTED" && status.transactionHash) {
+					console.log("Transaction hash:", status.transactionHash)
 				}
 				if (status.status === "FAILED") {
-					throw new Error(`Order execution failed: ${status.metadata.error}`)
+					throw new Error(`Order execution failed: ${status.error}`)
 				}
 			}
 			result = await gen.next()

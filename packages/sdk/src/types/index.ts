@@ -1395,6 +1395,7 @@ export interface SelectOptions {
 
 /** Status stages for the intent order execution flow */
 export const IntentOrderStatus = Object.freeze({
+	AWAITING_PLACE_ORDER: "AWAITING_PLACE_ORDER",
 	ORDER_PLACED: "ORDER_PLACED",
 	ORDER_CONFIRMED: "ORDER_CONFIRMED",
 	AWAITING_BIDS: "AWAITING_BIDS",
@@ -1410,31 +1411,18 @@ export const IntentOrderStatus = Object.freeze({
 export type IntentOrderStatus = typeof IntentOrderStatus
 export type IntentOrderStatusKey = keyof typeof IntentOrderStatus
 
-/** Metadata for intent order status updates */
-export interface IntentOrderStatusMetadata {
-	commitment?: HexString
-	transactionHash?: HexString
-	blockHash?: HexString
-	blockNumber?: number
-	bidCount?: number
-	bids?: FillerBid[]
-	selectedSolver?: HexString
-	userOpHash?: HexString
-	userOp?: PackedUserOperation
-	/** Amount filled in the latest fill attempt (if applicable) */
-	filledAmount?: bigint
-	/** Cumulative amount filled across all attempts (same units as order outputs) */
-	totalFilledAmount?: bigint
-	/** Remaining amount relative to the original order outputs (best-effort estimate) */
-	remainingAmount?: bigint
-	error?: string
-}
-
-/** Status update yielded by the intent order stream */
-export interface IntentOrderStatusUpdate {
-	status: IntentOrderStatusKey
-	metadata: IntentOrderStatusMetadata
-}
+/** Tagged union of all possible status updates yielded by the intent order execution stream */
+export type IntentOrderStatusUpdate =
+	| { status: "AWAITING_PLACE_ORDER"; to: HexString; data: HexString; value?: bigint; sessionPrivateKey: HexString }
+	| { status: "ORDER_PLACED"; order: OrderV2; transactionHash: HexString }
+	| { status: "AWAITING_BIDS"; commitment: HexString; totalFilledAmount: bigint; remainingAmount: bigint }
+	| { status: "BIDS_RECEIVED"; commitment: HexString; bidCount: number; bids: FillerBid[] }
+	| { status: "BID_SELECTED"; commitment: HexString; selectedSolver: HexString; userOpHash: HexString; userOp: PackedUserOperation }
+	| { status: "USEROP_SUBMITTED"; commitment: HexString; userOpHash: HexString; selectedSolver: HexString; transactionHash?: HexString }
+	| { status: "FILLED"; commitment: HexString; userOpHash: HexString; selectedSolver: HexString; transactionHash?: HexString; totalFilledAmount: bigint; remainingAmount: bigint }
+	| { status: "PARTIAL_FILL"; commitment: HexString; userOpHash: HexString; selectedSolver: HexString; transactionHash?: HexString; filledAmount?: bigint; totalFilledAmount: bigint; remainingAmount: bigint }
+	| { status: "PARTIAL_FILL_EXHAUSTED"; commitment: HexString; totalFilledAmount?: bigint; remainingAmount?: bigint; error: string }
+	| { status: "FAILED"; commitment?: HexString; totalFilledAmount?: bigint; remainingAmount?: bigint; error: string }
 
 /** Result of selecting a bid and submitting to the bundler */
 export interface SelectBidResult {

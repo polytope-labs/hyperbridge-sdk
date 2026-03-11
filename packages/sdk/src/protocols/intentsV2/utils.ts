@@ -12,11 +12,20 @@ import { requestCommitmentKey } from "@/chain"
 import type { IEvmChain } from "@/chain"
 import type { IProof } from "@/chain"
 
+/** Cache TTL for fee-token entries, in milliseconds (5 minutes). */
 const FEE_TOKEN_CACHE_TTL_MS = 5 * 60 * 1000
 
 /**
- * Returns a cached fee token entry, re-fetching from the chain if the entry
- * is missing or older than {@link FEE_TOKEN_CACHE_TTL_MS}.
+ * Returns the fee token (address and decimals) for a given chain, using a
+ * timed cache to avoid redundant on-chain calls.
+ *
+ * Re-fetches from the chain whenever the cached entry is missing or older
+ * than {@link FEE_TOKEN_CACHE_TTL_MS} (5 minutes).
+ *
+ * @param ctx - The shared IntentsV2 context containing the fee-token cache.
+ * @param chainId - State-machine ID of the chain whose fee token is needed.
+ * @param chain - EVM chain client used to fetch a fresh fee token if the cache misses.
+ * @returns Resolves with the fee token address and its ERC-20 decimal count.
  */
 export async function getFeeToken(
 	ctx: IntentsV2Context,
@@ -34,9 +43,17 @@ export async function getFeeToken(
 }
 
 /**
- * Standalone utility to encode calls into ERC-7821 execute function calldata.
- * Can be used outside of the IntentGatewayV2 class (e.g., by filler strategies
- * that need to build custom batch calldata for swap+fill operations).
+ * Encodes a list of calls into ERC-7821 `execute` function calldata using
+ * single-batch mode.
+ *
+ * This is a standalone utility that can be used outside of the
+ * `IntentGatewayV2` class — for example, by filler strategies that need to
+ * build custom batch calldata for combined swap-and-fill operations before
+ * submitting a UserOperation.
+ *
+ * @param calls - Ordered list of calls to batch; each specifies a target
+ *   address, ETH value, and calldata.
+ * @returns ABI-encoded calldata for the ERC-7821 `execute(bytes32,bytes)` function.
  */
 export function encodeERC7821ExecuteBatch(calls: ERC7821Call[]): HexString {
 	const executionData = encodeAbiParameters(
@@ -52,8 +69,19 @@ export function encodeERC7821ExecuteBatch(calls: ERC7821Call[]): HexString {
 }
 
 /**
- * Fetches proof for the source chain.
+ * Fetches a Merkle/state proof for the given ISMP request commitment on the
+ * source chain.
  *
+ * Derives the two storage slots from the commitment using
+ * `requestCommitmentKey`, then queries the source chain node for a state
+ * proof at the given block height.
+ *
+ * @param commitment - The ISMP request commitment hash to prove.
+ * @param source - Source chain client used to query the state proof.
+ * @param sourceStateMachine - State-machine ID string of the source chain.
+ * @param sourceConsensusStateId - Consensus-state identifier for the source chain.
+ * @param sourceHeight - Block height at which to generate the proof.
+ * @returns Resolves with an {@link IProof} ready to be submitted to Hyperbridge.
  * @internal
  */
 export async function fetchSourceProof(
@@ -75,7 +103,16 @@ export async function fetchSourceProof(
 }
 
 /**
- * Transforms an OrderV2 (SDK type) to the Order struct expected by the contract.
+ * Strips SDK-only fields from an {@link OrderV2} and normalises state-machine
+ * IDs to their hex-encoded form, producing the struct that the
+ * IntentGatewayV2 contract ABI expects.
+ *
+ * The `id` and `transactionHash` fields are removed because they are not
+ * part of the on-chain Order struct. `source` and `destination` are
+ * hex-encoded if they are currently plain string state-machine IDs.
+ *
+ * @param order - The SDK-level order to transform.
+ * @returns A contract-compatible order struct without `id` or `transactionHash`.
  */
 export function transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | "transactionHash"> {
 	const { id: _id, transactionHash: _txHash, ...contractOrder } = order
@@ -87,8 +124,21 @@ export function transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | 
 }
 
 /**
- * Converts a gas estimate on a given chain into that chain's fee token amount.
- * Tries a Uniswap V2 swap quote first, falls back to a price-oracle estimate.
+ * Converts a gas estimate (in gas units) on a given chain into the
+ * equivalent amount of that chain's fee token (e.g. USDC).
+ *
+ * First attempts to price the gas cost in fee-token units using a Uniswap V2
+ * on-chain quote (WETH → fee token). If that quote returns zero or fails,
+ * falls back to a price-oracle estimate using the native currency's USD price
+ * and assumes the fee token is worth $1.
+ *
+ * @param ctx - Shared IntentsV2 context.
+ * @param gasEstimate - Gas quantity to convert (in gas units, not wei).
+ * @param gasEstimateIn - Which chain side the gas estimate belongs to (`"source"` or `"dest"`).
+ * @param evmChainID - State-machine ID of the chain on which gas is consumed.
+ * @param gasPriceOverride - Optional gas price in wei; fetched on-chain if omitted.
+ * @returns Resolves with the fee-token-denominated cost as a bigint, scaled to
+ *   the fee token's decimal precision.
  */
 export async function convertGasToFeeToken(
 	ctx: IntentsV2Context,
