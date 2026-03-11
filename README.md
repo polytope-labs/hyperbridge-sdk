@@ -1,7 +1,10 @@
+> [!WARNING]
+> **This repository is archived.** Development has moved to the [polytope-labs/hyperbridge](https://github.com/polytope-labs/hyperbridge) monorepo under the [`sdk/`](https://github.com/polytope-labs/hyperbridge/tree/main/sdk) directory. Please open issues and pull requests there.
+
 # Hyperbridge SDK
 
 ![CI](https://github.com/polytope-labs/hyperbridge-sdk/actions/workflows/test-sdk.yml/badge.svg)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Hyperbridge SDK is a monorepo containing packages for building on Hyperbridge â€” a cross-chain interoperability protocol. It includes a Solidity SDK, a JavaScript/TypeScript SDK, a cross-chain message indexer, and the Intent Gateway filler.
 
@@ -24,8 +27,8 @@ Hyperbridge SDK is a monorepo containing packages for building on Hyperbridge â€
 ### Installation
 
 ```bash
-git clone https://github.com/polytope-labs/hyperbridge-sdk.git
-cd hyperbridge-sdk
+git clone https://github.com/polytope-labs/hyperbridge.git
+cd hyperbridge/sdk
 pnpm install
 pnpm build
 ```
@@ -43,22 +46,6 @@ pnpm lint
 pnpm format
 ```
 
-## Contributing
-
-Create a changeset when making changes:
-
-```bash
-pnpm changeset
-```
-
-Commit your changes along with the changeset:
-
-```bash
-git add .
-git commit -m "feat: your feature description"
-git push
-```
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License - see the [LICENSE](/LICENSE) file for details.
