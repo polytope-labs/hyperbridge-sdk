@@ -103,13 +103,35 @@ export async function fetchSourceProof(
 }
 
 /**
- * Strips SDK-only fields from an {@link OrderV2} and normalises state-machine
- * IDs to their hex-encoded form, producing the struct that the
- * IntentGatewayV2 contract ABI expects.
+ * Left-pads a 20-byte EVM address to a 32-byte hex string so it matches the
+ * `bytes32(uint256(uint160(addr)))` encoding the IntentGatewayV2 contract uses
+ * when casting token and beneficiary fields back to `address`.
  *
- * The `id` and `transactionHash` fields are removed because they are not
- * part of the on-chain Order struct. `source` and `destination` are
- * hex-encoded if they are currently plain string state-machine IDs.
+ * A value that is already 32 bytes (66 hex chars including the `0x` prefix) is
+ * returned unchanged. Any other length is also returned unchanged — the caller
+ * is responsible for passing a well-formed value.
+ *
+ * @param value - A hex string representing either a 20-byte address or an
+ *   already-padded 32-byte value.
+ * @returns A 32-byte hex string with the address in the lower 20 bytes.
+ */
+function padAddressToBytes32(value: HexString): HexString {
+	if (value.length === 66) return value // already 32 bytes
+	if (value.length === 42) return `0x${value.slice(2).padStart(64, "0")}` as HexString
+	return value
+}
+
+/**
+ * Strips SDK-only fields from an {@link OrderV2} and normalises all fields to
+ * the encoding the IntentGatewayV2 contract ABI expects:
+ *
+ * - `id` and `transactionHash` are removed (not part of the on-chain struct).
+ * - `source` and `destination` are hex-encoded if currently plain string
+ *   state-machine IDs.
+ * - `inputs[i].token`, `output.beneficiary`, `output.assets[i].token`, and
+ *   `predispatch.assets[i].token` are left-padded from 20-byte addresses to
+ *   32-byte values (`0x000…addr`), matching the `bytes32(uint256(uint160(addr)))`
+ *   encoding the contract uses when casting these fields back to `address`.
  *
  * @param order - The SDK-level order to transform.
  * @returns A contract-compatible order struct without `id` or `transactionHash`.
@@ -120,6 +142,16 @@ export function transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | 
 		...contractOrder,
 		source: order.source.startsWith("0x") ? order.source : toHex(order.source),
 		destination: order.destination.startsWith("0x") ? order.destination : toHex(order.destination),
+		inputs: order.inputs.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+		predispatch: {
+			...order.predispatch,
+			assets: order.predispatch.assets.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+		},
+		output: {
+			...order.output,
+			beneficiary: padAddressToBytes32(order.output.beneficiary),
+			assets: order.output.assets.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+		},
 	}
 }
 
