@@ -4,7 +4,7 @@ import Decimal from "decimal.js"
 import type { OrderV2 } from "@/types"
 import type { ERC7821Call } from "@/types"
 import type { HexString } from "@/types"
-import { retryPromise, fetchPrice } from "@/utils"
+import { retryPromise, fetchPrice, bytes20ToBytes32 } from "@/utils"
 import ERC7821ABI from "@/abis/erc7281"
 import { ERC7821_BATCH_MODE } from "./types"
 import type { IntentsV2Context } from "./types"
@@ -103,25 +103,6 @@ export async function fetchSourceProof(
 }
 
 /**
- * Left-pads a 20-byte EVM address to a 32-byte hex string so it matches the
- * `bytes32(uint256(uint160(addr)))` encoding the IntentGatewayV2 contract uses
- * when casting token and beneficiary fields back to `address`.
- *
- * A value that is already 32 bytes (66 hex chars including the `0x` prefix) is
- * returned unchanged. Any other length is also returned unchanged — the caller
- * is responsible for passing a well-formed value.
- *
- * @param value - A hex string representing either a 20-byte address or an
- *   already-padded 32-byte value.
- * @returns A 32-byte hex string with the address in the lower 20 bytes.
- */
-function padAddressToBytes32(value: HexString): HexString {
-	if (value.length === 66) return value // already 32 bytes
-	if (value.length === 42) return `0x${value.slice(2).padStart(64, "0")}` as HexString
-	return value
-}
-
-/**
  * Strips SDK-only fields from an {@link OrderV2} and normalises all fields to
  * the encoding the IntentGatewayV2 contract ABI expects:
  *
@@ -130,8 +111,9 @@ function padAddressToBytes32(value: HexString): HexString {
  *   state-machine IDs.
  * - `inputs[i].token`, `output.beneficiary`, `output.assets[i].token`, and
  *   `predispatch.assets[i].token` are left-padded from 20-byte addresses to
- *   32-byte values (`0x000…addr`), matching the `bytes32(uint256(uint160(addr)))`
- *   encoding the contract uses when casting these fields back to `address`.
+ *   32-byte values (`0x000…addr`) via {@link bytes20ToBytes32}, matching the
+ *   `bytes32(uint256(uint160(addr)))` encoding the contract uses when casting
+ *   these fields back to `address`. Values already at 32 bytes are unchanged.
  *
  * @param order - The SDK-level order to transform.
  * @returns A contract-compatible order struct without `id` or `transactionHash`.
@@ -142,15 +124,15 @@ export function transformOrderForContract(order: OrderV2): Omit<OrderV2, "id" | 
 		...contractOrder,
 		source: order.source.startsWith("0x") ? order.source : toHex(order.source),
 		destination: order.destination.startsWith("0x") ? order.destination : toHex(order.destination),
-		inputs: order.inputs.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+		inputs: order.inputs.map((t) => ({ ...t, token: bytes20ToBytes32(t.token) })),
 		predispatch: {
 			...order.predispatch,
-			assets: order.predispatch.assets.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+			assets: order.predispatch.assets.map((t) => ({ ...t, token: bytes20ToBytes32(t.token) })),
 		},
 		output: {
 			...order.output,
-			beneficiary: padAddressToBytes32(order.output.beneficiary),
-			assets: order.output.assets.map((t) => ({ ...t, token: padAddressToBytes32(t.token) })),
+			beneficiary: bytes20ToBytes32(order.output.beneficiary),
+			assets: order.output.assets.map((t) => ({ ...t, token: bytes20ToBytes32(t.token) })),
 		},
 	}
 }
